@@ -91,6 +91,25 @@ async function toggle() {
   publish(true);
 }
 
+/**
+ * Arm admin mode WITHOUT AAA — for a phone, which has no keyboard to type it
+ * on. Uses `typed` if given, else the token already in this browser. The token
+ * is checked by the server first; a refused one is forgotten. Resolves to
+ * whether admin mode is now on.
+ */
+export async function armAdminMode(typed?: string): Promise<boolean> {
+  if (armed) return true;
+  const token = (typed ?? readAdminToken()).trim();
+  if (!token) return false;
+  if (!(await tokenWorks(token))) {
+    if (!typed) forgetAdminToken();
+    return false;
+  }
+  try { window.localStorage.setItem(TOKEN_KEYS[0], token); } catch { /* ignore */ }
+  publish(true);
+  return true;
+}
+
 function install() {
   if (installed || typeof window === "undefined") return;
   installed = true;
