@@ -82,6 +82,29 @@ export function verticalFov(
   return deg(2 * Math.atan(Math.tan(rad(base) / 2) / clampZoom(zoom)));
 }
 
+/**
+ * WALKING WITH THE KEYS: a stroll, and it eases in.
+ *
+ * ⚠️ 1.6 m/s, NOT 3.6 (operator, 2026-09-27: one press "moves a lot ahead and
+ * we miss the store"). A shop front is six metres; at 3.6 m/s from the first
+ * instant, the time it takes to lift a finger was already most of one. Shift
+ * walks fast for crossing the square.
+ */
+export const STROLL_SPEED = 1.6;
+export const HURRY_SPEED = 4;
+export const WALK_EASE_IN_S = 0.35;
+/** A press shorter than this is a step, not a walk. */
+export const STEP_PRESS_S = 0.22;
+/** A step in the open square. */
+export const SQUARE_STEP_M = 1.2;
+/** Gliding from one window-shopping stop to the next. */
+export const STOP_GLIDE_SPEED = 2.2;
+
+export function walkSpeed(heldS: number, hurry: boolean): number {
+  const top = hurry ? HURRY_SPEED : STROLL_SPEED;
+  return top * easeInOutCubic(Math.min(1, heldS / WALK_EASE_IN_S));
+}
+
 /** Seconds for a flight of this length: quick when short, never a slog. */
 export function flightSeconds(metres: number, reducedMotion = false): number {
   if (reducedMotion) return 0;

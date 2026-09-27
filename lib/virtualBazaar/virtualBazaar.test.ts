@@ -9,10 +9,11 @@ import assert from "node:assert/strict";
 import {
   FOOD_STREET, FOOD_STREET_ENTRY, FOUNTAIN_CLEAR, SHOPS, START_POSE, STREETS,
   SQUARE_FROM_FOOD, WALK_RADIUS, gateFrontPose, isWalkable, nearestWalkable,
-  parseSpot, planRoute, poseForSpot, routeAround, shopFrontPose, spotParam, step,
+  STREET_STOPS, nextStop, streetDirection, parseSpot, planRoute, poseForSpot, routeAround, shopFrontPose, spotParam, step,
   yawToward, zoneOf, type Point,
 } from "./layout.ts";
 import {
+  STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
   BODY_DWELL_S, NECK_AT_REST, NECK_DEADZONE, headStep, type Neck,
   easeInOutCubic, isTap, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
@@ -269,4 +270,40 @@ test("head: stand up and turn round for real, and the view keeps following the p
 test("head: a long look (2 s) and back still turns you, not undoes it", () => {
   const { view } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 2), ...move(70, 0, 0.6), ...hold(0, 0.5)]);
   close(view, 70, 1e-6);
+});
+
+test("window shopping: each stop is a walkable spot with a shop either side", () => {
+  for (const x of STREET_STOPS) assert.equal(isWalkable(x, 0), true, `x=${x}`);
+  for (const shop of SHOPS) assert.ok(STREET_STOPS.includes(shop.x), `${shop.id} has a stop`);
+});
+
+test("window shopping: one press, the next pair of shops", () => {
+  assert.equal(nextStop(FOOD_STREET_ENTRY.x, 1), 28);
+  assert.equal(nextStop(28, 1), 34, "standing at a stop moves on");
+  assert.equal(nextStop(28.3, 1), 34);
+  assert.equal(nextStop(30, 1), 34);
+  assert.equal(nextStop(30, -1), 28);
+  assert.equal(nextStop(58, 1), null, "the end of the street");
+  assert.equal(nextStop(FOOD_STREET_ENTRY.x, -1), null, "the gate");
+});
+
+test("window shopping: forward is the way you face along the street", () => {
+  const east = yawToward(1, 0);
+  const west = yawToward(-1, 0);
+  const atShop = yawToward(0, -1);
+  assert.equal(streetDirection(east, true), 1);
+  assert.equal(streetDirection(east, false), -1);
+  assert.equal(streetDirection(west, true), -1, "facing the gate, forward goes back out");
+  assert.equal(streetDirection(atShop, true), 1, "facing a shop, forward goes deeper");
+  assert.equal(streetDirection(atShop, false), -1);
+});
+
+test("walking: a stroll that eases in, so a short press barely moves", () => {
+  assert.equal(walkSpeed(0, false), 0);
+  close(walkSpeed(WALK_EASE_IN_S, false), STROLL_SPEED, 1e-9);
+  // Distance covered while a quick press is held: under 15 cm.
+  let d = 0;
+  for (let t = 0; t < STEP_PRESS_S; t += 1 / 60) d += walkSpeed(t, false) / 60;
+  assert.ok(d < 0.15, `${d.toFixed(3)} m`);
+  assert.ok(walkSpeed(10, true) > walkSpeed(10, false));
 });

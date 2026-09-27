@@ -212,6 +212,41 @@ export function shopFrontPose(shop: Shop): Pose {
 /** Back out of the food street: just inside its gate, facing the pool. */
 export const SQUARE_FROM_FOOD: Pose = { x: 15, z: 0, yaw: yawToward(-1, 0), pitch: 0.05 };
 
+/**
+ * WINDOW-SHOPPING STOPS along the food street: its entrance, then the middle
+ * of each bay, where one shop stands on either side.
+ *
+ * ⚠️ ONE PRESS, ONE PAIR OF SHOPS (operator, 2026-09-27: a key press "moves a
+ * lot ahead and we miss the store we wanted to visit"). A quick press of
+ * forward glides to the next stop and stops there, so a visitor can walk the
+ * street shop by shop instead of steering past them.
+ */
+export const STREET_STOPS: number[] = [
+  FOOD_STREET_ENTRY.x,
+  ...Array.from({ length: 6 }, (_, i) => FOOD_STREET.firstBay + i * FOOD_STREET.bay),
+];
+
+/**
+ * The next stop along the street from `x`, deeper in (`dir` > 0) or back
+ * towards the gate (`dir` < 0), or null at the end. A stop within half a metre
+ * counts as "here", so pressing again moves on rather than nudging.
+ */
+export function nextStop(x: number, dir: number): number | null {
+  if (dir > 0) return STREET_STOPS.find((s) => s > x + 0.5) ?? null;
+  return [...STREET_STOPS].reverse().find((s) => s < x - 0.5) ?? null;
+}
+
+/**
+ * Which way along the street "forward" is, for someone looking at `yaw`:
+ * deeper (+1) or back towards the gate (−1). Facing a shop side-on, forward
+ * means deeper in.
+ */
+export function streetDirection(yaw: number, forward: boolean): 1 | -1 {
+  const alongX = -Math.sin(yaw); // x part of the way the camera faces
+  const deeper = Math.abs(alongX) < 0.3 ? true : alongX > 0;
+  return deeper === forward ? 1 : -1;
+}
+
 export type Zone = "square" | "food";
 
 export function zoneOf(x: number, z: number): Zone {

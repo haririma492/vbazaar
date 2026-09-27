@@ -294,7 +294,9 @@ export default function VirtualBazaar() {
               <br />
               روی زمین کلیک کنید تا بروید، روی سردر راسته تا وارد شوید
               <br />
-              W A S D یا کلیدهای جهت برای راه رفتن، چرخ موس برای بزرگ‌نمایی
+              ↑ یا W یک بار: تا مغازه‌های بعدی · نگه دارید: قدم زدن · با Shift: تندتر
+              <br />
+              چرخ موس برای بزرگ‌نمایی
             </>
           )}
         </p>
@@ -360,6 +362,17 @@ export default function VirtualBazaar() {
                 <li className="shrink-0">
                   <button type="button" onClick={() => engineRef.current?.goToSquare()} className={`${chip} ${dark}`}>
                     → بازگشت به میدان
+                  </button>
+                </li>
+                {/* Window shopping, shop by shop: the phone's version of a quick press of ↑ / ↓. */}
+                <li className="shrink-0">
+                  <button type="button" onClick={() => engineRef.current?.stepAlongStreet(-1)} className={`${chip} ${dark}`}>
+                    → مغازه‌های قبلی
+                  </button>
+                </li>
+                <li className="shrink-0">
+                  <button type="button" onClick={() => engineRef.current?.stepAlongStreet(1)} className={`${chip} ${dark}`}>
+                    مغازه‌های بعدی ←
                   </button>
                 </li>
                 {FOOD_SHOPS.map((s) => (

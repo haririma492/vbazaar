@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import {
   EYE_HEIGHT, FOOD_STREET_ENTRY, SQUARE_FROM_FOOD, gateFrontPose, nearestWalkable,
-  planRoute, shopById, shopFrontPose, step, streetById, zoneOf,
+  nextStop, planRoute, shopById, shopFrontPose, step, streetById, streetDirection, zoneOf,
   type Point, type Pose, type Zone,
 } from "@/lib/virtualBazaar/layout";
 import {
   headStep, clampPitch, clampZoom, easeInOutCubic, NECK_AT_REST, shortestAngleDelta, type Neck, flightSeconds, isTap, lerpAngle, lookFromDrag,
-  pathLength, pointAlong, TAP_MAX_MOVE_PX, verticalFov,
+  pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, TAP_MAX_MOVE_PX,
+  verticalFov, walkSpeed,
 } from "@/lib/virtualBazaar/motion";
 import { buildBazaar, pickOf, type Pick } from "./buildBazaar";
 import { redrawSignsWhenFontsLoad } from "./signs";
@@ -56,7 +57,6 @@ type Flight = {
 
 type Press = { x: number; y: number; lastX: number; lastY: number; t: number; dragged: boolean };
 
-const WALK_SPEED = 3.6; // m/s, keys
 const TURN_SPEED = 1.8; // rad/s, keys
 const TAP_WALK_SPEED = 4.5; // m/s, walking to a tapped point
 
@@ -88,7 +88,10 @@ export class BazaarEngine {
   private flight: Flight | null = null;
   private selected: Pick | null = null;
 
-  private keys = new Set<string>();
+  /** Keys held, with when each went down (ms). */
+  private keys = new Map<string, number>();
+  /** Shift held: walk fast. */
+  private hurry = false;
   private presses = new Map<number, Press>();
   private pinch: { dist: number; zoom: number } | null = null;
   private hoverAt: { x: number; y: number } | null = null;
@@ -193,6 +196,16 @@ export class BazaarEngine {
     if (!shop) return;
     this.select({ kind: "shop", id });
     this.flyTo(shopFrontPose(shop));
+  }
+
+  /**
+   * One window-shopping step along the street: to the next pair of shops
+   * deeper in (+1) or back towards the gate (−1). The phone's buttons.
+   */
+  stepAlongStreet(dir: 1 | -1) {
+    if (this.zone !== "food") return;
+    const x = nextStop(this.x, dir);
+    if (x !== null) this.walkTo({ x, z: 0 }, STOP_GLIDE_SPEED);
   }
 
   goToSquare() {
@@ -313,7 +326,7 @@ export class BazaarEngine {
     this.invalidate();
   }
 
-  private walkTo(target: Point) {
+  private walkTo(target: Point, speed = TAP_WALK_SPEED) {
     const from = { x: this.x, z: this.z };
     const to = nearestWalkable(from, target);
     const points = [from, ...planRoute(from, to)];
@@ -322,7 +335,7 @@ export class BazaarEngine {
     this.flight = {
       points,
       total,
-      duration: this.reducedMotion ? 0 : Math.max(0.4, total / TAP_WALK_SPEED),
+      duration: this.reducedMotion ? 0 : Math.max(0.4, total / speed),
       elapsed: 0,
       fromYaw: this.yaw,
       toYaw: this.yaw,
@@ -355,11 +368,13 @@ export class BazaarEngine {
       : this.yaw;
   }
 
-  private walkWithKeys(dt: number): boolean {
+  private walkWithKeys(dt: number, now: number): boolean {
     let fwd = 0;
     let side = 0;
     let turn = 0;
-    this.keys.forEach((code) => {
+    let heldS = 0;
+    this.keys.forEach((since, code) => {
+      if (MOVE_KEYS[code] !== "turnL" && MOVE_KEYS[code] !== "turnR") heldS = Math.max(heldS, (now - since) / 1000);
       const k = MOVE_KEYS[code];
       if (k === "fwd") fwd += 1;
       if (k === "back") fwd -= 1;
@@ -371,8 +386,9 @@ export class BazaarEngine {
     if (!fwd && !side && !turn) return false;
     this.yaw += turn * TURN_SPEED * dt;
     const h = this.heading();
-    const dx = (-Math.sin(h) * fwd - Math.cos(h) * side) * WALK_SPEED * dt;
-    const dz = (-Math.cos(h) * fwd + Math.sin(h) * side) * WALK_SPEED * dt;
+    const v = walkSpeed(heldS, this.hurry) * dt;
+    const dx = (-Math.sin(h) * fwd - Math.cos(h) * side) * v;
+    const dz = (-Math.cos(h) * fwd + Math.sin(h) * side) * v;
     const next = step({ x: this.x, z: this.z }, { x: this.x + dx, z: this.z + dz });
     this.x = next.x;
     this.z = next.z;
@@ -393,7 +409,7 @@ export class BazaarEngine {
       this.advanceFlight(dt);
       moving = true;
     }
-    if (this.walkWithKeys(dt)) moving = true;
+    if (this.walkWithKeys(dt, now)) moving = true;
     if (this.gyro.on && this.gyro.heard) {
       this.followHead(dt);
       moving = true;
@@ -588,14 +604,38 @@ export class BazaarEngine {
     const t = e.target as HTMLElement | null;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     e.preventDefault();
+    this.hurry = e.shiftKey;
+    // A held key repeats; it went down once.
+    if (e.repeat || this.keys.has(e.code)) return;
     // Walking by hand ends any flight.
     this.flight = null;
-    this.keys.add(e.code);
+    this.keys.set(e.code, performance.now());
   };
 
   private onKeyUp = (e: KeyboardEvent) => {
+    this.hurry = e.shiftKey;
+    const since = this.keys.get(e.code);
     this.keys.delete(e.code);
+    if (since === undefined) return;
+    const k = MOVE_KEYS[e.code];
+    // ⚠️ A QUICK PRESS IS A STEP, NOT A WALK: in the street, to the next
+    // pair of shops and no further; in the square, a pace. Held, the key
+    // walks at a stroll.
+    if ((k === "fwd" || k === "back") && (performance.now() - since) / 1000 < STEP_PRESS_S) {
+      this.stepForward(k === "fwd");
+    }
   };
+
+  private stepForward(forward: boolean) {
+    if (this.zone === "food") {
+      const x = nextStop(this.x, streetDirection(this.heading(), forward));
+      if (x !== null) this.walkTo({ x, z: 0 }, STOP_GLIDE_SPEED);
+      return;
+    }
+    const h = this.heading();
+    const d = forward ? SQUARE_STEP_M : -SQUARE_STEP_M;
+    this.walkTo({ x: this.x - Math.sin(h) * d, z: this.z - Math.cos(h) * d }, STROLL_SPEED);
+  }
 
   /** A key held while the window loses focus never sends its keyup. */
   private onBlur = () => {
