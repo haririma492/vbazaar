@@ -14,7 +14,7 @@ import {
 } from "./layout.ts";
 import {
   STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
-  BODY_DWELL_S, NECK_AT_REST, NECK_DEADZONE, headStep, type Neck,
+  NECK_AT_REST, NECK_FREE, headStep, type Neck,
   easeInOutCubic, isTap, tapSlop, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
@@ -228,38 +228,54 @@ const move = (a: number, b: number, s: number) =>
   Array.from({ length: Math.round(s * 60) }, (_, i) => a + ((b - a) * (i + 1)) / Math.round(s * 60));
 const hold = (a: number, s: number) => Array(Math.round(s * 60)).fill(a);
 
-test("head: turning the phone and back, quickly, is only a look", () => {
-  const { view } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 0.3), ...move(70, 0, 0.4), ...hold(0, 0.5)]);
-  close(view, 0, 1e-9);
+test("head: a small look never moves the feet", () => {
+  const small = NECK_FREE / DEG - 3;
+  const { view, views } = play([...hold(0, 0.1), ...move(0, small, 0.3), ...hold(small, 3), ...move(small, 0, 0.3), ...hold(0, 0.3)]);
+  close(Math.max(...views), small, 1e-6);
+  close(view, 0, 1e-6);
 });
 
-test("head: look, hold, come back — and you face what you looked at", () => {
-  const { view, views } = play([
-    ...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, BODY_DWELL_S + 0.3), ...move(70, 0, 0.6), ...hold(0, 0.5),
-  ]);
-  close(view, 70, 1e-6);
+test("head: look at something and the feet follow — no waiting", () => {
+  // Out to 70° and straight back after only half a second there.
+  const { view } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 0.5), ...move(70, 0, 0.6), ...hold(0, 0.5)]);
+  assert.ok(view > 35, `turned only ${view.toFixed(1)}°`);
+});
+
+test("head: look, stay a moment, come back — and you face what you looked at", () => {
+  const { view, views } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 1.5), ...move(70, 0, 0.6), ...hold(0, 0.5)]);
+  close(view, 70, 2);
   // And the view never jumped on the way: no frame-to-frame step over 5°.
   for (let i = 1; i < views.length; i++) assert.ok(Math.abs(views[i] - views[i - 1]) < 5, `frame ${i}`);
 });
 
+test("head: the longer the look, the further you turn", () => {
+  const turn = (s: number) => play([...hold(0, 0.1), ...move(0, 70, 0.3), ...hold(70, s), ...move(70, 0, 0.5), ...hold(0, 0.3)]).view;
+  const a = turn(0.1);
+  const b = turn(0.5);
+  const c = turn(2);
+  assert.ok(a < b && b < c, `${a.toFixed(1)} < ${b.toFixed(1)} < ${c.toFixed(1)}`);
+  assert.ok(a >= 0);
+});
+
 test("head: after turning, the neck works again from the new way", () => {
-  const turned = [...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, BODY_DWELL_S + 0.3), ...move(70, 0, 0.6), ...hold(0, 0.3)];
-  // Now a quick look 40° to the right and back.
-  const { view, views } = play([...turned, ...move(0, -40, 0.3), ...hold(-40, 0.2)]);
-  close(view, 30, 1e-6); // 70 − 40
-  close(play([...turned, ...move(0, -40, 0.3), ...move(-40, 0, 0.3), ...hold(0, 0.3)]).view, 70, 1e-6);
-  assert.ok(views.length > 0);
+  const turned = [...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 1.5), ...move(70, 0, 0.6), ...hold(0, 0.3)];
+  // A small look 15° to the right and back.
+  const there = play([...turned, ...move(0, -15, 0.3), ...hold(-15, 0.2)]);
+  const back = play([...turned, ...move(0, -15, 0.3), ...move(-15, 0, 0.3), ...hold(0, 0.3)]);
+  close(there.view, back.view - 15, 1);
+  close(back.view, play(turned).view, 1);
 });
 
 test("head: turn twice the same way and you can see behind you", () => {
-  const once = [...move(0, 80, 0.4), ...hold(80, BODY_DWELL_S + 0.3), ...move(80, 0, 0.6), ...hold(0, 0.3)];
-  close(play([...hold(0, 0.1), ...once, ...once]).view, 160, 1e-6);
+  const once = [...move(0, 80, 0.4), ...hold(80, 1.5), ...move(80, 0, 0.6), ...hold(0, 0.3)];
+  close(play([...hold(0, 0.1), ...once, ...once]).view, 160, 5); // each turn stops within 1.5° of the gaze
 });
 
-test("head: small looks never turn the body", () => {
-  const { view, state } = play([...hold(0, 0.1), ...move(0, NECK_DEADZONE / DEG - 3, 0.3), ...hold(NECK_DEADZONE / DEG - 3, 3)]);
-  close(view, NECK_DEADZONE / DEG - 3, 1e-6);
-  assert.equal(state.returning, false);
+test("head: looking the other way past rest is a look, not absorbed", () => {
+  const turned = [...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 1.5), ...move(70, 0, 0.6), ...hold(0, 0.3)];
+  const facing = play(turned).view;
+  const { views } = play([...turned, ...move(0, -15, 0.3)]);
+  close(views[views.length - 1], facing - 15, 1);
 });
 
 test("head: stand up and turn round for real, and the view keeps following the phone", () => {
@@ -273,7 +289,7 @@ test("head: stand up and turn round for real, and the view keeps following the p
 
 test("head: a long look (2 s) and back still turns you, not undoes it", () => {
   const { view } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 2), ...move(70, 0, 0.6), ...hold(0, 0.5)]);
-  close(view, 70, 1e-6);
+  close(view, 70, 2);
 });
 
 test("window shopping: each stop is a walkable spot with a shop either side", () => {

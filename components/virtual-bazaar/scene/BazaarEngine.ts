@@ -314,8 +314,9 @@ export class BazaarEngine {
       const heading = headingOf(this.gyro.smoothed);
       this.yaw += shortestAngleDelta(this.gyro.calibration, heading);
       this.gyro.calibration = heading;
-      // Bringing the phone back to rest afterwards keeps facing the arrival.
-      this.gyro.neck = { ...NECK_AT_REST, returning: true };
+      // Bringing the phone back to rest afterwards keeps facing the arrival
+      // (the return is absorbed once it passes the body's heading).
+      this.gyro.neck = NECK_AT_REST;
     }
     const from = { x: this.x, z: this.z };
     const route = planRoute(from, pose);
