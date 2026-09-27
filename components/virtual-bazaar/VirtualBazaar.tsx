@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  SHOPS, STREETS, parseSpot, poseForSpot, shopById, spotParam, streetById, type Zone,
+  ADDRESS_LABEL, SHOPS, STREETS, addressPath, addressText, parseSpot, poseForSpot, shopById, spotParam, streetById,
+  type Zone,
 } from "@/lib/virtualBazaar/layout";
+import VirtualAddressIcon from "./VirtualAddressIcon";
 import type { BazaarEngine, GyroState } from "./scene/BazaarEngine";
 import type { Pick } from "./scene/buildBazaar";
 import { hasDeviceOrientation, needsPermission, requestDeviceOrientation } from "./scene/deviceOrientation";
@@ -65,7 +67,12 @@ const FOOD_SHOPS = SHOPS.filter((s) => s.street === "food").sort(
   (a, b) => Number(!!b.href) - Number(!!a.href),
 );
 
-export default function VirtualBazaar() {
+/**
+ * `initialSpot`: where a virtual address (`/vb/…`) puts the visitor — a
+ * `spotParam` string. A `?spot=` in the url wins over it: that is where the
+ * visitor was when they left for a shop, and Back should return them there.
+ */
+export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<BazaarEngine | null>(null);
   const router = useRouter();
@@ -79,6 +86,7 @@ export default function VirtualBazaar() {
   const [canGyro, setCanGyro] = useState(false);
   const [touch, setTouch] = useState(false);
   const [hint, setHint] = useState(true);
+  const [copied, setCopied] = useState(false);
 
   const openShop = useCallback(
     (id: string) => {
@@ -104,7 +112,7 @@ export default function VirtualBazaar() {
       return;
     }
 
-    const spot = readSpot();
+    const spot = readSpot() ?? parseSpot(initialSpot);
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
     let engine: BazaarEngine | null = null;
@@ -124,8 +132,13 @@ export default function VirtualBazaar() {
                 setZone(z);
                 // Keep the place across a reload — the street, or the shop the
                 // visitor left from — but not the square, which is the default.
+                //
+                // ⚠️ NEVER OVER A VIRTUAL ADDRESS. `/vb/khoraki/5-sarekooche`
+                // already says where the visitor stands; a `?spot=street:food`
+                // added on arrival would win on reload, and the copied link
+                // would land at the gate instead of the shop.
                 if (z === "food") {
-                  if (readSpot()?.kind !== "shop") writeSpot("street:food");
+                  if (!(readSpot() ?? parseSpot(initialSpot))) writeSpot("street:food");
                 } else writeSpot(null);
               },
               onOpenShop: (id) => openShopRef.current(id),
@@ -187,6 +200,32 @@ export default function VirtualBazaar() {
     const t = setTimeout(() => setHint(false), 9000);
     return () => clearTimeout(t);
   }, [hint, webgl, askMotion]);
+
+  /**
+   * Share a shop's virtual address with the phone's own share sheet (every
+   * app on it, no per-app code); where there is none, copy the link.
+   */
+  const share = async (id: string) => {
+    const s = shopById(id);
+    if (!s) return;
+    const url = `${window.location.origin}${addressPath(s)}`;
+    const text = `${ADDRESS_LABEL.fa}: ${addressText(s)}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: s.name, text, url });
+        return;
+      }
+    } catch (e) {
+      if ((e as DOMException)?.name === "AbortError") return; // the visitor closed the sheet
+    }
+    try {
+      await navigator.clipboard.writeText(`${text}\n${url}`);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt(ADDRESS_LABEL.fa, url);
+    }
+  };
 
   const close = () => (engineRef.current ? engineRef.current.clearSelection() : setSelected(null));
 
@@ -314,16 +353,33 @@ export default function VirtualBazaar() {
           <div
             role="status"
             aria-live="polite"
-            className={`pointer-events-auto mx-auto flex w-full max-w-md items-center justify-between gap-3 rounded-2xl px-4 py-3 shadow-lg ${dark}`}
+            className={`pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-2xl px-4 py-3 shadow-lg ${dark}`}
           >
-            <div>
+            <div className="min-w-0">
               <div className="font-semibold">{street?.name ?? shop?.name}</div>
               <div className="text-xs opacity-80">{status}</div>
+              {shop && (
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--sk)]" title={ADDRESS_LABEL.fa}>
+                  <VirtualAddressIcon size={14} className="shrink-0" />
+                  <span>{addressText(shop)}</span>
+                </div>
+              )}
             </div>
-            <div className="flex shrink-0 gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               {shop?.href && (
                 <button type="button" onClick={() => openShop(shop.id)} className={`${chip} ${lit} font-bold`}>
                   ورود به فروشگاه
+                </button>
+              )}
+              {shop && (
+                <button
+                  type="button"
+                  onClick={() => share(shop.id)}
+                  aria-label={`اشتراک‌گذاری ${ADDRESS_LABEL.fa}`}
+                  className="flex items-center gap-1 rounded-full px-3 py-1 text-sm ring-1 ring-[var(--sk)]"
+                >
+                  <VirtualAddressIcon size={16} />
+                  {copied ? "کپی شد" : "اشتراک"}
                 </button>
               )}
               <button type="button" onClick={close} className="rounded-full px-3 py-1 text-sm ring-1 ring-[var(--sk)]">

@@ -318,3 +318,81 @@ export function poseForSpot(spot: Spot | null): Pose {
   if (spot.kind === "shop") return shopFrontPose(spot.shop);
   return FOOD_STREET_ENTRY;
 }
+
+// ---------------------------------------------------------------------------
+// The virtual address
+
+/**
+ * THE VIRTUAL ADDRESS («نشانی مجازی») — a shop's address in the bazaar, as a
+ * link and as words, built like a real one: place · street · unit · name.
+ *
+ *   sarekooche.com/vb/khoraki/5-sarekooche
+ *   بازار سرکوچه · راسته خوراکی · حجرهٔ ۵ · سرکوچه
+ *
+ * ⚠️ THE UNIT NUMBER IS THE ADDRESS; THE NAME AFTER IT IS DECORATION. A link
+ * is read by its number (`/5-anything` and `/5` are the same shop), so a shop
+ * that is renamed keeps every link already shared. Units run from the gate in
+ * walking order, odd on the left and even on the right — how a street or a
+ * mall directory numbers its doors.
+ *
+ * ⚠️ AN ADDRESS LANDS IN FRONT OF THE SHOP, NOT INSIDE IT (operator,
+ * 2026-09-27). The visitor arrives at the counter with the shop's panel up;
+ * going in is still their tap.
+ */
+
+export const ADDRESS_PREFIX = "/vb";
+export const BAZAAR_NAME = { fa: "بازار سرکوچه", en: "Sarekooche Bazaar" };
+export const ADDRESS_LABEL = { fa: "نشانی مجازی", en: "Virtual Address" };
+
+/** The street's part of the link. Only open streets have addresses. */
+const STREET_SLUGS: Partial<Record<StreetId, string>> = { food: "khoraki" };
+
+export function streetSlug(street: Street): string | undefined {
+  return street.open ? STREET_SLUGS[street.id] : undefined;
+}
+
+/** The shop's unit: bay by bay from the gate, left (north) odd, right (south) even. */
+export function unitOf(shop: Shop): number {
+  const bay = Math.round((shop.x - FOOD_STREET.firstBay) / FOOD_STREET.bay);
+  return bay * 2 + (shop.side === "north" ? 1 : 2);
+}
+
+export function shopByUnit(street: Street, unit: number): Shop | undefined {
+  return SHOPS.find((s) => s.street === street.id && unitOf(s) === unit);
+}
+
+/** `/vb/khoraki/5-sarekooche` — the readable form; `/vb/khoraki/5` is the same address. */
+export function addressPath(shop: Shop): string {
+  const street = STREETS.find((s) => s.id === shop.street)!;
+  return `${ADDRESS_PREFIX}/${streetSlug(street)}/${unitOf(shop)}-${shop.id}`;
+}
+
+export function streetAddressPath(street: Street): string | undefined {
+  const slug = streetSlug(street);
+  return slug ? `${ADDRESS_PREFIX}/${slug}` : undefined;
+}
+
+/**
+ * The spot a link's path stands for: `[]` the square, `["khoraki"]` the
+ * street's entrance, `["khoraki", "5-…"]` in front of unit 5. `undefined` is
+ * "no such address" (a 404), which is different from `null`, the square.
+ */
+export function parseAddress(segments: string[]): Spot | null | undefined {
+  if (segments.length === 0) return null;
+  const street = STREETS.find((s) => streetSlug(s) === segments[0].toLowerCase());
+  if (!street) return undefined;
+  if (segments.length === 1) return { kind: "street", street };
+  if (segments.length > 2) return undefined;
+  const m = /^(\d+)(?:-.*)?$/.exec(segments[1]);
+  if (!m) return undefined;
+  const shop = shopByUnit(street, Number(m[1]));
+  return shop ? { kind: "shop", shop } : undefined;
+}
+
+const faDigits = (n: number) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
+
+/** «بازار سرکوچه · راسته خوراکی · حجرهٔ ۵ · سرکوچه» — what is written next to the icon. */
+export function addressText(shop: Shop): string {
+  const street = STREETS.find((s) => s.id === shop.street)!;
+  return [BAZAAR_NAME.fa, street.name, `حجرهٔ ${faDigits(unitOf(shop))}`, shop.name].join(" · ");
+}
