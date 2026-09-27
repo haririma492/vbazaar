@@ -15,7 +15,7 @@ import {
 import {
   STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
   BODY_DWELL_S, NECK_AT_REST, NECK_DEADZONE, headStep, type Neck,
-  easeInOutCubic, isTap, lerpAngle, lookFromDrag, pathLength, pointAlong,
+  easeInOutCubic, isTap, tapSlop, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
 
@@ -139,6 +139,10 @@ test("tap: short and still, not a drag or a long press", () => {
   assert.equal(isTap(3, 120), true);
   assert.equal(isTap(20, 120), false);
   assert.equal(isTap(3, 900), false);
+  // A finger gets more room than a mouse.
+  assert.equal(isTap(10, 120, tapSlop("mouse")), false);
+  assert.equal(isTap(10, 120, tapSlop("touch")), true);
+  assert.equal(isTap(20, 120, tapSlop("touch")), false);
 });
 
 test("fov: a portrait phone gets a wide enough view; zoom narrows it", () => {

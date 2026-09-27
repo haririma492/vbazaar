@@ -31,10 +31,19 @@ export const clampPitch = (p: number) => Math.max(-PITCH_LIMIT, Math.min(PITCH_L
  * fires at the start of every look-drag and every pinch.
  */
 export const TAP_MAX_MOVE_PX = 8;
+/**
+ * ⚠️ A FINGER SLIDES MORE THAN A MOUSE. On a phone a deliberate tap often
+ * travels 8–12 px between down and up; at a mouse's 8 it would read as a
+ * drag and do nothing (operator, 2026-09-27: "the click on screen … stopped
+ * working").
+ */
+export const TAP_MAX_MOVE_PX_TOUCH = 12;
 export const TAP_MAX_MS = 500;
 
-export function isTap(movedPx: number, heldMs: number): boolean {
-  return movedPx <= TAP_MAX_MOVE_PX && heldMs <= TAP_MAX_MS;
+export const tapSlop = (pointerType: string) => (pointerType === "mouse" ? TAP_MAX_MOVE_PX : TAP_MAX_MOVE_PX_TOUCH);
+
+export function isTap(movedPx: number, heldMs: number, slopPx = TAP_MAX_MOVE_PX): boolean {
+  return movedPx <= slopPx && heldMs <= TAP_MAX_MS;
 }
 
 /**

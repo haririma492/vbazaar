@@ -6,7 +6,7 @@ import {
 } from "@/lib/virtualBazaar/layout";
 import {
   headStep, clampPitch, clampZoom, easeInOutCubic, NECK_AT_REST, shortestAngleDelta, type Neck, flightSeconds, isTap, lerpAngle, lookFromDrag,
-  pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, TAP_MAX_MOVE_PX,
+  pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, tapSlop,
   verticalFov, walkSpeed,
 } from "@/lib/virtualBazaar/motion";
 import { buildBazaar, pickOf, type Pick } from "./buildBazaar";
@@ -90,6 +90,13 @@ export class BazaarEngine {
 
   /** Keys held, with when each went down (ms). */
   private keys = new Map<string, number>();
+  /**
+   * WHERE A TAP WILL WALK YOU — Matterport's floor circle. Follows the mouse
+   * over the floor on a desktop; on a phone it appears where the finger
+   * landed and stays there until you arrive, so a tap is seen to be heard.
+   */
+  private marker: THREE.Mesh;
+  private markerFor: "hover" | "walk" | null = null;
   /** Shift held: walk fast. */
   private hurry = false;
   private presses = new Map<number, Press>();
@@ -151,6 +158,8 @@ export class BazaarEngine {
     this.ground = built.ground;
     this.targets = [...this.pickables, ...this.ground];
     redrawSignsWhenFontsLoad(() => this.invalidate());
+    this.marker = makeFloorMarker();
+    this.scene.add(this.marker);
 
     this.x = start.x;
     this.z = start.z;
@@ -417,9 +426,15 @@ export class BazaarEngine {
 
     if (this.hoverAt) {
       const hit = this.hit(this.hoverAt.x, this.hoverAt.y);
+      const onGround = !!hit && !pickOf(hit.object) && !!hit.object.userData.ground;
       this.renderer.domElement.style.cursor = hit && pickOf(hit.object) ? "pointer" : "grab";
+      if (this.markerFor !== "walk") {
+        if (onGround) this.showMarker(hit!.point.x, hit!.point.z, "hover");
+        else this.hideMarker();
+      }
       this.hoverAt = null;
     }
+    if (this.markerFor === "walk" && !this.flight) this.hideMarker();
 
     // ⚠️ DRAWN ONLY WHEN SOMETHING CHANGED. Standing still, the bazaar costs
     // a phone nothing but this check.
@@ -471,6 +486,22 @@ export class BazaarEngine {
     this.yaw += step.bodyTurn;
   }
 
+  private showMarker(x: number, z: number, why: "hover" | "walk") {
+    const to = nearestWalkable({ x: this.x, z: this.z }, { x, z });
+    this.marker.position.set(to.x, 0.03, to.z);
+    (this.marker.material as THREE.MeshBasicMaterial).opacity = why === "walk" ? 0.95 : 0.6;
+    this.marker.visible = true;
+    this.markerFor = why;
+    this.invalidate();
+  }
+
+  private hideMarker() {
+    if (!this.marker.visible) return;
+    this.marker.visible = false;
+    this.markerFor = null;
+    this.invalidate();
+  }
+
   private onResize = () => {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
@@ -500,7 +531,11 @@ export class BazaarEngine {
     if (!hit) return;
     const pick = pickOf(hit.object);
     if (!pick) {
-      if (hit.object.userData.ground) this.walkTo({ x: hit.point.x, z: hit.point.z });
+      if (hit.object.userData.ground) {
+        const to = nearestWalkable({ x: this.x, z: this.z }, { x: hit.point.x, z: hit.point.z });
+        this.walkTo(to);
+        if (this.flight) this.showMarker(to.x, to.z, "walk");
+      }
       return;
     }
     if (pick.kind === "shop") {
@@ -548,7 +583,7 @@ export class BazaarEngine {
     const dy = e.clientY - p.lastY;
     p.lastX = e.clientX;
     p.lastY = e.clientY;
-    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > TAP_MAX_MOVE_PX) p.dragged = true;
+    if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > tapSlop(e.pointerType)) p.dragged = true;
 
     if (this.pinch && this.presses.size >= 2) {
       const [a, b] = [...this.presses.values()];
@@ -558,16 +593,16 @@ export class BazaarEngine {
       return;
     }
     if (!p.dragged) return;
-    // ⚠️ WITH THE PHONE'S SENSOR ON, THE PHONE LOOKS, NOT THE FINGER
-    // (operator, 2026-09-27: "movement with the direction of mobile instead
-    // of mouse or touch"). Two steering wheels on one view fight: the finger
-    // turns it, the phone turns it back. A drag still counts as "not a tap".
-    if (this.gyro.on) return;
     // Looking round mid-flight keeps the flight going but hands the view back.
     if (this.flight) this.flight.keepLook = true;
     const next = lookFromDrag(this.yaw, this.pitch, dx, dy);
+    // ⚠️ THE FINGER TURNS THE BODY EVEN WITH THE PHONE'S SENSOR ON — the
+    // Street View / YouTube 360 "magic window": the phone is the head, a
+    // swipe turns the body under it. (Switched off once, 2026-09-27, so the
+    // two would not fight; they do not — the phone only ever sets the neck —
+    // and a phone you cannot swipe felt broken.) Pitch stays the phone's.
     this.yaw = next.yaw;
-    this.pitch = next.pitch;
+    if (!this.gyro.on) this.pitch = next.pitch;
     this.invalidate();
   };
 
@@ -577,7 +612,7 @@ export class BazaarEngine {
     if (this.presses.size < 2) this.pinch = null;
     if (e.pointerType === "mouse") this.renderer.domElement.style.cursor = "grab";
     if (!p || p.dragged) return;
-    if (isTap(Math.hypot(e.clientX - p.x, e.clientY - p.y), performance.now() - p.t)) {
+    if (isTap(Math.hypot(e.clientX - p.x, e.clientY - p.y), performance.now() - p.t, tapSlop(e.pointerType))) {
       this.onTap(e.clientX, e.clientY);
     }
   };
@@ -589,6 +624,7 @@ export class BazaarEngine {
 
   private onPointerLeave = () => {
     this.renderer.domElement.style.cursor = "grab";
+    if (this.markerFor === "hover") this.hideMarker();
   };
 
   private onWheel = (e: WheelEvent) => {
@@ -680,4 +716,26 @@ export class BazaarEngine {
     this.events.onWebgl(true);
     this.invalidate();
   };
+}
+
+/** A flat ring with a dot, in the house colour, lying on the floor. */
+function makeFloorMarker(): THREE.Mesh {
+  const ring = new THREE.RingGeometry(0.32, 0.42, 40);
+  const dot = new THREE.CircleGeometry(0.08, 20);
+  const geometry = new THREE.BufferGeometry();
+  // One mesh, one draw: merge the ring and the dot by hand.
+  const merged = [ring, dot].map((g) => g.toNonIndexed());
+  const positions = merged.flatMap((g) => Array.from(g.getAttribute("position").array as Float32Array));
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  ring.dispose();
+  dot.dispose();
+  merged.forEach((g) => g.dispose());
+  const mesh = new THREE.Mesh(
+    geometry,
+    new THREE.MeshBasicMaterial({ color: 0x00b8c8, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.renderOrder = 2;
+  mesh.visible = false;
+  return mesh;
 }
