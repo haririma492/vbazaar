@@ -24,10 +24,11 @@ import { deviceQuaternion, headingOf, screenAngle } from "./deviceOrientation";
  *   tap a gate  → fly into its راسته (or to its closed door)
  *   tap a shop  → walk up to it; tap it again, or «ورود», to open it
  *   tap ground  → walk there
- *   drag        → look round (the view follows the finger)
+ *   drag        → look round (the view follows the finger) — unless the
+ *                 phone's sensor is on, when turning the phone does it
  *   pinch/wheel → zoom
  *   W A S D / arrows → walk and turn
- *   phone motion (opt-in) → look round by turning the phone
+ *   phone motion → look round by turning the phone (the default on a phone)
  */
 
 export type GyroState = "off" | "on" | "unavailable";
@@ -404,7 +405,8 @@ export class BazaarEngine {
     this.camera.position.set(this.x, EYE_HEIGHT, this.z);
     if (this.gyro.on && this.gyro.heard) {
       this.gyro.smoothed.slerp(this.gyro.device, 0.35);
-      // The phone turns the view; a drag turns the bazaar under it (`yaw`).
+      // The phone turns the view; a flight or a turn key turns the bazaar
+      // under it (`yaw`), so arriving at a gate still faces the gate.
       const turn = new THREE.Quaternion().setFromAxisAngle(
         new THREE.Vector3(0, 1, 0),
         this.yaw - this.gyro.calibration,
@@ -507,12 +509,16 @@ export class BazaarEngine {
       return;
     }
     if (!p.dragged) return;
+    // ⚠️ WITH THE PHONE'S SENSOR ON, THE PHONE LOOKS, NOT THE FINGER
+    // (operator, 2026-09-27: "movement with the direction of mobile instead
+    // of mouse or touch"). Two steering wheels on one view fight: the finger
+    // turns it, the phone turns it back. A drag still counts as "not a tap".
+    if (this.gyro.on) return;
     // Looking round mid-flight keeps the flight going but hands the view back.
     if (this.flight) this.flight.keepLook = true;
     const next = lookFromDrag(this.yaw, this.pitch, dx, dy);
     this.yaw = next.yaw;
-    // With the phone's sensor on, the phone sets the pitch; a drag only turns.
-    if (!this.gyro.on) this.pitch = next.pitch;
+    this.pitch = next.pitch;
     this.invalidate();
   };
 

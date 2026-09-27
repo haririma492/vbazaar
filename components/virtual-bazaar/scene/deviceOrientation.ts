@@ -53,6 +53,14 @@ export function hasDeviceOrientation(): boolean {
   return typeof window !== "undefined" && "DeviceOrientationEvent" in window;
 }
 
+/** iOS 13+ hides the sensor behind a permission that only a tap can ask for. */
+export function needsPermission(): boolean {
+  return (
+    typeof (window.DeviceOrientationEvent as unknown as { requestPermission?: PermissionFn } | undefined)
+      ?.requestPermission === "function"
+  );
+}
+
 /**
  * ⚠️ iOS ASKS FIRST, AND ONLY INSIDE A TAP. Safari 13+ hides the sensor until
  * `DeviceOrientationEvent.requestPermission()` is granted, and refuses the

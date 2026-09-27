@@ -7,7 +7,7 @@ import {
 } from "@/lib/virtualBazaar/layout";
 import type { BazaarEngine, GyroState } from "./scene/BazaarEngine";
 import type { Pick } from "./scene/buildBazaar";
-import { hasDeviceOrientation, requestDeviceOrientation } from "./scene/deviceOrientation";
+import { hasDeviceOrientation, needsPermission, requestDeviceOrientation } from "./scene/deviceOrientation";
 
 /**
  * THE VIRTUAL BAZAAR — the page around the 3D.
@@ -18,6 +18,12 @@ import { hasDeviceOrientation, requestDeviceOrientation } from "./scene/deviceOr
  * Walking out: «ورود» on the Sarekooche shop is a Next.js navigation, and the
  * spot is written into this page's url first, so the browser's back button
  * lands the visitor in front of the same shop.
+ *
+ * ⚠️ ON A PHONE, THE PHONE LOOKS (operator, 2026-09-27). Turning it left and
+ * right turns the view; a finger only taps and pinches. Android starts that
+ * by itself; iOS will not share the sensor until a tap asks, so the page opens
+ * with a «شروع» card whose tap is that request. No sensor, or no permission,
+ * and the finger drag takes over, with a line saying why.
  *
  * ⚠️ THE BUTTONS ARE NOT A DUPLICATE OF THE SCENE. They are the same places as
  * the gates and shops, for a keyboard, a screen reader, and a phone without
@@ -67,7 +73,9 @@ export default function VirtualBazaar() {
   const [webgl, setWebgl] = useState<boolean | null>(null);
   const [selected, setSelected] = useState<Pick | null>(null);
   const [zone, setZone] = useState<Zone>("square");
-  const [gyro, setGyro] = useState<GyroState>("off");
+  const [gyro, setGyro] = useState<GyroState | "denied">("off");
+  /** iOS: the «شروع» card that asks for the sensor, shown until answered. */
+  const [askMotion, setAskMotion] = useState(false);
   const [canGyro, setCanGyro] = useState(false);
   const [touch, setTouch] = useState(false);
   const [hint, setHint] = useState(true);
@@ -133,6 +141,12 @@ export default function VirtualBazaar() {
         }
         engineRef.current = engine;
         setWebgl(true);
+        // On a phone the phone looks: straight away where the browser allows
+        // it, after the «شروع» tap where it does not (iOS).
+        if (coarse && hasDeviceOrientation()) {
+          if (needsPermission()) setAskMotion(true);
+          else engine.setGyro(true);
+        }
         // Back from a shop: standing in front of it, with its panel up again.
         if (spot?.kind === "shop") setSelected({ kind: "shop", id: spot.shop.id });
       })
@@ -145,19 +159,34 @@ export default function VirtualBazaar() {
     };
   }, []);
 
-  const toggleGyro = async () => {
-    if (gyro === "on") {
-      engineRef.current?.setGyro(false);
-      return;
-    }
+  const startGyro = async () => {
+    setAskMotion(false);
     // ⚠️ THE FIRST AWAIT INSIDE THE TAP, or iOS refuses the request.
     const granted = await requestDeviceOrientation();
     if (!granted) {
-      setGyro("unavailable");
+      setGyro("denied");
       return;
     }
     engineRef.current?.setGyro(true);
   };
+
+  const toggleGyro = () => {
+    if (gyro === "on") engineRef.current?.setGyro(false);
+    else startGyro();
+  };
+
+  // The "why the finger took over" line goes after a moment; the hint too, for
+  // someone who only turns the phone and never touches the screen.
+  useEffect(() => {
+    if (gyro !== "unavailable" && gyro !== "denied") return;
+    const t = setTimeout(() => setGyro("off"), 6000);
+    return () => clearTimeout(t);
+  }, [gyro]);
+  useEffect(() => {
+    if (!hint || webgl !== true || askMotion) return;
+    const t = setTimeout(() => setHint(false), 9000);
+    return () => clearTimeout(t);
+  }, [hint, webgl, askMotion]);
 
   const close = () => (engineRef.current ? engineRef.current.clearSelection() : setSelected(null));
 
@@ -207,21 +236,49 @@ export default function VirtualBazaar() {
               aria-pressed={gyro === "on"}
               className={`${chip} ${gyro === "on" ? lit : dark}`}
             >
-              {gyro === "on" ? "نگاه با گوشی: روشن" : "نگاه با گوشی"}
+              {gyro === "on" ? "نگاه با گوشی ✓" : "نگاه با گوشی"}
             </button>
           )}
         </div>
       </div>
 
-      {in3d && gyro === "unavailable" && (
-        <p role="status" className={`absolute inset-x-4 top-28 mx-auto max-w-sm rounded-xl p-3 text-center text-sm ${dark}`}>
-          حسگر حرکت این گوشی در دسترس نیست. با انگشت بکشید تا اطراف را ببینید.
+      {in3d && (gyro === "unavailable" || gyro === "denied") && (
+        <p role="status" className={`absolute inset-x-4 top-36 mx-auto max-w-sm rounded-xl p-3 text-center text-sm ${dark}`}>
+          {gyro === "denied" ? "اجازهٔ حسگر حرکت داده نشد." : "حسگر حرکت این گوشی در دسترس نیست."} با انگشت بکشید تا اطراف
+          را ببینید.
         </p>
       )}
 
-      {in3d && hint && (
+      {in3d && askMotion && (
+        <div
+          role="dialog"
+          aria-label="نگاه با گوشی"
+          className={`absolute inset-x-4 top-1/3 mx-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl p-5 text-center shadow-lg ${dark}`}
+        >
+          <div className="text-base font-bold">گوشی را بچرخانید</div>
+          <div className="text-sm leading-7 opacity-90">
+            گوشی را به چپ و راست بچرخانید تا اطراف بازار را ببینید؛ روی زمین بزنید تا بروید.
+          </div>
+          <button type="button" onClick={startGyro} className={`${chip} ${lit} px-6 font-bold`}>
+            شروع
+          </button>
+          <button type="button" onClick={() => setAskMotion(false)} className="text-xs underline opacity-80">
+            با انگشت می‌گردم
+          </button>
+        </div>
+      )}
+
+      {in3d && hint && !askMotion && (
         <p className={`pointer-events-none absolute inset-x-4 top-36 md:top-4 mx-auto max-w-sm rounded-2xl p-4 text-center text-sm leading-7 ${dark}`}>
-          {touch ? (
+          {touch && gyro === "on" ? (
+            <>
+              گوشی را به چپ و راست بچرخانید تا اطراف را ببینید
+              <br />
+              روی زمین بزنید تا بروید، روی سردر راسته بزنید تا وارد شوید
+              <br />
+              با دو انگشت بزرگ‌نمایی کنید
+            </>
+          ) : touch ? (
             <>
               انگشت را بکشید تا اطراف را ببینید
               <br />
