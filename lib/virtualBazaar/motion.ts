@@ -114,3 +114,88 @@ export function pointAlong(points: P2[], distance: number): P2 {
   }
   return points[points.length - 1];
 }
+
+// ---------------------------------------------------------------------------
+// Head and body, when the phone looks round
+
+/**
+ * ⚠️ THE PHONE IS THE HEAD, NOT THE BODY (operator, 2026-09-27: "if we see
+ * something interesting and change the direction of our body to that
+ * direction then the point of reference changes, and again we have 90 degrees
+ * of head movement from that point").
+ *
+ * Someone holding a phone can turn it about a quarter-turn each way before
+ * their neck — or their chair — runs out, so the phone turning the view
+ * one-for-one would never show what is behind them. Three headings:
+ *
+ *   `rest`   where the phone sits when the visitor is comfortable (fixed —
+ *            where it pointed when the sensor came on);
+ *   `centre` the phone heading that means "straight ahead from the body";
+ *   `phone`  where it points now.
+ *
+ * The view is the body's heading plus the neck (`phone − centre`). Look at
+ * something to one side and hold it there a moment, and THE BODY TURNS TO FACE
+ * IT: the body takes the neck's turn and the neck goes to zero, so the view
+ * does not move. Then, bringing the phone back towards `rest` is the visitor
+ * getting comfortable, not looking away — `centre` travels with the phone and
+ * the view stays on what they were looking at. Back at rest, the phone held
+ * straight faces the new way, with the full neck either side of it.
+ *
+ * ⚠️ WHY THE RETURN MUST BE ABSORBED. Without it, the body turning changes
+ * nothing: phone back to rest is a head turn the other way by the same angle,
+ * and the view lands exactly where it started. (Tried; that is what it did.)
+ */
+const d2r = (d: number) => (d * Math.PI) / 180;
+
+/** Inside this the head is just looking; the body stays put. */
+export const NECK_DEADZONE = d2r(25);
+/** How long the head must rest off to one side before the body turns. */
+export const BODY_DWELL_S = 0.7;
+/** "Resting": the head turning slower than this. */
+export const HEAD_STILL_RAD_S = d2r(25);
+/** The return is over once the phone has settled this close to `rest`… */
+export const REST_REACHED = d2r(12);
+/** …and stayed still this long there. */
+export const SETTLE_S = 0.3;
+
+export type Neck = { dwell: number; returning: boolean; still: number };
+export const NECK_AT_REST: Neck = { dwell: 0, returning: false, still: 0 };
+
+/**
+ * One frame. `phone`, `rest`, `centre` are headings (radians); `turned` is how
+ * far the phone turned since the last frame (signed). Returns the new `centre`,
+ * how far the BODY turns this frame (add it to the body's yaw), and the state.
+ * The view (body + phone − centre) never jumps: whatever the body gains, the
+ * neck gives back.
+ */
+export function headStep(
+  phone: number,
+  turned: number,
+  rest: number,
+  centre: number,
+  dt: number,
+  state: Neck,
+): { centre: number; bodyTurn: number; state: Neck } {
+  const speed = dt > 0 ? Math.abs(turned) / dt : 0;
+  const still = speed < HEAD_STILL_RAD_S ? state.still + dt : 0;
+
+  const neck = shortestAngleDelta(centre, phone);
+  const holding = Math.abs(neck) > NECK_DEADZONE && speed < HEAD_STILL_RAD_S;
+  const dwell = holding ? state.dwell + dt : 0;
+
+  if (state.returning) {
+    // Held a look further out on the way back: the body turns again.
+    if (dwell >= BODY_DWELL_S) return { centre: phone, bodyTurn: neck, state: { dwell: 0, returning: true, still: 0 } };
+    const fromRest = Math.abs(shortestAngleDelta(rest, phone));
+    const before = Math.abs(shortestAngleDelta(rest, phone - turned));
+    // Coming back towards rest: the centre travels with the phone. Going
+    // away from it is a look.
+    const next = fromRest < before ? centre + turned : centre;
+    const done = fromRest < REST_REACHED && still >= SETTLE_S;
+    return { centre: next, bodyTurn: 0, state: done ? NECK_AT_REST : { dwell, returning: true, still } };
+  }
+
+  if (dwell < BODY_DWELL_S) return { centre, bodyTurn: 0, state: { dwell, returning: false, still } };
+  // The body turns to where the head is; the neck is straight again.
+  return { centre: phone, bodyTurn: neck, state: { dwell: 0, returning: true, still: 0 } };
+}

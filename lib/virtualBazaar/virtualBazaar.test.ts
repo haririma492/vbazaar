@@ -13,6 +13,7 @@ import {
   yawToward, zoneOf, type Point,
 } from "./layout.ts";
 import {
+  BODY_DWELL_S, NECK_AT_REST, NECK_DEADZONE, headStep, type Neck,
   easeInOutCubic, isTap, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
@@ -190,4 +191,66 @@ test("nearestWalkable: a tap on the arcade walks up to it", () => {
   const p = nearestWalkable({ x: 0, z: 10 }, { x: 0, z: 30 });
   assert.ok(isWalkable(p.x, p.z));
   assert.ok(p.z > WALK_RADIUS - 0.01 && p.z <= WALK_RADIUS);
+});
+
+/**
+ * Plays a phone's path (headings in degrees, one per 1/60 s) through
+ * `headStep` and returns where the view points at the end, in degrees.
+ */
+function play(path: number[]) {
+  const dt = 1 / 60;
+  let body = 0;
+  let centre = 0;
+  let state: Neck = NECK_AT_REST;
+  let last = path[0] * DEG;
+  const views: number[] = [];
+  for (const d of path) {
+    const phone = d * DEG;
+    const r = headStep(phone, shortestAngleDelta(last, phone), 0, centre, dt, state);
+    last = phone;
+    body += r.bodyTurn;
+    centre = r.centre;
+    state = r.state;
+    views.push((body + shortestAngleDelta(centre, phone)) / DEG);
+  }
+  return { view: views[views.length - 1], views, state };
+}
+const DEG = Math.PI / 180;
+/** Moves the phone from `a` to `b` degrees over `s` seconds. */
+const move = (a: number, b: number, s: number) =>
+  Array.from({ length: Math.round(s * 60) }, (_, i) => a + ((b - a) * (i + 1)) / Math.round(s * 60));
+const hold = (a: number, s: number) => Array(Math.round(s * 60)).fill(a);
+
+test("head: turning the phone and back, quickly, is only a look", () => {
+  const { view } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 0.3), ...move(70, 0, 0.4), ...hold(0, 0.5)]);
+  close(view, 0, 1e-9);
+});
+
+test("head: look, hold, come back — and you face what you looked at", () => {
+  const { view, views } = play([
+    ...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, BODY_DWELL_S + 0.3), ...move(70, 0, 0.6), ...hold(0, 0.5),
+  ]);
+  close(view, 70, 1e-6);
+  // And the view never jumped on the way: no frame-to-frame step over 5°.
+  for (let i = 1; i < views.length; i++) assert.ok(Math.abs(views[i] - views[i - 1]) < 5, `frame ${i}`);
+});
+
+test("head: after turning, the neck works again from the new way", () => {
+  const turned = [...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, BODY_DWELL_S + 0.3), ...move(70, 0, 0.6), ...hold(0, 0.3)];
+  // Now a quick look 40° to the right and back.
+  const { view, views } = play([...turned, ...move(0, -40, 0.3), ...hold(-40, 0.2)]);
+  close(view, 30, 1e-6); // 70 − 40
+  close(play([...turned, ...move(0, -40, 0.3), ...move(-40, 0, 0.3), ...hold(0, 0.3)]).view, 70, 1e-6);
+  assert.ok(views.length > 0);
+});
+
+test("head: turn twice the same way and you can see behind you", () => {
+  const once = [...move(0, 80, 0.4), ...hold(80, BODY_DWELL_S + 0.3), ...move(80, 0, 0.6), ...hold(0, 0.3)];
+  close(play([...hold(0, 0.1), ...once, ...once]).view, 160, 1e-6);
+});
+
+test("head: small looks never turn the body", () => {
+  const { view, state } = play([...hold(0, 0.1), ...move(0, NECK_DEADZONE / DEG - 3, 0.3), ...hold(NECK_DEADZONE / DEG - 3, 3)]);
+  close(view, NECK_DEADZONE / DEG - 3, 1e-6);
+  assert.equal(state.returning, false);
 });
