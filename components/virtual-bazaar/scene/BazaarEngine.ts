@@ -451,6 +451,7 @@ export class BazaarEngine {
     const step = headStep(heading, turned, g.rest, g.calibration, dt, g.neck);
     g.neck = step.state;
     g.calibration = step.centre;
+    g.rest = step.rest;
     this.yaw += step.bodyTurn;
   }
 

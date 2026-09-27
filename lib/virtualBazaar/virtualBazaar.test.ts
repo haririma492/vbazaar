@@ -201,12 +201,14 @@ function play(path: number[]) {
   const dt = 1 / 60;
   let body = 0;
   let centre = 0;
+  let rest = 0;
   let state: Neck = NECK_AT_REST;
   let last = path[0] * DEG;
   const views: number[] = [];
   for (const d of path) {
     const phone = d * DEG;
-    const r = headStep(phone, shortestAngleDelta(last, phone), 0, centre, dt, state);
+    const r = headStep(phone, shortestAngleDelta(last, phone), rest, centre, dt, state);
+    rest = r.rest;
     last = phone;
     body += r.bodyTurn;
     centre = r.centre;
@@ -253,4 +255,18 @@ test("head: small looks never turn the body", () => {
   const { view, state } = play([...hold(0, 0.1), ...move(0, NECK_DEADZONE / DEG - 3, 0.3), ...hold(NECK_DEADZONE / DEG - 3, 3)]);
   close(view, NECK_DEADZONE / DEG - 3, 1e-6);
   assert.equal(state.returning, false);
+});
+
+test("head: stand up and turn round for real, and the view keeps following the phone", () => {
+  // Turn the whole person 90° left and stay there.
+  const turnedRound = [...hold(0, 0.2), ...move(0, 90, 0.8), ...hold(90, 5)];
+  close(play(turnedRound).view, 90, 1e-6);
+  // Now looking back right, towards where they used to face, is a look.
+  const { view } = play([...turnedRound, ...move(90, 50, 0.4), ...hold(50, 0.2)]);
+  close(view, 50, 1e-6);
+});
+
+test("head: a long look (2 s) and back still turns you, not undoes it", () => {
+  const { view } = play([...hold(0, 0.2), ...move(0, 70, 0.4), ...hold(70, 2), ...move(70, 0, 0.6), ...hold(0, 0.5)]);
+  close(view, 70, 1e-6);
 });

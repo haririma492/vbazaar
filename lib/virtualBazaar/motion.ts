@@ -157,14 +157,27 @@ export const HEAD_STILL_RAD_S = d2r(25);
 export const REST_REACHED = d2r(12);
 /** …and stayed still this long there. */
 export const SETTLE_S = 0.3;
+/**
+ * ⚠️ STILL THIS LONG ANYWHERE, AND THAT IS THE NEW REST. Someone who stands
+ * up and turns round for real never brings the phone back to where it used to
+ * rest — that is behind them now. Without this, every later look back that
+ * way would be taken for "getting comfortable" and the view would refuse to
+ * follow the phone.
+ *
+ * The phone's heading alone cannot tell a real turn from a long look over the
+ * shoulder, so this is long: a twisted neck rarely holds still for 4 s, and
+ * someone who turned round for real stands there far longer.
+ */
+export const NEW_REST_S = 4;
 
 export type Neck = { dwell: number; returning: boolean; still: number };
 export const NECK_AT_REST: Neck = { dwell: 0, returning: false, still: 0 };
 
 /**
  * One frame. `phone`, `rest`, `centre` are headings (radians); `turned` is how
- * far the phone turned since the last frame (signed). Returns the new `centre`,
- * how far the BODY turns this frame (add it to the body's yaw), and the state.
+ * far the phone turned since the last frame (signed). Returns the new `centre`
+ * and `rest`, how far the BODY turns this frame (add it to the body's yaw), and
+ * the state.
  * The view (body + phone − centre) never jumps: whatever the body gains, the
  * neck gives back.
  */
@@ -175,7 +188,7 @@ export function headStep(
   centre: number,
   dt: number,
   state: Neck,
-): { centre: number; bodyTurn: number; state: Neck } {
+): { centre: number; rest: number; bodyTurn: number; state: Neck } {
   const speed = dt > 0 ? Math.abs(turned) / dt : 0;
   const still = speed < HEAD_STILL_RAD_S ? state.still + dt : 0;
 
@@ -185,17 +198,18 @@ export function headStep(
 
   if (state.returning) {
     // Held a look further out on the way back: the body turns again.
-    if (dwell >= BODY_DWELL_S) return { centre: phone, bodyTurn: neck, state: { dwell: 0, returning: true, still: 0 } };
+    if (dwell >= BODY_DWELL_S) return { centre: phone, rest, bodyTurn: neck, state: { dwell: 0, returning: true, still: 0 } };
     const fromRest = Math.abs(shortestAngleDelta(rest, phone));
     const before = Math.abs(shortestAngleDelta(rest, phone - turned));
     // Coming back towards rest: the centre travels with the phone. Going
     // away from it is a look.
     const next = fromRest < before ? centre + turned : centre;
+    if (still >= NEW_REST_S) return { centre: next, rest: phone, bodyTurn: 0, state: NECK_AT_REST };
     const done = fromRest < REST_REACHED && still >= SETTLE_S;
-    return { centre: next, bodyTurn: 0, state: done ? NECK_AT_REST : { dwell, returning: true, still } };
+    return { centre: next, rest, bodyTurn: 0, state: done ? NECK_AT_REST : { dwell, returning: true, still } };
   }
 
-  if (dwell < BODY_DWELL_S) return { centre, bodyTurn: 0, state: { dwell, returning: false, still } };
+  if (dwell < BODY_DWELL_S) return { centre, rest, bodyTurn: 0, state: { dwell, returning: false, still } };
   // The body turns to where the head is; the neck is straight again.
-  return { centre: phone, bodyTurn: neck, state: { dwell: 0, returning: true, still: 0 } };
+  return { centre: phone, rest, bodyTurn: neck, state: { dwell: 0, returning: true, still: 0 } };
 }
