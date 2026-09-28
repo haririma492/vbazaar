@@ -151,110 +151,41 @@ export function pointAlong(points: P2[], distance: number): P2 {
 // Head and body, when the phone looks round
 
 /**
- * ⚠️ THE PHONE IS THE HEAD; THE FEET FOLLOW THE EYES (operator, 2026-09-27:
- * "seamless and smooth, as if feet respond to eye attention, not having to
- * keep looking for so-and-so seconds").
+ * ⚠️ TURN THE PHONE TO LOOK; TILT IT TO TURN (operator, 2026-09-28: "when on
+ * mobile we tilt more than 10 degrees to one side, that means the body should
+ * move to that side — we don't need to pause there … every time we need to
+ * return the mobile back to check if the body-move has applied — annoying").
  *
- * Someone holding a phone can turn it about a quarter-turn each way before
- * their neck — or their chair — runs out, so the phone turning the view
- * one-for-one would never show what is behind them. Three headings:
+ * Two axes, two jobs, no guessing between them:
+ *   - turning the phone left/right (its heading) is the HEAD: it looks round
+ *     one-for-one, all the way round for someone who turns in their chair;
+ *   - tilting it sideways, like a steering wheel (its roll), is the FEET:
+ *     past `TILT_FREE` the body turns that way, visibly and at once, faster
+ *     the further it is tilted; level the phone and the turn stops, and you
+ *     face wherever it took you.
  *
- *   `rest`   where the phone sits when the visitor is at ease;
- *   `centre` the phone heading that means "straight ahead from the body";
- *   `phone`  where it points now.
- *
- * The view is the body's heading plus the neck (`phone − centre`), and two
- * things happen every frame, with no timers:
- *
- *   1. THE FEET FOLLOW. Once the head is turned past `NECK_FREE`, the body
- *      turns towards where it looks — smoothly, fastest at first, easing to a
- *      stop when it faces it. The body turns UNDER the head (the neck unwinds
- *      by as much as the body turns), so the picture does not move: what you
- *      are looking at stays exactly where it is.
- *   2. COMING BACK TO REST IS GETTING COMFORTABLE. Once the phone, on its
- *      way back towards rest, passes the way the body now faces, the rest of
- *      that return is absorbed — `centre` travels with the phone and the view
- *      stays. Back at rest, the phone held straight faces the new way, with
- *      the full neck either side.
- *
- * So: look at something and you turn towards it; bring the phone back and
- * you are facing it. A small look never moves the feet; a quick glance far
- * to one side turns you a little, a longer look all the way.
- *
- * ⚠️ WHY THE RETURN MUST BE ABSORBED. Without it the body turning changes
- * nothing: the phone coming back to rest is a head turn the other way, and
- * the view lands exactly where it started. (Tried; that is what it did.)
- *
- * (Until 2026-09-27 the body turned only after the head had rested off to
- * one side for 0.7 s — a timer the visitor had to learn and wait for.)
+ * (Until 2026-09-28 the body followed the head by itself and the turn only
+ * showed once the phone came back to rest — a turn you could not see until
+ * you checked for it. And before that, only after a 0.7 s hold.)
  */
 const d2r = (d: number) => (d * Math.PI) / 180;
 
-/** Look this far to either side and the feet stay put. */
-export const NECK_FREE = d2r(20);
-/** How quickly the body turns to where the head looks (seconds, exponential). */
-export const BODY_FOLLOW_TAU_S = 0.45;
-/** The body has caught up once the neck is back within this. */
-const BODY_CAUGHT_UP = d2r(1.5);
-/** "Still": the head turning slower than this. */
-export const HEAD_STILL_RAD_S = d2r(25);
-/**
- * ⚠️ STILL THIS LONG ANYWHERE, AND THAT IS THE NEW REST. Someone who stands
- * up and turns round for real never brings the phone back to where it used to
- * rest — that is behind them now. Without this, every later look back that
- * way would be taken for "getting comfortable" and the view would refuse to
- * follow the phone.
- *
- * The phone's heading alone cannot tell a real turn from a long look over the
- * shoulder, so this is long: a twisted neck rarely holds still for 4 s, and
- * someone who turned round for real stands there far longer.
- */
-export const NEW_REST_S = 4;
-
-export type Neck = { following: boolean; still: number };
-export const NECK_AT_REST: Neck = { following: false, still: 0 };
+/** Tilted less than this, the phone is "level": no turning, just a shaky hand. */
+export const TILT_FREE = d2r(10);
+/** Turning speed per unit of tilt past `TILT_FREE` (rad/s per rad): 20° past → 50°/s. */
+export const TILT_TURN_GAIN = 2.5;
+/** The fastest the body turns, however far the phone is tilted. */
+export const TILT_TURN_MAX = d2r(90);
+/** Looking steeply up or down, "sideways" means nothing: no turning there. */
+export const TILT_PITCH_LIMIT = d2r(60);
 
 /**
- * One frame. `phone`, `rest`, `centre` are headings (radians); `turned` is how
- * far the phone turned since the last frame (signed). Returns the new `centre`
- * and `rest`, how far the BODY turns this frame (add it to the body's yaw), and
- * the state. The view (body + phone − centre) never jumps: whatever the body
- * gains, the neck gives back.
+ * How fast the body turns (rad/s, positive = left) for a phone tilted `roll`
+ * (positive = tilted left, anticlockwise) while looking at `pitch`.
  */
-export function headStep(
-  phone: number,
-  turned: number,
-  rest: number,
-  centre: number,
-  dt: number,
-  state: Neck,
-): { centre: number; rest: number; bodyTurn: number; state: Neck } {
-  const speed = dt > 0 ? Math.abs(turned) / dt : 0;
-  const still = speed < HEAD_STILL_RAD_S ? state.still + dt : 0;
-  let c = centre;
-
-  // 2. Coming back towards rest, past the way the body faces: absorbed.
-  const towardRest = Math.abs(shortestAngleDelta(rest, phone)) < Math.abs(shortestAngleDelta(rest, phone - turned));
-  const neckNow = shortestAngleDelta(c, phone);
-  if (towardRest && turned !== 0 && Math.sign(neckNow) === Math.sign(turned)) {
-    c += Math.sign(turned) * Math.min(Math.abs(turned), Math.abs(neckNow));
-  }
-
-  // 1. The feet follow the eyes.
-  let neck = shortestAngleDelta(c, phone);
-  let following = state.following || Math.abs(neck) > NECK_FREE;
-  let bodyTurn = 0;
-  if (following) {
-    bodyTurn = neck * (1 - Math.exp(-dt / BODY_FOLLOW_TAU_S));
-    c += bodyTurn;
-    neck -= bodyTurn;
-    if (Math.abs(neck) < BODY_CAUGHT_UP) following = false;
-  }
-
-  return {
-    centre: c,
-    rest: still >= NEW_REST_S ? phone : rest,
-    bodyTurn,
-    state: { following, still },
-  };
+export function tiltTurnRate(roll: number, pitch = 0): number {
+  if (Math.abs(pitch) > TILT_PITCH_LIMIT) return 0;
+  const past = Math.abs(roll) - TILT_FREE;
+  if (past <= 0) return 0;
+  return Math.sign(roll) * Math.min(TILT_TURN_MAX, past * TILT_TURN_GAIN);
 }

@@ -296,13 +296,13 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
         >
           <div className="text-base font-bold">گوشی را بچرخانید</div>
           <div className="text-sm leading-7 opacity-90">
-            گوشی را به چپ و راست بچرخانید تا اطراف بازار را ببینید؛ با انگشت بکشید تا بچرخید و روی زمین بزنید تا بروید.
+            گوشی را بچرخانید تا اطراف بازار را ببینید؛ برای چرخیدن، گوشی را مثل فرمان به چپ یا راست کج کنید. روی زمین بزنید تا بروید.
           </div>
           <button type="button" onClick={startGyro} className={`${chip} ${lit} px-6 font-bold`}>
             شروع
           </button>
           <button type="button" onClick={() => setAskMotion(false)} className="text-xs underline opacity-80">
-            با انگشت می‌گردم
+            با دست به صفحه می‌زنم
           </button>
         </div>
       )}
@@ -311,9 +311,9 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
         <p className={`pointer-events-none absolute inset-x-4 top-36 md:top-4 mx-auto max-w-sm rounded-2xl p-4 text-center text-sm leading-7 ${dark}`}>
           {touch && gyro === "on" ? (
             <>
-              گوشی را به چپ و راست بچرخانید تا اطراف را ببینید، یا با انگشت بکشید
+              گوشی را بچرخانید تا اطراف را ببینید
               <br />
-              چیزی را دیدید؟ لحظه‌ای نگاه کنید و گوشی را برگردانید؛ به همان سو چرخیده‌اید
+              برای چرخیدن، گوشی را مثل فرمان به چپ یا راست کج کنید (یا با انگشت بکشید)
               <br />
               روی زمین بزنید تا بروید، روی سردر راسته بزنید تا وارد شوید
               <br />

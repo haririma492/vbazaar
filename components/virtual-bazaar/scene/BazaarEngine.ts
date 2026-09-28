@@ -5,7 +5,7 @@ import {
   type Point, type Pose, type Zone,
 } from "@/lib/virtualBazaar/layout";
 import {
-  headStep, clampPitch, clampZoom, easeInOutCubic, NECK_AT_REST, shortestAngleDelta, type Neck, flightSeconds, isTap, lerpAngle, lookFromDrag,
+  clampPitch, clampZoom, easeInOutCubic, shortestAngleDelta, tiltTurnRate, flightSeconds, isTap, lerpAngle, lookFromDrag,
   pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, tapSlop,
   verticalFov, walkSpeed,
 } from "@/lib/virtualBazaar/motion";
@@ -108,12 +108,12 @@ export class BazaarEngine {
     heard: false,
     device: new THREE.Quaternion(),
     smoothed: new THREE.Quaternion(),
-    /** The phone heading that means "straight ahead from the body" (`headStep`'s centre). */
+    /** The phone heading that means "straight ahead from the body". */
     calibration: 0,
-    /** Where the phone pointed when the sensor came on: the visitor at ease. */
-    rest: 0,
-    lastHeading: 0,
-    neck: NECK_AT_REST as Neck,
+    /** The phone, read as the head and the steering (see `followHead`). */
+    heading: 0,
+    pitch: 0,
+    roll: 0,
     timer: 0 as ReturnType<typeof setTimeout> | 0,
   };
 
@@ -307,16 +307,12 @@ export class BazaarEngine {
   }
 
   private flyTo(pose: Pose) {
-    // With the phone looking, face the body where the head is now and centre
-    // the neck, so the flight turns the view from exactly here and arrives
-    // facing the gate or shop with the phone held straight.
+    // With the phone looking, face the body where the head is now, so the
+    // flight turns the view from exactly here and arrives facing the gate or
+    // shop with the phone held where it is.
     if (this.gyro.on && this.gyro.heard) {
-      const heading = headingOf(this.gyro.smoothed);
-      this.yaw += shortestAngleDelta(this.gyro.calibration, heading);
-      this.gyro.calibration = heading;
-      // Bringing the phone back to rest afterwards keeps facing the arrival
-      // (the return is absorbed once it passes the body's heading).
-      this.gyro.neck = NECK_AT_REST;
+      this.yaw += shortestAngleDelta(this.gyro.calibration, this.gyro.heading);
+      this.gyro.calibration = this.gyro.heading;
     }
     const from = { x: this.x, z: this.z };
     const route = planRoute(from, pose);
@@ -373,9 +369,7 @@ export class BazaarEngine {
 
   /** Forward on the ground, from where the camera actually looks. */
   private heading(): number {
-    return this.gyro.on && this.gyro.heard
-      ? new THREE.Euler().setFromQuaternion(this.camera.quaternion, "YXZ").y
-      : this.yaw;
+    return this.gyro.on && this.gyro.heard ? this.yaw - this.gyro.calibration + this.gyro.heading : this.yaw;
   }
 
   private walkWithKeys(dt: number, now: number): boolean {
@@ -454,13 +448,10 @@ export class BazaarEngine {
   private applyCamera() {
     this.camera.position.set(this.x, EYE_HEIGHT, this.z);
     if (this.gyro.on && this.gyro.heard) {
-      // The phone turns the view; a flight or a turn key turns the bazaar
-      // under it (`yaw`), so arriving at a gate still faces the gate.
-      const turn = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        this.yaw - this.gyro.calibration,
-      );
-      this.camera.quaternion.copy(turn).multiply(this.gyro.smoothed);
+      // The phone's heading and pitch look; its sideways tilt steers the body
+      // (`yaw`) and is NOT shown — the horizon stays level while you steer. A
+      // flight, a swipe or a turn key turns the body too.
+      this.camera.rotation.set(clampPitch(this.gyro.pitch), this.heading(), 0, "YXZ");
     } else {
       this.camera.rotation.set(this.pitch, this.yaw, 0, "YXZ");
     }
@@ -471,20 +462,21 @@ export class BazaarEngine {
     }
   }
 
-  /** The phone's latest turn: the head looks, and the body turns when held (see `headStep`). */
+  /**
+   * The phone, read two ways (see `tiltTurnRate`): its heading and pitch are
+   * the head, looking round one-for-one; its sideways tilt, like a steering
+   * wheel, turns the body — visibly, at once — while it is past 10°.
+   */
   private followHead(dt: number) {
     const g = this.gyro;
     g.smoothed.slerp(g.device, 0.35);
-    const heading = headingOf(g.smoothed);
-    const turned = shortestAngleDelta(g.lastHeading, heading);
-    g.lastHeading = heading;
+    const e = new THREE.Euler().setFromQuaternion(g.smoothed, "YXZ");
+    g.heading = e.y;
+    g.pitch = e.x;
+    g.roll = e.z;
     // A flight is steering the body already.
     if (this.flight && !this.flight.keepLook) return;
-    const step = headStep(heading, turned, g.rest, g.calibration, dt, g.neck);
-    g.neck = step.state;
-    g.calibration = step.centre;
-    g.rest = step.rest;
-    this.yaw += step.bodyTurn;
+    this.yaw += tiltTurnRate(g.roll, g.pitch) * dt;
   }
 
   private showMarker(x: number, z: number, why: "hover" | "walk") {
@@ -694,9 +686,7 @@ export class BazaarEngine {
       // phone's alpha is north (or wherever it woke up), and switching the
       // sensor on must not spin the view to face it.
       this.gyro.calibration = headingOf(this.gyro.device);
-      this.gyro.lastHeading = this.gyro.calibration;
-      this.gyro.rest = this.gyro.calibration;
-      this.gyro.neck = NECK_AT_REST;
+      this.gyro.heading = this.gyro.calibration;
     }
   };
 
