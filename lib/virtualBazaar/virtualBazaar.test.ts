@@ -14,7 +14,7 @@ import {
 } from "./layout.ts";
 import {
   STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
-  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, easeTurnRate, headLook, recentreStep, arrowLeads, ARROW_DIRS, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw,
+  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, easeTurnRate, headLook, recentreStep, RECENTRE_STILL_S, ARROW_DIRS, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw,
   easeInOutCubic, isTap, tapSlop, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
@@ -242,8 +242,8 @@ test("phone turn: back within 10° and the turn stops — no need to check", () 
 
 test("phone turn: a gentle start, faster the further, capped at 45°/s", () => {
   assert.ok(bodyTurnRate(30 * DEG) > bodyTurnRate(20 * DEG));
-  assert.ok(bodyTurnRate(17 * DEG) / DEG < 3, `${(bodyTurnRate(17 * DEG) / DEG).toFixed(1)}°/s just past`);
-  assert.ok(bodyTurnRate(27 * DEG) / DEG < 20);
+  assert.ok(bodyTurnRate(17 * DEG) / DEG < 5, `${(bodyTurnRate(17 * DEG) / DEG).toFixed(1)}°/s just past`);
+  close(bodyTurnRate(30 * DEG), BODY_TURN_MAX, 1e-9); // full speed from 30°
   close(BODY_TURN_MAX / DEG, 45, 1e-9);
   assert.equal(bodyTurnRate(170 * DEG), BODY_TURN_MAX);
   assert.equal(bodyTurnRate(LOOK_FREE * 0.99), 0);
@@ -254,12 +254,6 @@ test("phone turn: a gentle start, faster the further, capped at 45°/s", () => {
   assert.ok(r > 0.5 && r < 0.8, r.toFixed(2));
 });
 
-test("arrows: one into a wall is not shown", () => {
-  assert.equal(arrowLeads(0.6, 3.5), false, "a few steps before a wall");
-  assert.equal(arrowLeads(1.8, 3.5), true);
-  assert.equal(arrowLeads(0.9, 2.5), false);
-  assert.equal(arrowLeads(2.5, 2.5), true);
-});
 
 test("window shopping: each stop is a walkable spot with a shop either side", () => {
   for (const x of STREET_STOPS) assert.equal(isWalkable(x, 0), true, `x=${x}`);
@@ -357,4 +351,14 @@ test("centre: follows where the phone is held, so left and right turn alike", ()
 test("centre: never slides during a turn", () => {
   assert.equal(recentreStep(LOOK_FREE + 0.01, 1 / 60), 0);
   assert.equal(recentreStep(-(LOOK_FREE + 0.01), 1 / 60), 0);
+});
+
+test("centre: never chases a phone that is on its way out", () => {
+  // Turning slowly towards 20°, one degree at a time: never still, so the
+  // reference stays and the body starts turning at 12° as it should.
+  let centre = 0;
+  for (let d = 0; d <= 20; d += 0.05) centre += recentreStep(d * DEG - centre, 1 / 60, 0);
+  assert.equal(centre, 0);
+  assert.equal(recentreStep(5 * DEG, 1 / 60, RECENTRE_STILL_S * 0.9), 0);
+  assert.ok(recentreStep(5 * DEG, 1 / 60, RECENTRE_STILL_S) > 0);
 });

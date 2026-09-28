@@ -187,15 +187,15 @@ const d2r = (d: number) => (d * Math.PI) / 180;
  * moving at first, full speed only a good way further round.
  */
 export const LOOK_FREE = d2r(12);
-/** How far past `LOOK_FREE` the phone must be for full speed. */
-export const BODY_TURN_RAMP = d2r(25);
+/** How far past `LOOK_FREE` the phone must be for full speed (was 25°: too far round to the left). */
+export const BODY_TURN_RAMP = d2r(18);
 /** The fastest the body turns, however far the phone is turned (was 90°/s). */
 export const BODY_TURN_MAX = d2r(45);
 
 /**
  * How fast the body turns (rad/s, positive = left) with the phone `neck` from
- * it: nothing within 12°, then (past/25°)² of 45°/s — about 2°/s at 17°,
- * 16°/s at 27°, 45°/s from 37° on.
+ * it: nothing within 12°, then (past/18°)² of 45°/s — about 3.5°/s at 17°,
+ * 20°/s at 24°, 45°/s from 30° on.
  */
 export function bodyTurnRate(neck: number): number {
   const past = Math.abs(neck) - LOOK_FREE;
@@ -215,11 +215,20 @@ export function bodyTurnRate(neck: number): number {
  * the head by the same amount so the picture does not move. Past the zone —
  * turning — it does not slide, so a turn is never eaten.
  *
+ * ⚠️ ONLY WHILE THE PHONE IS STILL (operator, 2026-09-28: turning left "too
+ * slow and painful"). Sliding while the phone was on its way out chased it:
+ * a slow, deliberate turn had to go ever further before the body moved —
+ * and the slow way is the awkward way, left for a right hand. Now the
+ * reference moves only once the phone has rested `RECENTRE_STILL_S`.
+ *
  * Returns how far to move the reference (and the body) this frame.
  */
 export const RECENTRE_TAU_S = 2;
-export function recentreStep(neck: number, dt: number): number {
-  if (Math.abs(neck) >= LOOK_FREE) return 0;
+export const RECENTRE_STILL_S = 0.8;
+/** "Still": the phone turning slower than this. */
+export const PHONE_STILL_RAD_S = d2r(6);
+export function recentreStep(neck: number, dt: number, stillForS = Infinity): number {
+  if (Math.abs(neck) >= LOOK_FREE || stillForS < RECENTRE_STILL_S) return 0;
   return neck * (1 - Math.exp(-dt / RECENTRE_TAU_S));
 }
 
@@ -261,15 +270,6 @@ export const ARROW_STEP_M = 2.5;
 /** A sidestep (operator, 2026-09-28: "the side arrows make very small distance … make it bigger"; was 1.5 m). */
 export const ARROW_SIDESTEP_M = 3.5;
 
-/**
- * ⚠️ AN ARROW INTO A WALL IS NOT SHOWN (operator, 2026-09-28: "if moving to
- * one direction leads to nowhere, only walls, remove that particular arrow").
- * It is shown only if at least half its step is clear — not merely a few
- * centimetres before the wall, the fountain or a shop counter.
- */
-export function arrowLeads(reachM: number, stepM: number): boolean {
-  return reachM >= Math.max(1, stepM * 0.5);
-}
 
 /** The yaw (camera convention) an arrow points along, for a visitor facing `heading`. */
 export function arrowYaw(dir: ArrowDir, heading: number): number {

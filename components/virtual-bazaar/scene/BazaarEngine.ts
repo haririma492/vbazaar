@@ -6,8 +6,8 @@ import {
 } from "@/lib/virtualBazaar/layout";
 import {
   ARROW_DIRS, ARROW_AHEAD_M, ARROW_STEP_M, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw, type ArrowDir,
-  ARROW_SIDESTEP_M, arrowLeads, bodyTurnRate, clampPitch, clampZoom, easeInOutCubic, easeTurnRate, headLook,
-  recentreStep, shortestAngleDelta, flightSeconds, isTap, lerpAngle, lookFromDrag,
+  bodyTurnRate, clampPitch, clampZoom, easeInOutCubic, easeTurnRate, headLook,
+  PHONE_STILL_RAD_S, recentreStep, shortestAngleDelta, flightSeconds, isTap, lerpAngle, lookFromDrag,
   pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, tapSlop,
   verticalFov, walkSpeed,
 } from "@/lib/virtualBazaar/motion";
@@ -104,6 +104,15 @@ export class BazaarEngine {
   private hoverArrow: ArrowDir | null = null;
   /** The body's turning speed from the phone, eased so it never jolts (rad/s). */
   private turnRate = 0;
+  /** How long the phone has been still, for re-centring (see `recentreStep`). */
+  private phoneStillS = 0;
+  private lastPhoneHeading = 0;
+  /**
+   * A finger (or mouse button) held on a floor arrow: after a tap's worth of
+   * time the visitor walks that way until it lifts (operator, 2026-09-28:
+   * "if the user keeps his finger on it, the move continues").
+   */
+  private arrowHold: { dir: ArrowDir; id: number; t: number } | null = null;
   private markerFor: "hover" | "walk" | null = null;
   /** Shift held: walk fast. */
   private hurry = false;
@@ -436,6 +445,7 @@ export class BazaarEngine {
       moving = true;
     }
     if (this.walkWithKeys(dt, now)) moving = true;
+    if (this.walkWithArrow(dt, now)) moving = true;
     if (this.gyro.on && this.gyro.heard) {
       this.followHead(dt);
       moving = true;
@@ -517,7 +527,10 @@ export class BazaarEngine {
     this.yaw += this.turnRate * dt;
     // "Straight ahead" drifts to where the phone is held (see `recentreStep`);
     // the body turns under the head by as much, so nothing moves on screen.
-    const d = recentreStep(this.neck(), dt);
+    const turned = Math.abs(shortestAngleDelta(this.lastPhoneHeading, g.heading));
+    this.lastPhoneHeading = g.heading;
+    this.phoneStillS = dt > 0 && turned / dt < PHONE_STILL_RAD_S ? this.phoneStillS + dt : 0;
+    const d = recentreStep(this.neck(), dt, this.phoneStillS);
     g.calibration += d;
     this.yaw += d;
   }
@@ -618,9 +631,19 @@ export class BazaarEngine {
       this.presses.forEach((p) => (p.dragged = true));
     }
     if (e.pointerType === "mouse") this.renderer.domElement.style.cursor = "grabbing";
+    // A finger down on an arrow: a tap if it lifts quickly, a walk if it stays.
+    if (this.presses.size === 1) {
+      const hit = this.hit(e.clientX, e.clientY);
+      const dir = hit?.object.userData.arrow as ArrowDir | undefined;
+      if (dir) this.arrowHold = { dir, id: e.pointerId, t: performance.now() };
+    } else {
+      this.arrowHold = null;
+    }
   };
 
   private onPointerMove = (e: PointerEvent) => {
+    // A finger holding an arrow walks; it does not look round.
+    if (this.arrowHold && this.arrowHold.id === e.pointerId) return;
     const p = this.presses.get(e.pointerId);
     if (!p) {
       if (e.pointerType === "mouse") this.hoverAt = { x: e.clientX, y: e.clientY };
@@ -654,6 +677,15 @@ export class BazaarEngine {
   };
 
   private onPointerUp = (e: PointerEvent) => {
+    const hold = this.arrowHold;
+    if (hold && hold.id === e.pointerId) {
+      this.arrowHold = null;
+      this.presses.delete(e.pointerId);
+      if (e.pointerType === "mouse") this.renderer.domElement.style.cursor = "grab";
+      // Lifted quickly: one step, as a tap. Held: the walk just ends here.
+      if ((performance.now() - hold.t) / 1000 < STEP_PRESS_S) this.arrowStep(hold.dir);
+      return;
+    }
     const p = this.presses.get(e.pointerId);
     this.presses.delete(e.pointerId);
     if (this.presses.size < 2) this.pinch = null;
@@ -665,6 +697,7 @@ export class BazaarEngine {
   };
 
   private onPointerCancel = (e: PointerEvent) => {
+    if (this.arrowHold?.id === e.pointerId) this.arrowHold = null;
     this.presses.delete(e.pointerId);
     if (this.presses.size < 2) this.pinch = null;
   };
@@ -712,8 +745,11 @@ export class BazaarEngine {
   private stepForward(forward: boolean, squareStep = SQUARE_STEP_M) {
     if (this.zone === "food") {
       const x = nextStop(this.x, streetDirection(this.heading(), forward));
-      if (x !== null) this.walkTo({ x, z: 0 }, STOP_GLIDE_SPEED);
-      return;
+      if (x !== null) {
+        this.walkTo({ x, z: 0 }, STOP_GLIDE_SPEED);
+        return;
+      }
+      // Past the last stop (the gate behind, the street's end ahead): a plain step.
     }
     const h = this.heading();
     const d = forward ? squareStep : -squareStep;
@@ -733,21 +769,25 @@ export class BazaarEngine {
     this.walkTo(arrowTarget(dir, this.x, this.z, this.heading()), STROLL_SPEED);
   }
 
-  /** Is there somewhere to go that way? An arrow that leads nowhere is hidden. */
-  private arrowLeads(dir: ArrowDir): boolean {
-    if (this.zone === "food" && (dir === "fwd" || dir === "back")) {
-      return nextStop(this.x, streetDirection(this.heading(), dir === "fwd")) !== null;
-    }
-    const to = arrowTarget(dir, this.x, this.z, this.heading());
-    const reach = nearestWalkable({ x: this.x, z: this.z }, to);
-    const step = dir === "fwd" || dir === "back" ? ARROW_STEP_M : ARROW_SIDESTEP_M;
-    return arrowLeads(Math.hypot(reach.x - this.x, reach.z - this.z), step);
+  /** Walking while a finger stays on an arrow; true while it moves. */
+  private walkWithArrow(dt: number, now: number): boolean {
+    const hold = this.arrowHold;
+    if (!hold) return false;
+    const heldS = (now - hold.t) / 1000;
+    if (heldS < STEP_PRESS_S) return false;
+    this.flight = null;
+    const a = arrowYaw(hold.dir, this.heading());
+    // The arrows' stroll is a little brisker than the keys'.
+    const v = walkSpeed(heldS - STEP_PRESS_S, false) * 1.4 * dt;
+    const next = step({ x: this.x, z: this.z }, { x: this.x - Math.sin(a) * v, z: this.z - Math.cos(a) * v });
+    this.x = next.x;
+    this.z = next.z;
+    return true;
   }
 
-  /** Lays the four arrows on the floor ahead; hidden mid-flight and where they lead nowhere. */
+  /** Lays the four arrows on the floor ahead. */
   private placeArrows() {
     const h = this.heading();
-    const flying = !!this.flight;
     const pitch = this.gyro.on && this.gyro.heard ? this.gyro.pitch : this.pitch;
     const ahead = arrowAheadFor(this.camera.fov, pitch, EYE_HEIGHT);
     // Further away, bigger, so they look the same size.
@@ -758,7 +798,10 @@ export class BazaarEngine {
       arrow.scale.setScalar(size);
       // Laid flat (x), then turned to point its way (y), in that order.
       arrow.rotation.set(-Math.PI / 2, arrowYaw(dir, h), 0, "YXZ");
-      arrow.visible = !flying && this.arrowLeads(dir);
+      // ⚠️ ALWAYS THERE (operator, 2026-09-28: "make arrows always available,
+      // do not eliminate them when they are hitting the wall"). Walking into
+      // a wall simply stops at it.
+      arrow.visible = true;
       const lit = dir === this.hoverArrow;
       // Under the mouse: teal, and a little bigger.
       if (lit) arrow.scale.multiplyScalar(1.12);
@@ -769,6 +812,7 @@ export class BazaarEngine {
   /** A key held while the window loses focus never sends its keyup. */
   private onBlur = () => {
     this.keys.clear();
+    this.arrowHold = null;
     this.presses.clear();
     this.pinch = null;
   };
