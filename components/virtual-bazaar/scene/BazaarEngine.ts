@@ -6,7 +6,8 @@ import {
 } from "@/lib/virtualBazaar/layout";
 import {
   ARROW_DIRS, ARROW_AHEAD_M, ARROW_STEP_M, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw, type ArrowDir,
-  bodyTurnRate, clampPitch, clampZoom, easeInOutCubic, headLook, shortestAngleDelta, flightSeconds, isTap, lerpAngle, lookFromDrag,
+  ARROW_SIDESTEP_M, arrowLeads, bodyTurnRate, clampPitch, clampZoom, easeInOutCubic, easeTurnRate, headLook,
+  recentreStep, shortestAngleDelta, flightSeconds, isTap, lerpAngle, lookFromDrag,
   pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, tapSlop,
   verticalFov, walkSpeed,
 } from "@/lib/virtualBazaar/motion";
@@ -101,6 +102,8 @@ export class BazaarEngine {
   /** Street View's arrows on the floor ahead (see `arrowSpot`). */
   private arrows = new Map<ArrowDir, THREE.Mesh>();
   private hoverArrow: ArrowDir | null = null;
+  /** The body's turning speed from the phone, eased so it never jolts (rad/s). */
+  private turnRate = 0;
   private markerFor: "hover" | "walk" | null = null;
   /** Shift held: walk fast. */
   private hurry = false;
@@ -506,8 +509,17 @@ export class BazaarEngine {
     g.pitch = e.x;
     g.roll = e.z;
     // A flight is steering the body already.
-    if (this.flight && !this.flight.keepLook) return;
-    this.yaw += bodyTurnRate(this.neck()) * dt;
+    if (this.flight && !this.flight.keepLook) {
+      this.turnRate = 0;
+      return;
+    }
+    this.turnRate = easeTurnRate(this.turnRate, bodyTurnRate(this.neck()), dt);
+    this.yaw += this.turnRate * dt;
+    // "Straight ahead" drifts to where the phone is held (see `recentreStep`);
+    // the body turns under the head by as much, so nothing moves on screen.
+    const d = recentreStep(this.neck(), dt);
+    g.calibration += d;
+    this.yaw += d;
   }
 
   private showMarker(x: number, z: number, why: "hover" | "walk") {
@@ -728,7 +740,8 @@ export class BazaarEngine {
     }
     const to = arrowTarget(dir, this.x, this.z, this.heading());
     const reach = nearestWalkable({ x: this.x, z: this.z }, to);
-    return Math.hypot(reach.x - this.x, reach.z - this.z) > 0.6;
+    const step = dir === "fwd" || dir === "back" ? ARROW_STEP_M : ARROW_SIDESTEP_M;
+    return arrowLeads(Math.hypot(reach.x - this.x, reach.z - this.z), step);
   }
 
   /** Lays the four arrows on the floor ahead; hidden mid-flight and where they lead nowhere. */
@@ -746,10 +759,10 @@ export class BazaarEngine {
       // Laid flat (x), then turned to point its way (y), in that order.
       arrow.rotation.set(-Math.PI / 2, arrowYaw(dir, h), 0, "YXZ");
       arrow.visible = !flying && this.arrowLeads(dir);
-      const m = arrow.material as THREE.MeshBasicMaterial;
       const lit = dir === this.hoverArrow;
-      m.color.setHex(lit ? 0x00b8c8 : 0xffffff);
-      m.opacity = lit ? 1 : 0.85;
+      // Under the mouse: teal, and a little bigger.
+      if (lit) arrow.scale.multiplyScalar(1.12);
+      (arrow.material as THREE.MeshBasicMaterial).color.setHex(lit ? 0x00b8c8 : 0xffffff);
     });
   }
 
@@ -819,31 +832,46 @@ function makeFloorMarker(): THREE.Mesh {
 }
 
 /**
- * A chevron lying on the floor, pointing along −z before it is turned —
- * Street View's arrow. White with a dark edge so it reads on the pale floor.
+ * STREET VIEW'S ARROW, MADE TO BE TAPPED: a long chevron lying on the floor,
+ * pointing along −z before it is turned. Three layers, flat on each other — a
+ * soft dark shadow, a teal rim, a white face — so it reads as a button on the
+ * pale paving, not a mark painted on it. Every layer answers a tap; the face
+ * is the one that lights under the mouse.
  */
 function makeArrow(dir: ArrowDir): THREE.Mesh {
   const s = new THREE.Shape();
-  // Pointing "up" (+y) in shape space; laid flat it points forward.
-  s.moveTo(0, 0.42);
-  s.lineTo(0.42, -0.02);
-  s.lineTo(0.24, -0.02);
-  s.lineTo(0.24, -0.34);
-  s.lineTo(-0.24, -0.34);
-  s.lineTo(-0.24, -0.02);
-  s.lineTo(-0.42, -0.02);
+  // Pointing "up" (+y) in shape space; laid flat it points forward. 1.2 m long.
+  s.moveTo(0, 0.62);
+  s.lineTo(0.5, 0.1);
+  s.lineTo(0.22, 0.1);
+  s.lineTo(0.22, -0.58);
+  s.lineTo(-0.22, -0.58);
+  s.lineTo(-0.22, 0.1);
+  s.lineTo(-0.5, 0.1);
   s.closePath();
-  const mesh = new THREE.Mesh(
-    new THREE.ShapeGeometry(s),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
-  );
-  const edge = new THREE.LineLoop(
-    new THREE.BufferGeometry().setFromPoints(s.getPoints().map((p) => new THREE.Vector3(p.x, p.y, 0.001))),
-    new THREE.LineBasicMaterial({ color: 0x06131c, transparent: true, opacity: 0.6 }),
-  );
-  edge.raycast = () => {}; // the mesh is the target, not its outline
-  mesh.add(edge);
-  mesh.userData.arrow = dir;
-  mesh.renderOrder = 3;
-  return mesh;
+  const geometry = new THREE.ShapeGeometry(s);
+  const layer = (color: number, opacity: number, scale: number, lift: number, dy = 0) => {
+    const m = new THREE.Mesh(
+      geometry,
+      // ⚠️ DRAWN OVER EVERYTHING, like Street View's: from the square's west
+      // side the pool stands between you and the floor ahead, and an arrow
+      // behind it could not be seen or tapped.
+      new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, depthTest: false, side: THREE.DoubleSide }),
+    );
+    m.scale.setScalar(scale);
+    m.position.set(0, dy, lift);
+    m.userData.arrow = dir;
+    return m;
+  };
+  const face = layer(0xffffff, 0.95, 1, 0.004);
+  face.renderOrder = 5;
+  const rim = layer(0x00b8c8, 0.95, 1.16, 0.002, -0.015);
+  rim.renderOrder = 4;
+  const shadow = layer(0x06131c, 0.28, 1.22, 0, -0.07);
+  shadow.renderOrder = 3;
+  // The face is the arrow; the rim and shadow ride on it.
+  face.add(rim, shadow);
+  rim.position.z -= face.position.z;
+  shadow.position.z -= face.position.z;
+  return face;
 }

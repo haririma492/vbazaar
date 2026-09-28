@@ -178,18 +178,54 @@ export function pointAlong(points: P2[], distance: number): P2 {
  */
 const d2r = (d: number) => (d * Math.PI) / 180;
 
-/** The phone turned less than this from the body is only a look. */
-export const LOOK_FREE = d2r(10);
-/** Turning speed per unit of turn past `LOOK_FREE` (rad/s per rad): 20° past → 50°/s. */
-export const BODY_TURN_GAIN = 2.5;
-/** The fastest the body turns, however far the phone is turned. */
-export const BODY_TURN_MAX = d2r(90);
+/**
+ * ⚠️ 12°, NOT 10°, AND A GENTLE START (operator, 2026-09-28: the body moved
+ * "too early, before the turn is 10 degrees" and "too fast"). A hand holding
+ * a phone wanders a few degrees without meaning to; at exactly 10° with a
+ * straight-line start, that wander was already a turn. The turn begins past
+ * `LOOK_FREE` and its speed rises as the square of the way past it — barely
+ * moving at first, full speed only a good way further round.
+ */
+export const LOOK_FREE = d2r(12);
+/** How far past `LOOK_FREE` the phone must be for full speed. */
+export const BODY_TURN_RAMP = d2r(25);
+/** The fastest the body turns, however far the phone is turned (was 90°/s). */
+export const BODY_TURN_MAX = d2r(45);
 
-/** How fast the body turns (rad/s, positive = left) with the phone `neck` from it. */
+/**
+ * How fast the body turns (rad/s, positive = left) with the phone `neck` from
+ * it: nothing within 12°, then (past/25°)² of 45°/s — about 2°/s at 17°,
+ * 16°/s at 27°, 45°/s from 37° on.
+ */
 export function bodyTurnRate(neck: number): number {
   const past = Math.abs(neck) - LOOK_FREE;
   if (past <= 0) return 0;
-  return Math.sign(neck) * Math.min(BODY_TURN_MAX, past * BODY_TURN_GAIN);
+  const k = Math.min(1, past / BODY_TURN_RAMP);
+  return Math.sign(neck) * BODY_TURN_MAX * k * k;
+}
+
+/**
+ * ⚠️ "STRAIGHT AHEAD" IS WHERE THE VISITOR HOLDS THE PHONE, NOT WHERE IT
+ * POINTED WHEN THE SENSOR WOKE (operator, 2026-09-28: "only out of control
+ * when we move right; when turning left, moving too late"). The reference was
+ * fixed at the first reading: held a little off to one side then — or with
+ * the sensor's usual slow drift since — every turn one way came early and
+ * the other way late. So while the phone rests inside the look zone, the
+ * reference slides towards it (τ `RECENTRE_TAU_S`), and the body turns under
+ * the head by the same amount so the picture does not move. Past the zone —
+ * turning — it does not slide, so a turn is never eaten.
+ *
+ * Returns how far to move the reference (and the body) this frame.
+ */
+export const RECENTRE_TAU_S = 2;
+export function recentreStep(neck: number, dt: number): number {
+  if (Math.abs(neck) >= LOOK_FREE) return 0;
+  return neck * (1 - Math.exp(-dt / RECENTRE_TAU_S));
+}
+
+/** Eases the body's turning speed towards `target` (no jolt when it starts or stops). */
+export function easeTurnRate(current: number, target: number, dt: number, tauS = 0.2): number {
+  return current + (target - current) * (1 - Math.exp(-dt / tauS));
 }
 
 /** How much of the phone's turn the view shows as a head turn: all of it, up to 10°. */
@@ -215,12 +251,25 @@ export function headLook(neck: number): number {
  */
 export type ArrowDir = "fwd" | "back" | "left" | "right";
 export const ARROW_DIRS: ArrowDir[] = ["fwd", "back", "left", "right"];
-export const ARROW_AHEAD_M = 4.2;
-const ARROW_SPREAD_M = 0.8;
-const ARROW_SIDE_M = 1.3;
+export const ARROW_AHEAD_M = 4.6;
+/** Forward and back arrows either side of the cross's centre (was 0.8 m). */
+const ARROW_SPREAD_M = 1.25;
+/** Left and right arrows either side of it (was 1.3 m). */
+const ARROW_SIDE_M = 2.0;
 /** How far one tap on an arrow takes you (in the open square). */
 export const ARROW_STEP_M = 2.5;
-export const ARROW_SIDESTEP_M = 1.5;
+/** A sidestep (operator, 2026-09-28: "the side arrows make very small distance … make it bigger"; was 1.5 m). */
+export const ARROW_SIDESTEP_M = 3.5;
+
+/**
+ * ⚠️ AN ARROW INTO A WALL IS NOT SHOWN (operator, 2026-09-28: "if moving to
+ * one direction leads to nowhere, only walls, remove that particular arrow").
+ * It is shown only if at least half its step is clear — not merely a few
+ * centimetres before the wall, the fountain or a shop counter.
+ */
+export function arrowLeads(reachM: number, stepM: number): boolean {
+  return reachM >= Math.max(1, stepM * 0.5);
+}
 
 /** The yaw (camera convention) an arrow points along, for a visitor facing `heading`. */
 export function arrowYaw(dir: ArrowDir, heading: number): number {

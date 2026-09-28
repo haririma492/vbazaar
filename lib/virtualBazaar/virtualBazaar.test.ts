@@ -14,7 +14,7 @@ import {
 } from "./layout.ts";
 import {
   STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
-  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, headLook, ARROW_DIRS, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw,
+  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, easeTurnRate, headLook, recentreStep, arrowLeads, ARROW_DIRS, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw,
   easeInOutCubic, isTap, tapSlop, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
@@ -215,24 +215,24 @@ const move = (a: number, b: number, s: number) =>
   Array.from({ length: Math.round(s * 60) }, (_, i) => a + ((b - a) * (i + 1)) / Math.round(s * 60));
 const hold = (a: number, s: number) => Array(Math.round(s * 60)).fill(a);
 
-test("phone turn: within 10° it is only a look, one-for-one", () => {
-  const { views, body } = play([...move(0, 8, 0.3), ...hold(8, 3), ...move(8, 0, 0.3)]);
-  close(Math.max(...views), 8, 1e-9);
+test("phone turn: within 12° it is only a look, one-for-one — a hand's wander is not a turn", () => {
+  const { views, body } = play([...move(0, 11, 0.3), ...hold(11, 3), ...move(11, 0, 0.3)]);
+  close(Math.max(...views), 11, 1e-9);
   assert.equal(body, 0);
   close(views[views.length - 1], 0, 1e-9);
 });
 
-test("phone turn: past 10° the body turns that way at once, and keeps turning", () => {
-  const { views } = play([...move(0, 30, 0.3), ...hold(30, 2)]);
-  // Still turning after 2 s: the last half-second added a lot.
+test("phone turn: past 12° the body turns that way, and keeps turning", () => {
+  const { views } = play([...move(0, 40, 0.3), ...hold(40, 2)]);
+  // Still turning after 2 s, at full speed (45°/s): the last half-second added ~22°.
   const n = views.length;
-  assert.ok(views[n - 1] - views[n - 31] > 15, `${(views[n - 1] - views[n - 31]).toFixed(1)}°`);
+  close(views[n - 1] - views[n - 31], 22.5, 1);
   assert.ok(views[n - 1] > 60);
   assert.ok(bodyTurnRate(-30 * DEG) < 0, "the other way, the other way");
 });
 
 test("phone turn: back within 10° and the turn stops — no need to check", () => {
-  const { views, body } = play([...move(0, 30, 0.3), ...hold(30, 1.5), ...move(30, 0, 0.3), ...hold(0, 2)]);
+  const { views, body } = play([...move(0, 40, 0.3), ...hold(40, 1.5), ...move(40, 0, 0.3), ...hold(0, 2)]);
   const n = views.length;
   close(views[n - 1], views[n - 60], 1e-9);
   assert.ok(body > 40, `turned ${body.toFixed(0)}°`);
@@ -240,12 +240,25 @@ test("phone turn: back within 10° and the turn stops — no need to check", () 
   close(views[n - 1], body, 1e-9);
 });
 
-test("phone turn: faster the further, capped", () => {
-  assert.ok(bodyTurnRate(40 * DEG) > bodyTurnRate(20 * DEG));
-  close(bodyTurnRate(30 * DEG), 50 * DEG, 1e-9);
+test("phone turn: a gentle start, faster the further, capped at 45°/s", () => {
+  assert.ok(bodyTurnRate(30 * DEG) > bodyTurnRate(20 * DEG));
+  assert.ok(bodyTurnRate(17 * DEG) / DEG < 3, `${(bodyTurnRate(17 * DEG) / DEG).toFixed(1)}°/s just past`);
+  assert.ok(bodyTurnRate(27 * DEG) / DEG < 20);
+  close(BODY_TURN_MAX / DEG, 45, 1e-9);
   assert.equal(bodyTurnRate(170 * DEG), BODY_TURN_MAX);
   assert.equal(bodyTurnRate(LOOK_FREE * 0.99), 0);
   close(headLook(40 * DEG), LOOK_FREE, 1e-12);
+  // The speed eases in: a fifth of a second to get most of the way there.
+  let r = 0;
+  for (let i = 0; i < 12; i++) r = easeTurnRate(r, 1, 1 / 60);
+  assert.ok(r > 0.5 && r < 0.8, r.toFixed(2));
+});
+
+test("arrows: one into a wall is not shown", () => {
+  assert.equal(arrowLeads(0.6, 3.5), false, "a few steps before a wall");
+  assert.equal(arrowLeads(1.8, 3.5), true);
+  assert.equal(arrowLeads(0.9, 2.5), false);
+  assert.equal(arrowLeads(2.5, 2.5), true);
 });
 
 test("window shopping: each stop is a walkable spot with a shop either side", () => {
@@ -321,4 +334,27 @@ test("arrows: further ahead on a desktop's narrower view, and when looking up", 
     const below = (Math.atan(1.7 / near) * 180) / Math.PI;
     assert.ok(below < fov / 2, `fov ${fov}: ${below.toFixed(1)}° below`);
   }
+});
+
+test("centre: follows where the phone is held, so left and right turn alike", () => {
+  // The sensor woke with the phone 8° to the left of where it is now held.
+  let centre = 8 * DEG;
+  let body = 0;
+  const phone = 0;
+  const view0 = body + headLook(phone - centre);
+  for (let t = 0; t < 15; t += 1 / 60) {
+    const d = recentreStep(phone - centre, 1 / 60);
+    centre += d;
+    body += d;
+    // The picture never moves while it does.
+    close(body + headLook(phone - centre), view0, 1e-9);
+  }
+  close(centre, 0, 0.01 * DEG);
+  // Now 20° either way is past the zone by the same amount.
+  close(Math.abs(bodyTurnRate(20 * DEG - centre)), Math.abs(bodyTurnRate(-20 * DEG - centre)), 1e-3);
+});
+
+test("centre: never slides during a turn", () => {
+  assert.equal(recentreStep(LOOK_FREE + 0.01, 1 / 60), 0);
+  assert.equal(recentreStep(-(LOOK_FREE + 0.01), 1 / 60), 0);
 });
