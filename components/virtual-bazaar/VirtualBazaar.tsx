@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  ADDRESS_LABEL, SHOPS, STREETS, addressPath, addressText, parseSpot, poseForSpot, shopById, spotParam, streetById,
-  type Zone,
+  ADDRESS_LABEL, BAZAAR_NAME, SHOPS, STREETS, addressPath, addressText, nameIn, parseSpot, poseForSpot, shopById,
+  spotParam, streetById, type Lang, type Zone,
 } from "@/lib/virtualBazaar/layout";
 import VirtualAddressIcon from "./VirtualAddressIcon";
 import type { BazaarEngine, GyroState } from "./scene/BazaarEngine";
@@ -33,6 +33,40 @@ import { hasDeviceOrientation, needsPermission, requestDeviceOrientation } from 
  */
 
 const SPOT = "spot";
+const LANG_KEY = "sk-vca-lang";
+
+/** The visitor's language: `?lang=en` (the home page's own switch), else the last choice on this device. */
+function readLang(): Lang {
+  try {
+    const q = new URLSearchParams(window.location.search).get("lang");
+    if (q === "en" || q === "fa") return q;
+    return window.localStorage.getItem(LANG_KEY) === "en" ? "en" : "fa";
+  } catch {
+    return "fa";
+  }
+}
+
+function writeLang(lang: Lang) {
+  try {
+    window.localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    /* a refused storage write must never stop the switch */
+  }
+  try {
+    const url = new URL(window.location.href);
+    if (lang === "en") url.searchParams.set("lang", "en");
+    else url.searchParams.delete("lang");
+    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url.href);
+  } catch {
+    /* as above */
+  }
+}
+
+/** A link into the site in the visitor's language (the site reads `?lang=en`). */
+function inLang(href: string, lang: Lang): string {
+  if (lang !== "en") return href;
+  return href + (href.includes("?") ? "&" : "?") + "lang=en";
+}
 
 function writeSpot(value: string | null) {
   try {
@@ -87,13 +121,27 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
   const [touch, setTouch] = useState(false);
   const [hint, setHint] = useState(true);
   const [copied, setCopied] = useState(false);
+  /**
+   * ⚠️ PERSIAN FIRST, ENGLISH ON THE KEY (operator, 2026-09-28: "add a key to
+   * switch to English labels"). Every label in the page and every sign in the
+   * 3D follows it; the choice rides in `?lang=en`, like the home page's.
+   */
+  const [lang, setLangState] = useState<Lang>("fa");
+  const langRef = useRef<Lang>("fa");
+  const L = (fa: string, en: string) => (lang === "en" ? en : fa);
+  const setLang = (next: Lang) => {
+    langRef.current = next;
+    setLangState(next);
+    writeLang(next);
+    engineRef.current?.setLanguage(next);
+  };
 
   const openShop = useCallback(
     (id: string) => {
       const shop = shopById(id);
       if (!shop?.href) return;
       writeSpot(spotParam({ kind: "shop", shop }));
-      router.push(shop.href);
+      router.push(inLang(shop.href, langRef.current));
     },
     [router],
   );
@@ -102,6 +150,9 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
 
   useEffect(() => {
     const coarse = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    const startLang = readLang();
+    langRef.current = startLang;
+    setLangState(startLang);
     setTouch(coarse);
     setCanGyro(coarse && hasDeviceOrientation());
 
@@ -153,6 +204,7 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
           return;
         }
         engineRef.current = engine;
+        engine.setLanguage(langRef.current);
         setWebgl(true);
         // On a phone the phone looks: straight away where the browser allows
         // it, after the «شروع» tap where it does not (iOS).
@@ -209,10 +261,11 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
     const s = shopById(id);
     if (!s) return;
     const url = `${window.location.origin}${addressPath(s)}`;
-    const text = `${ADDRESS_LABEL.fa}: ${addressText(s)}`;
+    const lg = langRef.current;
+    const text = `${ADDRESS_LABEL[lg]}: ${addressText(s, lg)}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: s.name, text, url });
+        await navigator.share({ title: nameIn(s, lg), text, url });
         return;
       }
     } catch (e) {
@@ -223,7 +276,7 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      window.prompt(ADDRESS_LABEL.fa, url);
+      window.prompt(ADDRESS_LABEL[lg], url);
     }
   };
 
@@ -238,11 +291,25 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
   const lit = "bg-[var(--sk)] text-[var(--sk-ground)]";
 
   let status = "";
-  if (street) status = street.open ? (zone === "food" ? "به راسته خوش آمدید" : "ورود به راسته…") : "این راسته به‌زودی باز می‌شود";
-  if (shop) status = shop.href ? (shop.id === "sarekooche" ? "فروشگاه سرکوچه" : "در سرکوچه") : "این مغازه به‌زودی باز می‌شود";
+  if (street) {
+    status = street.open
+      ? zone === "food"
+        ? L("به راسته خوش آمدید", "Welcome to the street")
+        : L("ورود به راسته…", "Entering the street…")
+      : L("این راسته به‌زودی باز می‌شود", "This street opens soon");
+  }
+  if (shop) {
+    status = shop.href
+      ? shop.id === "sarekooche"
+        ? L("فروشگاه سرکوچه", "The Sarekooche shop")
+        : L("در سرکوچه", "At Sarekooche")
+      : L("این مغازه به‌زودی باز می‌شود", "This shop opens soon");
+  }
 
   return (
     <main
+      dir={lang === "en" ? "ltr" : "rtl"}
+      lang={lang}
       onPointerDown={() => setHint(false)}
       onKeyDown={() => setHint(false)}
       style={{
@@ -261,13 +328,25 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
       {/* Top: where you are, the way out, and the phone's sensor. */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className={`pointer-events-auto rounded-2xl px-3 py-2 text-sm ${dark}`}>
-          <div className="font-bold">بازار سرکوچه</div>
-          <div className="text-xs opacity-80">{zone === "food" ? "راسته خوراکی" : "میدان"}</div>
+          <div className="font-bold">{BAZAAR_NAME[lang]}</div>
+          <div className="text-xs opacity-80">
+            {zone === "food" ? nameIn(STREETS[0], lang) : L("میدان", "The square")}
+          </div>
         </div>
         <div className="pointer-events-auto flex flex-col items-end gap-2">
-          <a href="/" className={`${chip} ${dark}`}>
-            سرکوچه ←
-          </a>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => setLang(lang === "en" ? "fa" : "en")}
+              aria-label={lang === "en" ? "فارسی" : "English"}
+              className={`${chip} ${dark} font-bold`}
+            >
+              {lang === "en" ? "فا" : "EN"}
+            </button>
+            <a href={inLang("/", lang)} className={`${chip} ${dark}`}>
+              {L("سرکوچه ←", "Sarekooche →")}
+            </a>
+          </div>
           {in3d && canGyro && (
             <button
               type="button"
@@ -275,7 +354,7 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
               aria-pressed={gyro === "on"}
               className={`${chip} ${gyro === "on" ? lit : dark}`}
             >
-              {gyro === "on" ? "نگاه با گوشی ✓" : "نگاه با گوشی"}
+              {gyro === "on" ? L("نگاه با گوشی ✓", "Look with phone ✓") : L("نگاه با گوشی", "Look with phone")}
             </button>
           )}
         </div>
@@ -283,26 +362,31 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
 
       {in3d && (gyro === "unavailable" || gyro === "denied") && (
         <p role="status" className={`absolute inset-x-4 top-36 mx-auto max-w-sm rounded-xl p-3 text-center text-sm ${dark}`}>
-          {gyro === "denied" ? "اجازهٔ حسگر حرکت داده نشد." : "حسگر حرکت این گوشی در دسترس نیست."} با انگشت بکشید تا اطراف
-          را ببینید.
+          {gyro === "denied"
+            ? L("اجازهٔ حسگر حرکت داده نشد.", "Motion access was not given.")
+            : L("حسگر حرکت این گوشی در دسترس نیست.", "This phone has no motion sensor.")}{" "}
+          {L("با انگشت بکشید تا اطراف را ببینید.", "Drag with a finger to look around.")}
         </p>
       )}
 
       {in3d && askMotion && (
         <div
           role="dialog"
-          aria-label="نگاه با گوشی"
+          aria-label={L("نگاه با گوشی", "Look with phone")}
           className={`absolute inset-x-4 top-1/3 mx-auto flex max-w-sm flex-col items-center gap-3 rounded-2xl p-5 text-center shadow-lg ${dark}`}
         >
-          <div className="text-base font-bold">گوشی را بچرخانید</div>
+          <div className="text-base font-bold">{L("گوشی را بچرخانید", "Turn your phone")}</div>
           <div className="text-sm leading-7 opacity-90">
-            گوشی را بچرخانید تا اطراف بازار را ببینید؛ برای چرخیدن، گوشی را مثل فرمان به چپ یا راست کج کنید. روی زمین بزنید تا بروید.
+            {L(
+              "گوشی را به چپ یا راست بچرخانید تا به همان سو بچرخید؛ صاف نگه دارید تا بایستید. روی زمین یا روی فلش‌ها بزنید تا بروید.",
+              "Turn the phone left or right to turn that way; hold it straight to stop. Tap the floor or an arrow to walk.",
+            )}
           </div>
           <button type="button" onClick={startGyro} className={`${chip} ${lit} px-6 font-bold`}>
-            شروع
+            {L("شروع", "Start")}
           </button>
           <button type="button" onClick={() => setAskMotion(false)} className="text-xs underline opacity-80">
-            با دست به صفحه می‌زنم
+            {L("با دست به صفحه می‌زنم", "I'll use touch")}
           </button>
         </div>
       )}
@@ -311,31 +395,37 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
         <p className={`pointer-events-none absolute inset-x-4 top-36 md:top-4 mx-auto max-w-sm rounded-2xl p-4 text-center text-sm leading-7 ${dark}`}>
           {touch && gyro === "on" ? (
             <>
-              گوشی را بچرخانید تا اطراف را ببینید
+              {L(
+                "گوشی را به چپ یا راست بچرخانید تا به همان سو بچرخید؛ صاف نگه دارید تا بایستید",
+                "Turn the phone left or right to turn that way; hold it straight to stop",
+              )}
               <br />
-              برای چرخیدن، گوشی را مثل فرمان به چپ یا راست کج کنید (یا با انگشت بکشید)
+              {L("یا با انگشت بکشید", "or drag with a finger")}
               <br />
-              روی زمین بزنید تا بروید، روی سردر راسته بزنید تا وارد شوید
+              {L("روی زمین یا فلش‌ها بزنید تا بروید، روی سردر راسته بزنید تا وارد شوید", "Tap the floor or an arrow to walk, a gate to go in")}
               <br />
-              با دو انگشت بزرگ‌نمایی کنید
+              {L("با دو انگشت بزرگ‌نمایی کنید", "Pinch to zoom")}
             </>
           ) : touch ? (
             <>
-              انگشت را بکشید تا اطراف را ببینید
+              {L("انگشت را بکشید تا اطراف را ببینید", "Drag with a finger to look around")}
               <br />
-              روی زمین بزنید تا بروید، روی سردر راسته بزنید تا وارد شوید
+              {L("روی زمین یا فلش‌ها بزنید تا بروید، روی سردر راسته بزنید تا وارد شوید", "Tap the floor or an arrow to walk, a gate to go in")}
               <br />
-              با دو انگشت بزرگ‌نمایی کنید
+              {L("با دو انگشت بزرگ‌نمایی کنید", "Pinch to zoom")}
             </>
           ) : (
             <>
-              با موس بکشید تا اطراف را ببینید
+              {L("با موس بکشید تا اطراف را ببینید", "Drag with the mouse to look around")}
               <br />
-              روی زمین کلیک کنید تا بروید، روی سردر راسته تا وارد شوید
+              {L("روی زمین یا فلش‌ها کلیک کنید تا بروید، روی سردر راسته تا وارد شوید", "Click the floor or an arrow to walk, a gate to go in")}
               <br />
-              ↑ یا W یک بار: تا مغازه‌های بعدی · نگه دارید: قدم زدن · با Shift: تندتر
+              {L(
+                "↑ یا W یک بار: تا مغازه‌های بعدی · نگه دارید: قدم زدن · با Shift: تندتر",
+                "↑ or W once: to the next shops · hold: stroll · with Shift: faster",
+              )}
               <br />
-              چرخ موس برای بزرگ‌نمایی
+              {L("چرخ موس برای بزرگ‌نمایی", "Mouse wheel to zoom")}
             </>
           )}
         </p>
@@ -343,7 +433,10 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
 
       {webgl === false && (
         <p role="status" className={`absolute inset-x-4 top-28 mx-auto max-w-md rounded-xl p-3 text-center text-sm ${dark}`}>
-          نمای سه‌بعدی روی این دستگاه در دسترس نیست. از فهرست پایین انتخاب کنید.
+          {L(
+            "نمای سه‌بعدی روی این دستگاه در دسترس نیست. از فهرست پایین انتخاب کنید.",
+            "3D is not available on this device. Choose from the list below.",
+          )}
         </p>
       )}
 
@@ -356,41 +449,41 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
             className={`pointer-events-auto mx-auto flex w-full max-w-md flex-col gap-2 rounded-2xl px-4 py-3 shadow-lg ${dark}`}
           >
             <div className="min-w-0">
-              <div className="font-semibold">{street?.name ?? shop?.name}</div>
+              <div className="font-semibold">{street ? nameIn(street, lang) : shop ? nameIn(shop, lang) : ""}</div>
               <div className="text-xs opacity-80">{status}</div>
               {shop && (
-                <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--sk)]" title={ADDRESS_LABEL.fa}>
+                <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--sk)]" title={ADDRESS_LABEL[lang]}>
                   <VirtualAddressIcon size={14} className="shrink-0" />
-                  <span>{addressText(shop)}</span>
+                  <span>{addressText(shop, lang)}</span>
                 </div>
               )}
             </div>
             <div className="flex flex-wrap justify-end gap-2">
               {shop?.href && (
                 <button type="button" onClick={() => openShop(shop.id)} className={`${chip} ${lit} font-bold`}>
-                  ورود به فروشگاه
+                  {L("ورود به فروشگاه", "Enter the shop")}
                 </button>
               )}
               {shop && (
                 <button
                   type="button"
                   onClick={() => share(shop.id)}
-                  aria-label={`اشتراک‌گذاری ${ADDRESS_LABEL.fa}`}
+                  aria-label={L(`اشتراک‌گذاری ${ADDRESS_LABEL.fa}`, `Share the ${ADDRESS_LABEL.en}`)}
                   className="flex items-center gap-1 rounded-full px-3 py-1 text-sm ring-1 ring-[var(--sk)]"
                 >
                   <VirtualAddressIcon size={16} />
-                  {copied ? "کپی شد" : "اشتراک"}
+                  {copied ? L("کپی شد", "Copied") : L("اشتراک", "Share")}
                 </button>
               )}
               <button type="button" onClick={close} className="rounded-full px-3 py-1 text-sm ring-1 ring-[var(--sk)]">
-                بستن
+                {L("بستن", "Close")}
               </button>
             </div>
           </div>
         )}
 
         <nav
-          aria-label={zone === "food" && in3d ? "مغازه‌های راسته خوراکی" : "راسته‌های بازار"}
+          aria-label={zone === "food" && in3d ? L("مغازه‌های راسته خوراکی", "Shops of the Food Street") : L("راسته‌های بازار", "Streets of the bazaar")}
           className="pointer-events-auto"
         >
           <ul className="flex gap-2 overflow-x-auto pb-1 md:flex-wrap md:justify-center">
@@ -399,16 +492,16 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
               <>
                 {FOOD_SHOPS.filter((s) => s.href).map((s) => (
                   <li key={s.id} className="shrink-0">
-                    <a href={s.href} className={`${chip} ${lit} inline-block`}>
-                      {s.name}
+                    <a href={inLang(s.href!, lang)} className={`${chip} ${lit} inline-block`}>
+                      {nameIn(s, lang)}
                     </a>
                   </li>
                 ))}
                 {STREETS.map((s) => (
                   <li key={s.id} className="shrink-0">
                     <span className={`${chip} ${dark} inline-block opacity-70`}>
-                      {s.name}
-                      {s.open ? "" : " · به‌زودی"}
+                      {nameIn(s, lang)}
+                      {s.open ? "" : L(" · به‌زودی", " · soon")}
                     </span>
                   </li>
                 ))}
@@ -417,18 +510,18 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
               <>
                 <li className="shrink-0">
                   <button type="button" onClick={() => engineRef.current?.goToSquare()} className={`${chip} ${dark}`}>
-                    → بازگشت به میدان
+                    {L("→ بازگشت به میدان", "← Back to the square")}
                   </button>
                 </li>
                 {/* Window shopping, shop by shop: the phone's version of a quick press of ↑ / ↓. */}
                 <li className="shrink-0">
                   <button type="button" onClick={() => engineRef.current?.stepAlongStreet(-1)} className={`${chip} ${dark}`}>
-                    → مغازه‌های قبلی
+                    {L("→ مغازه‌های قبلی", "← Previous shops")}
                   </button>
                 </li>
                 <li className="shrink-0">
                   <button type="button" onClick={() => engineRef.current?.stepAlongStreet(1)} className={`${chip} ${dark}`}>
-                    مغازه‌های بعدی ←
+                    {L("مغازه‌های بعدی ←", "Next shops →")}
                   </button>
                 </li>
                 {FOOD_SHOPS.map((s) => (
@@ -439,7 +532,7 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
                       aria-pressed={shop?.id === s.id}
                       className={`${chip} ${shop?.id === s.id || s.href ? lit : dark}`}
                     >
-                      {s.name}
+                      {nameIn(s, lang)}
                     </button>
                   </li>
                 ))}
@@ -453,7 +546,7 @@ export default function VirtualBazaar({ initialSpot }: { initialSpot?: string } 
                     aria-pressed={street?.id === s.id}
                     className={`${chip} ${street?.id === s.id || s.open ? lit : dark} ${s.open ? "font-bold" : "opacity-80"}`}
                   >
-                    {s.name}
+                    {nameIn(s, lang)}
                   </button>
                 </li>
               ))

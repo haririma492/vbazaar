@@ -26,9 +26,13 @@ export const FOUNTAIN_CLEAR = 4.2;
 
 export type StreetId = "food" | "clothing" | "gold" | "crafts" | "home" | "services";
 
+/** The two languages of every label in the bazaar (operator, 2026-09-28: "a key to switch to English labels"). */
+export type Lang = "fa" | "en";
+
 export type Street = {
   id: StreetId;
   name: string;
+  en: string;
   /** Degrees around the square, from east turning south. */
   angle: number;
   color: number;
@@ -37,13 +41,16 @@ export type Street = {
 };
 
 export const STREETS: Street[] = [
-  { id: "food", name: "راسته خوراکی", angle: 0, color: 0xc96b4b, open: true },
-  { id: "clothing", name: "راسته پوشاک", angle: 60, color: 0x6d8fb3, open: false },
-  { id: "gold", name: "راسته طلافروش‌ها", angle: 120, color: 0xd4af37, open: false },
-  { id: "crafts", name: "راسته هنر و صنایع دستی", angle: 180, color: 0x9a6fae, open: false },
-  { id: "home", name: "راسته خانه و زندگی", angle: 240, color: 0x789b72, open: false },
-  { id: "services", name: "راسته خدمات", angle: 300, color: 0x777777, open: false },
+  { id: "food", name: "راسته خوراکی", en: "Food Street", angle: 0, color: 0xc96b4b, open: true },
+  { id: "clothing", name: "راسته پوشاک", en: "Clothing Street", angle: 60, color: 0x6d8fb3, open: false },
+  { id: "gold", name: "راسته طلافروش‌ها", en: "Goldsmiths' Street", angle: 120, color: 0xd4af37, open: false },
+  { id: "crafts", name: "راسته هنر و صنایع دستی", en: "Arts & Crafts Street", angle: 180, color: 0x9a6fae, open: false },
+  { id: "home", name: "راسته خانه و زندگی", en: "Home & Living Street", angle: 240, color: 0x789b72, open: false },
+  { id: "services", name: "راسته خدمات", en: "Services Street", angle: 300, color: 0x777777, open: false },
 ];
+
+/** A street's or shop's name in `lang`. */
+export const nameIn = (x: { name: string; en: string }, lang: Lang) => (lang === "en" ? x.en : x.name);
 
 export function streetById(id: string | null | undefined): Street | undefined {
   return STREETS.find((s) => s.id === id);
@@ -70,6 +77,7 @@ export type ShopSide = "north" | "south";
 export type Shop = {
   id: string;
   name: string;
+  en: string;
   street: StreetId;
   side: ShopSide;
   /** Centre of the shop's front along the street. */
@@ -91,18 +99,18 @@ const bayX = (i: number) => FOOD_STREET.firstBay + i * FOOD_STREET.bay;
  * bazaar a visitor walks through, not shops that exist.
  */
 export const SHOPS: Shop[] = [
-  { id: "attari", name: "عطاری", street: "food", side: "north", x: bayX(0), color: 0x8a6a3b },
-  { id: "bakery", name: "نانوایی", street: "food", side: "north", x: bayX(1), color: 0xd9a55b },
-  { id: "sarekooche", name: "سرکوچه", street: "food", side: "north", x: bayX(2), color: 0x00b8c8, href: "/", brand: true },
-  { id: "nuts", name: "خشکبار", street: "food", side: "north", x: bayX(3), color: 0xa0522d },
-  { id: "sweets", name: "قنادی", street: "food", side: "north", x: bayX(4), color: 0xe79bb0 },
-  { id: "tea", name: "چایخانه", street: "food", side: "north", x: bayX(5), color: 0x7b3f2a },
-  { id: "grocer", name: "بقالی", street: "food", side: "south", x: bayX(0), color: 0x6f9b54 },
-  { id: "butcher", name: "قصابی سرکوچه", street: "food", side: "south", x: bayX(1), color: 0xb03a3a, href: "/?open=meat-order", brand: true },
-  { id: "greens", name: "سبزی‌فروشی", street: "food", side: "south", x: bayX(2), color: 0x4f8f3a },
-  { id: "fish", name: "ماهی‌فروشی", street: "food", side: "south", x: bayX(3), color: 0x3f7fa6 },
-  { id: "dairy", name: "لبنیاتی", street: "food", side: "south", x: bayX(4), color: 0xe8e2cf },
-  { id: "spices", name: "ادویه‌فروشی", street: "food", side: "south", x: bayX(5), color: 0xc2702a },
+  { id: "attari", name: "عطاری", en: "Herbalist", street: "food", side: "north", x: bayX(0), color: 0x8a6a3b },
+  { id: "bakery", name: "نانوایی", en: "Bakery", street: "food", side: "north", x: bayX(1), color: 0xd9a55b },
+  { id: "sarekooche", name: "سرکوچه", en: "Sarekooche", street: "food", side: "north", x: bayX(2), color: 0x00b8c8, href: "/", brand: true },
+  { id: "nuts", name: "خشکبار", en: "Nuts & Dried Fruit", street: "food", side: "north", x: bayX(3), color: 0xa0522d },
+  { id: "sweets", name: "قنادی", en: "Confectionery", street: "food", side: "north", x: bayX(4), color: 0xe79bb0 },
+  { id: "tea", name: "چایخانه", en: "Teahouse", street: "food", side: "north", x: bayX(5), color: 0x7b3f2a },
+  { id: "grocer", name: "بقالی", en: "Grocer", street: "food", side: "south", x: bayX(0), color: 0x6f9b54 },
+  { id: "butcher", name: "قصابی سرکوچه", en: "Sarekooche Butcher", street: "food", side: "south", x: bayX(1), color: 0xb03a3a, href: "/?open=meat-order", brand: true },
+  { id: "greens", name: "سبزی‌فروشی", en: "Greengrocer", street: "food", side: "south", x: bayX(2), color: 0x4f8f3a },
+  { id: "fish", name: "ماهی‌فروشی", en: "Fishmonger", street: "food", side: "south", x: bayX(3), color: 0x3f7fa6 },
+  { id: "dairy", name: "لبنیاتی", en: "Dairy", street: "food", side: "south", x: bayX(4), color: 0xe8e2cf },
+  { id: "spices", name: "ادویه‌فروشی", en: "Spice Shop", street: "food", side: "south", x: bayX(5), color: 0xc2702a },
 ];
 
 export function shopById(id: string | null | undefined): Shop | undefined {
@@ -391,8 +399,12 @@ export function parseAddress(segments: string[]): Spot | null | undefined {
 
 const faDigits = (n: number) => String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 
-/** «بازار سرکوچه · راسته خوراکی · حجرهٔ ۵ · سرکوچه» — what is written next to the icon. */
-export function addressText(shop: Shop): string {
+/**
+ * «بازار سرکوچه · راسته خوراکی · حجرهٔ ۵ · سرکوچه» — what is written next to
+ * the icon; in English, "Sarekooche Bazaar · Food Street · Unit 5 · Sarekooche".
+ */
+export function addressText(shop: Shop, lang: Lang = "fa"): string {
   const street = STREETS.find((s) => s.id === shop.street)!;
+  if (lang === "en") return [BAZAAR_NAME.en, street.en, `Unit ${unitOf(shop)}`, shop.en].join(" · ");
   return [BAZAAR_NAME.fa, street.name, `حجرهٔ ${faDigits(unitOf(shop))}`, shop.name].join(" · ");
 }

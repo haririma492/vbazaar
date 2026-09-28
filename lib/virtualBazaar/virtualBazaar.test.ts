@@ -14,7 +14,7 @@ import {
 } from "./layout.ts";
 import {
   STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
-  TILT_FREE, TILT_TURN_MAX, tiltTurnRate,
+  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, headLook, ARROW_DIRS, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw,
   easeInOutCubic, isTap, tapSlop, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
@@ -200,33 +200,52 @@ test("nearestWalkable: a tap on the arcade walks up to it", () => {
 
 const DEG = Math.PI / 180;
 
-test("tilt: a level phone (under 10°) never turns the body", () => {
-  assert.equal(tiltTurnRate(0), 0);
-  assert.equal(tiltTurnRate(TILT_FREE * 0.99), 0);
-  assert.equal(tiltTurnRate(-TILT_FREE * 0.99), 0);
-});
-
-test("tilt: past 10° the body turns that way at once, faster the more it tilts", () => {
-  assert.ok(tiltTurnRate(15 * DEG) > 0, "tilted left → turns left");
-  assert.ok(tiltTurnRate(-15 * DEG) < 0, "tilted right → turns right");
-  assert.ok(tiltTurnRate(30 * DEG) > tiltTurnRate(15 * DEG));
-  close(tiltTurnRate(30 * DEG), 50 * DEG, 1e-9); // 20° past → 50°/s
-  assert.equal(tiltTurnRate(89 * DEG), TILT_TURN_MAX, "capped");
-});
-
-test("tilt: holding a 25° tilt for 2 s turns you round, and levelling stops it", () => {
+/** Plays a phone's path (degrees from the body's start, one per 1/60 s); returns the views, in degrees. */
+function play(path: number[]) {
   let body = 0;
-  for (let t = 0; t < 2; t += 1 / 60) body += tiltTurnRate(25 * DEG) / 60;
-  assert.ok(body / DEG > 60, `${(body / DEG).toFixed(0)}°`);
-  const before = body;
-  for (let t = 0; t < 1; t += 1 / 60) body += tiltTurnRate(3 * DEG) / 60;
-  assert.equal(body, before);
+  const views: number[] = [];
+  for (const d of path) {
+    const neck = d * DEG; // the phone's turn from where it pointed when the sensor came on
+    body += (bodyTurnRate(neck) / 60);
+    views.push((body + headLook(neck)) / DEG);
+  }
+  return { view: views[views.length - 1], views, body: body / DEG };
+}
+const move = (a: number, b: number, s: number) =>
+  Array.from({ length: Math.round(s * 60) }, (_, i) => a + ((b - a) * (i + 1)) / Math.round(s * 60));
+const hold = (a: number, s: number) => Array(Math.round(s * 60)).fill(a);
+
+test("phone turn: within 10° it is only a look, one-for-one", () => {
+  const { views, body } = play([...move(0, 8, 0.3), ...hold(8, 3), ...move(8, 0, 0.3)]);
+  close(Math.max(...views), 8, 1e-9);
+  assert.equal(body, 0);
+  close(views[views.length - 1], 0, 1e-9);
 });
 
-test("tilt: looking steeply up or down never turns you", () => {
-  assert.equal(tiltTurnRate(30 * DEG, 70 * DEG), 0);
-  assert.equal(tiltTurnRate(30 * DEG, -70 * DEG), 0);
-  assert.ok(tiltTurnRate(30 * DEG, 20 * DEG) > 0);
+test("phone turn: past 10° the body turns that way at once, and keeps turning", () => {
+  const { views } = play([...move(0, 30, 0.3), ...hold(30, 2)]);
+  // Still turning after 2 s: the last half-second added a lot.
+  const n = views.length;
+  assert.ok(views[n - 1] - views[n - 31] > 15, `${(views[n - 1] - views[n - 31]).toFixed(1)}°`);
+  assert.ok(views[n - 1] > 60);
+  assert.ok(bodyTurnRate(-30 * DEG) < 0, "the other way, the other way");
+});
+
+test("phone turn: back within 10° and the turn stops — no need to check", () => {
+  const { views, body } = play([...move(0, 30, 0.3), ...hold(30, 1.5), ...move(30, 0, 0.3), ...hold(0, 2)]);
+  const n = views.length;
+  close(views[n - 1], views[n - 60], 1e-9);
+  assert.ok(body > 40, `turned ${body.toFixed(0)}°`);
+  // Facing where the turn took you: the view settles on the body.
+  close(views[n - 1], body, 1e-9);
+});
+
+test("phone turn: faster the further, capped", () => {
+  assert.ok(bodyTurnRate(40 * DEG) > bodyTurnRate(20 * DEG));
+  close(bodyTurnRate(30 * DEG), 50 * DEG, 1e-9);
+  assert.equal(bodyTurnRate(170 * DEG), BODY_TURN_MAX);
+  assert.equal(bodyTurnRate(LOOK_FREE * 0.99), 0);
+  close(headLook(40 * DEG), LOOK_FREE, 1e-12);
 });
 
 test("window shopping: each stop is a walkable spot with a shop either side", () => {
@@ -263,4 +282,43 @@ test("walking: a stroll that eases in, so a short press barely moves", () => {
   for (let t = 0; t < STEP_PRESS_S; t += 1 / 60) d += walkSpeed(t, false) / 60;
   assert.ok(d < 0.15, `${d.toFixed(3)} m`);
   assert.ok(walkSpeed(10, true) > walkSpeed(10, false));
+});
+
+test("arrows: all four sit in front — the back one too — in a cross", () => {
+  for (const h of [0, 1, -2.5, Math.PI]) {
+    const fx = -Math.sin(h);
+    const fz = -Math.cos(h);
+    const ahead = (p: { x: number; z: number }) => p.x * fx + p.z * fz;
+    for (const d of ARROW_DIRS) assert.ok(ahead(arrowSpot(d, 0, 0, h)) > 3, `${d} at heading ${h}`);
+    assert.ok(ahead(arrowSpot("fwd", 0, 0, h)) > ahead(arrowSpot("back", 0, 0, h)));
+    // Left is on the left: turning left (yaw +) from facing is where "left" lies.
+    const l = arrowSpot("left", 0, 0, h);
+    const r = arrowSpot("right", 0, 0, h);
+    const lx = -Math.sin(h + Math.PI / 2);
+    const lz = -Math.cos(h + Math.PI / 2);
+    assert.ok(l.x * lx + l.z * lz > r.x * lx + r.z * lz);
+  }
+});
+
+test("arrows: each one walks you its own way", () => {
+  const east = yawToward(1, 0);
+  const at = (d: "fwd" | "back" | "left" | "right") => arrowTarget(d, 0, 0, east);
+  assert.ok(at("fwd").x > 2 && Math.abs(at("fwd").z) < 1e-9);
+  assert.ok(at("back").x < -2);
+  // Facing east, left is north (−z) and right is south (+z).
+  assert.ok(at("left").z < -1 && Math.abs(at("left").x) < 1e-9);
+  assert.ok(at("right").z > 1);
+  close(arrowYaw("back", east), east + Math.PI);
+});
+
+test("arrows: further ahead on a desktop's narrower view, and when looking up", () => {
+  assert.ok(arrowAheadFor(60) > arrowAheadFor(100), "desktop 60° vs portrait phone 100°");
+  assert.ok(arrowAheadFor(60, 0.2) > arrowAheadFor(60, 0));
+  // The near arrow is below the horizon but inside the picture.
+  for (const fov of [60, 80, 100]) {
+    const ahead = arrowAheadFor(fov);
+    const near = ahead - (0.8 * ahead) / 4.2;
+    const below = (Math.atan(1.7 / near) * 180) / Math.PI;
+    assert.ok(below < fov / 2, `fov ${fov}: ${below.toFixed(1)}° below`);
+  }
 });

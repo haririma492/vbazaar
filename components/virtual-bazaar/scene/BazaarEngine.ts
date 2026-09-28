@@ -5,12 +5,13 @@ import {
   type Point, type Pose, type Zone,
 } from "@/lib/virtualBazaar/layout";
 import {
-  clampPitch, clampZoom, easeInOutCubic, shortestAngleDelta, tiltTurnRate, flightSeconds, isTap, lerpAngle, lookFromDrag,
+  ARROW_DIRS, ARROW_AHEAD_M, ARROW_STEP_M, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw, type ArrowDir,
+  bodyTurnRate, clampPitch, clampZoom, easeInOutCubic, headLook, shortestAngleDelta, flightSeconds, isTap, lerpAngle, lookFromDrag,
   pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, tapSlop,
   verticalFov, walkSpeed,
 } from "@/lib/virtualBazaar/motion";
 import { buildBazaar, pickOf, type Pick } from "./buildBazaar";
-import { redrawSignsWhenFontsLoad } from "./signs";
+import { redrawSignsWhenFontsLoad, setSignLanguage } from "./signs";
 import { deviceQuaternion, headingOf, screenAngle } from "./deviceOrientation";
 
 /**
@@ -76,6 +77,7 @@ export class BazaarEngine {
   private camera = new THREE.PerspectiveCamera(60, 1, 0.1, 400);
   private raycaster = new THREE.Raycaster();
   private pickables: THREE.Object3D[];
+  private billboards: THREE.Sprite[] = [];
   private ground: THREE.Object3D[];
   private targets: THREE.Object3D[];
 
@@ -96,6 +98,9 @@ export class BazaarEngine {
    * landed and stays there until you arrive, so a tap is seen to be heard.
    */
   private marker: THREE.Mesh;
+  /** Street View's arrows on the floor ahead (see `arrowSpot`). */
+  private arrows = new Map<ArrowDir, THREE.Mesh>();
+  private hoverArrow: ArrowDir | null = null;
   private markerFor: "hover" | "walk" | null = null;
   /** Shift held: walk fast. */
   private hurry = false;
@@ -155,11 +160,19 @@ export class BazaarEngine {
     const built = buildBazaar();
     this.scene.add(built.root);
     this.pickables = built.pickables;
+    this.billboards = built.billboards;
     this.ground = built.ground;
     this.targets = [...this.pickables, ...this.ground];
     redrawSignsWhenFontsLoad(() => this.invalidate());
     this.marker = makeFloorMarker();
     this.scene.add(this.marker);
+    ARROW_DIRS.forEach((dir) => {
+      const arrow = makeArrow(dir);
+      this.arrows.set(dir, arrow);
+      this.scene.add(arrow);
+    });
+    // Arrows first: on top of the floor, a tap on one is the arrow's.
+    this.targets = [...this.arrows.values(), ...this.targets];
 
     this.x = start.x;
     this.z = start.z;
@@ -220,6 +233,12 @@ export class BazaarEngine {
   goToSquare() {
     this.select(null);
     this.flyTo(SQUARE_FROM_FOOD);
+  }
+
+  /** Every sign in the bazaar in Persian or English. */
+  setLanguage(lang: "fa" | "en") {
+    setSignLanguage(lang);
+    this.invalidate();
   }
 
   clearSelection() {
@@ -311,7 +330,7 @@ export class BazaarEngine {
     // flight turns the view from exactly here and arrives facing the gate or
     // shop with the phone held where it is.
     if (this.gyro.on && this.gyro.heard) {
-      this.yaw += shortestAngleDelta(this.gyro.calibration, this.gyro.heading);
+      this.yaw = this.heading();
       this.gyro.calibration = this.gyro.heading;
     }
     const from = { x: this.x, z: this.z };
@@ -369,7 +388,7 @@ export class BazaarEngine {
 
   /** Forward on the ground, from where the camera actually looks. */
   private heading(): number {
-    return this.gyro.on && this.gyro.heard ? this.yaw - this.gyro.calibration + this.gyro.heading : this.yaw;
+    return this.gyro.on && this.gyro.heard ? this.yaw + headLook(this.neck()) : this.yaw;
   }
 
   private walkWithKeys(dt: number, now: number): boolean {
@@ -421,8 +440,13 @@ export class BazaarEngine {
 
     if (this.hoverAt) {
       const hit = this.hit(this.hoverAt.x, this.hoverAt.y);
-      const onGround = !!hit && !pickOf(hit.object) && !!hit.object.userData.ground;
-      this.renderer.domElement.style.cursor = hit && pickOf(hit.object) ? "pointer" : "grab";
+      const onArrow = (hit?.object.userData.arrow as ArrowDir | undefined) ?? null;
+      const onGround = !!hit && !onArrow && !pickOf(hit.object) && !!hit.object.userData.ground;
+      this.renderer.domElement.style.cursor = hit && (onArrow || pickOf(hit.object)) ? "pointer" : "grab";
+      if (onArrow !== this.hoverArrow) {
+        this.hoverArrow = onArrow;
+        this.invalidate();
+      }
       if (this.markerFor !== "walk") {
         if (onGround) this.showMarker(hit!.point.x, hit!.point.z, "hover");
         else this.hideMarker();
@@ -447,10 +471,12 @@ export class BazaarEngine {
 
   private applyCamera() {
     this.camera.position.set(this.x, EYE_HEIGHT, this.z);
+    this.placeArrows();
     if (this.gyro.on && this.gyro.heard) {
-      // The phone's heading and pitch look; its sideways tilt steers the body
-      // (`yaw`) and is NOT shown — the horizon stays level while you steer. A
-      // flight, a swipe or a turn key turns the body too.
+      // The phone's heading: up to 10° a head turn, past it a body turn (see
+      // `bodyTurnRate`). Its pitch looks up and down; its roll is not shown,
+      // so the horizon stays level. A flight, a swipe or a turn key turns the
+      // body too.
       this.camera.rotation.set(clampPitch(this.gyro.pitch), this.heading(), 0, "YXZ");
     } else {
       this.camera.rotation.set(this.pitch, this.yaw, 0, "YXZ");
@@ -462,10 +488,15 @@ export class BazaarEngine {
     }
   }
 
+  /** The phone's turn from the body. */
+  private neck(): number {
+    return shortestAngleDelta(this.gyro.calibration, this.gyro.heading);
+  }
+
   /**
-   * The phone, read two ways (see `tiltTurnRate`): its heading and pitch are
-   * the head, looking round one-for-one; its sideways tilt, like a steering
-   * wheel, turns the body — visibly, at once — while it is past 10°.
+   * The phone, read as head and feet (see `bodyTurnRate`): turned within 10°
+   * of the body it looks; past that the body turns that way, visibly and at
+   * once, for as long as it is held there.
    */
   private followHead(dt: number) {
     const g = this.gyro;
@@ -476,7 +507,7 @@ export class BazaarEngine {
     g.roll = e.z;
     // A flight is steering the body already.
     if (this.flight && !this.flight.keepLook) return;
-    this.yaw += tiltTurnRate(g.roll, g.pitch) * dt;
+    this.yaw += bodyTurnRate(this.neck()) * dt;
   }
 
   private showMarker(x: number, z: number, why: "hover" | "walk") {
@@ -503,6 +534,10 @@ export class BazaarEngine {
     this.camera.fov = verticalFov(this.camera.aspect, this.zoom);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    // The gates' floating names: a share of the screen's height, a little
+    // smaller on a narrow screen so neighbours do not run into each other.
+    const labelHeight = this.camera.aspect < 1 ? 0.05 : 0.06;
+    this.billboards.forEach((b) => b.scale.set(labelHeight * b.userData.aspect, labelHeight, 1));
     this.invalidate();
   };
 
@@ -516,12 +551,19 @@ export class BazaarEngine {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(ndc, this.camera);
-    return this.raycaster.intersectObjects(this.targets, true)[0] ?? null;
+    // ⚠️ A HIDDEN ARROW IS NOT THERE. The raycaster tests every mesh, shown
+    // or not; an arrow hidden because there is a wall that way must not be
+    // tappable.
+    return this.raycaster.intersectObjects(this.targets, true).find((h) => h.object.visible) ?? null;
   }
 
   private onTap(clientX: number, clientY: number) {
     const hit = this.hit(clientX, clientY);
     if (!hit) return;
+    if (hit.object.userData.arrow) {
+      this.arrowStep(hit.object.userData.arrow as ArrowDir);
+      return;
+    }
     const pick = pickOf(hit.object);
     if (!pick) {
       if (hit.object.userData.ground) {
@@ -655,15 +697,60 @@ export class BazaarEngine {
     }
   };
 
-  private stepForward(forward: boolean) {
+  private stepForward(forward: boolean, squareStep = SQUARE_STEP_M) {
     if (this.zone === "food") {
       const x = nextStop(this.x, streetDirection(this.heading(), forward));
       if (x !== null) this.walkTo({ x, z: 0 }, STOP_GLIDE_SPEED);
       return;
     }
     const h = this.heading();
-    const d = forward ? SQUARE_STEP_M : -SQUARE_STEP_M;
+    const d = forward ? squareStep : -squareStep;
     this.walkTo({ x: this.x - Math.sin(h) * d, z: this.z - Math.cos(h) * d }, STROLL_SPEED);
+  }
+
+  /**
+   * A tap on a floor arrow. Forward and back are window-shopping steps in the
+   * street (the next pair of shops) and a few paces in the square; left and
+   * right are a sidestep.
+   */
+  private arrowStep(dir: ArrowDir) {
+    if (dir === "fwd" || dir === "back") {
+      this.stepForward(dir === "fwd", ARROW_STEP_M);
+      return;
+    }
+    this.walkTo(arrowTarget(dir, this.x, this.z, this.heading()), STROLL_SPEED);
+  }
+
+  /** Is there somewhere to go that way? An arrow that leads nowhere is hidden. */
+  private arrowLeads(dir: ArrowDir): boolean {
+    if (this.zone === "food" && (dir === "fwd" || dir === "back")) {
+      return nextStop(this.x, streetDirection(this.heading(), dir === "fwd")) !== null;
+    }
+    const to = arrowTarget(dir, this.x, this.z, this.heading());
+    const reach = nearestWalkable({ x: this.x, z: this.z }, to);
+    return Math.hypot(reach.x - this.x, reach.z - this.z) > 0.6;
+  }
+
+  /** Lays the four arrows on the floor ahead; hidden mid-flight and where they lead nowhere. */
+  private placeArrows() {
+    const h = this.heading();
+    const flying = !!this.flight;
+    const pitch = this.gyro.on && this.gyro.heard ? this.gyro.pitch : this.pitch;
+    const ahead = arrowAheadFor(this.camera.fov, pitch, EYE_HEIGHT);
+    // Further away, bigger, so they look the same size.
+    const size = ahead / ARROW_AHEAD_M;
+    this.arrows.forEach((arrow, dir) => {
+      const spot = arrowSpot(dir, this.x, this.z, h, ahead);
+      arrow.position.set(spot.x, 0.04, spot.z);
+      arrow.scale.setScalar(size);
+      // Laid flat (x), then turned to point its way (y), in that order.
+      arrow.rotation.set(-Math.PI / 2, arrowYaw(dir, h), 0, "YXZ");
+      arrow.visible = !flying && this.arrowLeads(dir);
+      const m = arrow.material as THREE.MeshBasicMaterial;
+      const lit = dir === this.hoverArrow;
+      m.color.setHex(lit ? 0x00b8c8 : 0xffffff);
+      m.opacity = lit ? 1 : 0.85;
+    });
   }
 
   /** A key held while the window loses focus never sends its keyup. */
@@ -728,5 +815,35 @@ function makeFloorMarker(): THREE.Mesh {
   mesh.rotation.x = -Math.PI / 2;
   mesh.renderOrder = 2;
   mesh.visible = false;
+  return mesh;
+}
+
+/**
+ * A chevron lying on the floor, pointing along −z before it is turned —
+ * Street View's arrow. White with a dark edge so it reads on the pale floor.
+ */
+function makeArrow(dir: ArrowDir): THREE.Mesh {
+  const s = new THREE.Shape();
+  // Pointing "up" (+y) in shape space; laid flat it points forward.
+  s.moveTo(0, 0.42);
+  s.lineTo(0.42, -0.02);
+  s.lineTo(0.24, -0.02);
+  s.lineTo(0.24, -0.34);
+  s.lineTo(-0.24, -0.34);
+  s.lineTo(-0.24, -0.02);
+  s.lineTo(-0.42, -0.02);
+  s.closePath();
+  const mesh = new THREE.Mesh(
+    new THREE.ShapeGeometry(s),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
+  );
+  const edge = new THREE.LineLoop(
+    new THREE.BufferGeometry().setFromPoints(s.getPoints().map((p) => new THREE.Vector3(p.x, p.y, 0.001))),
+    new THREE.LineBasicMaterial({ color: 0x06131c, transparent: true, opacity: 0.6 }),
+  );
+  edge.raycast = () => {}; // the mesh is the target, not its outline
+  mesh.add(edge);
+  mesh.userData.arrow = dir;
+  mesh.renderOrder = 3;
   return mesh;
 }

@@ -151,41 +151,119 @@ export function pointAlong(points: P2[], distance: number): P2 {
 // Head and body, when the phone looks round
 
 /**
- * ⚠️ TURN THE PHONE TO LOOK; TILT IT TO TURN (operator, 2026-09-28: "when on
- * mobile we tilt more than 10 degrees to one side, that means the body should
- * move to that side — we don't need to pause there … every time we need to
- * return the mobile back to check if the body-move has applied — annoying").
+ * ⚠️ TURN THE PHONE PAST 10° AND THE BODY TURNS THAT WAY (operator,
+ * 2026-09-28: "when on mobile we tilt more than 10 degrees to one side, that
+ * means the body should move to that side — we don't need to pause there …
+ * every time we need to return the mobile back to check if the body-move has
+ * applied — annoying"). "Tilt to one side" is turning the phone left or
+ * right, its heading — not rolling it like a steering wheel (tried that on
+ * 2026-09-28 first; wrong).
  *
- * Two axes, two jobs, no guessing between them:
- *   - turning the phone left/right (its heading) is the HEAD: it looks round
- *     one-for-one, all the way round for someone who turns in their chair;
- *   - tilting it sideways, like a steering wheel (its roll), is the FEET:
- *     past `TILT_FREE` the body turns that way, visibly and at once, faster
- *     the further it is tilted; level the phone and the turn stops, and you
- *     face wherever it took you.
+ * The phone's turn from the body (`neck`) does two things at once:
+ *   - within `LOOK_FREE` it is the head: the view follows the phone
+ *     one-for-one, so a small look stays a small look;
+ *   - past it, the head stays at the edge of that and the BODY turns that
+ *     way — visibly, at once, faster the further past — for as long as the
+ *     phone is held there. Bring the phone back within 10° and the turn
+ *     stops, facing wherever it took you.
  *
- * (Until 2026-09-28 the body followed the head by itself and the turn only
- * showed once the phone came back to rest — a turn you could not see until
- * you checked for it. And before that, only after a 0.7 s hold.)
+ * ⚠️ WHAT THIS GIVES UP: someone who stands up and turns round for real
+ * keeps turning — the phone cannot tell that from being held turned. A swipe
+ * still turns the body too.
+ *
+ * (History, all 2026-09-27/28: the body followed a held look after 0.7 s;
+ * then followed continuously but only showed once the phone came back to
+ * rest; then was steered by a sideways roll. Each was a turn you had to
+ * wait for, check for, or learn.)
  */
 const d2r = (d: number) => (d * Math.PI) / 180;
 
-/** Tilted less than this, the phone is "level": no turning, just a shaky hand. */
-export const TILT_FREE = d2r(10);
-/** Turning speed per unit of tilt past `TILT_FREE` (rad/s per rad): 20° past → 50°/s. */
-export const TILT_TURN_GAIN = 2.5;
-/** The fastest the body turns, however far the phone is tilted. */
-export const TILT_TURN_MAX = d2r(90);
-/** Looking steeply up or down, "sideways" means nothing: no turning there. */
-export const TILT_PITCH_LIMIT = d2r(60);
+/** The phone turned less than this from the body is only a look. */
+export const LOOK_FREE = d2r(10);
+/** Turning speed per unit of turn past `LOOK_FREE` (rad/s per rad): 20° past → 50°/s. */
+export const BODY_TURN_GAIN = 2.5;
+/** The fastest the body turns, however far the phone is turned. */
+export const BODY_TURN_MAX = d2r(90);
+
+/** How fast the body turns (rad/s, positive = left) with the phone `neck` from it. */
+export function bodyTurnRate(neck: number): number {
+  const past = Math.abs(neck) - LOOK_FREE;
+  if (past <= 0) return 0;
+  return Math.sign(neck) * Math.min(BODY_TURN_MAX, past * BODY_TURN_GAIN);
+}
+
+/** How much of the phone's turn the view shows as a head turn: all of it, up to 10°. */
+export function headLook(neck: number): number {
+  return Math.max(-LOOK_FREE, Math.min(LOOK_FREE, neck));
+}
+
+// ---------------------------------------------------------------------------
+// Walking arrows
 
 /**
- * How fast the body turns (rad/s, positive = left) for a phone tilted `roll`
- * (positive = tilted left, anticlockwise) while looking at `pitch`.
+ * STREET VIEW'S ARROWS ON THE FLOOR (operator, 2026-09-28: "for walking
+ * forward, sideways and even backward, provide a clear arrow in front so the
+ * user clicks and moves in that direction").
+ *
+ * ⚠️ ALL FOUR IN FRONT, THE BACK ONE TOO. An arrow behind you cannot be
+ * tapped, so the four sit in a cross on the floor ahead — forward at its far
+ * end, back at its near end pointing at you, left and right either side.
+ *
+ * ⚠️ FAR ENOUGH AHEAD TO BE ON SCREEN. From eye height (1.7 m) with a
+ * desktop's 60° view, the floor only comes into the picture about 3 m ahead;
+ * nearer, the arrows would be under the bottom edge.
  */
-export function tiltTurnRate(roll: number, pitch = 0): number {
-  if (Math.abs(pitch) > TILT_PITCH_LIMIT) return 0;
-  const past = Math.abs(roll) - TILT_FREE;
-  if (past <= 0) return 0;
-  return Math.sign(roll) * Math.min(TILT_TURN_MAX, past * TILT_TURN_GAIN);
+export type ArrowDir = "fwd" | "back" | "left" | "right";
+export const ARROW_DIRS: ArrowDir[] = ["fwd", "back", "left", "right"];
+export const ARROW_AHEAD_M = 4.2;
+const ARROW_SPREAD_M = 0.8;
+const ARROW_SIDE_M = 1.3;
+/** How far one tap on an arrow takes you (in the open square). */
+export const ARROW_STEP_M = 2.5;
+export const ARROW_SIDESTEP_M = 1.5;
+
+/** The yaw (camera convention) an arrow points along, for a visitor facing `heading`. */
+export function arrowYaw(dir: ArrowDir, heading: number): number {
+  return heading + { fwd: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 }[dir];
+}
+
+/**
+ * How far ahead the cross of arrows sits (its centre), so that even the near
+ * arrow is on screen and clear of the buttons at the bottom: the near arrow at
+ * about half-way down the lower half of the picture. `vfovDeg` is the camera's
+ * vertical angle, `pitch` where it looks (up +).
+ */
+export function arrowAheadFor(vfovDeg: number, pitch = 0, eye = 1.7): number {
+  const below = Math.max(d2r(8), Math.min(d2r(60), d2r(vfovDeg / 2) * 0.55 - pitch));
+  // The cross grows with its distance (see `arrowSpot`), so the near arrow is
+  // at ahead × (1 − spread/ahead₀); solve for ahead.
+  const near = Math.max(ARROW_AHEAD_M - ARROW_SPREAD_M, eye / Math.tan(below));
+  return near / (1 - ARROW_SPREAD_M / ARROW_AHEAD_M);
+}
+
+/** Where on the floor the arrow for `dir` sits, for a visitor at (x, z) facing `heading`. */
+export function arrowSpot(
+  dir: ArrowDir,
+  x: number,
+  z: number,
+  heading: number,
+  aheadM = ARROW_AHEAD_M,
+): { x: number; z: number } {
+  const fx = -Math.sin(heading);
+  const fz = -Math.cos(heading);
+  // Left of facing (fx, fz) is (fz, -fx).
+  const lx = fz;
+  const lz = -fx;
+  // Further away, the whole cross is bigger, so it looks the same size.
+  const k = aheadM / ARROW_AHEAD_M;
+  const along = aheadM + k * (dir === "fwd" ? ARROW_SPREAD_M : dir === "back" ? -ARROW_SPREAD_M : 0);
+  const side = k * (dir === "left" ? ARROW_SIDE_M : dir === "right" ? -ARROW_SIDE_M : 0);
+  return { x: x + fx * along + lx * side, z: z + fz * along + lz * side };
+}
+
+/** Where a tap on the arrow for `dir` walks you in the open, for a visitor facing `heading`. */
+export function arrowTarget(dir: ArrowDir, x: number, z: number, heading: number): { x: number; z: number } {
+  const d = dir === "fwd" || dir === "back" ? ARROW_STEP_M : ARROW_SIDESTEP_M;
+  const a = arrowYaw(dir, heading);
+  return { x: x - Math.sin(a) * d, z: z - Math.cos(a) * d };
 }

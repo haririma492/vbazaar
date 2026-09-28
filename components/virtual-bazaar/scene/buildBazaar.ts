@@ -3,7 +3,7 @@ import {
   FOOD_STREET, FOUNTAIN_RADIUS, SHOPS, SQUARE_RADIUS, STREETS, sideSign,
   type Shop, type Street,
 } from "@/lib/virtualBazaar/layout";
-import { hex, makeSignBoard } from "./signs";
+import { hex, makeSignBoard, makeSignSprite } from "./signs";
 
 /**
  * BUILDS THE BAZAAR from the plan in `lib/virtualBazaar/layout.ts`: the square
@@ -25,6 +25,8 @@ export type BuiltBazaar = {
   pickables: THREE.Object3D[];
   /** Floors a tap can walk to. */
   ground: THREE.Object3D[];
+  /** The gates' floating names; the engine sizes them to the screen. */
+  billboards: THREE.Sprite[];
 };
 
 const lambert = (color: number, extra: THREE.MeshLambertMaterialParameters = {}) =>
@@ -96,14 +98,25 @@ function buildGate(street: Street): THREE.Group {
   band.position.z = GATE.depth / 2 + 0.02;
   g.add(band);
 
-  const sign = makeSignBoard(street.name, 6.6, 1.3, {
+  // ⚠️ AS WIDE AS THE GATE, AND A NAME IN THE AIR ABOVE IT (operator,
+  // 2026-09-28: "make the sign of each bazaar larger and visible from far").
+  // The board fills the gate's face; the floating name keeps its size on
+  // screen however far away you stand, so every راسته reads from anywhere in
+  // the square.
+  const style = {
     bg: "#1d2a33",
     fg: "#f7ecd6",
     border: hex(street.color),
-    sub: street.open ? "ورود" : "به‌زودی",
-  });
-  sign.position.set(0, 8.3, GATE.depth / 2 + 0.03);
+    sub: street.open ? { fa: "ورود", en: "Enter" } : { fa: "به‌زودی", en: "Coming soon" },
+  };
+  const label = { fa: street.name, en: street.en };
+  const sign = makeSignBoard(label, 8.6, 2.1, style);
+  sign.position.set(0, 8.2, GATE.depth / 2 + 0.03);
   g.add(sign);
+  const floating = makeSignSprite(label, 4.2, { ...style, sub: undefined });
+  floating.position.set(0, 12.4, 0);
+  floating.userData.billboard = true;
+  g.add(floating);
 
   if (!street.open) {
     // A closed wooden door in the arch.
@@ -214,12 +227,13 @@ function buildShop(shop: Shop, logo: HTMLImageElement | null): THREE.Group {
         bg: shop.id === "sarekooche" ? "#00b8c8" : hex(shop.color),
         fg: shop.id === "sarekooche" ? "#06131c" : "#ffffff",
         border: "#f0fffc",
-        sub: shop.id === "sarekooche" ? "Sar-eh Kooche" : "در سرکوچه",
+        sub: shop.id === "sarekooche" ? { fa: "Sar-eh Kooche", en: "سرکوچه" } : { fa: "در سرکوچه", en: "at Sarekooche" },
         logo,
       }
     : SIGN_WOOD;
 
-  const sign = makeSignBoard(shop.name, 4.4, 1.1, style);
+  const label = { fa: shop.name, en: shop.en };
+  const sign = makeSignBoard(label, 4.4, 1.1, style);
   sign.position.set(shop.x, 4.65, s * (hw - 0.02));
   sign.rotation.y = toStreet;
   g.add(sign);
@@ -231,9 +245,9 @@ function buildShop(shop: Shop, logo: HTMLImageElement | null): THREE.Group {
     // their doorway in the house colour.
     const hanging = new THREE.Group();
     hanging.position.set(shop.x - 2.3, 3.5, s * (hw - 0.9));
-    const front = makeSignBoard(shop.name, 1.9, 0.95, style);
+    const front = makeSignBoard(label, 1.9, 0.95, style);
     front.rotation.y = -Math.PI / 2; // faces the gate (−x)
-    const rear = makeSignBoard(shop.name, 1.9, 0.95, style);
+    const rear = makeSignBoard(label, 1.9, 0.95, style);
     rear.rotation.y = Math.PI / 2;
     rear.position.x = 0.01;
     const rod = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.6, 0.05), lambert(0x333333));
@@ -312,7 +326,10 @@ function buildFoodStreet(shops: THREE.Group[], logo: HTMLImageElement | null): T
 
   const endWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, 10, hw * 2 + 2), pierMat);
   endWall.position.set(end + 0.3, 5, 0);
-  const endSign = makeSignBoard("ادامهٔ بازار", 4, 1, { ...SIGN_WOOD, sub: "به‌زودی" });
+  const endSign = makeSignBoard({ fa: "ادامهٔ بازار", en: "More of the bazaar" }, 4, 1, {
+    ...SIGN_WOOD,
+    sub: { fa: "به‌زودی", en: "Coming soon" },
+  });
   endSign.position.set(end - 0.02, 3.2, 0);
   endSign.rotation.y = -Math.PI / 2;
   g.add(endWall, endSign);
@@ -363,7 +380,11 @@ export function buildBazaar(): BuiltBazaar {
     if (o.userData.ground) ground.push(o);
   });
 
-  return { root, pickables, ground };
+  const billboards: THREE.Sprite[] = [];
+  root.traverse((o) => {
+    if (o.userData.billboard) billboards.push(o as THREE.Sprite);
+  });
+  return { root, pickables, ground, billboards };
 }
 
 /** The `Pick` an intersected object belongs to, looking up its ancestors. */

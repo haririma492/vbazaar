@@ -21,6 +21,7 @@ test("Sarekooche's two shops have the addresses we print", () => {
   assert.equal(addressPath(shopById("sarekooche")!), "/vb/khoraki/5-sarekooche");
   assert.equal(addressPath(shopById("butcher")!), "/vb/khoraki/4-butcher");
   assert.equal(addressText(shopById("sarekooche")!), "بازار سرکوچه · راسته خوراکی · حجرهٔ ۵ · سرکوچه");
+  assert.equal(addressText(shopById("sarekooche")!, "en"), "Sarekooche Bazaar · Food Street · Unit 5 · Sarekooche");
 });
 
 test("a link lands in front of its shop, by number, whatever the name says", () => {
@@ -43,4 +44,8 @@ test("the square, a street, and what is not an address", () => {
   assert.equal(parseAddress(["khoraki", "5", "x"]), undefined);
   assert.equal(shopByUnit(food, 0), undefined);
   assert.equal(streetAddressPath(STREETS.find((s) => s.id === "gold")!), undefined, "closed streets have none");
+});
+
+test("every street and shop has an English name", () => {
+  for (const x of [...STREETS, ...SHOPS]) assert.ok(x.en && /^[\x20-\x7e]+$/.test(x.en), x.id);
 });
