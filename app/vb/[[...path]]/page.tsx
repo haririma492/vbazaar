@@ -12,7 +12,7 @@ import {
  * The rules are `lib/virtualBazaar/layout.ts` («The virtual address»).
  *
  * The address stays in the bar (it is what a visitor copies and shares); the
- * 3D is the same page as `/vbazaar`.
+ * 3D is the same page as `/vca`.
  */
 type Props = { params: { path?: string[] } };
 
