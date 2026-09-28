@@ -271,6 +271,22 @@ export const ARROW_STEP_M = 2.5;
 export const ARROW_SIDESTEP_M = 3.5;
 
 
+/**
+ * ⚠️ THE SIDE ARROWS TURN, THEY DO NOT STEP (operator, 2026-09-28: "change
+ * the side arrows to turn-body arrows: the right one turns the body 60° to
+ * the right, the left one the opposite; make their shape represent a turn").
+ * A tap turns the body by `TURN_ARROW_DEG`; a finger held on one keeps turning
+ * at `TURN_ARROW_RATE`.
+ */
+export const TURN_ARROW_DEG = 60;
+export const TURN_ARROW_RATE = d2r(60);
+export const isTurnArrow = (dir: ArrowDir) => dir === "left" || dir === "right";
+
+/** The yaw after a tap on a turn arrow: 60° left (yaw +) or right (yaw −). */
+export function turnArrowYaw(dir: ArrowDir, yaw: number): number {
+  return yaw + (dir === "left" ? 1 : -1) * d2r(TURN_ARROW_DEG);
+}
+
 /** The yaw (camera convention) an arrow points along, for a visitor facing `heading`. */
 export function arrowYaw(dir: ArrowDir, heading: number): number {
   return heading + { fwd: 0, back: Math.PI, left: Math.PI / 2, right: -Math.PI / 2 }[dir];
@@ -308,6 +324,14 @@ export function arrowSpot(
   const along = aheadM + k * (dir === "fwd" ? ARROW_SPREAD_M : dir === "back" ? -ARROW_SPREAD_M : 0);
   const side = k * (dir === "left" ? ARROW_SIDE_M : dir === "right" ? -ARROW_SIDE_M : 0);
   return { x: x + fx * along + lx * side, z: z + fz * along + lz * side };
+}
+
+/**
+ * How the arrow for `dir` lies on the floor: forward and back point their way;
+ * the turn arrows face the visitor's way, their curve showing the turn.
+ */
+export function arrowFacing(dir: ArrowDir, heading: number): number {
+  return isTurnArrow(dir) ? heading : arrowYaw(dir, heading);
 }
 
 /** Where a tap on the arrow for `dir` walks you in the open, for a visitor facing `heading`. */

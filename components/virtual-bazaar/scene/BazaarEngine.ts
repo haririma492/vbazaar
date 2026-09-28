@@ -5,7 +5,8 @@ import {
   type Point, type Pose, type Zone,
 } from "@/lib/virtualBazaar/layout";
 import {
-  ARROW_DIRS, ARROW_AHEAD_M, ARROW_STEP_M, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw, type ArrowDir,
+  ARROW_DIRS, ARROW_AHEAD_M, ARROW_STEP_M, TURN_ARROW_RATE, arrowAheadFor, arrowFacing, arrowSpot, isTurnArrow,
+  turnArrowYaw, arrowYaw, type ArrowDir,
   bodyTurnRate, clampPitch, clampZoom, easeInOutCubic, easeTurnRate, headLook,
   PHONE_STILL_RAD_S, recentreStep, shortestAngleDelta, flightSeconds, isTap, lerpAngle, lookFromDrag,
   pathLength, pointAlong, SQUARE_STEP_M, STEP_PRESS_S, STOP_GLIDE_SPEED, STROLL_SPEED, tapSlop,
@@ -212,6 +213,12 @@ export class BazaarEngine {
 
     this.events.onZone(this.zone);
     this.frame = requestAnimationFrame(this.tick);
+    // For checking the bazaar in a test browser: `?vbdebug` exposes the engine.
+    try {
+      if (new URLSearchParams(window.location.search).has("vbdebug")) (window as unknown as { __vb: unknown }).__vb = this;
+    } catch {
+      /* never */
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -576,9 +583,12 @@ export class BazaarEngine {
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     this.raycaster.setFromCamera(ndc, this.camera);
-    // ⚠️ A HIDDEN ARROW IS NOT THERE. The raycaster tests every mesh, shown
-    // or not; an arrow hidden because there is a wall that way must not be
-    // tappable.
+    // ⚠️ THE ARROWS FIRST, WHATEVER STANDS NEARER. They are drawn over
+    // everything, so a tap that lands on one is the arrow's — even where a
+    // shop counter stands between the eye and the floor it lies on. Nearest-
+    // first sent a tap on the right turn arrow into the butcher's.
+    const arrow = this.raycaster.intersectObjects([...this.arrows.values()], true).find((h) => h.object.visible);
+    if (arrow) return arrow;
     return this.raycaster.intersectObjects(this.targets, true).find((h) => h.object.visible) ?? null;
   }
 
@@ -762,11 +772,33 @@ export class BazaarEngine {
    * right are a sidestep.
    */
   private arrowStep(dir: ArrowDir) {
-    if (dir === "fwd" || dir === "back") {
-      this.stepForward(dir === "fwd", ARROW_STEP_M);
+    if (isTurnArrow(dir)) {
+      this.turnBy(dir);
       return;
     }
-    this.walkTo(arrowTarget(dir, this.x, this.z, this.heading()), STROLL_SPEED);
+    this.stepForward(dir === "fwd", ARROW_STEP_M);
+  }
+
+  /** A tap on a turn arrow: the body turns 60° that way, smoothly, where it stands. */
+  private turnBy(dir: ArrowDir) {
+    const from = this.heading();
+    // With the phone looking, turn from where the head is now.
+    if (this.gyro.on && this.gyro.heard) {
+      this.yaw = from;
+      this.gyro.calibration = this.gyro.heading;
+    }
+    this.flight = {
+      points: [{ x: this.x, z: this.z }],
+      total: 0,
+      duration: this.reducedMotion ? 0 : 0.55,
+      elapsed: 0,
+      fromYaw: this.yaw,
+      toYaw: turnArrowYaw(dir, this.yaw),
+      fromPitch: this.pitch,
+      toPitch: this.pitch,
+      keepLook: false,
+    };
+    this.invalidate();
   }
 
   /** Walking while a finger stays on an arrow; true while it moves. */
@@ -776,6 +808,10 @@ export class BazaarEngine {
     const heldS = (now - hold.t) / 1000;
     if (heldS < STEP_PRESS_S) return false;
     this.flight = null;
+    if (isTurnArrow(hold.dir)) {
+      this.yaw += (hold.dir === "left" ? 1 : -1) * TURN_ARROW_RATE * dt;
+      return true;
+    }
     const a = arrowYaw(hold.dir, this.heading());
     // The arrows' stroll is a little brisker than the keys'.
     const v = walkSpeed(heldS - STEP_PRESS_S, false) * 1.4 * dt;
@@ -797,7 +833,7 @@ export class BazaarEngine {
       arrow.position.set(spot.x, 0.04, spot.z);
       arrow.scale.setScalar(size);
       // Laid flat (x), then turned to point its way (y), in that order.
-      arrow.rotation.set(-Math.PI / 2, arrowYaw(dir, h), 0, "YXZ");
+      arrow.rotation.set(-Math.PI / 2, arrowFacing(dir, h), 0, "YXZ");
       // ⚠️ ALWAYS THERE (operator, 2026-09-28: "make arrows always available,
       // do not eliminate them when they are hitting the wall"). Walking into
       // a wall simply stops at it.
@@ -876,24 +912,18 @@ function makeFloorMarker(): THREE.Mesh {
 }
 
 /**
- * STREET VIEW'S ARROW, MADE TO BE TAPPED: a long chevron lying on the floor,
- * pointing along −z before it is turned. Three layers, flat on each other — a
+ * STREET VIEW'S ARROW, MADE TO BE TAPPED: lying on the floor, pointing along
+ * −z before it is turned — a slim straight arrow for forward and back, a
+ * curved one that bends the way it turns for the two turn arrows. Three layers, flat on each other — a
  * soft dark shadow, a teal rim, a white face — so it reads as a button on the
  * pale paving, not a mark painted on it. Every layer answers a tap; the face
  * is the one that lights under the mouse.
  */
 function makeArrow(dir: ArrowDir): THREE.Mesh {
-  const s = new THREE.Shape();
-  // Pointing "up" (+y) in shape space; laid flat it points forward. 1.2 m long.
-  s.moveTo(0, 0.62);
-  s.lineTo(0.5, 0.1);
-  s.lineTo(0.22, 0.1);
-  s.lineTo(0.22, -0.58);
-  s.lineTo(-0.22, -0.58);
-  s.lineTo(-0.22, 0.1);
-  s.lineTo(-0.5, 0.1);
-  s.closePath();
-  const geometry = new THREE.ShapeGeometry(s);
+  const s = isTurnArrow(dir) ? turnArrowShape() : straightArrowShape();
+  const geometry = new THREE.ShapeGeometry(s, 24);
+  // The left turn is the right turn in a mirror.
+  if (dir === "left") geometry.scale(-1, 1, 1);
   const layer = (color: number, opacity: number, scale: number, lift: number, dy = 0) => {
     const m = new THREE.Mesh(
       geometry,
@@ -913,9 +943,59 @@ function makeArrow(dir: ArrowDir): THREE.Mesh {
   rim.renderOrder = 4;
   const shadow = layer(0x06131c, 0.28, 1.22, 0, -0.07);
   shadow.renderOrder = 3;
-  // The face is the arrow; the rim and shadow ride on it.
-  face.add(rim, shadow);
+  // ⚠️ A TAP PAD WIDER THAN THE ARROW. The arrows are slim and the turn
+  // arrows hollow in the middle of their curve; a finger landing in that
+  // hollow, or just off the edge, still means the arrow. An unseen disc
+  // under each one takes the tap.
+  const padGeometry = new THREE.CircleGeometry(0.78, 24);
+  const pad = new THREE.Mesh(padGeometry, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+  pad.userData.arrow = dir;
+  // The face is the arrow; the rim, shadow and pad ride on it.
+  face.add(rim, shadow, pad);
   rim.position.z -= face.position.z;
   shadow.position.z -= face.position.z;
   return face;
+}
+
+/**
+ * A slim straight arrow, 1.2 m long, pointing "up" (+y) in shape space; laid
+ * flat it points forward. (Thinner than before, operator 2026-09-28.)
+ */
+function straightArrowShape(): THREE.Shape {
+  const s = new THREE.Shape();
+  s.moveTo(0, 0.62);
+  s.lineTo(0.3, 0.22);
+  s.lineTo(0.1, 0.22);
+  s.lineTo(0.1, -0.58);
+  s.lineTo(-0.1, -0.58);
+  s.lineTo(-0.1, 0.22);
+  s.lineTo(-0.3, 0.22);
+  s.closePath();
+  return s;
+}
+
+/**
+ * A turn-right arrow: a slim band that sets off forward and curves round to
+ * the right, a head on its end pointing right. (Mirrored for the left.)
+ */
+function turnArrowShape(): THREE.Shape {
+  const cx = 0.25;
+  const cy = -0.5;
+  const r = 0.6;
+  const half = 0.09;
+  const ro = r + half;
+  const ri = r - half;
+  const s = new THREE.Shape();
+  s.moveTo(cx - ro, cy);
+  // Outer edge: from straight ahead, round to the right.
+  s.absarc(cx, cy, ro, Math.PI, Math.PI / 2, true);
+  // The head, pointing right (+x).
+  s.lineTo(cx, cy + r + 0.22);
+  s.lineTo(cx + 0.36, cy + r);
+  s.lineTo(cx, cy + r - 0.22);
+  s.lineTo(cx, cy + ri);
+  // Inner edge back to the start.
+  s.absarc(cx, cy, ri, Math.PI / 2, Math.PI, false);
+  s.closePath();
+  return s;
 }

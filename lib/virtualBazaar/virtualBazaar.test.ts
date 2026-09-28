@@ -14,7 +14,7 @@ import {
 } from "./layout.ts";
 import {
   STROLL_SPEED, STEP_PRESS_S, WALK_EASE_IN_S, walkSpeed,
-  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, easeTurnRate, headLook, recentreStep, RECENTRE_STILL_S, ARROW_DIRS, arrowAheadFor, arrowSpot, arrowTarget, arrowYaw,
+  LOOK_FREE, BODY_TURN_MAX, bodyTurnRate, easeTurnRate, headLook, recentreStep, RECENTRE_STILL_S, ARROW_DIRS, arrowAheadFor, arrowFacing, arrowSpot, arrowTarget, arrowYaw, isTurnArrow, turnArrowYaw,
   easeInOutCubic, isTap, tapSlop, lerpAngle, lookFromDrag, pathLength, pointAlong,
   PITCH_LIMIT, shortestAngleDelta, verticalFov,
 } from "./motion.ts";
@@ -307,15 +307,21 @@ test("arrows: all four sit in front — the back one too — in a cross", () => 
   }
 });
 
-test("arrows: each one walks you its own way", () => {
+test("arrows: forward and back walk; the side ones turn you 60°", () => {
   const east = yawToward(1, 0);
-  const at = (d: "fwd" | "back" | "left" | "right") => arrowTarget(d, 0, 0, east);
-  assert.ok(at("fwd").x > 2 && Math.abs(at("fwd").z) < 1e-9);
-  assert.ok(at("back").x < -2);
-  // Facing east, left is north (−z) and right is south (+z).
-  assert.ok(at("left").z < -1 && Math.abs(at("left").x) < 1e-9);
-  assert.ok(at("right").z > 1);
+  assert.ok(arrowTarget("fwd", 0, 0, east).x > 2);
+  assert.ok(arrowTarget("back", 0, 0, east).x < -2);
   close(arrowYaw("back", east), east + Math.PI);
+  assert.equal(isTurnArrow("left") && isTurnArrow("right") && !isTurnArrow("fwd"), true);
+  // Right turns right (yaw −), left turns left (yaw +), by 60°.
+  close(turnArrowYaw("right", east), east - 60 * DEG);
+  close(turnArrowYaw("left", east), east + 60 * DEG);
+  // Facing north then tapping right faces north-east-ish: 60° clockwise.
+  const n = turnArrowYaw("right", 0);
+  assert.ok(-Math.sin(n) > 0.8, "now looking mostly east");
+  // The turn arrows lie facing the visitor's way; the others point their own.
+  close(arrowFacing("left", east), east);
+  close(arrowFacing("back", east), east + Math.PI);
 });
 
 test("arrows: further ahead on a desktop's narrower view, and when looking up", () => {
