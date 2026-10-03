@@ -43,7 +43,19 @@ import {
 } from "@/lib/splats/tour";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
-const BASE = (process.env.NEXT_PUBLIC_SPLAT_BASE_URL || "").trim().replace(/\/+$/, "");
+/** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
+const BUILT_BASE = (process.env.NEXT_PUBLIC_SPLAT_BASE_URL || "").trim().replace(/\/+$/, "");
+
+async function splatBase(): Promise<string> {
+  if (BUILT_BASE) return BUILT_BASE;
+  try {
+    const res = await fetch("/api/splats/config", { cache: "no-store" });
+    const { base } = (await res.json()) as { base: string | null };
+    return (base || "").trim().replace(/\/+$/, "");
+  } catch {
+    return "";
+  }
+}
 const FADE_MS = 250;
 const DECODE_TIMEOUT_MS = 120_000;
 
@@ -139,6 +151,7 @@ export default function SplatTour() {
   const [editing, setEditing] = useState(false);
   const [edit, setEdit] = useState({ to: "", label: "", saved: "" });
   const tourRef = useRef<Tour | null>(null);
+  const baseRef = useRef("");
   const trailRef = useRef<Trail>([]);
   const currentRef = useRef<string | null>(null);
   const exitHandler = useRef<(exit: Exit) => void>(() => {});
@@ -266,7 +279,7 @@ export default function SplatTour() {
           flip = params.get("flip") !== "0";
         } else {
           const s = tourRef.current ? sceneById(tourRef.current, id) : null;
-          src = s && BASE ? `${BASE}/${s.file}` : null;
+          src = s && baseRef.current ? `${baseRef.current}/${s.file}` : null;
           flip = s?.flip ?? true;
         }
         if (!src) throw new Error("No such scene, or NEXT_PUBLIC_SPLAT_BASE_URL is not set.");
@@ -449,13 +462,14 @@ export default function SplatTour() {
       void engine.current?.show("__single", { position: [0, 0, 0], yaw: 0, pitch: 0 }).catch(() => {});
       return;
     }
-    if (!BASE) {
-      setError("NEXT_PUBLIC_SPLAT_BASE_URL is not set on this host.");
-      return;
-    }
     (async () => {
+      baseRef.current = await splatBase();
+      if (!baseRef.current) {
+        setError("NEXT_PUBLIC_SPLAT_BASE_URL is not set on this host (Railway → Variables: the bucket's public address).");
+        return;
+      }
       try {
-        const res = await fetch(`${BASE}/scenes/tour.json`, { cache: "no-cache" });
+        const res = await fetch(`${baseRef.current}/scenes/tour.json`, { cache: "no-cache" });
         const t = res.ok ? parseTour(await res.json()) : emptyTour();
         if (!t.scenes.length) throw new Error("The tour has no scenes yet. Upload one at /operator/splats.");
         setTour(t);
