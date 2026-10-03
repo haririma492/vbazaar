@@ -469,7 +469,10 @@ export default function SplatTour() {
         return;
       }
       try {
-        const res = await fetch(`${baseRef.current}/scenes/tour.json`, { cache: "no-cache" });
+        const res = await fetch(`${baseRef.current}/scenes/tour.json`, { cache: "no-cache" }).catch(() => {
+          // The bucket answered without CORS headers (or not at all): the browser hides which.
+          throw new Error(`Could not read ${baseRef.current}/scenes/tour.json — the bucket has no CORS policy allowing ${window.location.origin}, or the address is wrong.`);
+        });
         const t = res.ok ? parseTour(await res.json()) : emptyTour();
         if (!t.scenes.length) throw new Error("The tour has no scenes yet. Upload one at /operator/splats.");
         setTour(t);
