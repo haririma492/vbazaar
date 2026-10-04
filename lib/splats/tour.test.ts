@@ -6,7 +6,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ORIGIN_POSE, addExit, emptyTour, enter, leave, parseTour, removeExit, removeScene, sceneById, updateScene, upsertScene,
+  ORIGIN_POSE, addExit, emptyTour, enter, groundDistance, leave, parseTour, removeExit, removeScene, sceneById, updateScene, upsertScene,
+  withinWalk,
   type Pose,
 } from "./tour.ts";
 
@@ -91,4 +92,23 @@ test("a tour from the bucket is checked: bad scenes, files and exits are dropped
   assert.equal(hall.flip, false);
   assert.deepEqual(hall.exits.map((e) => [e.id, e.at]), [["a", [1, 0, 3]]]);
   assert.deepEqual(parseTour(null), { version: 1, start: "hallway", scenes: [] });
+});
+
+test("a walking limit: none by default, never negative, and kept when a scene is re-uploaded", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.walkRadius, 0);
+  t = updateScene(t, "hallway", { walkRadius: 6 });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v2.spz");
+  assert.equal(sceneById(t, "hallway")!.walkRadius, 6);
+  assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", walkRadius: -3 }] }).scenes[0].walkRadius, 0);
+  assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", walkRadius: "far" }] }).scenes[0].walkRadius, 0);
+});
+
+test("walking past the limit stops at its edge, keeping height and direction", () => {
+  assert.deepEqual(withinWalk([3, 1.6, 4], [0, 0, 0], 10), [3, 1.6, 4]);
+  assert.deepEqual(withinWalk([6, 1.6, 8], [0, 0, 0], 5), [3, 1.6, 4]);
+  assert.deepEqual(withinWalk([100, 2, 0], [1, 0, 1], 0), [100, 2, 0]);
+  const p = withinWalk([11, 0, 1], [1, 0, 1], 4);
+  assert.ok(Math.abs(groundDistance(p, [1, 0, 1]) - 4) < 1e-9);
+  assert.equal(groundDistance([0, 5, 0], [3, -2, 4]), 5);
 });

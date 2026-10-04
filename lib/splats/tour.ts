@@ -44,6 +44,12 @@ export type TourScene = {
   /** Most reconstructions are y-down; true turns the splat upright. */
   flip: boolean;
   start: Pose;
+  /**
+   * How far (metres, on the ground) a visitor may walk from `start`; 0 is no
+   * limit. A splat holds everything the camera saw — the inside of a shop
+   * through its window too — and only looks right near where it was filmed.
+   */
+  walkRadius: number;
   exits: Exit[];
 };
 
@@ -102,7 +108,7 @@ export function parseTour(raw: unknown): Tour {
       exitIds.add(eid);
       exits.push({ id: eid, to, label: label(x.label, to), at: vec3(x.at), ...(x.arrive ? { arrive: pose(x.arrive) } : {}) });
     }
-    scenes.push({ id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), exits });
+    scenes.push({ id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), walkRadius: Math.max(0, num(r.walkRadius)), exits });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
   for (const s of scenes) s.exits = s.exits.filter((e) => seen.has(e.to));
@@ -119,7 +125,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, walkRadius: 0, exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -128,7 +134,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "walkRadius">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 
@@ -171,4 +177,23 @@ export function enter(t: Tour, trail: Trail, here: string, pose: Pose, exit: Exi
 export function leave(trail: Trail): { trail: Trail; scene: string; pose: Pose } | null {
   const last = trail[trail.length - 1];
   return last ? { trail: trail.slice(0, -1), scene: last.scene, pose: last.pose } : null;
+}
+
+/**
+ * Where a visitor may stand: `p` pulled back onto the circle of `radius`
+ * around `centre` when it strays past it (height untouched). Radius 0: anywhere.
+ */
+export function withinWalk(p: Vec3, centre: Vec3, radius: number): Vec3 {
+  if (!(radius > 0)) return p;
+  const dx = p[0] - centre[0];
+  const dz = p[2] - centre[2];
+  const d = Math.hypot(dx, dz);
+  if (d <= radius) return p;
+  const k = radius / d;
+  return [centre[0] + dx * k, p[1], centre[2] + dz * k];
+}
+
+/** The ground distance between two points — what "Limit walking to here" measures. */
+export function groundDistance(a: Vec3, b: Vec3): number {
+  return Math.hypot(a[0] - b[0], a[2] - b[2]);
 }

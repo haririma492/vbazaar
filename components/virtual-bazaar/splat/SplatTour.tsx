@@ -39,10 +39,10 @@ import * as THREE from "three";
 import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  addExit, emptyTour, enter, leave, parseTour, removeExit, sceneById, updateScene,
+  addExit, emptyTour, enter, groundDistance, leave, parseTour, removeExit, sceneById, updateScene, withinWalk,
   type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
-import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
+import { deviceQuaternion, hasDeviceOrientation, headingOf, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 /** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
 const BUILT_BASE = (process.env.NEXT_PUBLIC_SPLAT_BASE_URL || "").trim().replace(/\/+$/, "");
@@ -139,7 +139,19 @@ type Engine = {
   setGyro: (on: boolean) => void;
   /** The on-screen stick: x right, y down, each −1…1; (0, 0) stands still. */
   setMove: (x: number, y: number) => void;
+  /** How far from `centre` a visitor may walk (metres on the ground; 0 = anywhere). */
+  setLimit: (centre: Vec3, radius: number) => void;
+  /** Walking speed, metres per second at full stick. */
+  setSpeed: (mps: number) => void;
 };
+
+/** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
+const SPEEDS = [
+  { label: "Slow", mps: 0.35 },
+  { label: "Normal", mps: 0.8 },
+  { label: "Fast", mps: 1.6 },
+];
+const SPEED_KEY = "sk-splat-speed";
 
 /**
  * THE WALKING STICK — a phone has no W A S D. Drag the knob up to walk the way
@@ -252,6 +264,9 @@ export default function SplatTour() {
     let gyroOn = false;
     let stickX = 0;
     let stickY = 0;
+    let walkSpeed = SPEEDS[1].mps;
+    let limitCentre: Vec3 = [0, 0, 0];
+    let limitRadius = 0;
     let gyroHave = false;
     const gyroQ = new THREE.Quaternion();
 
@@ -336,6 +351,9 @@ export default function SplatTour() {
       async show(id, pose) {
         let src: string | null;
         let flip = true;
+        // The new scene's walking limit, set with its pose: the old one would
+        // otherwise pull the visitor back for a frame on arrival.
+        let limit: { centre: Vec3; radius: number } = { centre: [0, 0, 0], radius: 0 };
         if (id === "__single") {
           src = safeSrc(params.get("src") || "");
           flip = params.get("flip") !== "0";
@@ -343,6 +361,7 @@ export default function SplatTour() {
           const s = tourRef.current ? sceneById(tourRef.current, id) : null;
           src = s && baseRef.current ? `${baseRef.current}/${s.file}` : null;
           flip = s?.flip ?? true;
+          if (s) limit = { centre: s.start.position, radius: s.walkRadius };
         }
         if (!src) throw new Error("No such scene, or NEXT_PUBLIC_SPLAT_BASE_URL is not set.");
         setLoading(0);
@@ -350,6 +369,8 @@ export default function SplatTour() {
           const mesh = await loadMesh(id, src, flip);
           mesh.quaternion.set(flip ? 1 : 0, 0, 0, flip ? 0 : 1);
           meshes.forEach((m, k) => (m.visible = k === id));
+          limitCentre = limit.centre;
+          limitRadius = limit.radius;
           applyPose(pose);
         } catch (e) {
           rep.error = (e as Error).message;
@@ -386,6 +407,13 @@ export default function SplatTour() {
       setMove(x, y) {
         stickX = x;
         stickY = y;
+      },
+      setLimit(centre, radius) {
+        limitCentre = centre;
+        limitRadius = radius;
+      },
+      setSpeed(mps) {
+        walkSpeed = mps;
       },
     };
 
@@ -479,22 +507,29 @@ export default function SplatTour() {
       if (gyroOn && gyroHave) camera.quaternion.copy(gyroQ);
       else camera.quaternion.setFromEuler(look.set(-pitch, -yaw, 0));
 
-      const speed = (keys.has("shift") ? 4 : 1.5) * dt;
-      camera.getWorldDirection(forward);
-      forward.y = 0;
-      forward.normalize();
-      right.crossVectors(forward, camera.up).normalize();
+      // ⚠️ WALK BY THE COMPASS HEADING, not by where the camera points. With the
+      // phone tilted at the floor the pointing direction, flattened, swings
+      // wildly and walking felt like spinning; the heading stays steady.
+      const heading = headingOf(camera.quaternion);
+      forward.set(-Math.sin(heading), 0, -Math.cos(heading));
+      right.set(Math.cos(heading), 0, -Math.sin(heading));
+      const speed = walkSpeed * (keys.has("shift") ? 2.5 : 1) * dt;
       if (keys.has("w") || keys.has("arrowup")) camera.position.addScaledVector(forward, speed);
       if (keys.has("s") || keys.has("arrowdown")) camera.position.addScaledVector(forward, -speed);
-      if (keys.has("d") || keys.has("arrowright")) camera.position.addScaledVector(right, speed);
-      if (keys.has("a") || keys.has("arrowleft")) camera.position.addScaledVector(right, -speed);
+      if (keys.has("d") || keys.has("arrowright")) camera.position.addScaledVector(right, speed * 0.6);
+      if (keys.has("a") || keys.has("arrowleft")) camera.position.addScaledVector(right, -speed * 0.6);
       if (keys.has("e")) camera.position.y += speed;
       if (keys.has("q")) camera.position.y -= speed;
-      // The stick: up is forward (screen y grows downward).
+      // The stick: up is forward (screen y grows downward). Squared, so a small
+      // push creeps and only a full push walks; sidesteps at 60 %.
       if (stickX || stickY) {
-        camera.position.addScaledVector(forward, -stickY * 1.5 * dt);
-        camera.position.addScaledVector(right, stickX * 1.5 * dt);
+        const push = Math.min(1, Math.hypot(stickX, stickY));
+        const k = (push * push) / (push || 1);
+        camera.position.addScaledVector(forward, -stickY * k * walkSpeed * dt);
+        camera.position.addScaledVector(right, stickX * k * walkSpeed * 0.6 * dt);
       }
+      // The scene's walking limit (`walkRadius`): stop at its edge.
+      if (limitRadius > 0) camera.position.set(...withinWalk(camera.position.toArray() as Vec3, limitCentre, limitRadius));
 
       renderer.render(scene, camera);
 
@@ -564,7 +599,22 @@ export default function SplatTour() {
   const here = tour && current ? sceneById(tour, current) : null;
   useEffect(() => {
     engine.current?.setMarkers(here?.exits ?? []);
+    engine.current?.setLimit(here?.start.position ?? [0, 0, 0], here?.walkRadius ?? 0);
   }, [here]);
+
+  // Walking speed: the visitor's last choice on this device.
+  const [speedIx, setSpeedIx] = useState(1);
+  useEffect(() => {
+    try {
+      const saved = Number(window.localStorage.getItem(SPEED_KEY));
+      if (saved >= 0 && saved < SPEEDS.length) setSpeedIx(saved);
+    } catch {
+      /* private mode: Normal */
+    }
+  }, []);
+  useEffect(() => {
+    engine.current?.setSpeed(SPEEDS[speedIx].mps);
+  }, [speedIx]);
 
   async function go(sceneId: string, pose: Pose) {
     setFade(true);
@@ -703,6 +753,17 @@ export default function SplatTour() {
             <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => changeTour(updateScene(tour, here.id, { start: engine.current!.pose() }))}>
               Visitors start here
             </button>
+            <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => {
+              const r = groundDistance(here.start.position, engine.current!.pose().position);
+              changeTour(updateScene(tour, here.id, { walkRadius: Math.max(0.5, Math.round(r * 10) / 10) }));
+            }}>
+              Limit walking to here
+            </button>
+            {here.walkRadius > 0 && (
+              <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => changeTour(updateScene(tour, here.id, { walkRadius: 0 }))}>
+                No limit ({here.walkRadius} m)
+              </button>
+            )}
             <button className="rounded-full border border-emerald-300/60 px-3 py-1 text-emerald-100" onClick={() => void saveTour()}>Save tour</button>
           </div>
           {here.exits.map((e) => (
@@ -716,6 +777,17 @@ export default function SplatTour() {
       )}
 
       <WalkStick onMove={(x, y) => engine.current?.setMove(x, y)} />
+      <button
+        dir="ltr"
+        onClick={() => {
+          const next = (speedIx + 1) % SPEEDS.length;
+          setSpeedIx(next);
+          try { window.localStorage.setItem(SPEED_KEY, String(next)); } catch { /* fine */ }
+        }}
+        className="absolute bottom-[13.5rem] right-5 w-32 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
+      >
+        Speed: {SPEEDS[speedIx].label}
+      </button>
 
       <div dir="ltr" className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
         <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
