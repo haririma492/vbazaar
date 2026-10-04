@@ -32,10 +32,13 @@ import { isSceneId, kindOfFile, partRange, sceneIdFromFileName, webFileName } fr
 import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene, type Tour } from "@/lib/splats/tour";
 
 const API = "/api/operator/splats";
-const PARALLEL = 4;
+const PARALLEL = 3;
 const TRIES = 4;
-/** A dropped connection (Wi-Fi, a laptop dozing) is retried for about three minutes before giving up. */
-const DROP_TRIES = 10;
+/**
+ * ⚠️ A DROPPED CONNECTION IS RETRIED UNTIL «PAUSE», not given up on: a home
+ * upload link drops every few minutes, and pressing «Start again» each time
+ * is the operator doing the computer's job. Waits back off to 30 s.
+ */
 const MAX_BACKOFF_MS = 30_000;
 const RESUME_PREFIX = "sk-splat-upload:";
 
@@ -67,6 +70,15 @@ class Stopped extends Error {}
 class NoEtag extends Error {}
 /** The PUT never got an answer: the network went away mid-part. */
 class Dropped extends Error {}
+/** R2 answered, with a refusal. 5xx and 408/429 are passing; the rest are not. */
+class R2Status extends Error {
+  constructor(readonly status: number) {
+    super(`R2 answered ${status}`);
+  }
+  get passing() {
+    return this.status >= 500 || this.status === 408 || this.status === 429;
+  }
+}
 
 async function api<T = any>(body?: object): Promise<T> {
   const res = await fetch(API, {
@@ -129,7 +141,7 @@ function putPart(url: string, blob: Blob, onBytes: (loaded: number) => void, tra
     xhr.upload.onprogress = (e) => onBytes(e.loaded);
     xhr.onload = () => {
       track.delete(xhr);
-      if (xhr.status < 200 || xhr.status >= 300) return reject(new Error(`R2 answered ${xhr.status}`));
+      if (xhr.status < 200 || xhr.status >= 300) return reject(new R2Status(xhr.status));
       const etag = xhr.getResponseHeader("ETag");
       return etag ? resolve(etag) : reject(new NoEtag());
     };
@@ -150,6 +162,7 @@ async function uploadBlob(
   onProgress: (sent: number, total: number) => void,
   stop: { current: boolean },
   track: Set<XMLHttpRequest>,
+  onNote: (note: string) => void = () => {},
 ): Promise<{ key: string; url: string | null }> {
   const tag = resumeTag({ name, size: blob.size, lastModified: (blob as File).lastModified }, scene);
   let rec = readResume(tag);
@@ -195,9 +208,13 @@ async function uploadBlob(
           // Nothing has ever gone through: a refused PUT is the bucket's CORS, and retrying will not help.
           const nothingYet = done.size === 0 && sent === 0;
           if ((e instanceof NoEtag || e instanceof Dropped) && nothingYet && attempt >= 2) throw new NoEtag();
-          // Parts went through before, so a dropped one is the network: keep trying for a while.
-          if (attempt >= (e instanceof Dropped ? DROP_TRIES : TRIES)) throw e;
-          await new Promise((res) => setTimeout(res, Math.min(MAX_BACKOFF_MS, 2000 * 2 ** (attempt - 1))));
+          // A real refusal from R2 (403, 404…) does not get better by asking again.
+          if (e instanceof R2Status && !e.passing && attempt >= TRIES) throw e;
+          // Everything else is the connection (or our host for a moment): wait, and go on.
+          const wait = Math.min(MAX_BACKOFF_MS, 2000 * 2 ** (attempt - 1));
+          onNote(`Connection lost (${(e as Error).message || "no answer"}) — retrying part ${part} in ${Math.round(wait / 1000)} s, try ${attempt + 1}. It carries on by itself; «Pause» stops it.`);
+          await new Promise((res) => setTimeout(res, wait));
+          if (!stop.current) onNote("");
         }
       }
     }
@@ -286,9 +303,10 @@ export default function SplatUploads() {
   async function runOne(it: Item) {
     const kind = kindOfFile(it.file.name)!;
     const progress = (step: Step) => (sent: number, total: number) => patch(it.id, { step, sent, total });
+    const note = (text: string) => patch(it.id, { note: text });
     let webKey: string;
     if (kind === "master") {
-      await uploadBlob(it.file, it.file.name, it.scene, progress("master"), stopRef, xhrs.current);
+      await uploadBlob(it.file, it.file.name, it.scene, progress("master"), stopRef, xhrs.current, note);
       if (!it.convert) {
         patch(it.id, { step: "done", note: "Master uploaded. Not converted: upload its .spz when ready." });
         return;
@@ -300,9 +318,9 @@ export default function SplatUploads() {
       const name = webFileName(it.scene, new Date());
       const blob = new Blob([spz], { type: "application/octet-stream" });
       patch(it.id, { note: `Converted in ${secs} s: ${formatBytes(it.file.size)} → ${formatBytes(spz.length)}` });
-      webKey = (await uploadBlob(blob, name, it.scene, progress("web"), stopRef, xhrs.current)).key;
+      webKey = (await uploadBlob(blob, name, it.scene, progress("web"), stopRef, xhrs.current, note)).key;
     } else {
-      webKey = (await uploadBlob(it.file, it.file.name, it.scene, progress("web"), stopRef, xhrs.current)).key;
+      webKey = (await uploadBlob(it.file, it.file.name, it.scene, progress("web"), stopRef, xhrs.current, note)).key;
     }
     const title = it.title.trim();
     await saveTour(upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined));
@@ -313,6 +331,14 @@ export default function SplatUploads() {
     setRunning(true);
     setMessage(null);
     stopRef.current = false;
+    // Keep the screen (and so the computer) awake while a 2 GB upload runs. Chrome and Edge; elsewhere a no-op.
+    let wake: { release: () => Promise<void> } | null = null;
+    try {
+      wake = await (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } })
+        .wakeLock?.request("screen") ?? null;
+    } catch {
+      /* refused (battery saver, hidden tab): carry on without it */
+    }
     for (const it of items) {
       if (it.step === "done" || !isSceneId(it.scene)) continue;
       try {
@@ -334,6 +360,7 @@ export default function SplatUploads() {
         patch(it.id, { step: "error", note: (e as Error).message || "Failed (out of memory while converting? untick «convert»)." });
       }
     }
+    void wake?.release().catch(() => {});
     setRunning(false);
     void refresh();
   }

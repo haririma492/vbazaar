@@ -42,11 +42,11 @@ test("a key sent back by the browser is checked against what this tool makes", (
   assert.equal(isSplatKey(made.key), made.kind);
 });
 
-test("a 2 GB master: 64 MiB parts, 30 of them, the last one shorter", () => {
+test("a 2 GB master: 16 MiB parts, 120 of them, the last one shorter", () => {
   const size = 2_000_000_000;
   const plan = partPlan(size)!;
-  assert.equal(plan.partSize, 64 * MiB);
-  assert.equal(plan.partCount, 30);
+  assert.equal(plan.partSize, 16 * MiB);
+  assert.equal(plan.partCount, 120);
   const [s, e] = partRange(plan.partCount, size, plan.partSize);
   assert.equal(e, size);
   assert.ok(e - s > 0 && e - s <= plan.partSize);
@@ -61,7 +61,7 @@ test("a 2 GB master: 64 MiB parts, 30 of them, the last one shorter", () => {
 });
 
 test("parts stay under R2's 10,000 and are whole MiB; tiny and absurd sizes", () => {
-  assert.deepEqual(partPlan(1), { partSize: 64 * MiB, partCount: 1 });
+  assert.deepEqual(partPlan(1), { partSize: 16 * MiB, partCount: 1 });
   const huge = partPlan(1024 * 1024 * MiB)!; // 1 TiB
   assert.ok(huge.partCount <= 10_000);
   assert.equal(huge.partSize % MiB, 0);

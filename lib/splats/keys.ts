@@ -25,10 +25,11 @@ const MiB = 1024 * 1024;
 const MIN_PART = 5 * MiB;
 const MAX_PARTS = 10_000;
 /**
- * 64 MiB parts: a 2 GB master is 30 of them — few enough to sign one at a time,
- * small enough that a dropped connection costs one part, not the file.
+ * 16 MiB parts: a 2 GB master is 120 of them. Small, because a home upload
+ * link drops now and then and a dropped part is sent again from its start
+ * (64 MiB parts made each drop cost minutes on a slow link).
  */
-const PREFERRED_PART = 64 * MiB;
+const PREFERRED_PART = 16 * MiB;
 /** R2's own ceiling for one object. */
 const MAX_OBJECT = 5 * 1024 * 1024 * MiB - 5 * MiB;
 
