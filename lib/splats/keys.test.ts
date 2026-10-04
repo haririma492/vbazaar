@@ -5,7 +5,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  isSceneId, isSplatKey, kindOfFile, partPlan, partRange, safeFileName, sceneIdFromFileName, splatKey, webFileName,
+  contentTypeFor, isSceneId, isSplatKey, isWalkVideo, kindOfFile, partPlan, partRange, safeFileName, sceneIdFromFileName,
+  splatKey, webFileName,
 } from "./keys.ts";
 
 const MiB = 1024 * 1024;
@@ -18,7 +19,7 @@ test("scene ids are lowercase words with inner hyphens", () => {
 test("a .ply is a master, a web format is a scene file, the rest is refused", () => {
   assert.equal(kindOfFile("Hallway Final.PLY"), "master");
   for (const f of ["h.spz", "h.sog", "h.ksplat", "h.splat", "h.rad"]) assert.equal(kindOfFile(f), "web", f);
-  for (const f of ["h.zip", "h", "h.ply.exe", "h.mp4"]) assert.equal(kindOfFile(f), null, f);
+  for (const f of ["h.zip", "h", "h.ply.exe", "h.mov"]) assert.equal(kindOfFile(f), null, f);
 });
 
 test("keys: masters/ for the .ply, scenes/ for the web copy, names made safe", () => {
@@ -76,4 +77,13 @@ test("a scene id guessed from the file name, and the web copy's dated name", () 
   const name = webFileName("store-01", new Date("2026-10-03T05:47:12Z"));
   assert.equal(name, "store-01-20261003-0547.spz");
   assert.equal(splatKey("store-01", name)?.key, "scenes/store-01/store-01-20261003-0547.spz");
+});
+
+test("a 360° walk video goes to scenes/ like a web splat, served as video", () => {
+  assert.equal(kindOfFile("Walk Oct 2.MP4"), "web");
+  assert.deepEqual(splatKey("worldonyonge-walk", "walk-v1.mp4"), { key: "scenes/worldonyonge-walk/walk-v1.mp4", kind: "web" });
+  assert.equal(isSplatKey("scenes/worldonyonge-walk/walk-v1.mp4"), "web");
+  assert.equal(isSplatKey("masters/worldonyonge-walk/walk-v1.mp4"), null);
+  assert.equal(contentTypeFor("walk.mp4"), "video/mp4");
+  assert.ok(isWalkVideo("walk.mp4") && !isWalkVideo("scene.spz"));
 });

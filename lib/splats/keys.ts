@@ -33,8 +33,12 @@ const PREFERRED_PART = 16 * MiB;
 /** R2's own ceiling for one object. */
 const MAX_OBJECT = 5 * 1024 * 1024 * MiB - 5 * MiB;
 
-/** What the viewer can load (Spark: SPZ, PlayCanvas SOG, mkkellogg KSPLAT, antimatter15 SPLAT, Spark RAD). */
-const WEB_EXTENSIONS = ["spz", "sog", "ksplat", "splat", "rad"] as const;
+/**
+ * What the viewers load: splats for `/vca/splat` (Spark: SPZ, PlayCanvas SOG,
+ * mkkellogg KSPLAT, antimatter15 SPLAT, Spark RAD), and a 360° walk video
+ * (equirectangular MP4) for `/vca/walk`.
+ */
+const WEB_EXTENSIONS = ["spz", "sog", "ksplat", "splat", "rad", "mp4"] as const;
 
 const CONTENT_TYPES: Record<string, string> = {
   ply: "application/octet-stream",
@@ -43,6 +47,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ksplat: "application/octet-stream",
   splat: "application/octet-stream",
   rad: "application/octet-stream",
+  mp4: "video/mp4",
 };
 
 const SCENE_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
@@ -125,4 +130,9 @@ export function sceneIdFromFileName(name: string): string {
 export function webFileName(scene: string, at: Date, ext = "spz"): string {
   const stamp = at.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 13);
   return `${scene}-${stamp}.${ext}`;
+}
+
+/** A 360° walk video (for `/vca/walk`) rather than a splat. */
+export function isWalkVideo(name: string): boolean {
+  return extensionOf(name) === "mp4";
 }

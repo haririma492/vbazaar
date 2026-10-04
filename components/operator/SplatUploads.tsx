@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
-import { isSceneId, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
+import { isSceneId, isWalkVideo, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
 import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene, type Tour } from "@/lib/splats/tour";
 
 const API = "/api/operator/splats";
@@ -328,7 +328,14 @@ export default function SplatUploads() {
       patch(it.id, { note: `Converted in ${secs} s: ${formatBytes(it.file.size)} → ${formatBytes(spz.length)}` });
       webKey = (await uploadBlob(blob, name, it.scene, progress("web"), stopRef, xhrs.current, note)).key;
     } else {
-      webKey = (await uploadBlob(it.file, it.file.name, it.scene, progress("web"), stopRef, xhrs.current, note)).key;
+      const sent = await uploadBlob(it.file, it.file.name, it.scene, progress("web"), stopRef, xhrs.current, note);
+      webKey = sent.key;
+      // A 360° walk video is not a splat scene: it stays out of the tour and
+      // opens in its own viewer.
+      if (isWalkVideo(it.file.name)) {
+        patch(it.id, { step: "done", note: "Walk video uploaded. Open it from «Files in R2» below (Walk)." });
+        return;
+      }
     }
     const title = it.title.trim();
     await saveTour(upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined));
@@ -444,7 +451,7 @@ export default function SplatUploads() {
         <input
           type="file"
           multiple
-          accept=".ply,.spz,.sog,.ksplat,.splat,.rad"
+          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4"
           disabled={running}
           onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
           className="block w-full text-[14px] text-white/80 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white/90"
@@ -609,7 +616,8 @@ export default function SplatUploads() {
               <span className="tabular-nums text-white/50">{formatBytes(o.size)}</span>
               {o.lastModified && <span className="text-white/40">{new Date(o.lastModified).toLocaleString()}</span>}
               <span className="ms-auto flex gap-2">
-                {o.kind === "web" && o.url && <a className={SMALL} href={`/vca/splat?src=${encodeURIComponent(o.url)}`}>View alone</a>}
+                {o.kind === "web" && o.url && isWalkVideo(o.key) && <a className={SMALL} href={`/vca/walk?v=${encodeURIComponent(o.key)}`}>Walk</a>}
+                {o.kind === "web" && o.url && !isWalkVideo(o.key) && <a className={SMALL} href={`/vca/splat?src=${encodeURIComponent(o.url)}`}>View alone</a>}
                 {o.kind === "web" && o.url && <button className={SMALL} onClick={() => void copy(o.url!, o.key)}>{copied === o.key ? "Copied" : "Copy URL"}</button>}
                 {o.kind === "master" && <button className={SMALL} onClick={() => void copyLink(o)}>{copied === o.key ? "Copied" : "Copy 24 h download link"}</button>}
               </span>
