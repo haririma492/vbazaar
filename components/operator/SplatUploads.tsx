@@ -68,6 +68,8 @@ type Item = {
 
 class Stopped extends Error {}
 class NoEtag extends Error {}
+/** The browser can no longer read the picked file. */
+class Unreadable extends Error {}
 /** The PUT never got an answer: the network went away mid-part. */
 class Dropped extends Error {}
 /** R2 answered, with a refusal. 5xx and 408/429 are passing; the rest are not. */
@@ -195,6 +197,18 @@ async function uploadBlob(
   track: Set<XMLHttpRequest>,
   onNote: (note: string) => void = () => {},
 ): Promise<{ key: string; url: string | null }> {
+  // ⚠️ CAN THE BROWSER STILL READ THE FILE? A file that changed after it was
+  // picked (an export still being written, or written again under the same
+  // name), is locked, or is an online-only OneDrive file cannot be read, and
+  // every PUT of it then fails as if the network were down — to R2 and to our
+  // own server alike — and the upload retried forever at 0 %. Read a byte at
+  // each end first and say so plainly.
+  try {
+    await blob.slice(0, 1).arrayBuffer();
+    await blob.slice(Math.max(0, blob.size - 1)).arrayBuffer();
+  } catch {
+    throw new Unreadable();
+  }
   const tag = resumeTag({ name, size: blob.size, lastModified: (blob as File).lastModified }, scene);
   let rec = readResume(tag);
   const done = new Map<number, string>();
@@ -256,6 +270,12 @@ async function uploadBlob(
           }
           // A real refusal from R2 (403, 404…) does not get better by asking again.
           if (e instanceof R2Status && !e.passing && attempt >= TRIES) throw e;
+          // A file that became unreadable mid-way looks like a dropped network too.
+          try {
+            await blob.slice(a, Math.min(b, a + 1)).arrayBuffer();
+          } catch {
+            throw new Unreadable();
+          }
           // Everything else is the connection (or our host for a moment): wait, and go on.
           const wait = Math.min(MAX_BACKOFF_MS, 2000 * 2 ** (attempt - 1));
           onNote(`Connection lost (${(e as Error).message || "no answer"}) — retrying part ${part} in ${Math.round(wait / 1000)} s, try ${attempt + 1}. It carries on by itself; «Pause» stops it.`);
@@ -407,6 +427,13 @@ export default function SplatUploads() {
       } catch (e) {
         if (e instanceof Stopped) {
           patch(it.id, { step: "paused", note: "Paused. «Start» resumes from the last finished part." });
+          break;
+        }
+        if (e instanceof Unreadable) {
+          patch(it.id, {
+            step: "error",
+            note: "This browser cannot read the file any more: it changed after you picked it (an export still running, or exported again), another program has it open, or it is an online-only OneDrive file. Make sure the export has finished, «Remove» it here, and choose it again.",
+          });
           break;
         }
         if (e instanceof Dropped) {
