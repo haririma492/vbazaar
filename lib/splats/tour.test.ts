@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, updateScene, upsertScene,
+  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
   type Pose,
 } from "./tour.ts";
 
@@ -90,7 +90,7 @@ test("a tour from the bucket is checked: bad scenes, files and exits are dropped
   const hall = sceneById(t, "hallway")!;
   assert.equal(hall.flip, false);
   assert.deepEqual(hall.exits.map((e) => [e.id, e.at]), [["a", [1, 0, 3]]]);
-  assert.deepEqual(parseTour(null), { version: 1, start: "hallway", scenes: [] });
+  assert.deepEqual(parseTour(null), { version: 1, start: "hallway", scenes: [], drive: DEFAULT_DRIVE });
 });
 
 test("the cameraman's route is kept with the scene, checked, and survives a re-upload", () => {
@@ -141,4 +141,16 @@ test("walls and shop doors are kept and checked", () => {
   const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", walls: -3, doors: [{ id: "x", at: [0, 0, 0], depth: 999 }, { id: "x" }, {}] }] }).scenes[0];
   assert.equal(bad.walls, 0);
   assert.deepEqual(bad.doors.map((d) => [d.id, d.depth]), [["x", 30]]);
+});
+
+test("the starting scene and how walking feels are kept and checked", () => {
+  let t = built();
+  assert.deepEqual(t.drive, DEFAULT_DRIVE);
+  t = setStartScene(t, "store-01");
+  assert.equal(t.start, "store-01");
+  assert.equal(setStartScene(t, "nowhere").start, "store-01");
+  t = setDrive(t, { speed: 1.2, accel: 99 });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v3.spz");
+  assert.deepEqual(t.drive, { ...DEFAULT_DRIVE, speed: 1.2, accel: 2.5 });
+  assert.deepEqual(parseTour({ scenes: [], drive: { turn: "x", turnGlide: -1 } }).drive, { ...DEFAULT_DRIVE, turnGlide: 0.05 });
 });

@@ -41,7 +41,8 @@ import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
-  type Door, type Exit, type Pose, type Tour, type Trail, type Vec3,
+  DEFAULT_DRIVE, DRIVE_LIMITS, setDrive, setStartScene,
+  type Door, type Drive, type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import { doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
@@ -174,24 +175,35 @@ type Engine = {
   setMove: (x: number, y: number) => void;
   /** Walking speed, metres per second at full stick. */
   setSpeed: (mps: number) => void;
+  /** How walking feels (the tour's Drive, tuned in edit mode): speed-up time, turn amount, turn glide. */
+  setDrive: (d: Drive) => void;
 };
 
 /** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
+/** «Slow / Normal / Fast»: shares of the tour's Normal speed (`tour.drive.speed`, set by the operator). */
 const SPEEDS = [
-  { label: "آهسته · Slow", mps: 0.35 },
-  { label: "معمولی · Normal", mps: 0.8 },
-  { label: "تند · Fast", mps: 1.6 },
+  { label: "آهسته · Slow", k: 0.45 },
+  { label: "معمولی · Normal", k: 1 },
+  { label: "تند · Fast", k: 2 },
 ];
 const SPEED_KEY = "sk-splat-speed";
 /** On a phone: "tilt" (the default) or "stick", the visitor's last choice. */
 const MODE_KEY = "sk-splat-mode";
 /** «Follow the path» on (the default) or off, the visitor's last choice. */
 const GUIDED_KEY = "sk-splat-guided";
-/** Full steering turns this fast (rad/s): about 45° a second, a slow look round. */
+/** Full steering turns this fast (rad/s): about 45° a second, a slow look round (× the tour's drive.turn). */
 const TURN_RATE = 0.8;
-/** How long starting, stopping and turning take to settle (s). */
-const EASE_S = 0.35;
 const UP = new THREE.Vector3(0, 1, 0);
+
+/** The dashboard's width, and the grip left showing when it is pushed away. */
+const PANEL_W = 300;
+const GRIP_W = 36;
+const DRIVE_ROWS: Array<{ key: keyof Drive; label: string; unit: string; hint: string }> = [
+  { key: "speed", label: "Forward speed (Normal)", unit: "/s", hint: "Slow is half of it, Fast twice." },
+  { key: "accel", label: "Speed-up & slow-down", unit: "s", hint: "Higher: gentler starts and stops." },
+  { key: "turn", label: "Left / right turning", unit: "×", hint: "How far a turn of the stick or phone turns." },
+  { key: "turnGlide", label: "Turn smoothness", unit: "s", hint: "Higher: the view settles into turns more softly." },
+];
 
 
 export default function SplatTour() {
@@ -220,6 +232,30 @@ export default function SplatTour() {
     try { if (window.localStorage.getItem(GUIDED_KEY) === "off") setGuided(false); } catch { /* private mode: on */ }
   }, []);
   const [doorName, setDoorName] = useState("");
+  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "scenes" | "info">("route");
+  // How far the dashboard is pushed left (0: open; −(PANEL_W − GRIP_W): only the grip shows).
+  const [panelX, setPanelX] = useState(0);
+  const grip = useRef<{ x0: number; start: number; moved: boolean } | null>(null);
+  const AWAY = -(PANEL_W - GRIP_W);
+  const onGripDown = (e: React.PointerEvent) => {
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+    grip.current = { x0: e.clientX, start: panelX, moved: false };
+  };
+  const onGripMove = (e: React.PointerEvent) => {
+    const g = grip.current;
+    if (!g) return;
+    const dx = e.clientX - g.x0;
+    if (Math.abs(dx) > 4) g.moved = true;
+    if (g.moved) setPanelX(Math.min(0, Math.max(AWAY, g.start + dx)));
+  };
+  const onGripUp = () => {
+    const g = grip.current;
+    grip.current = null;
+    if (!g) return;
+    // A tap toggles; a drag snaps to whichever side it is nearer.
+    if (!g.moved) setPanelX(panelX < -10 ? 0 : AWAY);
+    else setPanelX((x) => (x < AWAY / 2 ? AWAY : 0));
+  };
   // The Align tool: which scene is being joined to this one, where it sits now, and how big a nudge is.
   const [align, setAlign] = useState<{ id: string; place: Place; before: Place | null } | null>(null);
   const [alignTarget, setAlignTarget] = useState("");
@@ -299,7 +335,8 @@ export default function SplatTour() {
     let gyroOn = false;
     let stickX = 0;
     let stickY = 0;
-    let walkSpeed = SPEEDS[1].mps;
+    let walkSpeed = DEFAULT_DRIVE.speed;
+    let drive: Drive = { ...DEFAULT_DRIVE };
     let velFwd = 0; // m/s, eased toward what the stick asks
     let velTurn = 0; // rad/s, likewise
     let turnYaw = 0; // how far the steering has turned the view
@@ -634,11 +671,14 @@ export default function SplatTour() {
         const h = stickHold(sx, y);
         const step = stepTilt(stickDrive, h.pitch, h.roll);
         stickDrive = step.state;
-        turnTarget += step.turn * (Math.PI / 180);
+        turnTarget += step.turn * drive.turn * (Math.PI / 180);
         if (step.turn) userTurnAt = performance.now();
       },
       setSpeed(mps) {
         walkSpeed = mps;
+      },
+      setDrive(d) {
+        drive = d;
       },
     };
 
@@ -744,7 +784,7 @@ export default function SplatTour() {
       const roll = guided ? (Math.abs(r) < GUIDED_TWIST_DEAD ? 0 : r - Math.sign(r) * GUIDED_TWIST_DEAD) : r;
       const step = stepTilt(tilt, smooth.pitch, roll);
       tilt = step.state;
-      turnTarget += step.turn * (Math.PI / 180); // the body turns; the hand coming back does not undo it
+      turnTarget += step.turn * drive.turn * (Math.PI / 180); // the body turns; the hand coming back does not undo it
       if (step.turn) userTurnAt = performance.now();
       onTiltLevel(tilt.level);
     };
@@ -806,7 +846,10 @@ export default function SplatTour() {
       if (keys.has("d") || keys.has("arrowright")) wantTurn = 1;
       if (keys.has("a") || keys.has("arrowleft")) wantTurn = -1;
       const boost = keys.has("shift") ? 2.5 : 1;
-      const ease = 1 - Math.exp(-dt / EASE_S);
+      // ⚠️ LIKE A CAR, NOT A SLIPPERY FISH: speed eases over the operator's
+      // «speed-up» time, and the view settles into a turn over «turn glide».
+      const ease = 1 - Math.exp(-dt / drive.accel);
+      const glide = 1 - Math.exp(-dt / drive.turnGlide);
       // ⚠️ THE CAMERAMAN'S ROUTE IS A BANKED ROAD (`lib/splats/path.ts`):
       // walking forward with no steering of their own, the visitor is drawn
       // gently along the route that was filmed. Any steering wins.
@@ -854,13 +897,13 @@ export default function SplatTour() {
         onWalkedInto(nearest.id);
       }
       velFwd += (wantFwd * walkSpeed * pace * boost - velFwd) * ease;
-      velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
+      velTurn += (wantTurn * TURN_RATE * drive.turn - velTurn) * glide;
       if (guide) {
         camera.position.x += guide.dx * Math.abs(velFwd) * dt;
         camera.position.z += guide.dz * Math.abs(velFwd) * dt;
       } else if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
       if (Math.abs(velTurn) > 1e-4) turnTarget += velTurn * dt;
-      turnYaw += (turnTarget - turnYaw) * ease;
+      turnYaw += (turnTarget - turnYaw) * glide;
       // ⚠️ WALLS: inside the lanes walking is free; at an edge the push out
       // is taken away (eased, so it is a soft wall), the step along kept —
       // the visitor slides along the shop fronts and is never stopped walking
@@ -963,7 +1006,8 @@ export default function SplatTour() {
     const params = new URLSearchParams(window.location.search);
     const edit = params.get("edit") === "1" && Boolean(readAdminToken());
     setEditing(edit);
-    setDebug(edit || params.get("debug") === "1");
+    // The operator sees the measurements in the dashboard's Info tab; ?debug=1 shows them over the view.
+    setDebug(params.get("debug") === "1");
     if (params.get("src")) {
       void engine.current?.show("__single", { position: [0, 0, 0], yaw: 0, pitch: 0 }).then(() => setSceneReady(true)).catch(() => {});
       return;
@@ -1043,8 +1087,9 @@ export default function SplatTour() {
     }
   }, []);
   useEffect(() => {
-    engine.current?.setSpeed(SPEEDS[speedIx].mps);
-  }, [speedIx]);
+    engine.current?.setSpeed((tour?.drive.speed ?? DEFAULT_DRIVE.speed) * SPEEDS[speedIx].k);
+    engine.current?.setDrive(tour?.drive ?? DEFAULT_DRIVE);
+  }, [speedIx, tour?.drive]);
 
   async function go(sceneId: string, pose: Pose) {
     setFade(true);
@@ -1199,6 +1244,37 @@ export default function SplatTour() {
     }
   }
 
+  function toggleRecord() {
+    if (!tour || !here) return;
+    if (!recordingRoute) {
+      engine.current?.recordRoute(true);
+      setRecordingRoute(true);
+      return;
+    }
+    const pts = engine.current?.recordRoute(false) ?? [];
+    setRecordingRoute(false);
+    // Recorded in the world; kept in the scene's own coordinates.
+    const local = here.place ? pts.map((p) => toLocal(here.place as Place, p)) : pts;
+    if (pts.length > 1) changeTour(updateScene(tour, here.id, { route: local }));
+  }
+
+  /** Edit another scene: go there (its start), keeping the unsaved changes. */
+  async function switchScene(id: string) {
+    const s = tour ? sceneById(tour, id) : null;
+    if (!s || id === current) return;
+    setTrail([]);
+    await go(s.id, s.start);
+    window.history.replaceState({ splatDepth: 0 }, "", `?scene=${s.id}&edit=1`);
+  }
+
+  /** «At the end, go on to»: an exit to that scene where this scene's route ends. */
+  function addNextAtEnd(to: string) {
+    if (!tour || !here || !engine.current) return;
+    const last = here.route[here.route.length - 1];
+    const at: Vec3 = last ? (here.place ? toWorld(here.place as Place, last) : last) : engine.current.pointAhead(1.5);
+    changeTour(addExit(tour, here.id, to, at));
+  }
+
   const r = report;
   const backTo = trail.length ? sceneById(tour ?? emptyTour(), trail[trail.length - 1].scene) : null;
   const others = tour?.scenes.filter((s) => s.id !== current) ?? [];
@@ -1298,125 +1374,194 @@ export default function SplatTour() {
         </button>
       )}
 
-      {/* Operator: place exits where you stand */}
+      {/* Recording the route: always in sight, even with the panel pushed away */}
+      {editing && recordingRoute && (
+        <button dir="ltr" onClick={toggleRecord} className="absolute left-1/2 top-14 z-20 -translate-x-1/2 rounded-full border border-rose-300/80 bg-rose-500/40 px-4 py-1.5 text-[13px] font-bold text-rose-50">
+          ● Recording route — ■ Stop
+        </button>
+      )}
+
+      {/* ⚠️ THE OPERATOR'S DASHBOARD (?edit=1): small, tabbed, and dragged off
+          to the left by its grip once set, leaving the grip to bring it back. */}
       {editing && tour && here && (
-        <div dir="ltr" className="absolute bottom-20 left-3 w-[min(360px,calc(100vw-24px))] space-y-2 rounded-xl bg-black/75 p-3 text-left text-[12px] text-white/85">
-          <div className="font-bold text-amber-200">Edit «{here.id}» — walk to a spot, then:</div>
-          <div className="flex gap-2">
-            <select className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" value={edit.to} onChange={(e) => setEdit({ ...edit, to: e.target.value })}>
-              <option value="">exit to…</option>
-              {others.map((s) => <option key={s.id} value={s.id}>{s.title.en} ({s.id})</option>)}
-            </select>
-            <input className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" placeholder="label (optional)" value={edit.label} onChange={(e) => setEdit({ ...edit, label: e.target.value })} />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button disabled={!edit.to} className="rounded-full border border-amber-300/60 px-3 py-1 disabled:opacity-40" onClick={() => {
-              const lbl = edit.label.trim();
-              changeTour(addExit(tour, here.id, edit.to, engine.current!.pointAhead(1.5), lbl ? { en: lbl, fa: lbl } : undefined));
-              setEdit((x) => ({ ...x, label: "" }));
-            }}>Add exit 1.5 m ahead</button>
-            <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => changeTour(updateScene(tour, here.id, { start: engine.current!.pose() }))}>
-              Visitors start here
-            </button>
-            <button
-              className={`rounded-full border px-3 py-1 ${recordingRoute ? "border-rose-300/70 bg-rose-400/25 text-rose-50" : "border-sky-300/60 text-sky-100"}`}
-              onClick={() => {
-                if (!recordingRoute) {
-                  engine.current?.recordRoute(true);
-                  setRecordingRoute(true);
-                  return;
-                }
-                const r = engine.current?.recordRoute(false) ?? [];
-                setRecordingRoute(false);
-                // Recorded in the world; kept in the scene's own coordinates.
-                const local = here.place ? r.map((p) => toLocal(here.place as Place, p)) : r;
-                if (r.length > 1) changeTour(updateScene(tour, here.id, { route: local }));
-              }}
-            >
-              {recordingRoute ? "■ Stop recording route" : here.route.length ? `● Record route again (${here.route.length} points)` : "● Record the cameraman's route"}
-            </button>
-            {here.route.length > 0 && !recordingRoute && (
-              <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => changeTour(updateScene(tour, here.id, { route: [] }))}>
-                Clear route
+        <div
+          dir="ltr"
+          className="absolute left-0 top-12 z-20 flex max-h-[52vh] text-left text-[11.5px] text-white/85 transition-transform duration-150"
+          style={{ width: PANEL_W, transform: `translateX(${panelX}px)` }}
+        >
+          <div className={`flex min-w-0 flex-1 flex-col overflow-hidden rounded-br-xl bg-black/75 transition-opacity ${panelX < AWAY + 10 ? "opacity-0" : ""}`}>
+            {/* Which scene, saving */}
+            <div className="flex items-center gap-1 border-b border-white/10 p-1.5">
+              <select className="min-w-0 flex-1 rounded bg-white/10 px-1 py-1" value={here.id} onChange={(e) => void switchScene(e.target.value)} title="Scene being edited">
+                {tour.scenes.map((s) => <option key={s.id} value={s.id}>{s.id === tour.start ? "▶ " : ""}{s.title.en}</option>)}
+              </select>
+              <button className={`rounded px-2 py-1 font-bold ${edit.saved === "unsaved changes" ? "bg-emerald-400/40 text-white" : "bg-white/10 text-white/60"}`} onClick={() => void saveTour()}>
+                Save
               </button>
-            )}
-            <button className="rounded-full border border-emerald-300/60 px-3 py-1 text-emerald-100" onClick={() => void saveTour()}>Save tour</button>
-          </div>
-          <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
-            <div className="font-bold text-amber-200">Walls &amp; shop doors</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-white/60">Walls either side of the route:</span>
-              <button className="rounded bg-white/10 px-2" onClick={() => changeTour(updateScene(tour, here.id, { walls: Math.max(0, Math.round((here.walls - 0.25) * 100) / 100) }))}>−</button>
-              <span>{here.walls ? here.walls.toFixed(2) : "off"}</span>
-              <button className="rounded bg-white/10 px-2" onClick={() => changeTour(updateScene(tour, here.id, { walls: Math.round((here.walls + 0.25) * 100) / 100 }))}>+</button>
-              <label className="ms-auto flex items-center gap-1 text-white/60">
-                <input type="checkbox" checked={wallsOff} onChange={(e) => setWallsOff(e.target.checked)} /> walk through walls
-              </label>
             </div>
-            {!here.route.length && <div className="text-amber-200/80">No route yet: walls need the cameraman&apos;s route (record it, or upload the camera .json).</div>}
-            <div className="text-white/50">Amber lines: the walls. Face a shop&apos;s entrance from the alley, then:</div>
-            <div className="flex gap-2">
-              <input className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" placeholder="shop name" value={doorName} onChange={(e) => setDoorName(e.target.value)} />
-              <button className="rounded-full border border-amber-300/60 px-3 py-1" onClick={() => {
-                changeTour(addDoor(tour, here.id, engine.current!.pointAhead(1.5), doorName.trim()));
-                setDoorName("");
-              }}>Shop door 1.5 m ahead</button>
+            <div className="flex border-b border-white/10">
+              {(["route", "drive", "shops", "scenes", "info"] as const).map((t) => (
+                <button key={t} onClick={() => setPanelTab(t)} className={`flex-1 py-1 capitalize ${panelTab === t ? "bg-white/15 text-amber-200" : "text-white/55"}`}>{t}</button>
+              ))}
             </div>
-            {here.doors.map((d) => (
-              <div key={d.id} className="flex items-center gap-2 text-white/70">
-                ⌂ {d.label.en} <span className="text-white/40">{d.depth} deep</span>
-                <button className="ms-auto text-rose-300" onClick={() => changeTour(removeDoor(tour, here.id, d.id))}>remove</button>
-              </div>
-            ))}
-          </div>
-          {here.exits.map((e) => (
-            <div key={e.id} className="flex items-center gap-2 text-white/70">
-              → {e.label.en} ({e.to}) <span className="text-white/40">[{e.at.map((v) => v.toFixed(1)).join(", ")}]</span>
-              <button className="ms-auto text-rose-300" onClick={() => changeTour(removeExit(tour, here.id, e.id))}>remove</button>
-            </div>
-          ))}
-          <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
-            <div className="font-bold text-sky-200">Join another scene (Align)</div>
-            {!align && !others.length ? (
-              <div className="text-amber-200/80">
-                «{here.id}» is the only scene in the tour. A scene joins the tour when its web copy (.spz) is uploaded at
-                /operator/splats — a .ply master alone is not enough. Then reload this page.
-              </div>
-            ) : !align ? (
-              <div className="flex gap-2">
-                <select className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" value={alignTarget} onChange={(e) => setAlignTarget(e.target.value)}>
-                  <option value="">scene to join here…</option>
-                  {others.map((s) => <option key={s.id} value={s.id}>{s.title.en} ({s.id}){s.place ? " ✓" : ""}</option>)}
-                </select>
-                <button disabled={!alignTarget} className="rounded-full border border-sky-300/60 px-3 py-1 disabled:opacity-40" onClick={startAlign}>Align</button>
-              </div>
-            ) : (
-              <>
-                <div className="text-white/60">Stand where both scenes were filmed; nudge «{align.id}» until it lies on this one.</div>
-                <div className="grid grid-cols-4 gap-1">
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: 1 })}>↑ away</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: -1 })}>↓ near</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: -1 })}>← left</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: 1 })}>→ right</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: 1 })}>⤒ up</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: -1 })}>⤓ down</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: -1 })}>⟲ turn</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: 1 })}>⟳ turn</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: -1 })}>− smaller</button>
-                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: 1 })}>+ bigger</button>
-                  <button className={`col-span-2 rounded py-1 ${fine ? "bg-white/10" : "bg-amber-300/30"}`} onClick={() => setFine(!fine)}>
-                    {fine ? "steps: fine" : "steps: coarse ×10"}
+            <div className="space-y-1.5 overflow-y-auto p-2">
+              {panelTab === "route" && (
+                <>
+                  <button
+                    className={`w-full rounded-lg border py-1.5 font-bold ${recordingRoute ? "border-rose-300/70 bg-rose-400/25 text-rose-50" : "border-sky-300/60 text-sky-100"}`}
+                    onClick={toggleRecord}
+                  >
+                    {recordingRoute ? "■ Stop recording" : here.route.length ? `● Record route again (${here.route.length} pts)` : "● Record the cameraman's route"}
                   </button>
+                  {!recordingRoute && <div className="text-white/45">Walk it once, slowly and smoothly — on the phone, by tilting. Stop, then Save.</div>}
+                  <div className="flex flex-wrap gap-1">
+                    {here.route.length > 0 && !recordingRoute && (
+                      <button className="rounded bg-white/10 px-2 py-1" onClick={() => changeTour(updateScene(tour, here.id, { route: [] }))}>Clear route</button>
+                    )}
+                    <button className="rounded bg-white/10 px-2 py-1" onClick={() => changeTour(setStartScene(updateScene(tour, here.id, { start: engine.current!.pose() }), here.id))}>
+                      ▶ Tour starts here
+                    </button>
+                    <button className="rounded bg-white/10 px-2 py-1" onClick={() => changeTour(updateScene(tour, here.id, { start: engine.current!.pose() }))}>
+                      Scene starts here
+                    </button>
+                  </div>
+                  <div className="text-white/45">{tour.start === here.id ? "▶ The tour begins in this scene." : `The tour begins in «${tour.start}».`}</div>
+                  <div className="flex items-center gap-1.5 border-t border-white/10 pt-1.5">
+                    <span className="text-white/60">Walls</span>
+                    <button className="rounded bg-white/10 px-2" onClick={() => changeTour(updateScene(tour, here.id, { walls: Math.max(0, Math.round((here.walls - 0.25) * 100) / 100) }))}>−</button>
+                    <span className="w-8 text-center">{here.walls ? here.walls.toFixed(2) : "off"}</span>
+                    <button className="rounded bg-white/10 px-2" onClick={() => changeTour(updateScene(tour, here.id, { walls: Math.round((here.walls + 0.25) * 100) / 100 }))}>+</button>
+                    <label className="ms-auto flex items-center gap-1 text-white/55">
+                      <input type="checkbox" checked={wallsOff} onChange={(e) => setWallsOff(e.target.checked)} /> walk through
+                    </label>
+                  </div>
+                  {!here.route.length && <div className="text-amber-200/80">Walls and «Follow the path» need a route.</div>}
+                </>
+              )}
+
+              {panelTab === "drive" && (
+                <>
+                  <div className="text-white/45">For every visitor. Try it as you change it, then Save.</div>
+                  {DRIVE_ROWS.map((row) => (
+                    <label key={row.key} className="block">
+                      <span className="flex justify-between"><span>{row.label}</span><span className="text-white/50">{tour.drive[row.key].toFixed(2)} {row.unit}</span></span>
+                      <input
+                        type="range" className="w-full" min={DRIVE_LIMITS[row.key][0]} max={DRIVE_LIMITS[row.key][1]} step={0.05}
+                        value={tour.drive[row.key]}
+                        onChange={(e) => changeTour(setDrive(tour, { [row.key]: Number(e.target.value) }))}
+                      />
+                      <span className="text-white/40">{row.hint}</span>
+                    </label>
+                  ))}
+                  <button className="rounded bg-white/10 px-2 py-1" onClick={() => changeTour(setDrive(tour, DEFAULT_DRIVE))}>Back to defaults</button>
+                </>
+              )}
+
+              {panelTab === "shops" && (
+                <>
+                  <div className="text-white/45">Face a shop&apos;s entrance from the alley:</div>
+                  <div className="flex gap-1">
+                    <input className="min-w-0 flex-1 rounded bg-white/10 px-1.5 py-1" placeholder="shop name" value={doorName} onChange={(e) => setDoorName(e.target.value)} />
+                    <button className="rounded border border-amber-300/60 px-2 py-1" onClick={() => {
+                      changeTour(addDoor(tour, here.id, engine.current!.pointAhead(1.5), doorName.trim()));
+                      setDoorName("");
+                    }}>+ Door</button>
+                  </div>
+                  {here.doors.map((d) => (
+                    <div key={d.id} className="flex items-center gap-2 text-white/70">
+                      ⌂ {d.label.en}
+                      <button className="ms-auto text-rose-300" onClick={() => changeTour(removeDoor(tour, here.id, d.id))}>remove</button>
+                    </div>
+                  ))}
+                  <div className="border-t border-white/10 pt-1.5 text-white/45">An exit to another scene, 1.5 ahead:</div>
+                  <div className="flex gap-1">
+                    <select className="min-w-0 flex-1 rounded bg-white/10 px-1 py-1" value={edit.to} onChange={(e) => setEdit({ ...edit, to: e.target.value })}>
+                      <option value="">to…</option>
+                      {others.map((s) => <option key={s.id} value={s.id}>{s.title.en}</option>)}
+                    </select>
+                    <input className="w-20 rounded bg-white/10 px-1.5 py-1" placeholder="label" value={edit.label} onChange={(e) => setEdit({ ...edit, label: e.target.value })} />
+                    <button disabled={!edit.to} className="rounded border border-amber-300/60 px-2 py-1 disabled:opacity-40" onClick={() => {
+                      const lbl = edit.label.trim();
+                      changeTour(addExit(tour, here.id, edit.to, engine.current!.pointAhead(1.5), lbl ? { en: lbl, fa: lbl } : undefined));
+                      setEdit((x) => ({ ...x, label: "" }));
+                    }}>+</button>
+                  </div>
+                  {here.exits.map((e) => (
+                    <div key={e.id} className="flex items-center gap-2 text-white/70">
+                      → {e.label.en}
+                      <button className="ms-auto text-rose-300" onClick={() => changeTour(removeExit(tour, here.id, e.id))}>remove</button>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {panelTab === "scenes" && (
+                <>
+                  <div className="text-white/45">At the end of this scene, go on to:</div>
+                  <select className="w-full rounded bg-white/10 px-1 py-1" value="" onChange={(e) => e.target.value && addNextAtEnd(e.target.value)} disabled={!others.length}>
+                    <option value="">{others.length ? "next scene…" : "no other scene yet (upload its .spz)"}</option>
+                    {others.map((s) => <option key={s.id} value={s.id}>{s.title.en} ({s.id})</option>)}
+                  </select>
+                  <div className="text-white/40">An exit at the route&apos;s end{here.route.length ? "" : " (no route: 1.5 ahead)"}; visitors take it with Enter or a tap.</div>
+                  <div className="border-t border-white/10 pt-1.5 font-bold text-sky-200">Join seamlessly (Align)</div>
+                  {!align ? (
+                    <div className="flex gap-1">
+                      <select className="min-w-0 flex-1 rounded bg-white/10 px-1 py-1" value={alignTarget} onChange={(e) => setAlignTarget(e.target.value)} disabled={!others.length}>
+                        <option value="">scene to join here…</option>
+                        {others.map((s) => <option key={s.id} value={s.id}>{s.title.en}{s.place ? " ✓" : ""}</option>)}
+                      </select>
+                      <button disabled={!alignTarget} className="rounded border border-sky-300/60 px-2 py-1 disabled:opacity-40" onClick={startAlign}>Align</button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-4 gap-1">
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: 1 })}>↑</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: -1 })}>↓</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: -1 })}>←</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: 1 })}>→</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: 1 })}>⤒</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: -1 })}>⤓</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: -1 })}>⟲</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: 1 })}>⟳</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: -1 })}>−</button>
+                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: 1 })}>+</button>
+                        <button className={`col-span-2 rounded py-1 ${fine ? "bg-white/10" : "bg-amber-300/30"}`} onClick={() => setFine(!fine)}>{fine ? "fine" : "coarse ×10"}</button>
+                      </div>
+                      <div className="flex gap-1">
+                        <button className="rounded border border-emerald-300/60 px-2 py-1 text-emerald-100" onClick={() => finishAlign(true)}>Done</button>
+                        <button className="rounded border border-white/30 px-2 py-1" onClick={() => finishAlign(false)}>Cancel</button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+
+              {panelTab === "info" && (
+                <div className="space-y-0.5 font-mono text-[10.5px] text-white/70">
+                  <div className="break-all text-white/45">{r?.src}</div>
+                  <div>size {fmtMB(r?.bytes ?? null)} · dl {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
+                  <div>splats {r?.splats?.toLocaleString() ?? "—"} · {r?.fps ?? "—"} fps · dpr {r?.dpr}</div>
+                  <div className="text-white/45">{r?.gpu} · {r?.viewport}</div>
+                  {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
+                  <button className="mt-1 rounded bg-white/10 px-2 py-1 font-sans" onClick={() => void copyReport()}>{copied ? "Copied" : "Copy report"}</button>
                 </div>
-                <div className="flex gap-2">
-                  <button className="rounded-full border border-emerald-300/60 px-3 py-1 text-emerald-100" onClick={() => finishAlign(true)}>Done</button>
-                  <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => finishAlign(false)}>Cancel</button>
-                  <span className="self-center text-white/40">then Save tour</span>
-                </div>
-              </>
-            )}
+              )}
+              {edit.saved && <div className="text-white/40">{edit.saved}</div>}
+            </div>
           </div>
-          {edit.saved && <div className="text-white/50">{edit.saved}</div>}
+          {/* The grip: drag left to push the dashboard away, tap to bring it back */}
+          <button
+            aria-label="Move the dashboard"
+            className="flex h-20 w-9 shrink-0 touch-none select-none flex-col items-center justify-center gap-1 self-center rounded-r-xl bg-black/75 text-white/70"
+            onPointerDown={onGripDown}
+            onPointerMove={onGripMove}
+            onPointerUp={onGripUp}
+            onPointerCancel={onGripUp}
+          >
+            <span className="text-[16px] leading-none">⠿</span>
+            <span className="text-[13px] leading-none">{panelX < -10 ? "›" : "‹"}</span>
+            {edit.saved === "unsaved changes" && <span className="h-2 w-2 rounded-full bg-emerald-400" title="unsaved" />}
+          </button>
         </div>
       )}
 
@@ -1433,7 +1578,8 @@ export default function SplatTour() {
         {SPEEDS[speedIx].label}
       </button>
 
-      <div dir="ltr" className="absolute bottom-4 left-1/2 flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 flex-wrap justify-center gap-2">
+      {/* Left of the stick, never under it: a column of small switches. */}
+      <div dir="ltr" className="absolute bottom-4 left-3 flex max-w-[calc(100vw-210px)] flex-col items-start gap-1.5 [&>button]:px-3 [&>button]:py-1.5 [&>button]:text-[12px] [&>button]:leading-tight">
         {touch && (
           <button onClick={() => void toggleTilt()} className={`rounded-full border px-4 py-2 text-[13px] ${tiltOn ? "border-amber-300/70 bg-amber-300/25 text-amber-50" : "border-white/25 bg-black/60 text-white/90"}`}>
             {tiltOn ? "جوی‌استیک · Use joystick" : "راه رفتن با کج کردن · Walk by tilting"}

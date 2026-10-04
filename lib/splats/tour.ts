@@ -77,14 +77,28 @@ export type Door = { id: string; label: Label; at: Vec3; depth: number };
 /** `corridor.ts`'s DEFAULT_HALF, repeated (this file imports nothing). */
 export const DEFAULT_WALLS = 1.5;
 
-export type Tour = { version: 1; start: string; scenes: TourScene[] };
+/**
+ * HOW WALKING FEELS, for every visitor — tuned by the operator in the viewer
+ * (edit mode → Drive) until it handles like a car one drives without thinking.
+ *   speed     «Normal» walking speed (units a second); Slow and Fast follow it.
+ *   accel     seconds to reach a new speed (and to stop): higher is gentler.
+ *   turn      how much a turn of the stick, the phone or the keys turns (×).
+ *   turnGlide seconds for the view to settle into a turn: higher is smoother.
+ */
+export type Drive = { speed: number; accel: number; turn: number; turnGlide: number };
+export const DEFAULT_DRIVE: Drive = { speed: 0.8, accel: 0.35, turn: 1, turnGlide: 0.35 };
+export const DRIVE_LIMITS: Record<keyof Drive, [number, number]> = {
+  speed: [0.2, 3], accel: [0.1, 2.5], turn: [0.2, 3], turnGlide: [0.05, 2],
+};
+
+export type Tour = { version: 1; start: string; scenes: TourScene[]; drive: Drive };
 
 export const TOUR_KEY = "scenes/tour.json";
 
 export const ORIGIN_POSE: Pose = { position: [0, 0, 0], yaw: 0, pitch: 0 };
 
 export function emptyTour(): Tour {
-  return { version: 1, start: "hallway", scenes: [] };
+  return { version: 1, start: "hallway", scenes: [], drive: { ...DEFAULT_DRIVE } };
 }
 
 // ── Reading (a tour is data from a bucket: nothing is trusted) ─────────────
@@ -151,6 +165,16 @@ function doorsOf(v: unknown): Door[] {
   return out;
 }
 
+function driveOf(v: unknown): Drive {
+  const o = (v ?? {}) as Record<string, unknown>;
+  const out = { ...DEFAULT_DRIVE };
+  for (const k of Object.keys(DRIVE_LIMITS) as Array<keyof Drive>) {
+    const [lo, hi] = DRIVE_LIMITS[k];
+    out[k] = Math.min(hi, Math.max(lo, num(o[k], DEFAULT_DRIVE[k])));
+  }
+  return out;
+}
+
 /** A pace between a slow stroll and a brisk walk; 1 when unset. */
 function paceOf(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(1.5, Math.max(0.2, v)) : 1;
@@ -189,7 +213,7 @@ export function parseTour(raw: unknown): Tour {
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
   for (const s of scenes) s.exits = s.exits.filter((e) => seen.has(e.to));
   const start = str(o.start, 40);
-  return { version: 1, start: seen.has(start) ? start : scenes[0]?.id ?? "hallway", scenes };
+  return { version: 1, start: seen.has(start) ? start : scenes[0]?.id ?? "hallway", scenes, drive: driveOf(o.drive) };
 }
 
 export const sceneById = (t: Tour, id: string) => t.scenes.find((s) => s.id === id) ?? null;
@@ -235,6 +259,16 @@ export function removeExit(t: Tour, from: string, exitId: string): Tour {
     ...t,
     scenes: t.scenes.map((s) => (s.id === from ? { ...s, exits: s.exits.filter((e) => e.id !== exitId) } : s)),
   });
+}
+
+/** The scene a visitor's tour begins in. Unknown scenes are ignored. */
+export function setStartScene(t: Tour, id: string): Tour {
+  return sceneById(t, id) ? parseTour({ ...t, start: id }) : t;
+}
+
+/** How walking feels (any part of it), kept within its limits. */
+export function setDrive(t: Tour, patch: Partial<Drive>): Tour {
+  return parseTour({ ...t, drive: { ...t.drive, ...patch } });
 }
 
 /** A shop door at `at` in scene `id` (world coordinates), `depth` deep. */
