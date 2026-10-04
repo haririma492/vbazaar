@@ -333,6 +333,11 @@ export default function SplatTour() {
     // shop's side lane while its door is open.
     let wallsOn = true;
     let guided = true;
+    // When the visitor last turned on purpose: following the path waits a moment after.
+    let userTurnAt = -1e9;
+    /** In «Follow the path», a hand's small sideways wobble is not a turn: only a clear one is. */
+    const GUIDED_STICK_DEAD = 0.4;
+    const GUIDED_TWIST_DEAD = 8; // degrees of steering-wheel twist
     let openDoor: { id: string; at: Vec3; lane: Lane } | null = null;
     let reach: Reach = null;
     let reachTarget: { exit?: Exit; door?: Door } = {};
@@ -625,10 +630,12 @@ export default function SplatTour() {
         stickY = y;
         // The stick drives like the phone (`stickHold`): its sideways push is
         // the steering twist, its push up the tilt back.
-        const h = stickHold(x, y);
+        const sx = guided ? (Math.abs(x) < GUIDED_STICK_DEAD ? 0 : Math.sign(x) * (Math.abs(x) - GUIDED_STICK_DEAD) / (1 - GUIDED_STICK_DEAD)) : x;
+        const h = stickHold(sx, y);
         const step = stepTilt(stickDrive, h.pitch, h.roll);
         stickDrive = step.state;
         turnTarget += step.turn * (Math.PI / 180);
+        if (step.turn) userTurnAt = performance.now();
       },
       setSpeed(mps) {
         walkSpeed = mps;
@@ -670,6 +677,7 @@ export default function SplatTour() {
       // phone, while tilt-walking, and with the phone's own motion on, where
       // a sideways drag turns the body and the phone does the rest.
       if (pointers.size === 1) {
+        userTurnAt = performance.now();
         const k = (camera.fov / el.clientHeight) * (Math.PI / 180);
         if (gyroOn && gyroHave) {
           turnTarget += (e.clientX - prev.x) * k;
@@ -732,9 +740,12 @@ export default function SplatTour() {
         if (calib.length >= 8) tilt = startTilt(calib.reduce((a, b) => a + b, 0) / calib.length);
         return;
       }
-      const step = stepTilt(tilt, smooth.pitch, smooth.roll);
+      const r = smooth.roll;
+      const roll = guided ? (Math.abs(r) < GUIDED_TWIST_DEAD ? 0 : r - Math.sign(r) * GUIDED_TWIST_DEAD) : r;
+      const step = stepTilt(tilt, smooth.pitch, roll);
       tilt = step.state;
       turnTarget += step.turn * (Math.PI / 180); // the body turns; the hand coming back does not undo it
+      if (step.turn) userTurnAt = performance.now();
       onTiltLevel(tilt.level);
     };
     const onResize = () => {
@@ -823,9 +834,16 @@ export default function SplatTour() {
       if (guided && !openDoor && Math.abs(velFwd) > 1e-4) {
         guide = guideStep(world.filter((m) => m.route.length > 1).map((m) => m.route), camera.position.x, camera.position.z, velFwd >= 0 ? -heading : -heading + Math.PI);
       }
-      if (guide && velFwd > 0.05 && !steering) {
-        const off = angleDiff(guide.aim, -heading);
-        turnTarget += Math.max(-1, Math.min(1, off * 1.5)) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
+      if (wantTurn) userTurnAt = performance.now();
+      // ⚠️ FORWARD MEANS FOLLOW (operator, 2026-10-04: "my mom, 90, should be
+      // able to follow this path with no dexterity"). While going, the view
+      // is held facing along the path — it turns when the blue line turns,
+      // with nothing pressed but «forward». Only a clear turn of their own
+      // (a firm sideways push, a real twist, a drag, A/D) takes over, for a
+      // moment: that is how the alley is chosen at the junction.
+      if (guide && velFwd > 0.02 && performance.now() - userTurnAt > 1200) {
+        const facing = -heading + (turnTarget - turnYaw); // where the glide is already going
+        turnTarget += angleDiff(guide.aim, facing) * (1 - Math.exp(-dt / 0.35));
       } else if (nearest && velFwd > 0.05 && !inShop && !steering) {
         turnTarget += routePull(nearest.route, camera.position.x, camera.position.z, -heading) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
       }
