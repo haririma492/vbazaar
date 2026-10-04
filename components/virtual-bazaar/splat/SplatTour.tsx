@@ -316,7 +316,16 @@ export default function SplatTour() {
       publish();
 
       const tDecode = performance.now();
-      const mesh = new sparkMod.SplatMesh({ fileBytes: bytes, fileName: new URL(src).pathname.split("/").pop() || "scene.spz" });
+      // ⚠️ FULL-PRECISION SPLATS (`extSplats`). Spark's default packing keeps
+      // each centre as a 16-bit float: fine for an object on a table, coarse
+      // and blocky for a street tens of metres across. Twice the GPU memory
+      // (32 bytes a splat: 64 MB for 2M), which phones have. `?precision=low`
+      // shows the default packing, to compare.
+      const mesh = new sparkMod.SplatMesh({
+        fileBytes: bytes,
+        fileName: new URL(src).pathname.split("/").pop() || "scene.spz",
+        extSplats: params.get("precision") !== "low",
+      });
       if (flip) mesh.quaternion.set(1, 0, 0, 0); // y-down reconstruction → y-up world
       scene.add(mesh);
       // Spark logs a decode failure in its worker and never settles: give up after a while.
