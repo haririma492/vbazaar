@@ -44,7 +44,8 @@ import {
   type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import WalkStick from "./WalkStick";
-import { deviceQuaternion, hasDeviceOrientation, headingOf, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
+import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
+import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 /** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
 const BUILT_BASE = (process.env.NEXT_PUBLIC_SPLAT_BASE_URL || "").trim().replace(/\/+$/, "");
@@ -139,6 +140,10 @@ type Engine = {
   pointAhead: (meters: number) => Vec3;
   setMarkers: (exits: Exit[]) => void;
   setGyro: (on: boolean) => void;
+  /** Walk by tilting (`lib/splats/tilt.ts`): on captures the hold as "standing still". */
+  setTilt: (on: boolean) => void;
+  /** Take the phone's present hold as "standing still" again. */
+  recentre: () => void;
   /** The on-screen stick: x right, y down, each −1…1; (0, 0) stands still. */
   setMove: (x: number, y: number) => void;
   /** Walking speed, metres per second at full stick. */
@@ -152,6 +157,8 @@ const SPEEDS = [
   { label: "تند · Fast", mps: 1.6 },
 ];
 const SPEED_KEY = "sk-splat-speed";
+/** On a phone: "tilt" (the default) or "stick", the visitor's last choice. */
+const MODE_KEY = "sk-splat-mode";
 /** Full steering turns this fast (rad/s): about 45° a second, a slow look round. */
 const TURN_RATE = 0.8;
 /** How long starting, stopping and turning take to settle (s). */
@@ -162,6 +169,9 @@ const UP = new THREE.Vector3(0, 1, 0);
 export default function SplatTour() {
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
+  const [tiltOn, setTiltOn] = useState(false);
+  const [tiltLevel, setTiltLevel] = useState(0);
+  const tiltLevelRef = useRef(0);
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState<number | null>(null);
   const [fade, setFade] = useState(false);
@@ -173,6 +183,29 @@ export default function SplatTour() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [debug, setDebug] = useState(false);
+  // Walk by tilting is for a phone in the hand.
+  const [touch, setTouch] = useState(false);
+  useEffect(() => setTouch(window.matchMedia?.("(pointer: coarse)").matches ?? false), []);
+  /**
+   * ⚠️ ON A PHONE, TILTING IS THE DEFAULT (operator, 2026-10-04) — unless the
+   * visitor switched to the joystick, which this device remembers. Android
+   * starts it by itself; iOS shares the phone's motion only from a tap, so it
+   * gets one «Start» card, whose tap is that request.
+   */
+  const [needStart, setNeedStart] = useState(false);
+  const rememberMode = (mode: "tilt" | "stick") => {
+    try { window.localStorage.setItem(MODE_KEY, mode); } catch { /* fine */ }
+  };
+  const [sceneReady, setSceneReady] = useState(false);
+  useEffect(() => {
+    if (!touch || !sceneReady || tiltOn) return;
+    let mode: string | null = null;
+    try { mode = window.localStorage.getItem(MODE_KEY); } catch { /* private mode: the default */ }
+    if (mode === "stick" || !hasDeviceOrientation()) return;
+    if (needsPermission()) setNeedStart(true);
+    else void toggleTilt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [touch, sceneReady]);
   const [edit, setEdit] = useState({ to: "", label: "", saved: "" });
   const tourRef = useRef<Tour | null>(null);
   const baseRef = useRef("");
@@ -189,6 +222,12 @@ export default function SplatTour() {
     if (!el) return;
     const params = new URLSearchParams(window.location.search);
     let disposed = false;
+    // Only a change of speed level re-renders the page.
+    const onTiltLevel = (level: number) => {
+      if (tiltLevelRef.current === level) return;
+      tiltLevelRef.current = level;
+      setTiltLevel(level);
+    };
     const t0 = performance.now();
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -222,6 +261,14 @@ export default function SplatTour() {
     let turnYaw = 0; // how far the steering has turned the view
     const turnQ = new THREE.Quaternion();
     let gyroHave = false;
+    // Walk by tilting: the hold, smoothed; a few readings to learn "standing still".
+    let tiltOn = false;
+    let stickDrive: TiltState = startTilt(0);
+    // Where the body is turning to; `turnYaw` glides there (a car does not snap round).
+    let turnTarget = 0;
+    let tilt: TiltState | null = null;
+    let calib: number[] = [];
+    let smooth: { pitch: number; roll: number } | null = null;
     const gyroQ = new THREE.Quaternion();
 
     // Spark arrives as its own chunk (2.6 MB): only this page pays for it.
@@ -308,6 +355,8 @@ export default function SplatTour() {
       yaw = p.yaw;
       pitch = p.pitch;
       turnYaw = 0;
+      turnTarget = 0;
+      stickDrive = startTilt(0);
       velFwd = 0;
       velTurn = 0;
     };
@@ -340,7 +389,8 @@ export default function SplatTour() {
           setLoading(null);
         }
       },
-      pose: () => ({ position: camera.position.toArray() as Vec3, yaw: yaw + turnYaw, pitch }),
+      // Where the body is turning to, not mid-glide: a saved pose (start, back) faces the way chosen.
+      pose: () => ({ position: camera.position.toArray() as Vec3, yaw: yaw + turnTarget, pitch }),
       pointAhead(m) {
         const d = new THREE.Vector3();
         camera.getWorldDirection(d);
@@ -361,12 +411,29 @@ export default function SplatTour() {
           markers.add(m);
         }
       },
+      setTilt(on) {
+        tiltOn = on;
+        tilt = null;
+        calib = [];
+        smooth = null;
+        if (!on) onTiltLevel(0);
+      },
+      recentre() {
+        tilt = null;
+        calib = [];
+      },
       setGyro(on) {
         gyroOn = on;
       },
       setMove(x, y) {
         stickX = x;
         stickY = y;
+        // The stick drives like the phone (`stickHold`): its sideways push is
+        // the steering twist, its push up the tilt back.
+        const h = stickHold(x, y);
+        const step = stepTilt(stickDrive, h.pitch, h.roll);
+        stickDrive = step.state;
+        turnTarget += step.turn * (Math.PI / 180);
       },
       setSpeed(mps) {
         walkSpeed = mps;
@@ -446,6 +513,20 @@ export default function SplatTour() {
       if (e.alpha == null || e.beta == null || e.gamma == null) return;
       deviceQuaternion(gyroQ, e.alpha, e.beta, e.gamma, screenAngle());
       gyroHave = true;
+      if (!tiltOn) return;
+      // Walk by tilting. Smoothed a little: a hand trembles.
+      const h = holdAngles(e.beta, e.gamma, screenAngle());
+      smooth = smooth ? { pitch: smooth.pitch + (h.pitch - smooth.pitch) * 0.3, roll: smooth.roll + (h.roll - smooth.roll) * 0.3 } : h;
+      if (!tilt) {
+        // The first readings after switching on are the comfortable hold.
+        calib.push(smooth.pitch);
+        if (calib.length >= 8) tilt = startTilt(calib.reduce((a, b) => a + b, 0) / calib.length);
+        return;
+      }
+      const step = stepTilt(tilt, smooth.pitch, smooth.roll);
+      tilt = step.state;
+      turnTarget += step.turn * (Math.PI / 180); // the body turns; the hand coming back does not undo it
+      onTiltLevel(tilt.level);
     };
     const onResize = () => {
       renderer.setSize(el.clientWidth, el.clientHeight);
@@ -479,7 +560,7 @@ export default function SplatTour() {
       const dt = Math.min(clock.getDelta(), 0.1);
       // Steering (stick left/right) turns the view. With phone motion on it is
       // added to the phone's own heading, so both turn you.
-      if (gyroOn && gyroHave) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
+      if (gyroOn && gyroHave && !tiltOn) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
       else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
 
       // ⚠️ WALK BY THE COMPASS HEADING, not by where the camera points. With the
@@ -494,8 +575,12 @@ export default function SplatTour() {
       // a small push creeps; and eased, so starting, stopping and turning glide
       // instead of jerking. W/S and A/D (or the arrows) do the same.
       const shape = (v: number) => Math.sign(v) * v * v;
-      let wantFwd = shape(-stickY);
-      let wantTurn = shape(stickX);
+      // Up: the stick's stepped speed; down: reverse, as pushed. The phone's
+      // tilt walks when the stick is left alone.
+      let wantFwd = stickY < 0 ? LEVEL_SPEED[stickDrive.level] : -shape(stickY);
+      if (tiltOn && tilt && !stickY) wantFwd = LEVEL_SPEED[tilt.level];
+      // Only the keys turn continuously; the stick and the phone set a target.
+      let wantTurn = 0;
       if (keys.has("w") || keys.has("arrowup")) wantFwd = 1;
       if (keys.has("s") || keys.has("arrowdown")) wantFwd = -1;
       if (keys.has("d") || keys.has("arrowright")) wantTurn = 1;
@@ -505,7 +590,8 @@ export default function SplatTour() {
       velFwd += (wantFwd * walkSpeed * boost - velFwd) * ease;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
       if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
-      if (Math.abs(velTurn) > 1e-4) turnYaw += velTurn * dt;
+      if (Math.abs(velTurn) > 1e-4) turnTarget += velTurn * dt;
+      turnYaw += (turnTarget - turnYaw) * ease;
       if (keys.has("e")) camera.position.y += walkSpeed * dt;
       if (keys.has("q")) camera.position.y -= walkSpeed * dt;
 
@@ -564,7 +650,7 @@ export default function SplatTour() {
     setEditing(edit);
     setDebug(edit || params.get("debug") === "1");
     if (params.get("src")) {
-      void engine.current?.show("__single", { position: [0, 0, 0], yaw: 0, pitch: 0 }).catch(() => {});
+      void engine.current?.show("__single", { position: [0, 0, 0], yaw: 0, pitch: 0 }).then(() => setSceneReady(true)).catch(() => {});
       return;
     }
     (async () => {
@@ -585,6 +671,7 @@ export default function SplatTour() {
         const first = sceneById(t, params.get("scene") || "") ?? sceneById(t, t.start)!;
         await engine.current?.show(first.id, first.start);
         setCurrent(first.id);
+        setSceneReady(true);
         window.history.replaceState({ splatDepth: 0 }, "");
       } catch (e) {
         setError((e as Error).message);
@@ -659,6 +746,32 @@ export default function SplatTour() {
     const ok = hasDeviceOrientation() && (await requestDeviceOrientation());
     engine.current?.setGyro(ok);
     setGyro(ok ? "on" : "refused");
+  }
+
+  /**
+   * «Walk by tilting». ⚠️ The permission request comes first in the tap (iOS),
+   * and the phone's look-round is switched off: in this mode the phone's
+   * tilt walks and its twist turns the body, and the view stays level.
+   */
+  async function toggleTilt() {
+    if (tiltOn) {
+      engine.current?.setTilt(false);
+      setTiltOn(false);
+      rememberMode("stick");
+      return;
+    }
+    const ok = hasDeviceOrientation() && (await requestDeviceOrientation());
+    setNeedStart(false);
+    if (!ok) {
+      setGyro("refused");
+      rememberMode("stick");
+      return;
+    }
+    engine.current?.setGyro(false);
+    setGyro("off");
+    engine.current?.setTilt(true);
+    setTiltOn(true);
+    rememberMode("tilt");
   }
 
   async function copyReport() {
@@ -738,6 +851,33 @@ export default function SplatTour() {
         </>
       )}
 
+      {needStart && !tiltOn && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/45 px-6 text-center">
+          <button onClick={() => void toggleTilt()} className="rounded-full border border-amber-300/70 bg-amber-300/25 px-8 py-4 text-[18px] font-bold text-amber-50">
+            شروع · Start
+          </button>
+          <p className="max-w-xs text-[14px] leading-relaxed text-white/85">
+            گوشی را راحت در دست بگیرید. کمی به عقب کج کنید تا راه بروید؛ مثل فرمان بچرخانید تا بپیچید.
+            <br />
+            <span dir="ltr">Hold the phone comfortably. Tilt it back a little to walk; turn it like a steering wheel to turn.</span>
+          </p>
+          <button
+            onClick={() => { setNeedStart(false); rememberMode("stick"); }}
+            className="text-[13px] text-white/60 underline"
+          >
+            جوی‌استیک · Use the joystick instead
+          </button>
+        </div>
+      )}
+
+      {tiltOn && (
+        <div className="pointer-events-none absolute left-1/2 top-14 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-black/45 px-3 py-1.5" aria-label={`Speed ${tiltLevel} of 3`}>
+          {[1, 2, 3].map((n) => (
+            <span key={n} className={`h-2.5 w-2.5 rounded-full ${tiltLevel >= n ? "bg-amber-300" : "bg-white/25"}`} />
+          ))}
+        </div>
+      )}
+
       {/* Where you can go */}
       {(here?.exits.length || backTo) && (
         <div dir="ltr" className="absolute right-3 top-3 flex max-w-[45vw] flex-col items-end gap-2">
@@ -786,7 +926,7 @@ export default function SplatTour() {
         </div>
       )}
 
-      <WalkStick onMove={(x, y) => engine.current?.setMove(x, y)} />
+      {!(touch && tiltOn) && <WalkStick onMove={(x, y) => engine.current?.setMove(x, y)} />}
       <button
         dir="ltr"
         onClick={() => {
@@ -800,9 +940,19 @@ export default function SplatTour() {
       </button>
 
       <div dir="ltr" className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
-        <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
+        {touch && (
+          <button onClick={() => void toggleTilt()} className={`rounded-full border px-4 py-2 text-[13px] ${tiltOn ? "border-amber-300/70 bg-amber-300/25 text-amber-50" : "border-white/25 bg-black/60 text-white/90"}`}>
+            {tiltOn ? "جوی‌استیک · Use joystick" : "راه رفتن با کج کردن · Walk by tilting"}
+          </button>
+        )}
+        {tiltOn && (
+          <button onClick={() => engine.current?.recentre()} className="rounded-full border border-white/25 bg-black/60 px-3 py-2 text-[13px] text-white/90" title="Hold the phone comfortably, then tap">
+            ⟲ حالت راحت · Reset hold
+          </button>
+        )}
+        {!tiltOn && <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
           {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد · Phone motion refused" : "نگاه با گوشی · Look by phone"}
-        </button>
+        </button>}
         {debug && (
           <button onClick={() => void copyReport()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
             {copied ? "Copied" : "Copy report"}

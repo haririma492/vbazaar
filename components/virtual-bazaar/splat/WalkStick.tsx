@@ -4,8 +4,11 @@ import { useRef, useState } from "react";
 
 /**
  * THE STICK — pedal and steering wheel in one. Up walks forward, down steps
- * back, left and right turn; let go and you glide to a stop. A phone has no
- * keyboard, and someone who never played a game knows how to drive.
+ * back; left and right steer. What a push does is the viewer's: in the splat
+ * viewer it drives exactly like tilting the phone (`lib/splats/tilt.ts`,
+ * `stickHold`) — stepped speeds, and a sideways push turns the body, which
+ * stays turned when the knob comes back. A phone has no keyboard, and someone
+ * who never played a game knows how to drive.
  */
 export default function WalkStick({ onMove }: { onMove: (x: number, y: number) => void }) {
   const R = 56; // how far the knob travels from the centre, in px
