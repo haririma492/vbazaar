@@ -104,3 +104,44 @@ export function recordStep(route: Vec3[], p: Vec3, every = 0.5): Vec3[] {
   if (last && Math.hypot(p[0] - last[0], p[2] - last[2]) < every) return route;
   return [...route, [p[0], p[1], p[2]]];
 }
+
+/**
+ * GUIDED WALKING — the path does the steering (operator, 2026-10-04: walking
+ * should not demand a steady, skilled hand). The visitor only says "go" or
+ * "back"; which way that takes them is along the route — round its bends and
+ * back onto it if they are beside it — whichever way along it they face.
+ *
+ * At a fork (two routes meeting at the alleys' junction) the route that runs
+ * the way they face wins: facing the alley IS choosing it. Far from every
+ * route (beyond FADE_TO) there is nothing to follow: null, walk straight.
+ *
+ * Returns the unit direction to move this step (x, z), and the heading
+ * (path convention: 0 faces −z, + right) to turn the view toward.
+ */
+export function guideStep(routes: Vec3[][], x: number, z: number, heading: number): { dx: number; dz: number; aim: number; route: number } | null {
+  const [hx, hz] = dirOf(heading);
+  let best: { score: number; dx: number; dz: number; route: number } | null = null;
+  routes.forEach((route, ri) => {
+    const near = nearestOnRoute(route, x, z);
+    if (!near || near.dist >= FADE_TO) return;
+    const [ax, , az] = route[near.seg];
+    const [bx, , bz] = route[near.seg + 1];
+    const L = Math.hypot(bx - ax, bz - az) || 1;
+    const along1 = ((bx - ax) * hx + (bz - az) * hz) / L;
+    const dir: 1 | -1 = along1 >= 0 ? 1 : -1;
+    const [tx, tz] = along(route, near.seg, near.t, LOOK_AHEAD, dir);
+    let dx = tx - x, dz = tz - z;
+    const D = Math.hypot(dx, dz);
+    if (D < 1e-6) return; // at the route's end that way
+    dx /= D;
+    dz /= D;
+    // How well this way along matches where they face, a little less for a route further off.
+    const score = dx * hx + dz * hz - near.dist * 0.15;
+    if (!best || score > best.score) best = { score, dx, dz, route: ri };
+  });
+  if (!best) return null;
+  const b = best as { score: number; dx: number; dz: number; route: number };
+  // Facing well away from every way along (more than a right angle): they mean it — walk straight.
+  if (b.score < -0.2) return null;
+  return { dx: b.dx, dz: b.dz, aim: headingTo(b.dx, b.dz), route: b.route };
+}

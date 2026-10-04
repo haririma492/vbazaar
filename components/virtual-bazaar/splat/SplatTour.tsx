@@ -46,7 +46,7 @@ import {
 import { doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
-import { nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
+import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, nudge, toLocal, toWorld, type Place } from "@/lib/splats/place";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
@@ -162,6 +162,8 @@ type Engine = {
   setWorld: (members: Member[], show: boolean) => void;
   /** Walls on (`lib/splats/corridor.ts`); off while the operator records a route or aligns. */
   setWalls: (on: boolean) => void;
+  /** Follow the path (`guideStep`): «go» and «back» are all a visitor needs; the route steers. */
+  setGuided: (on: boolean) => void;
   /** Enter / «Go in»: through the exit or shop door in reach. False when none is. */
   goIn: () => boolean;
   /** Show a scene placed at `place` (loading it if need be), see-through while being aligned. */
@@ -183,6 +185,8 @@ const SPEEDS = [
 const SPEED_KEY = "sk-splat-speed";
 /** On a phone: "tilt" (the default) or "stick", the visitor's last choice. */
 const MODE_KEY = "sk-splat-mode";
+/** «Follow the path» on (the default) or off, the visitor's last choice. */
+const GUIDED_KEY = "sk-splat-guided";
 /** Full steering turns this fast (rad/s): about 45° a second, a slow look round. */
 const TURN_RATE = 0.8;
 /** How long starting, stopping and turning take to settle (s). */
@@ -211,6 +215,10 @@ export default function SplatTour() {
   const [recordingRoute, setRecordingRoute] = useState(false);
   // Edit mode: walk through the walls (to look a scene over), and the next shop door's name.
   const [wallsOff, setWallsOff] = useState(false);
+  const [guided, setGuided] = useState(true);
+  useEffect(() => {
+    try { if (window.localStorage.getItem(GUIDED_KEY) === "off") setGuided(false); } catch { /* private mode: on */ }
+  }, []);
   const [doorName, setDoorName] = useState("");
   // The Align tool: which scene is being joined to this one, where it sits now, and how big a nudge is.
   const [align, setAlign] = useState<{ id: string; place: Place; before: Place | null } | null>(null);
@@ -324,6 +332,7 @@ export default function SplatTour() {
     // ⚠️ WALLS (`lib/splats/corridor.ts`): the lanes round the routes, and a
     // shop's side lane while its door is open.
     let wallsOn = true;
+    let guided = true;
     let openDoor: { id: string; at: Vec3; lane: Lane } | null = null;
     let reach: Reach = null;
     let reachTarget: { exit?: Exit; door?: Door } = {};
@@ -572,6 +581,9 @@ export default function SplatTour() {
       setWalls(on) {
         wallsOn = on;
       },
+      setGuided(on) {
+        guided = on;
+      },
       goIn() {
         if (reachTarget.exit) {
           exitHandler.current(reachTarget.exit);
@@ -801,9 +813,21 @@ export default function SplatTour() {
       }
       // In a shop (its door open, off the alley) the alley's route does not pull them out.
       const inShop = openDoor != null && (nearestDist > (world.find((m) => m.id === nearest?.id)?.half ?? 1));
-      if (nearest && velFwd > 0.05 && !inShop) {
-        const steering = Math.abs(stickX) > 0.08 || Math.abs(velTurn) > 0.05 || Math.abs(turnTarget - turnYaw) > 0.03 || pointers.size > 0;
-        if (!steering) turnTarget += routePull(nearest.route, camera.position.x, camera.position.z, -heading) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
+      // ⚠️ FOLLOW THE PATH (`guideStep`, on by default): «go» and «back» are
+      // all it takes — the step goes along the route, round its bends, and
+      // the view turns to face along it. At the junction the route faced is
+      // the one taken. Inside a shop, or far from every route, walking is straight.
+      const steering = Math.abs(stickX) > 0.08 || Math.abs(velTurn) > 0.05 || Math.abs(turnTarget - turnYaw) > 0.03 || pointers.size > 0;
+      let guide: ReturnType<typeof guideStep> = null;
+      // A shop's door open: they chose to go in — walking is straight until it closes behind them.
+      if (guided && !openDoor && Math.abs(velFwd) > 1e-4) {
+        guide = guideStep(world.filter((m) => m.route.length > 1).map((m) => m.route), camera.position.x, camera.position.z, velFwd >= 0 ? -heading : -heading + Math.PI);
+      }
+      if (guide && velFwd > 0.05 && !steering) {
+        const off = angleDiff(guide.aim, -heading);
+        turnTarget += Math.max(-1, Math.min(1, off * 1.5)) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
+      } else if (nearest && velFwd > 0.05 && !inShop && !steering) {
+        turnTarget += routePull(nearest.route, camera.position.x, camera.position.z, -heading) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
       }
       // Walking from one placed scene into the next: it becomes the scene "here".
       if (nearest && nearest.id !== currentId && nearestDist < 3 && world.length > 1) {
@@ -813,7 +837,10 @@ export default function SplatTour() {
       }
       velFwd += (wantFwd * walkSpeed * pace * boost - velFwd) * ease;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
-      if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
+      if (guide) {
+        camera.position.x += guide.dx * Math.abs(velFwd) * dt;
+        camera.position.z += guide.dz * Math.abs(velFwd) * dt;
+      } else if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
       if (Math.abs(velTurn) > 1e-4) turnTarget += velTurn * dt;
       turnYaw += (turnTarget - turnYaw) * ease;
       // ⚠️ WALLS: inside the lanes walking is free; at an edge the push out
@@ -969,6 +996,10 @@ export default function SplatTour() {
       editing,
     );
   }, [here, tour, editing]);
+
+  useEffect(() => {
+    engine.current?.setGuided(guided && !recordingRoute);
+  }, [guided, recordingRoute]);
 
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
@@ -1384,7 +1415,7 @@ export default function SplatTour() {
         {SPEEDS[speedIx].label}
       </button>
 
-      <div dir="ltr" className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
+      <div dir="ltr" className="absolute bottom-4 left-1/2 flex w-max max-w-[calc(100vw-24px)] -translate-x-1/2 flex-wrap justify-center gap-2">
         {touch && (
           <button onClick={() => void toggleTilt()} className={`rounded-full border px-4 py-2 text-[13px] ${tiltOn ? "border-amber-300/70 bg-amber-300/25 text-amber-50" : "border-white/25 bg-black/60 text-white/90"}`}>
             {tiltOn ? "جوی‌استیک · Use joystick" : "راه رفتن با کج کردن · Walk by tilting"}
@@ -1395,6 +1426,15 @@ export default function SplatTour() {
             ⟲ حالت راحت · Reset hold
           </button>
         )}
+        <button
+          onClick={() => {
+            setGuided(!guided);
+            try { window.localStorage.setItem(GUIDED_KEY, guided ? "off" : "on"); } catch { /* fine */ }
+          }}
+          className={`rounded-full border px-4 py-2 text-[13px] ${guided ? "border-sky-300/70 bg-sky-300/20 text-sky-50" : "border-white/25 bg-black/60 text-white/90"}`}
+        >
+          {guided ? "دنبال مسیر ✓ · Follow the path" : "راه رفتن آزاد · Free walking"}
+        </button>
         {!tiltOn && <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
           {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد · Phone motion refused" : "نگاه با گوشی · Look by phone"}
         </button>}
