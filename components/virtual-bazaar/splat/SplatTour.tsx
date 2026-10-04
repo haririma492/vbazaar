@@ -46,24 +46,12 @@ import {
 } from "@/lib/splats/tour";
 import { bridges, doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
+import { downloadSplat, makeMarker, splatBase } from "./load";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, joinAtEnd, nudge, toLocal, toWorld, type Place } from "@/lib/splats/place";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
-/** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
-const BUILT_BASE = (process.env.NEXT_PUBLIC_SPLAT_BASE_URL || "").trim().replace(/\/+$/, "");
-
-async function splatBase(): Promise<string> {
-  if (BUILT_BASE) return BUILT_BASE;
-  try {
-    const res = await fetch("/api/splats/config", { cache: "no-store" });
-    const { base } = (await res.json()) as { base: string | null };
-    return (base || "").trim().replace(/\/+$/, "");
-  } catch {
-    return "";
-  }
-}
 const FADE_MS = 250;
 const DECODE_TIMEOUT_MS = 120_000;
 
@@ -111,34 +99,6 @@ function gpuName(gl: WebGL2RenderingContext | WebGLRenderingContext): string {
 
 const fmtMB = (n: number | null) => (n == null ? "—" : `${(n / 1024 / 1024).toFixed(2)} MB`);
 const fmtMs = (n: number | null) => (n == null ? "—" : n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(2)} s`);
-
-/** A marker: a glowing ring with the exit's name under it, always facing the camera. */
-function makeMarker(text: string): THREE.Sprite {
-  const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 256;
-  const g = c.getContext("2d")!;
-  g.fillStyle = "rgba(252, 211, 77, 0.25)";
-  g.strokeStyle = "rgba(252, 211, 77, 0.95)";
-  g.lineWidth = 10;
-  g.beginPath();
-  g.arc(256, 80, 56, 0, Math.PI * 2);
-  g.fill();
-  g.stroke();
-  g.font = "bold 44px system-ui, sans-serif";
-  g.textAlign = "center";
-  g.fillStyle = "rgba(0,0,0,0.6)";
-  const w = Math.min(500, g.measureText(text).width + 40);
-  g.fillRect(256 - w / 2, 160, w, 64);
-  g.fillStyle = "#fff";
-  g.fillText(text, 256, 208, 480);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
-  sprite.scale.set(0.8, 0.4, 1);
-  sprite.renderOrder = 10;
-  return sprite;
-}
 
 /** A scene walked among: its route and doors in world coordinates, its walls (world units either side; 0 none), its pace. */
 type Member = { id: string; route: Vec3[]; pace: number; half: number; doors: Door[] };
@@ -526,39 +486,8 @@ export default function SplatTour() {
       publish();
 
       const tFetch = performance.now();
-      const res = await fetch(src);
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${src}`);
-      const total = Number(res.headers.get("content-length")) || 0;
-      const reader = res.body.getReader();
-      // ⚠️ ONE COPY, NOT TWO. A phone's browser is reloaded by the system
-      // when a page takes too much memory (iOS does it silently: the visitor
-      // finds themselves back at «Start»). Knowing the size, the download
-      // goes straight into its buffer instead of pieces plus a joined copy.
-      let bytes = new Uint8Array(total || 0);
-      const chunks: Uint8Array[] = [];
-      let got = 0;
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (total && got + value.length <= total) bytes.set(value, got);
-        else chunks.push(value);
-        got += value.length;
-        setLoading(total ? got / total : 0);
-      }
-      if (chunks.length || got !== bytes.length) {
-        // No size given (or a wrong one): join what came.
-        const all = new Uint8Array(got);
-        let at = 0;
-        if (total) {
-          all.set(bytes.subarray(0, Math.min(total, got)), 0);
-          at = Math.min(total, got);
-        }
-        for (const c of chunks) {
-          all.set(c, at);
-          at += c.length;
-        }
-        bytes = all;
-      }
+      const bytes = await downloadSplat(src, setLoading);
+      const got = bytes.length;
       rep.bytes = got;
       rep.downloadMs = performance.now() - tFetch;
       publish();
