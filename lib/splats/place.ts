@@ -67,3 +67,37 @@ export function nudge(p: Place, by: { move?: Vec3; turn?: number; grow?: number 
   }
   return next;
 }
+
+/** The heading (0 faces −z, + turns right) from a to b on the ground. */
+const headingOf = (a: Vec3, b: Vec3) => Math.atan2(b[0] - a[0], -(b[2] - a[2]));
+
+/** The way a route sets off from its start, or arrives at its end: over its first / last `over` units. */
+function routeHeading(route: Vec3[], atEnd: boolean, over = 1): number | null {
+  if (route.length < 2) return null;
+  const pts = atEnd ? [...route].reverse() : route;
+  const from = pts[0];
+  for (const p of pts.slice(1)) {
+    if (Math.hypot(p[0] - from[0], p[2] - from[2]) >= over) return atEnd ? headingOf(p, from) : headingOf(from, p);
+  }
+  const last = pts[pts.length - 1];
+  return atEnd ? headingOf(last, from) : headingOf(from, last);
+}
+
+/**
+ * AUTO-JOIN: a place for the next scene that puts the start of its route
+ * (its own coordinates) on the end of this scene's route (the world's), set
+ * off the way this one arrives — the cameraman walked on from where he
+ * stopped. A first guess for Align; the operator fine-tunes it by eye.
+ * Null when either route is missing.
+ */
+export function joinAtEnd(endRoute: Vec3[], nextRoute: Vec3[], scale = 1): Place | null {
+  const arrive = routeHeading(endRoute, true);
+  const leave = routeHeading(nextRoute, false);
+  if (arrive == null || leave == null) return null;
+  // Turning by `yaw` takes a heading h to h − yaw.
+  const yaw = leave - arrive;
+  const p0: Place = { offset: [0, 0, 0], yaw, scale };
+  const at = toWorld(p0, nextRoute[0]);
+  const end = endRoute[endRoute.length - 1];
+  return { offset: [end[0] - at[0], end[1] - at[1], end[2] - at[2]], yaw, scale };
+}

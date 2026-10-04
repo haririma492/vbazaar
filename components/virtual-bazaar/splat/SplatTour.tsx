@@ -48,7 +48,7 @@ import { bridges, doorLane, inReach, keepInside, type Lane } from "@/lib/splats/
 import WalkStick from "./WalkStick";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
-import { IDENTITY, nudge, toLocal, toWorld, type Place } from "@/lib/splats/place";
+import { IDENTITY, joinAtEnd, nudge, toLocal, toWorld, type Place } from "@/lib/splats/place";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 /** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
@@ -1032,7 +1032,8 @@ export default function SplatTour() {
         const end = mine && mine.route.length > 1 ? mine.route[mine.route.length - 1] : null;
         if (end && velFwd > 0.05 && !openDoor && performance.now() - autoAt > 4000 &&
             Math.hypot(camera.position.x - end[0], camera.position.z - end[2]) < 1.5) {
-          const next = markerExits.find((e) => Math.hypot(e.at[0] - end[0], e.at[2] - end[2]) < 3 &&
+          // A scene joined into this world is walked into, not jumped to.
+          const next = markerExits.find((e) => !world.some((m) => m.id === e.to) && Math.hypot(e.at[0] - end[0], e.at[2] - end[2]) < 3 &&
             inReach(e.at, camera.position.x, camera.position.z, -heading, 4) != null);
           if (next) {
             autoAt = performance.now();
@@ -1314,6 +1315,24 @@ export default function SplatTour() {
     setAlign({ id: target.id, place: start, before: target.place });
     void engine.current.showPlaced(target.id, start, true);
   }
+  /**
+   * AUTO-JOIN (`joinAtEnd`): the chosen scene's route set off from the end of
+   * this one's, the way it arrives — then the Align tool, to fine-tune by eye.
+   */
+  function autoJoin() {
+    if (!tour || !here || !alignTarget || !engine.current) return;
+    const target = sceneById(tour, alignTarget);
+    if (!target || here.route.length < 2 || target.route.length < 2) return;
+    let t = tour;
+    if (!here.place) t = updateScene(t, here.id, { place: IDENTITY });
+    const hp = (sceneById(t, here.id)!.place ?? IDENTITY) as Place;
+    const place = joinAtEnd(here.route.map((p) => toWorld(hp, p)), target.route, hp.scale);
+    if (!place) return;
+    changeTour(t);
+    setAlign({ id: target.id, place, before: target.place });
+    void engine.current.showPlaced(target.id, place, true);
+  }
+
   function alignBy(by: { fwd?: number; side?: number; up?: number; turn?: number; grow?: number }) {
     if (!align || !engine.current) return;
     const k = fine ? 1 : 10;
@@ -1647,7 +1666,24 @@ export default function SplatTour() {
                       </select>
                       <button disabled={!alignTarget} className="rounded border border-sky-300/60 px-2 py-1 disabled:opacity-40" onClick={startAlign}>Align</button>
                     </div>
-                  ) : (
+                  ) : null}
+                  {!align && alignTarget && (
+                    <>
+                      <button
+                        disabled={!here.route.length || !sceneById(tour, alignTarget)?.route.length}
+                        className="w-full rounded border border-sky-300/60 bg-sky-400/15 px-2 py-1.5 font-bold text-sky-50 disabled:opacity-40"
+                        onClick={autoJoin}
+                      >
+                        ⇢ Auto-join at the end of this path
+                      </button>
+                      <div className="text-white/40">
+                        {!here.route.length || !sceneById(tour, alignTarget)?.route.length
+                          ? "Needs both scenes' routes."
+                          : "Puts its path's start on this path's end. Walk there to check; nudge if the shops don't line up; Done, then Save."}
+                      </div>
+                    </>
+                  )}
+                  {align && (
                     <>
                       <div className="grid grid-cols-4 gap-1">
                         <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: 1 })}>↑</button>

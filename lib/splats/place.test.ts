@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { IDENTITY, nudge, parsePlace, toLocal, toWorld, type Place, type Vec3 } from "./place.ts";
+import { IDENTITY, joinAtEnd, nudge, parsePlace, toLocal, toWorld, type Place, type Vec3 } from "./place.ts";
 
 const near = (a: Vec3, b: Vec3, eps = 1e-9) => assert.ok(a.every((v, i) => Math.abs(v - b[i]) < eps), `${a} ≉ ${b}`);
 
@@ -38,4 +38,16 @@ test("turning or resizing keeps the point being looked at in place", () => {
   near(toWorld(grown, before), pivot, 1e-9);
   // A move is a move.
   near(nudge(p, { move: [0.5, 0, -0.5] }, pivot).offset, [3.5, 0, 0.5]);
+});
+
+test("auto-join: the next route sets off from this one's end, the way it arrives", () => {
+  // This scene's route: north (−z) 10, then east (+x) 5 — arriving heading east.
+  const end: Vec3[] = [[0, 1.6, 0], [0, 1.6, -10], [5, 1.6, -10]];
+  // The next scene's own route: from (2, 0.5, 3) heading south (+z) 8.
+  const next: Vec3[] = [[2, 0.5, 3], [2, 0.5, 7], [2, 0.5, 11]];
+  const p = joinAtEnd(end, next)!;
+  near(toWorld(p, next[0]), [5, 1.6, -10]);
+  // Going on east: its second point lands 4 further east.
+  near(toWorld(p, next[1]), [9, 1.6, -10], 1e-9);
+  assert.equal(joinAtEnd([[0, 0, 0]], next), null);
 });
