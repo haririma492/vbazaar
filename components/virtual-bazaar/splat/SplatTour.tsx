@@ -398,7 +398,7 @@ export default function SplatTour() {
     const onMove = (e: PointerEvent) => {
       const prev = pointers.get(e.pointerId);
       if (!prev) return;
-      if (pointers.size === 1 && !gyroOn) {
+      if (pointers.size === 1 && !(gyroOn && gyroHave)) {
         const k = (camera.fov / el.clientHeight) * (Math.PI / 180);
         yaw += (e.clientX - prev.x) * k;
         pitch = THREE.MathUtils.clamp(pitch + (e.clientY - prev.y) * k, -1.45, 1.45);
@@ -424,9 +424,23 @@ export default function SplatTour() {
       }
       downAt = null;
     };
+    // ⚠️ GENTLE ZOOM. A laptop touchpad's two-finger scroll fires dozens of
+    // wheel events a second; each one is capped so the view cannot fly to
+    // its zoom limits in a flick. Double-click puts the zoom back.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoom(Math.exp(e.deltaY * 0.001));
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      zoom(Math.exp(THREE.MathUtils.clamp(px, -40, 40) * 0.0006));
+    };
+    const onDblClick = () => {
+      camera.fov = 70;
+      camera.updateProjectionMatrix();
+    };
+    // A key released while the window is not looking never says so: without
+    // this, W stays "held" and the visitor walks off on their own.
+    const onBlur = () => keys.clear();
+    const onVisibility = () => {
+      if (document.hidden) keys.clear();
     };
     const onOrient = (e: DeviceOrientationEvent) => {
       if (e.alpha == null || e.beta == null || e.gamma == null) return;
@@ -441,6 +455,8 @@ export default function SplatTour() {
     };
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("resize", onResize);
     window.addEventListener("deviceorientation", onOrient);
     const canvas = renderer.domElement;
@@ -449,6 +465,7 @@ export default function SplatTour() {
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointercancel", onUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("dblclick", onDblClick);
     canvas.style.touchAction = "none";
 
     // ── Loop ───────────────────────────────────────────────────────────────
@@ -504,6 +521,21 @@ export default function SplatTour() {
         rep.fps = Math.round((frames * 1000) / (now - fpsSince));
         frames = 0;
         fpsSince = now;
+        // ⚠️ A WEAK GRAPHICS CHIP DRAWS FEWER PIXELS, NOT FEWER FRAMES. At a
+        // handful of frames a second every push of the stick lands late and
+        // far, and walking feels out of control (a 2017 laptop chip, not a
+        // phone). Below 24 fps the canvas renders at a lower resolution, step
+        // by step down to half; above 50 it climbs back.
+        if (rep.firstFrameMs != null) {
+          const pr = renderer.getPixelRatio();
+          const top = Math.min(window.devicePixelRatio, 2);
+          const next = rep.fps < 24 ? Math.max(0.5, pr * 0.8) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
+          if (Math.abs(next - pr) > 0.01) {
+            renderer.setPixelRatio(next);
+            renderer.setSize(el.clientWidth, el.clientHeight);
+            rep.dpr = Math.round(next * 100) / 100;
+          }
+        }
         publish();
       }
     });
@@ -514,6 +546,8 @@ export default function SplatTour() {
       renderer.setAnimationLoop(null);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("resize", onResize);
       window.removeEventListener("deviceorientation", onOrient);
       meshes.forEach((m) => m.dispose());

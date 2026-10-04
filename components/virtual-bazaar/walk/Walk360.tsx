@@ -213,8 +213,10 @@ export default function Walk360() {
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoom(Math.exp(e.deltaY * 0.001));
+      const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      zoom(Math.exp(THREE.MathUtils.clamp(px, -40, 40) * 0.0006));
     };
+    const onBlur = () => keys.clear();
     const onOrient = (e: DeviceOrientationEvent) => {
       if (e.alpha == null || e.beta == null || e.gamma == null) return;
       deviceQuaternion(gyroQ, e.alpha, e.beta, e.gamma, screenAngle());
@@ -238,6 +240,7 @@ export default function Walk360() {
     window.addEventListener("deviceorientation", onOrient);
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKey);
+    window.addEventListener("blur", onBlur);
     window.addEventListener("resize", onResize);
 
     // ── The loop: look, then walk the video ───────────────────────────────
@@ -301,6 +304,7 @@ export default function Walk360() {
       window.removeEventListener("deviceorientation", onOrient);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
+      window.removeEventListener("blur", onBlur);
       window.removeEventListener("resize", onResize);
       video.pause();
       video.removeAttribute("src");
