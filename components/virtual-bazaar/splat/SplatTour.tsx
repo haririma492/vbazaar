@@ -21,8 +21,9 @@
  * ⚠️ SCENES STAY LOADED. A scene once visited is hidden, not thrown away, so
  * going back is instant and keeps no second download.
  *
- * It MEASURES each load — bytes, download, decode, splats, fps — on screen,
- * under «Copy report», and on `window.__splatReport`.
+ * It MEASURES each load — bytes, download, decode, splats, fps — on
+ * `window.__splatReport`, and on screen with «Copy report» under ?debug=1 (or
+ * the operator's ?edit=1). A visitor sees only the place, its name and the stick.
  *
  *   /vca/splat                  the tour, from its start scene
  *   /vca/splat?scene=store-01   the tour, from that scene
@@ -145,20 +146,24 @@ type Engine = {
 
 /** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
 const SPEEDS = [
-  { label: "Slow", mps: 0.35 },
-  { label: "Normal", mps: 0.8 },
-  { label: "Fast", mps: 1.6 },
+  { label: "آهسته · Slow", mps: 0.35 },
+  { label: "معمولی · Normal", mps: 0.8 },
+  { label: "تند · Fast", mps: 1.6 },
 ];
 const SPEED_KEY = "sk-splat-speed";
+/** Full steering turns this fast (rad/s): about 45° a second, a slow look round. */
+const TURN_RATE = 0.8;
+/** How long starting, stopping and turning take to settle (s). */
+const EASE_S = 0.35;
+const UP = new THREE.Vector3(0, 1, 0);
 
 /**
- * THE WALKING STICK — a phone has no W A S D. Drag the knob up to walk the way
- * you look, down to step back, sideways to sidestep; let go and you stop.
- * It is the only way a phone walks: the phone's motion (or a finger on the
- * scene) turns the view, the stick moves you through it.
+ * THE STICK — pedal and steering wheel in one. Up walks forward, down steps
+ * back, left and right turn; let go and you glide to a stop. A phone has no
+ * keyboard, and someone who never played a game knows how to drive.
  */
 function WalkStick({ onMove }: { onMove: (x: number, y: number) => void }) {
-  const R = 44; // how far the knob travels from the centre, in px
+  const R = 56; // how far the knob travels from the centre, in px
   const [knob, setKnob] = useState({ x: 0, y: 0 });
   const origin = useRef<{ x: number; y: number; id: number } | null>(null);
   const move = (e: React.PointerEvent) => {
@@ -183,9 +188,9 @@ function WalkStick({ onMove }: { onMove: (x: number, y: number) => void }) {
   return (
     <div
       role="slider"
-      aria-label="Walk: drag up to go forward, down to go back"
+      aria-label="Drive: up forward, down back, left and right to turn"
       aria-valuenow={0}
-      className="absolute bottom-20 right-5 h-32 w-32 touch-none select-none rounded-full border border-white/25 bg-black/40"
+      className="absolute bottom-20 right-5 h-40 w-40 touch-none select-none rounded-full border border-white/25 bg-black/40"
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         const r = e.currentTarget.getBoundingClientRect();
@@ -197,11 +202,13 @@ function WalkStick({ onMove }: { onMove: (x: number, y: number) => void }) {
       onPointerCancel={end}
     >
       <div
-        className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 rounded-full border border-amber-300/70 bg-amber-300/30"
+        className="pointer-events-none absolute left-1/2 top-1/2 h-16 w-16 rounded-full border border-amber-300/70 bg-amber-300/30"
         style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
       />
       <span className="pointer-events-none absolute left-1/2 top-1 -translate-x-1/2 text-[11px] text-white/50">▲</span>
       <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-white/50">▼</span>
+      <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[13px] text-white/50">↺</span>
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[13px] text-white/50">↻</span>
     </div>
   );
 }
@@ -219,6 +226,7 @@ export default function SplatTour() {
   const [trail, setTrail] = useState<Trail>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [debug, setDebug] = useState(false);
   const [edit, setEdit] = useState({ to: "", label: "", saved: "" });
   const tourRef = useRef<Tour | null>(null);
   const baseRef = useRef("");
@@ -263,6 +271,10 @@ export default function SplatTour() {
     let stickX = 0;
     let stickY = 0;
     let walkSpeed = SPEEDS[1].mps;
+    let velFwd = 0; // m/s, eased toward what the stick asks
+    let velTurn = 0; // rad/s, likewise
+    let turnYaw = 0; // how far the steering has turned the view
+    const turnQ = new THREE.Quaternion();
     let gyroHave = false;
     const gyroQ = new THREE.Quaternion();
 
@@ -349,6 +361,9 @@ export default function SplatTour() {
       camera.position.set(...p.position);
       yaw = p.yaw;
       pitch = p.pitch;
+      turnYaw = 0;
+      velFwd = 0;
+      velTurn = 0;
     };
 
     let markerExits: Exit[] = [];
@@ -379,7 +394,7 @@ export default function SplatTour() {
           setLoading(null);
         }
       },
-      pose: () => ({ position: camera.position.toArray() as Vec3, yaw, pitch }),
+      pose: () => ({ position: camera.position.toArray() as Vec3, yaw: yaw + turnYaw, pitch }),
       pointAhead(m) {
         const d = new THREE.Vector3();
         camera.getWorldDirection(d);
@@ -499,8 +514,10 @@ export default function SplatTour() {
     let fpsSince = performance.now();
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
-      if (gyroOn && gyroHave) camera.quaternion.copy(gyroQ);
-      else camera.quaternion.setFromEuler(look.set(-pitch, -yaw, 0));
+      // Steering (stick left/right) turns the view. With phone motion on it is
+      // added to the phone's own heading, so both turn you.
+      if (gyroOn && gyroHave) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
+      else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
 
       // ⚠️ WALK BY THE COMPASS HEADING, not by where the camera points. With the
       // phone tilted at the floor the pointing direction, flattened, swings
@@ -508,21 +525,26 @@ export default function SplatTour() {
       const heading = headingOf(camera.quaternion);
       forward.set(-Math.sin(heading), 0, -Math.cos(heading));
       right.set(Math.cos(heading), 0, -Math.sin(heading));
-      const speed = walkSpeed * (keys.has("shift") ? 2.5 : 1) * dt;
-      if (keys.has("w") || keys.has("arrowup")) camera.position.addScaledVector(forward, speed);
-      if (keys.has("s") || keys.has("arrowdown")) camera.position.addScaledVector(forward, -speed);
-      if (keys.has("d") || keys.has("arrowright")) camera.position.addScaledVector(right, speed * 0.6);
-      if (keys.has("a") || keys.has("arrowleft")) camera.position.addScaledVector(right, -speed * 0.6);
-      if (keys.has("e")) camera.position.y += speed;
-      if (keys.has("q")) camera.position.y -= speed;
-      // The stick: up is forward (screen y grows downward). Squared, so a small
-      // push creeps and only a full push walks; sidesteps at 60 %.
-      if (stickX || stickY) {
-        const push = Math.min(1, Math.hypot(stickX, stickY));
-        const k = (push * push) / (push || 1);
-        camera.position.addScaledVector(forward, -stickY * k * walkSpeed * dt);
-        camera.position.addScaledVector(right, stickX * k * walkSpeed * 0.6 * dt);
-      }
+
+      // ⚠️ DRIVEN LIKE A CAR, NOT A GAME: the stick's up/down is the pedal
+      // (forward/back), its left/right the steering wheel (turn). Squared, so
+      // a small push creeps; and eased, so starting, stopping and turning glide
+      // instead of jerking. W/S and A/D (or the arrows) do the same.
+      const shape = (v: number) => Math.sign(v) * v * v;
+      let wantFwd = shape(-stickY);
+      let wantTurn = shape(stickX);
+      if (keys.has("w") || keys.has("arrowup")) wantFwd = 1;
+      if (keys.has("s") || keys.has("arrowdown")) wantFwd = -1;
+      if (keys.has("d") || keys.has("arrowright")) wantTurn = 1;
+      if (keys.has("a") || keys.has("arrowleft")) wantTurn = -1;
+      const boost = keys.has("shift") ? 2.5 : 1;
+      const ease = 1 - Math.exp(-dt / EASE_S);
+      velFwd += (wantFwd * walkSpeed * boost - velFwd) * ease;
+      velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
+      if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
+      if (Math.abs(velTurn) > 1e-4) turnYaw += velTurn * dt;
+      if (keys.has("e")) camera.position.y += walkSpeed * dt;
+      if (keys.has("q")) camera.position.y -= walkSpeed * dt;
 
       renderer.render(scene, camera);
 
@@ -558,7 +580,9 @@ export default function SplatTour() {
   // ── The tour: load it, start in its first scene ─────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setEditing(params.get("edit") === "1" && Boolean(readAdminToken()));
+    const edit = params.get("edit") === "1" && Boolean(readAdminToken());
+    setEditing(edit);
+    setDebug(edit || params.get("debug") === "1");
     if (params.get("src")) {
       void engine.current?.show("__single", { position: [0, 0, 0], yaw: 0, pitch: 0 }).catch(() => {});
       return;
@@ -598,8 +622,9 @@ export default function SplatTour() {
   const [speedIx, setSpeedIx] = useState(1);
   useEffect(() => {
     try {
-      const saved = Number(window.localStorage.getItem(SPEED_KEY));
-      if (saved >= 0 && saved < SPEEDS.length) setSpeedIx(saved);
+      const raw = window.localStorage.getItem(SPEED_KEY);
+      const saved = raw == null ? NaN : Number(raw);
+      if (Number.isInteger(saved) && saved >= 0 && saved < SPEEDS.length) setSpeedIx(saved);
     } catch {
       /* private mode: Normal */
     }
@@ -698,16 +723,40 @@ export default function SplatTour() {
       <div ref={host} className="absolute inset-0" />
       <div className={`pointer-events-none absolute inset-0 bg-black transition-opacity duration-200 ${fade ? "opacity-100" : "opacity-0"}`} />
 
-      {/* Where you are, and the measurements */}
-      <div dir="ltr" className="pointer-events-none absolute left-3 top-3 max-w-[calc(100vw-24px)] space-y-1 rounded-xl bg-black/60 p-3 text-left font-mono text-[11px] leading-snug text-white/85">
-        <div className="text-[12px] font-bold text-amber-200">{here ? `${here.title.en} · ${here.title.fa}` : "Splat test"}</div>
-        <div className="break-all text-white/50">{r?.src}</div>
-        {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
-        <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
-        <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-        <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
-        {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
-      </div>
+      {/* ⚠️ A VISITOR SEES THE PLACE, NOT THE MACHINERY. The measurements are
+          for us: ?debug=1 (or the operator's ?edit=1) shows them. */}
+      {debug ? (
+        <div dir="ltr" className="pointer-events-none absolute left-3 top-3 max-w-[calc(100vw-24px)] space-y-1 rounded-xl bg-black/60 p-3 text-left font-mono text-[11px] leading-snug text-white/85">
+          <div className="text-[12px] font-bold text-amber-200">{here ? `${here.title.en} · ${here.title.fa}` : "Splat test"}</div>
+          <div className="break-all text-white/50">{r?.src}</div>
+          {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
+          <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
+          <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
+          {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
+        </div>
+      ) : (
+        <>
+          {here && (
+            <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-black/45 px-4 py-1.5 text-center text-[15px] text-white/90">
+              {here.title.fa !== here.title.en ? `${here.title.fa} · ${here.title.en}` : here.title.en}
+            </div>
+          )}
+          {loading != null && (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-white/85">
+              <div className="h-1.5 w-48 overflow-hidden rounded-full bg-white/15">
+                <div className="h-full bg-amber-300/80 transition-[width]" style={{ width: `${Math.round((loading || 0.02) * 100)}%` }} />
+              </div>
+              <div className="text-[15px]">در حال آماده‌سازی… · Getting ready…</div>
+            </div>
+          )}
+          {(r?.error || error) && (
+            <div className="absolute inset-x-4 top-16 rounded-xl bg-black/70 p-3 text-center text-[14px] text-rose-200">
+              {r?.error || error}
+            </div>
+          )}
+        </>
+      )}
 
       {/* Where you can go */}
       {(here?.exits.length || backTo) && (
@@ -765,18 +814,20 @@ export default function SplatTour() {
           setSpeedIx(next);
           try { window.localStorage.setItem(SPEED_KEY, String(next)); } catch { /* fine */ }
         }}
-        className="absolute bottom-[13.5rem] right-5 w-32 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
+        className="absolute bottom-[15.5rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
       >
-        Speed: {SPEEDS[speedIx].label}
+        {SPEEDS[speedIx].label}
       </button>
 
       <div dir="ltr" className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
         <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
-          {gyro === "on" ? "Drag to look" : gyro === "refused" ? "Phone motion refused" : "Phone motion"}
+          {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد · Phone motion refused" : "نگاه با گوشی · Look by phone"}
         </button>
-        <button onClick={() => void copyReport()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
-          {copied ? "Copied" : "Copy report"}
-        </button>
+        {debug && (
+          <button onClick={() => void copyReport()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
+            {copied ? "Copied" : "Copy report"}
+          </button>
+        )}
       </div>
     </div>
   );
