@@ -119,7 +119,11 @@ async function listPrefix(bucket: string, prefix: string, kind: SplatKind): Prom
   const out: SplatObject[] = [];
   let token: string | undefined;
   do {
-    const page = await s3().send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    const page = await s3().send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token })).catch((e) => {
+      // Two buckets are listed at once: say which one refused.
+      (e as Error).message = `bucket «${bucket}»: ${(e as Error).message}`;
+      throw e;
+    });
     for (const o of page.Contents ?? []) {
       if (o.Key) out.push({ key: o.Key, kind, size: o.Size ?? 0, lastModified: o.LastModified?.toISOString() ?? null });
     }
