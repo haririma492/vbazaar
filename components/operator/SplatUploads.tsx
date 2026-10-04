@@ -70,8 +70,17 @@ async function api<T = any>(body?: object): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
     cache: "no-store",
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  const text = await res.text();
+  let json: any = {};
+  try {
+    json = JSON.parse(text);
+  } catch {
+    /* not ours: a proxy's error page, shown in part below */
+  }
+  if (!res.ok || !json.ok) {
+    const plain = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+    throw new Error(json.error || `HTTP ${res.status}${plain ? ` — ${plain}` : ""}`);
+  }
   return json;
 }
 

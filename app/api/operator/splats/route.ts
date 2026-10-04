@@ -57,6 +57,18 @@ const publicUrl = (key: string) => {
   return base ? `${base}/${key}` : null;
 };
 
+/**
+ * R2's own words, with its error code. ⚠️ ANSWERED AS 500, NOT 502: Cloudflare
+ * in front of the site swaps an origin's 502 for a bare page of its own, and
+ * the operator saw only "HTTP 502" instead of why R2 said no.
+ */
+function r2Reason(e: unknown): string {
+  const err = e as { name?: string; message?: string; Code?: string; $metadata?: { httpStatusCode?: number } };
+  const code = err.Code || err.name || "Error";
+  const status = err.$metadata?.httpStatusCode;
+  return `${code}${status ? ` (${status})` : ""}: ${err.message || "no message"}`;
+}
+
 const uploadIdOf = (v: unknown) => (typeof v === "string" && v.length > 0 && v.length < 1024 ? v : null);
 
 export async function GET(req: NextRequest) {
@@ -68,7 +80,7 @@ export async function GET(req: NextRequest) {
     return ok({ r2: r2Summary(), objects, tour });
   } catch (e) {
     console.error("[operator/splats:GET]", e);
-    return fail(502, `R2 refused the listing: ${(e as Error).message}`);
+    return fail(500, `R2 refused the listing: ${r2Reason(e)}`);
   }
 }
 
@@ -139,6 +151,6 @@ export async function POST(req: NextRequest) {
     }
   } catch (e) {
     console.error(`[operator/splats:${action}]`, e);
-    return fail(502, `R2 refused «${action}»: ${(e as Error).message}`);
+    return fail(500, `R2 refused «${action}»: ${r2Reason(e)}`);
   }
 }
