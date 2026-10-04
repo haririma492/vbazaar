@@ -198,6 +198,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 /** The dashboard's width, and the grip left showing when it is pushed away. */
 const PANEL_W = 300;
 const GRIP_W = 36;
+const PANEL_KEY = "sk-splat-panel";
 const DRIVE_ROWS: Array<{ key: keyof Drive; label: string; unit: string; hint: string }> = [
   { key: "speed", label: "Forward speed (Normal)", unit: "/s", hint: "Slow is half of it, Fast twice." },
   { key: "accel", label: "Speed-up & slow-down", unit: "s", hint: "Higher: gentler starts and stops." },
@@ -235,6 +236,18 @@ export default function SplatTour() {
   const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "scenes" | "info">("route");
   // How far the dashboard is pushed left (0: open; −(PANEL_W − GRIP_W): only the grip shows).
   const [panelX, setPanelX] = useState(0);
+  // Where the operator left the dashboard (and its tab) survives a reload.
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(PANEL_KEY) || "{}") as { x?: number; tab?: string };
+      if (typeof saved.x === "number") setPanelX(saved.x < -10 ? -(PANEL_W - GRIP_W) : 0);
+      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "scenes" || saved.tab === "info") setPanelTab(saved.tab);
+    } catch { /* fine */ }
+  }, []);
+  useEffect(() => {
+    if (grip.current) return; // mid-drag
+    try { window.localStorage.setItem(PANEL_KEY, JSON.stringify({ x: panelX, tab: panelTab })); } catch { /* fine */ }
+  }, [panelX, panelTab]);
   const grip = useRef<{ x0: number; start: number; moved: boolean } | null>(null);
   const AWAY = -(PANEL_W - GRIP_W);
   const onGripDown = (e: React.PointerEvent) => {
@@ -279,8 +292,23 @@ export default function SplatTour() {
     let mode: string | null = null;
     try { mode = window.localStorage.getItem(MODE_KEY); } catch { /* private mode: the default */ }
     if (mode === "stick" || !hasDeviceOrientation()) return;
-    if (needsPermission()) setNeedStart(true);
-    else void toggleTilt();
+    if (!needsPermission()) return void toggleTilt();
+    // ⚠️ iOS ASKS ONCE, NOT ON EVERY LOAD. If the phone already allowed
+    // motion (earlier in this visit — or before Safari reloaded the page),
+    // its readings simply arrive: then walk-by-tilting starts with no card.
+    // Only when nothing arrives is «Start» shown, whose tap is the request.
+    let got = false;
+    const probe = () => { got = true; };
+    window.addEventListener("deviceorientation", probe);
+    const t = window.setTimeout(() => {
+      window.removeEventListener("deviceorientation", probe);
+      if (got) tiltOnNow();
+      else setNeedStart(true);
+    }, 600);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("deviceorientation", probe);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [touch, sceneReady]);
   const [edit, setEdit] = useState({ to: "", label: "", saved: "" });
@@ -467,20 +495,34 @@ export default function SplatTour() {
       if (!res.ok || !res.body) throw new Error(`HTTP ${res.status} for ${src}`);
       const total = Number(res.headers.get("content-length")) || 0;
       const reader = res.body.getReader();
+      // ⚠️ ONE COPY, NOT TWO. A phone's browser is reloaded by the system
+      // when a page takes too much memory (iOS does it silently: the visitor
+      // finds themselves back at «Start»). Knowing the size, the download
+      // goes straight into its buffer instead of pieces plus a joined copy.
+      let bytes = new Uint8Array(total || 0);
       const chunks: Uint8Array[] = [];
       let got = 0;
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
-        chunks.push(value);
+        if (total && got + value.length <= total) bytes.set(value, got);
+        else chunks.push(value);
         got += value.length;
         setLoading(total ? got / total : 0);
       }
-      const bytes = new Uint8Array(got);
-      let at = 0;
-      for (const c of chunks) {
-        bytes.set(c, at);
-        at += c.length;
+      if (chunks.length || got !== bytes.length) {
+        // No size given (or a wrong one): join what came.
+        const all = new Uint8Array(got);
+        let at = 0;
+        if (total) {
+          all.set(bytes.subarray(0, Math.min(total, got)), 0);
+          at = Math.min(total, got);
+        }
+        for (const c of chunks) {
+          all.set(c, at);
+          at += c.length;
+        }
+        bytes = all;
       }
       rep.bytes = got;
       rep.downloadMs = performance.now() - tFetch;
@@ -550,6 +592,18 @@ export default function SplatTour() {
           placeMesh(mesh, flip, mine);
           mesh.opacity = 1;
           meshes.forEach((m, k) => (m.visible = k === id));
+          // ⚠️ ON A PHONE, LET GO OF SCENES LEFT BEHIND (not this one, not
+          // those placed in its world): each holds tens of MB, and too many
+          // make iOS reload the page. Going back loads it again.
+          if (window.matchMedia?.("(pointer: coarse)").matches) {
+            const keep = new Set([id, ...(mine ? (tourRef.current?.scenes ?? []).filter((s) => s.place).map((s) => s.id) : [])]);
+            for (const [k, m] of [...meshes]) {
+              if (keep.has(k)) continue;
+              scene.remove(m);
+              m.dispose();
+              meshes.delete(k);
+            }
+          }
           applyPose(pose);
           // ⚠️ ONE WORLD: a scene placed in the tour's world brings the others
           // placed there along (after it is up), so the visitor walks from
@@ -1158,6 +1212,11 @@ export default function SplatTour() {
       rememberMode("stick");
       return;
     }
+    tiltOnNow();
+  }
+  /** Walk by tilting, the phone's motion already allowed. */
+  function tiltOnNow() {
+    setNeedStart(false);
     engine.current?.setGyro(false);
     setGyro("off");
     engine.current?.setTilt(true);
