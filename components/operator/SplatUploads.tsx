@@ -28,7 +28,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
-import { isSceneId, kindOfFile, partRange, sceneIdFromFileName, webFileName } from "@/lib/splats/keys";
+import { isSceneId, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
 import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene, type Tour } from "@/lib/splats/tour";
 
 const API = "/api/operator/splats";
@@ -258,6 +258,7 @@ export default function SplatUploads() {
   const stopRef = useRef(false);
   const xhrs = useRef(new Set<XMLHttpRequest>());
   const tourRef = useRef(tour);
+  const objectsRef = useRef<Obj[]>([]);
   tourRef.current = tour;
 
   const refresh = useCallback(async () => {
@@ -265,6 +266,7 @@ export default function SplatUploads() {
       const out = await api<{ r2: R2Summary; objects: Obj[]; tour: Tour }>();
       setR2(out.r2);
       setObjects(out.objects);
+      objectsRef.current = out.objects;
       setTour(out.tour);
       setTourDirty(false);
       setListError(null);
@@ -306,7 +308,13 @@ export default function SplatUploads() {
     const note = (text: string) => patch(it.id, { note: text });
     let webKey: string;
     if (kind === "master") {
-      await uploadBlob(it.file, it.file.name, it.scene, progress("master"), stopRef, xhrs.current, note);
+      // ⚠️ A MASTER ALREADY IN R2 IS NOT SENT AGAIN. If the conversion failed
+      // (a tab out of memory) or the page was closed after the upload, picking
+      // the same file goes straight to converting instead of another 2 GB.
+      const key = splatKey(it.scene, it.file.name)?.key;
+      const there = objectsRef.current.find((o) => o.key === key && o.size === it.file.size);
+      if (there) note("This master is already in R2 — not uploading it again.");
+      else await uploadBlob(it.file, it.file.name, it.scene, progress("master"), stopRef, xhrs.current, note);
       if (!it.convert) {
         patch(it.id, { step: "done", note: "Master uploaded. Not converted: upload its .spz when ready." });
         return;
