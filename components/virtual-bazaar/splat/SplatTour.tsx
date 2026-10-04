@@ -39,7 +39,7 @@ import * as THREE from "three";
 import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  addExit, emptyTour, enter, groundDistance, leave, parseTour, removeExit, sceneById, updateScene, withinWalk,
+  addExit, emptyTour, enter, leave, parseTour, removeExit, sceneById, updateScene,
   type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
@@ -139,8 +139,6 @@ type Engine = {
   setGyro: (on: boolean) => void;
   /** The on-screen stick: x right, y down, each −1…1; (0, 0) stands still. */
   setMove: (x: number, y: number) => void;
-  /** How far from `centre` a visitor may walk (metres on the ground; 0 = anywhere). */
-  setLimit: (centre: Vec3, radius: number) => void;
   /** Walking speed, metres per second at full stick. */
   setSpeed: (mps: number) => void;
 };
@@ -265,8 +263,6 @@ export default function SplatTour() {
     let stickX = 0;
     let stickY = 0;
     let walkSpeed = SPEEDS[1].mps;
-    let limitCentre: Vec3 = [0, 0, 0];
-    let limitRadius = 0;
     let gyroHave = false;
     const gyroQ = new THREE.Quaternion();
 
@@ -351,9 +347,6 @@ export default function SplatTour() {
       async show(id, pose) {
         let src: string | null;
         let flip = true;
-        // The new scene's walking limit, set with its pose: the old one would
-        // otherwise pull the visitor back for a frame on arrival.
-        let limit: { centre: Vec3; radius: number } = { centre: [0, 0, 0], radius: 0 };
         if (id === "__single") {
           src = safeSrc(params.get("src") || "");
           flip = params.get("flip") !== "0";
@@ -361,7 +354,6 @@ export default function SplatTour() {
           const s = tourRef.current ? sceneById(tourRef.current, id) : null;
           src = s && baseRef.current ? `${baseRef.current}/${s.file}` : null;
           flip = s?.flip ?? true;
-          if (s) limit = { centre: s.start.position, radius: s.walkRadius };
         }
         if (!src) throw new Error("No such scene, or NEXT_PUBLIC_SPLAT_BASE_URL is not set.");
         setLoading(0);
@@ -369,8 +361,6 @@ export default function SplatTour() {
           const mesh = await loadMesh(id, src, flip);
           mesh.quaternion.set(flip ? 1 : 0, 0, 0, flip ? 0 : 1);
           meshes.forEach((m, k) => (m.visible = k === id));
-          limitCentre = limit.centre;
-          limitRadius = limit.radius;
           applyPose(pose);
         } catch (e) {
           rep.error = (e as Error).message;
@@ -407,10 +397,6 @@ export default function SplatTour() {
       setMove(x, y) {
         stickX = x;
         stickY = y;
-      },
-      setLimit(centre, radius) {
-        limitCentre = centre;
-        limitRadius = radius;
       },
       setSpeed(mps) {
         walkSpeed = mps;
@@ -528,8 +514,6 @@ export default function SplatTour() {
         camera.position.addScaledVector(forward, -stickY * k * walkSpeed * dt);
         camera.position.addScaledVector(right, stickX * k * walkSpeed * 0.6 * dt);
       }
-      // The scene's walking limit (`walkRadius`): stop at its edge.
-      if (limitRadius > 0) camera.position.set(...withinWalk(camera.position.toArray() as Vec3, limitCentre, limitRadius));
 
       renderer.render(scene, camera);
 
@@ -599,7 +583,6 @@ export default function SplatTour() {
   const here = tour && current ? sceneById(tour, current) : null;
   useEffect(() => {
     engine.current?.setMarkers(here?.exits ?? []);
-    engine.current?.setLimit(here?.start.position ?? [0, 0, 0], here?.walkRadius ?? 0);
   }, [here]);
 
   // Walking speed: the visitor's last choice on this device.
@@ -753,17 +736,6 @@ export default function SplatTour() {
             <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => changeTour(updateScene(tour, here.id, { start: engine.current!.pose() }))}>
               Visitors start here
             </button>
-            <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => {
-              const r = groundDistance(here.start.position, engine.current!.pose().position);
-              changeTour(updateScene(tour, here.id, { walkRadius: Math.max(0.5, Math.round(r * 10) / 10) }));
-            }}>
-              Limit walking to here
-            </button>
-            {here.walkRadius > 0 && (
-              <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => changeTour(updateScene(tour, here.id, { walkRadius: 0 }))}>
-                No limit ({here.walkRadius} m)
-              </button>
-            )}
             <button className="rounded-full border border-emerald-300/60 px-3 py-1 text-emerald-100" onClick={() => void saveTour()}>Save tour</button>
           </div>
           {here.exits.map((e) => (
