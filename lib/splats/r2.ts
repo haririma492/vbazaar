@@ -80,6 +80,22 @@ export function signPart(kind: SplatKind, key: string, uploadId: string, partNum
   );
 }
 
+/**
+ * One part sent BY THIS SERVER, for when the browser's direct PUT is refused
+ * (a bucket CORS rule that does not match, a proxy, an antivirus): the browser
+ * posts the part's bytes to `/api/operator/splats/part` and they go on from
+ * here. Slower — every byte passes through the host — but it always works.
+ */
+export async function uploadPartBytes(
+  kind: SplatKind, key: string, uploadId: string, partNumber: number, body: Uint8Array,
+): Promise<string> {
+  const out = await s3().send(new UploadPartCommand({
+    Bucket: bucketFor(kind), Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body, ContentLength: body.length,
+  }));
+  if (!out.ETag) throw new Error("R2 gave no ETag for the part");
+  return out.ETag;
+}
+
 /** The parts R2 already holds — how an interrupted upload resumes. */
 export async function listParts(kind: SplatKind, key: string, uploadId: string) {
   const parts: Array<{ partNumber: number; etag: string; size: number }> = [];

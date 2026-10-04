@@ -133,6 +133,31 @@ function formatBytes(n: number): string {
 }
 
 /** PUT one part; resolves with R2's ETag. A missing ETag means the bucket's CORS does not expose it. */
+/**
+ * The fallback: the same part through our server (`/api/operator/splats/part`),
+ * for when the browser may not PUT to R2 itself. Resolves with R2's ETag.
+ */
+function relayPart(key: string, uploadId: string, part: number, blob: Blob, onBytes: (loaded: number) => void, track: Set<XMLHttpRequest>) {
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    track.add(xhr);
+    const q = new URLSearchParams({ key, uploadId, partNumber: String(part) });
+    xhr.open("PUT", `${API}/part?${q}`);
+    xhr.setRequestHeader("x-admin-token", readAdminToken());
+    xhr.upload.onprogress = (e) => onBytes(e.loaded);
+    xhr.onload = () => {
+      track.delete(xhr);
+      let json: { ok?: boolean; etag?: string; error?: string } = {};
+      try { json = JSON.parse(xhr.responseText); } catch { /* not ours */ }
+      if (xhr.status >= 200 && xhr.status < 300 && json.etag) return resolve(json.etag);
+      reject(xhr.status >= 500 || xhr.status === 0 ? new Dropped() : new Error(json.error || `Our server answered ${xhr.status}`));
+    };
+    xhr.onerror = () => { track.delete(xhr); reject(new Dropped()); };
+    xhr.onabort = () => { track.delete(xhr); reject(new Stopped()); };
+    xhr.send(blob);
+  });
+}
+
 function putPart(url: string, blob: Blob, onBytes: (loaded: number) => void, track: Set<XMLHttpRequest>) {
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -193,6 +218,8 @@ async function uploadBlob(
   const tick = () => { let l = 0; live.forEach((v) => (l += v)); onProgress(sent + l, blob.size); };
   tick();
 
+  // Shared by the workers: once one finds the direct PUT refused, all relay.
+  const relay = { on: false };
   const queue = Array.from({ length: r.partCount }, (_, i) => i + 1).filter((n) => !done.has(n));
   const worker = async () => {
     for (let n = queue.shift(); n !== undefined; n = queue.shift()) {
@@ -201,8 +228,14 @@ async function uploadBlob(
       for (let attempt = 1; ; attempt++) {
         if (stop.current) throw new Stopped();
         try {
-          const { url } = await api<{ url: string }>({ action: "sign", key: r.key, uploadId: r.uploadId, partNumber: part });
-          const etag = await putPart(url, blob.slice(a, b), (x) => { live.set(part, x); tick(); }, track);
+          const onBytes = (x: number) => { live.set(part, x); tick(); };
+          let etag: string;
+          if (relay.on) {
+            etag = await relayPart(r.key, r.uploadId, part, blob.slice(a, b), onBytes, track);
+          } else {
+            const { url } = await api<{ url: string }>({ action: "sign", key: r.key, uploadId: r.uploadId, partNumber: part });
+            etag = await putPart(url, blob.slice(a, b), onBytes, track);
+          }
           live.delete(part);
           done.set(part, etag);
           sent += b - a;
@@ -211,9 +244,16 @@ async function uploadBlob(
         } catch (e) {
           live.delete(part);
           if (e instanceof Stopped || stop.current) throw e;
-          // Nothing has ever gone through: a refused PUT is the bucket's CORS, and retrying will not help.
+          // Nothing has ever gone through directly: the browser may not PUT to
+          // R2 (CORS, a proxy, an antivirus). Send the parts through our server
+          // instead — slower, but it does not depend on the bucket's rules.
           const nothingYet = done.size === 0 && sent === 0;
-          if ((e instanceof NoEtag || e instanceof Dropped) && nothingYet && attempt >= 2) throw new NoEtag();
+          if ((e instanceof NoEtag || e instanceof Dropped) && nothingYet && !relay.on && attempt >= 2) {
+            relay.on = true;
+            onNote("The bucket refused this browser's direct upload, so it goes through our server instead (slower).");
+            attempt = 0;
+            continue;
+          }
           // A real refusal from R2 (403, 404…) does not get better by asking again.
           if (e instanceof R2Status && !e.passing && attempt >= TRIES) throw e;
           // Everything else is the connection (or our host for a moment): wait, and go on.
