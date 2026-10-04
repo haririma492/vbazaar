@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { doorLane, inReach, keepInside, type Lane, type Vec3 } from "./corridor.ts";
+import { bridges, doorLane, inReach, keepInside, type Lane, type Vec3 } from "./corridor.ts";
 
 /** An alley down −z, 20 long, eye height rising from 1.6 to 2.0. */
 const ALLEY: Lane = { route: [[0, 1.6, 0], [0, 1.8, -10], [0, 2.0, -20]], half: 1 };
@@ -56,4 +56,18 @@ test("going in: near the door and facing it", () => {
   assert.equal(inReach(at, 0, -5, -right), null); // back turned
   assert.equal(inReach(at, 0, -5, 0), null); // looking down the alley
   assert.equal(inReach(at, -5, -5, right), null); // too far
+});
+
+test("joined scenes whose routes stop short of each other are bridged", () => {
+  const outside: Lane = { route: [[0, 1.6, 0], [0, 1.6, -20]], half: 1 };
+  const inside: Lane = { route: [[0, 1.6, -25], [0, 1.6, -40]], half: 1 };
+  const b = bridges([outside, inside]);
+  // The outside's end to the inside's start, and back.
+  assert.ok(b.some((l) => l.route[0][2] === -20 && l.route[1][2] === -25));
+  assert.ok(b.some((l) => l.route[0][2] === -25 && l.route[1][2] === -20));
+  // In the gap, walls no longer stop the walk.
+  assert.ok(keepInside([outside, inside], 0, -22.5).outside > 0);
+  assert.equal(keepInside([outside, inside, ...b], 0, -22.5).outside, 0);
+  // Too far apart: no bridge (they are not one place).
+  assert.equal(bridges([outside, { route: [[0, 1.6, -60], [0, 1.6, -80]], half: 1 }]).length, 0);
 });

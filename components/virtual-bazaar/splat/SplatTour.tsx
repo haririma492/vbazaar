@@ -44,7 +44,7 @@ import {
   DEFAULT_DRIVE, DRIVE_LIMITS, setDrive, setStartScene,
   type Door, type Drive, type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
-import { doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
+import { bridges, doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
@@ -393,6 +393,10 @@ export default function SplatTour() {
     const meshes = new Map<string, SplatMesh>();
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
+    // Straight lanes across the gaps between joined scenes' routes (`bridges`).
+    let links: Lane[] = [];
+    // When the end of a route last carried the visitor on through its exit.
+    let autoAt = -1e9;
     let pace = 1;
     // ⚠️ WALLS (`lib/splats/corridor.ts`): the lanes round the routes, and a
     // shop's side lane while its door is open.
@@ -427,7 +431,7 @@ export default function SplatTour() {
     // Every route of the world at once (a break between scenes: LineSegments pairs).
     const drawWorld = () => {
       const pts: THREE.Vector3[] = [];
-      for (const m of world) for (let i = 0; i + 1 < m.route.length; i++) {
+      for (const m of [...world, ...links]) for (let i = 0; i + 1 < m.route.length; i++) {
         pts.push(new THREE.Vector3(m.route[i][0], m.route[i][1] - 0.6, m.route[i][2]));
         pts.push(new THREE.Vector3(m.route[i + 1][0], m.route[i + 1][1] - 0.6, m.route[i + 1][2]));
       }
@@ -669,6 +673,7 @@ export default function SplatTour() {
       setWorld(members, show) {
         world = members.filter((m) => m.route.length > 1 || members.length === 1);
         pace = members[0]?.pace ?? 1;
+        links = world.length > 1 ? bridges(world.map((m) => ({ route: m.route, half: m.half }))) : [];
         drawWorld();
         worldLine.visible = show && world.some((m) => m.route.length > 1);
         wallLine.visible = worldLine.visible;
@@ -929,7 +934,7 @@ export default function SplatTour() {
       let guide: ReturnType<typeof guideStep> = null;
       // A shop's door open: they chose to go in — walking is straight until it closes behind them.
       if (guided && !openDoor && Math.abs(velFwd) > 1e-4) {
-        guide = guideStep(world.filter((m) => m.route.length > 1).map((m) => m.route), camera.position.x, camera.position.z, velFwd >= 0 ? -heading : -heading + Math.PI);
+        guide = guideStep([...world.filter((m) => m.route.length > 1).map((m) => m.route), ...links.map((l) => l.route)], camera.position.x, camera.position.z, velFwd >= 0 ? -heading : -heading + Math.PI);
       }
       if (wantTurn) userTurnAt = performance.now();
       // ⚠️ FORWARD MEANS FOLLOW (operator, 2026-10-04: "my mom, 90, should be
@@ -964,6 +969,7 @@ export default function SplatTour() {
       // down the alley. The eye follows the filmed height: no floor or
       // ceiling to go through. Looking round is never limited.
       const lanes: Lane[] = wallsOn ? world.filter((m) => m.half > 0 && m.route.length > 1).map((m) => ({ route: m.route, half: m.half })) : [];
+      if (lanes.length) lanes.push(...links);
       if (lanes.length && openDoor) lanes.push(openDoor.lane);
       if (lanes.length) {
         const k = keepInside(lanes, camera.position.x, camera.position.z);
@@ -978,6 +984,25 @@ export default function SplatTour() {
       } else {
         if (keys.has("e")) camera.position.y += walkSpeed * dt;
         if (keys.has("q")) camera.position.y -= walkSpeed * dt;
+      }
+
+      // ⚠️ THE END OF THE WALK GOES ON BY ITSELF. Arriving at the end of this
+      // scene's route, walking forward, with an exit placed there («at the
+      // end, go on to»): it is taken — no key, no tap. Exits along the way
+      // (a side alley) stay a choice: Enter or «Go in».
+      {
+        const mine = world.find((m) => m.id === currentId);
+        const end = mine && mine.route.length > 1 ? mine.route[mine.route.length - 1] : null;
+        if (end && velFwd > 0.05 && !openDoor && performance.now() - autoAt > 4000 &&
+            Math.hypot(camera.position.x - end[0], camera.position.z - end[2]) < 1.5) {
+          const next = markerExits.find((e) => Math.hypot(e.at[0] - end[0], e.at[2] - end[2]) < 3 &&
+            inReach(e.at, camera.position.x, camera.position.z, -heading, 4) != null);
+          if (next) {
+            autoAt = performance.now();
+            velFwd = 0;
+            exitHandler.current(next);
+          }
+        }
       }
 
       // What Enter would go into: the nearest exit or shop door faced, near.

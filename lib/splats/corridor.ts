@@ -111,3 +111,31 @@ export function inReach(at: Vec3, x: number, z: number, heading: number, reach =
   if (off <= -Math.PI) off += 2 * Math.PI;
   return Math.abs(off) <= DOOR_FACING ? d : null;
 }
+
+/** How far apart two joined scenes' routes may end and still be bridged (scene units). */
+export const BRIDGE_MAX = 12;
+
+/**
+ * BRIDGES BETWEEN JOINED SCENES' ROUTES. The cameraman's walk outside and
+ * his walk inside were recorded separately: once the scenes are aligned, the
+ * one's end and the other's start rarely touch — a gap of a few steps, and the
+ * walls (and «Follow the path») would stop the visitor dead at the entrance.
+ * Each route's END is joined by a straight lane to the nearest point of every
+ * other route within BRIDGE_MAX: the walk goes on across the gap.
+ */
+export function bridges(lanes: Lane[], max = BRIDGE_MAX): Lane[] {
+  const out: Lane[] = [];
+  lanes.forEach((a, i) => {
+    if (a.route.length < 2) return;
+    for (const end of [a.route[0], a.route[a.route.length - 1]]) {
+      lanes.forEach((b, j) => {
+        if (i === j || b.route.length < 2) return;
+        const n = nearest(b.route, end[0], end[2]);
+        if (!n || n.dist < 0.2 || n.dist > max) return;
+        const half = Math.max(a.half, b.half) || DEFAULT_HALF;
+        out.push({ route: [end, [n.px, n.py, n.pz]], half });
+      });
+    }
+  });
+  return out;
+}
