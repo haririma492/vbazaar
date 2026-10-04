@@ -40,9 +40,10 @@ import * as THREE from "three";
 import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  addExit, emptyTour, enter, leave, parseTour, removeExit, sceneById, updateScene,
-  type Exit, type Pose, type Tour, type Trail, type Vec3,
+  addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
+  type Door, type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
+import { doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
@@ -136,6 +137,11 @@ function makeMarker(text: string): THREE.Sprite {
   return sprite;
 }
 
+/** A scene walked among: its route and doors in world coordinates, its walls (world units either side; 0 none), its pace. */
+type Member = { id: string; route: Vec3[]; pace: number; half: number; doors: Door[] };
+/** What Enter would go into now. */
+type Reach = { kind: "door" | "exit"; id: string; label: string } | null;
+
 type Engine = {
   show: (sceneId: string, pose: Pose) => Promise<void>;
   pose: () => Pose;
@@ -153,7 +159,11 @@ type Engine = {
    * placed in the tour's world when it is one of them — each with its route
    * (already in world coordinates) and pace. Routes are drawn in edit mode.
    */
-  setWorld: (members: Array<{ id: string; route: Vec3[]; pace: number }>, show: boolean) => void;
+  setWorld: (members: Member[], show: boolean) => void;
+  /** Walls on (`lib/splats/corridor.ts`); off while the operator records a route or aligns. */
+  setWalls: (on: boolean) => void;
+  /** Enter / «Go in»: through the exit or shop door in reach. False when none is. */
+  goIn: () => boolean;
   /** Show a scene placed at `place` (loading it if need be), see-through while being aligned. */
   showPlaced: (id: string, place: Place | null, aligning: boolean) => Promise<void>;
   /** Stop showing a scene (an alignment cancelled). */
@@ -199,6 +209,9 @@ export default function SplatTour() {
   const [editing, setEditing] = useState(false);
   const [debug, setDebug] = useState(false);
   const [recordingRoute, setRecordingRoute] = useState(false);
+  // Edit mode: walk through the walls (to look a scene over), and the next shop door's name.
+  const [wallsOff, setWallsOff] = useState(false);
+  const [doorName, setDoorName] = useState("");
   // The Align tool: which scene is being joined to this one, where it sits now, and how big a nudge is.
   const [align, setAlign] = useState<{ id: string; place: Place; before: Place | null } | null>(null);
   const [alignTarget, setAlignTarget] = useState("");
@@ -232,6 +245,9 @@ export default function SplatTour() {
   const trailRef = useRef<Trail>([]);
   const currentRef = useRef<string | null>(null);
   const exitHandler = useRef<(exit: Exit) => void>(() => {});
+  const onReach = useRef<(r: Reach) => void>(() => {});
+  const [reach, setReach] = useState<Reach>(null);
+  onReach.current = setReach;
   tourRef.current = tour;
   trailRef.current = trail;
   currentRef.current = current;
@@ -303,8 +319,19 @@ export default function SplatTour() {
 
     const meshes = new Map<string, SplatMesh>();
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
-    let world: Array<{ id: string; route: Vec3[]; pace: number }> = [];
+    let world: Member[] = [];
     let pace = 1;
+    // ⚠️ WALLS (`lib/splats/corridor.ts`): the lanes round the routes, and a
+    // shop's side lane while its door is open.
+    let wallsOn = true;
+    let openDoor: { id: string; at: Vec3; lane: Lane } | null = null;
+    let reach: Reach = null;
+    let reachTarget: { exit?: Exit; door?: Door } = {};
+    const setReachNow = (r: Reach) => {
+      if (r?.id === reach?.id && r?.kind === reach?.kind) return;
+      reach = r;
+      onReach.current(r);
+    };
     // The scene "here": set by show(), and by walking into another placed scene.
     let currentId = "";
     const onWalkedInto = (id: string) => walkedInto.current(id);
@@ -327,7 +354,28 @@ export default function SplatTour() {
       }
       worldLine.geometry.dispose();
       worldLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+      // The walls' edges, either side of each route (amber).
+      const edges: THREE.Vector3[] = [];
+      for (const m of world) {
+        if (m.half <= 0) continue;
+        for (let i = 0; i + 1 < m.route.length; i++) {
+          const [ax, ay, az] = m.route[i];
+          const [bx, by, bz] = m.route[i + 1];
+          const L = Math.hypot(bx - ax, bz - az) || 1;
+          const nx = (-(bz - az) / L) * m.half, nz = ((bx - ax) / L) * m.half;
+          for (const k of [1, -1]) {
+            edges.push(new THREE.Vector3(ax + nx * k, ay - 0.6, az + nz * k));
+            edges.push(new THREE.Vector3(bx + nx * k, by - 0.6, bz + nz * k));
+          }
+        }
+      }
+      wallLine.geometry.dispose();
+      wallLine.geometry = new THREE.BufferGeometry().setFromPoints(edges);
     };
+    const wallLine = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.7, depthTest: false }));
+    wallLine.renderOrder = 9;
+    wallLine.visible = false;
+    scene.add(wallLine);
     const worldLine = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, depthTest: false }));
     worldLine.renderOrder = 9;
     worldLine.visible = false;
@@ -426,6 +474,7 @@ export default function SplatTour() {
       stickDrive = startTilt(0);
       velFwd = 0;
       velTurn = 0;
+      openDoor = null;
     };
 
     let markerExits: Exit[] = [];
@@ -517,6 +566,30 @@ export default function SplatTour() {
         pace = members[0]?.pace ?? 1;
         drawWorld();
         worldLine.visible = show && world.some((m) => m.route.length > 1);
+        wallLine.visible = worldLine.visible;
+        if (openDoor && !world.some((m) => m.doors.some((d) => d.id === openDoor!.id))) openDoor = null;
+      },
+      setWalls(on) {
+        wallsOn = on;
+      },
+      goIn() {
+        if (reachTarget.exit) {
+          exitHandler.current(reachTarget.exit);
+          return true;
+        }
+        const d = reachTarget.door;
+        if (!d) return false;
+        openDoor = { id: d.id, at: d.at, lane: doorLane(world.map((m) => m.route), d, Math.max(...world.map((m) => m.half), 1)) };
+        // Turn to face in: the doorway is where they are going.
+        const dx = d.at[0] - camera.position.x, dz = d.at[2] - camera.position.z;
+        const want = Math.atan2(dx, -dz); // path heading; the view's is its negative
+        const now = -headingOf(camera.quaternion);
+        let off = (want - now) % (2 * Math.PI);
+        if (off > Math.PI) off -= 2 * Math.PI;
+        if (off <= -Math.PI) off += 2 * Math.PI;
+        turnTarget += off;
+        setReachNow(null);
+        return true;
       },
       hide(id) {
         const m = meshes.get(id);
@@ -555,7 +628,13 @@ export default function SplatTour() {
     // ── Controls ───────────────────────────────────────────────────────────
     const keys = new Set<string>();
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement | null)?.tagName === "INPUT") return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      // Enter goes into the shop (or through the exit) in reach — on purpose only.
+      if (e.type === "keydown" && e.key === "Enter" && !e.repeat) {
+        if (engine.current?.goIn()) e.preventDefault();
+        return;
+      }
       if (e.type === "keydown") keys.add(e.key.toLowerCase());
       else keys.delete(e.key.toLowerCase());
     };
@@ -720,7 +799,9 @@ export default function SplatTour() {
           nearest = m;
         }
       }
-      if (nearest && velFwd > 0.05) {
+      // In a shop (its door open, off the alley) the alley's route does not pull them out.
+      const inShop = openDoor != null && (nearestDist > (world.find((m) => m.id === nearest?.id)?.half ?? 1));
+      if (nearest && velFwd > 0.05 && !inShop) {
         const steering = Math.abs(stickX) > 0.08 || Math.abs(velTurn) > 0.05 || Math.abs(turnTarget - turnYaw) > 0.03 || pointers.size > 0;
         if (!steering) turnTarget += routePull(nearest.route, camera.position.x, camera.position.z, -heading) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
       }
@@ -735,8 +816,44 @@ export default function SplatTour() {
       if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
       if (Math.abs(velTurn) > 1e-4) turnTarget += velTurn * dt;
       turnYaw += (turnTarget - turnYaw) * ease;
-      if (keys.has("e")) camera.position.y += walkSpeed * dt;
-      if (keys.has("q")) camera.position.y -= walkSpeed * dt;
+      // ⚠️ WALLS: inside the lanes walking is free; at an edge the push out
+      // is taken away (eased, so it is a soft wall), the step along kept —
+      // the visitor slides along the shop fronts and is never stopped walking
+      // down the alley. The eye follows the filmed height: no floor or
+      // ceiling to go through. Looking round is never limited.
+      const lanes: Lane[] = wallsOn ? world.filter((m) => m.half > 0 && m.route.length > 1).map((m) => ({ route: m.route, half: m.half })) : [];
+      if (lanes.length && openDoor) lanes.push(openDoor.lane);
+      if (lanes.length) {
+        const k = keepInside(lanes, camera.position.x, camera.position.z);
+        const firm = 1 - Math.exp(-dt / 0.05);
+        if (k.outside > 0) {
+          camera.position.x += (k.x - camera.position.x) * firm;
+          camera.position.z += (k.z - camera.position.z) * firm;
+        }
+        if (k.y != null) camera.position.y += (k.y - camera.position.y) * (1 - Math.exp(-dt / 0.4));
+        // Back out in the alley, away from the door: it closes behind them.
+        if (openDoor && k.lane !== lanes.length - 1 && Math.hypot(camera.position.x - openDoor.at[0], camera.position.z - openDoor.at[2]) > 4) openDoor = null;
+      } else {
+        if (keys.has("e")) camera.position.y += walkSpeed * dt;
+        if (keys.has("q")) camera.position.y -= walkSpeed * dt;
+      }
+
+      // What Enter would go into: the nearest exit or shop door faced, near.
+      {
+        const h = -heading;
+        let best: { d: number; r: Reach; t: typeof reachTarget } | null = null;
+        for (const ex of markerExits) {
+          const d = inReach(ex.at, camera.position.x, camera.position.z, h);
+          if (d != null && (!best || d < best.d)) best = { d, r: { kind: "exit", id: ex.id, label: ex.label.en }, t: { exit: ex } };
+        }
+        for (const m of lanes.length ? world : []) for (const dr of m.doors) {
+          if (dr.id === openDoor?.id) continue;
+          const d = inReach(dr.at, camera.position.x, camera.position.z, h);
+          if (d != null && (!best || d < best.d)) best = { d, r: { kind: "door", id: dr.id, label: dr.label.en }, t: { door: dr } };
+        }
+        reachTarget = best?.t ?? {};
+        setReachNow(best?.r ?? null);
+      }
 
       if (recording) {
         const next = recordStep(recording, camera.position.toArray() as Vec3);
@@ -846,10 +963,17 @@ export default function SplatTour() {
         id: s.id,
         route: s.place ? s.route.map((p) => toWorld(s.place as Place, p)) : s.route,
         pace: s.pace,
+        half: s.walls * (s.place?.scale ?? 1),
+        doors: s.doors,
       })),
       editing,
     );
   }, [here, tour, editing]);
+
+  // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
+  useEffect(() => {
+    engine.current?.setWalls(!(recordingRoute || align || (editing && wallsOff)));
+  }, [recordingRoute, align, editing, wallsOff]);
 
   // Walking from one placed scene into the next makes it the scene here, with
   // no jump: its title, exits and pace follow.
@@ -1114,6 +1238,17 @@ export default function SplatTour() {
         </div>
       )}
 
+      {/* Enter / «Go in»: a shop door or exit near and faced */}
+      {reach && (
+        <button
+          dir="ltr"
+          onClick={() => engine.current?.goIn()}
+          className="absolute bottom-[19rem] left-1/2 -translate-x-1/2 rounded-full border border-amber-300/70 bg-black/75 px-5 py-2.5 text-[15px] text-amber-50"
+        >
+          {touch ? "" : "↵ Enter · "}برو داخل · Go in: {reach.label}
+        </button>
+      )}
+
       {/* Operator: place exits where you stand */}
       {editing && tour && here && (
         <div dir="ltr" className="absolute bottom-20 left-3 w-[min(360px,calc(100vw-24px))] space-y-2 rounded-xl bg-black/75 p-3 text-left text-[12px] text-white/85">
@@ -1157,6 +1292,33 @@ export default function SplatTour() {
               </button>
             )}
             <button className="rounded-full border border-emerald-300/60 px-3 py-1 text-emerald-100" onClick={() => void saveTour()}>Save tour</button>
+          </div>
+          <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
+            <div className="font-bold text-amber-200">Walls &amp; shop doors</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-white/60">Walls either side of the route:</span>
+              <button className="rounded bg-white/10 px-2" onClick={() => changeTour(updateScene(tour, here.id, { walls: Math.max(0, Math.round((here.walls - 0.25) * 100) / 100) }))}>−</button>
+              <span>{here.walls ? here.walls.toFixed(2) : "off"}</span>
+              <button className="rounded bg-white/10 px-2" onClick={() => changeTour(updateScene(tour, here.id, { walls: Math.round((here.walls + 0.25) * 100) / 100 }))}>+</button>
+              <label className="ms-auto flex items-center gap-1 text-white/60">
+                <input type="checkbox" checked={wallsOff} onChange={(e) => setWallsOff(e.target.checked)} /> walk through walls
+              </label>
+            </div>
+            {!here.route.length && <div className="text-amber-200/80">No route yet: walls need the cameraman&apos;s route (record it, or upload the camera .json).</div>}
+            <div className="text-white/50">Amber lines: the walls. Face a shop&apos;s entrance from the alley, then:</div>
+            <div className="flex gap-2">
+              <input className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" placeholder="shop name" value={doorName} onChange={(e) => setDoorName(e.target.value)} />
+              <button className="rounded-full border border-amber-300/60 px-3 py-1" onClick={() => {
+                changeTour(addDoor(tour, here.id, engine.current!.pointAhead(1.5), doorName.trim()));
+                setDoorName("");
+              }}>Shop door 1.5 m ahead</button>
+            </div>
+            {here.doors.map((d) => (
+              <div key={d.id} className="flex items-center gap-2 text-white/70">
+                ⌂ {d.label.en} <span className="text-white/40">{d.depth} deep</span>
+                <button className="ms-auto text-rose-300" onClick={() => changeTour(removeDoor(tour, here.id, d.id))}>remove</button>
+              </div>
+            ))}
           </div>
           {here.exits.map((e) => (
             <div key={e.id} className="flex items-center gap-2 text-white/70">

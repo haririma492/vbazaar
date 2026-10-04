@@ -62,8 +62,20 @@ export type TourScene = {
   pace: number;
   /** A sharper copy for computers (`…-hq.spz`); phones keep `file`. */
   fileHQ: string | null;
+  /**
+   * WALLS: how far either side of the route a visitor may walk (the scene's
+   * own units; `lib/splats/corridor.ts`). 0: no walls. Needs a route.
+   */
+  walls: number;
+  /** Shops entered on purpose (Enter / «Go in»): a door at the entrance, a short lane inside. In the world's coordinates, like exits. */
+  doors: Door[];
   exits: Exit[];
 };
+
+export type Door = { id: string; label: Label; at: Vec3; depth: number };
+
+/** `corridor.ts`'s DEFAULT_HALF, repeated (this file imports nothing). */
+export const DEFAULT_WALLS = 1.5;
 
 export type Tour = { version: 1; start: string; scenes: TourScene[] };
 
@@ -120,6 +132,25 @@ function placeOf(v: unknown): TourScene["place"] {
   return { offset: [n(off[0], 0), n(off[1], 0), n(off[2], 0)], yaw: n(o.yaw, 0), scale: scale > 1e-3 && scale < 1e3 ? scale : 1 };
 }
 
+/** Walls either side of the route: 0 (none) to 20; the default when unset. */
+function wallsOf(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(20, Math.max(0, v)) : DEFAULT_WALLS;
+}
+
+function doorsOf(v: unknown): Door[] {
+  const out: Door[] = [];
+  const ids = new Set<string>();
+  for (const d of Array.isArray(v) ? v.slice(0, 200) : []) {
+    const o = (d ?? {}) as Record<string, unknown>;
+    const id = str(o.id, 40);
+    if (!id || ids.has(id)) continue;
+    ids.add(id);
+    const depth = num(o.depth, 3);
+    out.push({ id, label: label(o.label, id), at: vec3(o.at), depth: Math.min(30, Math.max(0.5, depth)) });
+  }
+  return out;
+}
+
 /** A pace between a slow stroll and a brisk walk; 1 when unset. */
 function paceOf(v: unknown): number {
   return typeof v === "number" && Number.isFinite(v) ? Math.min(1.5, Math.max(0.2, v)) : 1;
@@ -151,7 +182,8 @@ export function parseTour(raw: unknown): Tour {
     const hq = str(r.fileHQ, 200);
     scenes.push({
       id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route),
-      place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null, exits,
+      place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null,
+      walls: wallsOf(r.walls), doors: doorsOf(r.doors), exits,
     });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
@@ -169,7 +201,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, walls: DEFAULT_WALLS, doors: [], exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -178,7 +210,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "walls">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 
@@ -203,6 +235,20 @@ export function removeExit(t: Tour, from: string, exitId: string): Tour {
     ...t,
     scenes: t.scenes.map((s) => (s.id === from ? { ...s, exits: s.exits.filter((e) => e.id !== exitId) } : s)),
   });
+}
+
+/** A shop door at `at` in scene `id` (world coordinates), `depth` deep. */
+export function addDoor(t: Tour, id: string, at: Vec3, name: string, depth = 3): Tour {
+  const scene = sceneById(t, id);
+  if (!scene) return t;
+  let n = scene.doors.length + 1;
+  while (scene.doors.some((d) => d.id === `door-${n}`)) n++;
+  const door: Door = { id: `door-${n}`, at, depth, label: label({ en: name, fa: name }, `Shop ${n}`) };
+  return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, doors: [...s.doors, door] } : s)) });
+}
+
+export function removeDoor(t: Tour, id: string, doorId: string): Tour {
+  return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, doors: s.doors.filter((d) => d.id !== doorId) } : s)) });
 }
 
 // ── The visitor's trail ────────────────────────────────────────────────────

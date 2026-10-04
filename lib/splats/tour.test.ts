@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  ORIGIN_POSE, addExit, emptyTour, enter, leave, parseTour, removeExit, removeScene, sceneById, updateScene, upsertScene,
+  DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, updateScene, upsertScene,
   type Pose,
 } from "./tour.ts";
 
@@ -124,4 +124,21 @@ test("placing a scene in the world, its pace and its sharper copy are kept and c
   assert.equal(bad.place!.scale, 1);
   assert.equal(bad.pace, 1.5);
   assert.equal(bad.fileHQ, null);
+});
+
+test("walls and shop doors are kept and checked", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.walls, DEFAULT_WALLS);
+  t = updateScene(t, "hallway", { walls: 0.8 });
+  t = addDoor(t, "hallway", [2, 1.6, -5], "Jeweller", 4);
+  t = addDoor(t, "hallway", [-2, 1.6, -8], "");
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v2.spz");
+  const h = sceneById(t, "hallway")!;
+  assert.equal(h.walls, 0.8);
+  assert.deepEqual(h.doors.map((d) => [d.id, d.label.en, d.depth]), [["door-1", "Jeweller", 4], ["door-2", "Shop 2", 3]]);
+  t = removeDoor(t, "hallway", "door-1");
+  assert.deepEqual(sceneById(t, "hallway")!.doors.map((d) => d.id), ["door-2"]);
+  const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", walls: -3, doors: [{ id: "x", at: [0, 0, 0], depth: 999 }, { id: "x" }, {}] }] }).scenes[0];
+  assert.equal(bad.walls, 0);
+  assert.deepEqual(bad.doors.map((d) => [d.id, d.depth]), [["x", 30]]);
 });
