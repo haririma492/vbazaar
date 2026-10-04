@@ -467,6 +467,33 @@ export default function SplatTour() {
     worldLine.renderOrder = 9;
     worldLine.visible = false;
     scene.add(worldLine);
+    // The visitors' path: a flat, see-through blue band along every route (and bridge), a little below the eye.
+    const pathBand = new THREE.Mesh(
+      new THREE.BufferGeometry(),
+      new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.45, depthTest: false, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    pathBand.renderOrder = 8;
+    pathBand.visible = false;
+    scene.add(pathBand);
+    const drawBand = (routes: Vec3[][]) => {
+      const pos: number[] = [];
+      for (const r of routes) for (let i = 0; i + 1 < r.length; i++) {
+        const [ax, ay, az] = r[i];
+        const [bx, by, bz] = r[i + 1];
+        const L = Math.hypot(bx - ax, bz - az);
+        if (L < 1e-6) continue;
+        // As wide as a tenth of the lane, but never a hairline nor a road.
+        const w = 0.09;
+        const nx = (-(bz - az) / L) * w, nz = ((bx - ax) / L) * w;
+        const y0 = ay - 0.6, y1 = by - 0.6;
+        pos.push(ax + nx, y0, az + nz, ax - nx, y0, az - nz, bx + nx, y1, bz + nz);
+        pos.push(bx + nx, y1, bz + nz, ax - nx, y0, az - nz, bx - nx, y1, bz - nz);
+      }
+      pathBand.geometry.dispose();
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      pathBand.geometry = g;
+    };
     /** Where a scene's file sits, and which way up, from the tour (computers get the sharper copy). */
     const sourceOf = (id: string) => {
       const s = tourRef.current ? sceneById(tourRef.current, id) : null;
@@ -679,7 +706,13 @@ export default function SplatTour() {
         pace = members[0]?.pace ?? 1;
         links = world.length > 1 ? bridges(world.map((m) => ({ route: m.route, half: m.half }))) : [];
         drawWorld();
-        worldLine.visible = show && world.some((m) => m.route.length > 1);
+        drawBand([...world.map((m) => m.route), ...links.map((l) => l.route)]);
+        // ⚠️ THE BLUE PATH IS FOR VISITORS TOO (operator, 2026-10-04): a
+        // soft band on the ground shows where «forward» will take them. The
+        // thin line and the amber walls stay the operator's.
+        const hasPath = world.some((m) => m.route.length > 1);
+        pathBand.visible = hasPath;
+        worldLine.visible = show && hasPath;
         wallLine.visible = worldLine.visible;
         if (openDoor && !world.some((m) => m.doors.some((d) => d.id === openDoor!.id))) openDoor = null;
       },
