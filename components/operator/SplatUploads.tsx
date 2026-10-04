@@ -29,6 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import { isSceneId, isWalkVideo, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
+import { routeFromCameras } from "@/lib/splats/cameras";
 import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene, type Tour } from "@/lib/splats/tour";
 
 const API = "/api/operator/splats";
@@ -310,6 +311,9 @@ async function convertToSpz(file: File): Promise<Uint8Array<ArrayBuffer>> {
 
 let nextId = 1;
 
+/** A reconstruction's camera export: read for the route, not uploaded. */
+const isCameraJson = (name: string) => /\.json$/i.test(name);
+
 export default function SplatUploads() {
   const [r2, setR2] = useState<R2Summary | null>(null);
   const [objects, setObjects] = useState<Obj[]>([]);
@@ -352,9 +356,12 @@ export default function SplatUploads() {
     const added: Item[] = [];
     for (const file of Array.from(list)) {
       const kind = kindOfFile(file.name);
-      if (!kind) continue;
+      const json = isCameraJson(file.name);
+      if (!kind && !json) continue;
+      // A camera JSON belongs to a scene already in the tour: the first one, until chosen.
+      const scene = json ? tourRef.current.start || tourRef.current.scenes[0]?.id || "" : sceneIdFromFileName(file.name);
       added.push({
-        id: nextId++, file, scene: sceneIdFromFileName(file.name), title: "", convert: kind === "master",
+        id: nextId++, file, scene, title: "", convert: kind === "master",
         step: "waiting", sent: 0, total: file.size, note: "",
       });
     }
@@ -369,6 +376,27 @@ export default function SplatUploads() {
   }
 
   async function runOne(it: Item) {
+    // ⚠️ A CAMERA JSON IS NOT UPLOADED: it is read here, in the browser, and
+    // becomes the scene's route — the banked road visitors are drawn along
+    // (`lib/splats/cameras.ts`, `lib/splats/path.ts`).
+    if (isCameraJson(it.file.name)) {
+      const scene = sceneById(tourRef.current, it.scene);
+      if (!scene) throw new Error(`«${it.scene}» is not in the tour: upload its splat first, or pick the scene this camera file belongs to.`);
+      let json: unknown;
+      try {
+        json = JSON.parse(await it.file.text());
+      } catch {
+        throw new Error("This file is not JSON.");
+      }
+      const got = routeFromCameras(json, scene.flip);
+      if (!got) throw new Error("No camera positions found in this file (expected cameras.json with «position», or transforms.json with «frames»).");
+      await saveTour(updateScene(tourRef.current, scene.id, { route: got.route }));
+      patch(it.id, {
+        step: "done",
+        note: `Route set for «${scene.id}»: ${got.cameras} camera positions → ${got.route.length} points. Check it in the viewer's edit mode (blue line).`,
+      });
+      return;
+    }
     const kind = kindOfFile(it.file.name)!;
     const progress = (step: Step) => (sent: number, total: number) => patch(it.id, { step, sent, total });
     const note = (text: string) => patch(it.id, { note: text });
@@ -519,12 +547,14 @@ export default function SplatUploads() {
         <h2 className="text-[15px] font-bold text-white/90">1 · Upload scenes</h2>
         <p className="text-[12px] text-white/50">
           One or many Splatica <b>.ply</b> files (or ready <b>.spz / .sog</b>). Each becomes a scene: the .ply is kept as
-          its master, converted here to .spz for the viewer, and added to the tour.
+          its master, converted here to .spz for the viewer, and added to the tour. A 360° <b>.mp4</b> becomes a walk
+          video. A camera <b>.json</b> (cameras.json / transforms.json) becomes the chosen scene&apos;s route — the
+          way visitors are drawn along.
         </p>
         <input
           type="file"
           multiple
-          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4"
+          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4,.json"
           disabled={running}
           onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
           className="block w-full text-[14px] text-white/80 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white/90"
@@ -647,6 +677,14 @@ export default function SplatUploads() {
                       flip upright
                     </label>
                   </div>
+                  <p className="text-[12px] text-white/55">
+                    {s.route.length
+                      ? `Route: ${s.route.length} points — visitors are drawn along it.`
+                      : "No route yet: add the camera .json above, or record it in «Place exits»."}
+                    {s.route.length > 0 && (
+                      <button className="ms-2 underline" onClick={() => editTour(updateScene(tour, s.id, { route: [] }))}>clear</button>
+                    )}
+                  </p>
                   {s.exits.length === 0 ? (
                     <p className="text-[12px] text-white/40">No exits — a dead end. «Place exits» to add branches.</p>
                   ) : (
