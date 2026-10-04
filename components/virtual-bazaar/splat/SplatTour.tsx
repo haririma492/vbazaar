@@ -1328,7 +1328,12 @@ export default function SplatTour() {
           ))}
           <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
             <div className="font-bold text-sky-200">Join another scene (Align)</div>
-            {!align ? (
+            {!align && !others.length ? (
+              <div className="text-amber-200/80">
+                «{here.id}» is the only scene in the tour. A scene joins the tour when its web copy (.spz) is uploaded at
+                /operator/splats — a .ply master alone is not enough. Then reload this page.
+              </div>
+            ) : !align ? (
               <div className="flex gap-2">
                 <select className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" value={alignTarget} onChange={(e) => setAlignTarget(e.target.value)}>
                   <option value="">scene to join here…</option>
