@@ -315,6 +315,8 @@ export default function SplatTour() {
   }, [touch, sceneReady]);
   const [edit, setEdit] = useState({ to: "", label: "", saved: "" });
   const tourRef = useRef<Tour | null>(null);
+  /** The tour as the server last gave it: the base of a merged save. */
+  const serverTour = useRef<Tour | null>(null);
   const baseRef = useRef("");
   const trailRef = useRef<Trail>([]);
   const currentRef = useRef<string | null>(null);
@@ -1117,6 +1119,7 @@ export default function SplatTour() {
         if (!t.scenes.length) throw new Error("The tour has no scenes yet. Upload one at /operator/splats.");
         setTour(t);
         tourRef.current = t;
+        serverTour.current = t;
         const first = sceneById(t, params.get("scene") || "") ?? sceneById(t, t.start)!;
         await engine.current?.show(first.id, first.start);
         setCurrent(first.id);
@@ -1328,11 +1331,14 @@ export default function SplatTour() {
       const res = await fetch("/api/operator/splats", {
         method: "POST",
         headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
-        body: JSON.stringify({ action: "tour", tour }),
+        // `base`: the tour as last read — the server merges (`mergeTour`), so
+        // an upload made meanwhile is kept, and this page's changes go in.
+        body: JSON.stringify({ action: "tour", tour, base: serverTour.current }),
       });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error);
       setTour(json.tour);
+      serverTour.current = json.tour;
       setEdit((x) => ({ ...x, saved: "saved" }));
     } catch (e) {
       setEdit((x) => ({ ...x, saved: `not saved: ${(e as Error).message}` }));

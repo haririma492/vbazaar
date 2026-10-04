@@ -28,7 +28,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { contentTypeFor, type SplatKind } from "./keys";
-import { TOUR_KEY, emptyTour, parseTour, type Tour } from "./tour";
+import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
 
 const env = (k: string) => (process.env[k] || "").trim();
 
@@ -211,8 +211,25 @@ export async function readTour(): Promise<Tour> {
  * ⚠️ NO-CACHE, unlike the scene files: the tour changes in place (an exit
  * added, a scene re-uploaded) under the same name, and the viewer must see it.
  */
-export async function writeTour(tour: Tour): Promise<Tour> {
-  const clean = parseTour(tour);
+export async function writeTour(tour: Tour, base?: Tour): Promise<Tour> {
+  // ⚠️ MERGED, NOT OVERWRITTEN (`mergeTour`): what this page changed since it
+  // read the tour goes in; what another page saved meanwhile stays.
+  const stored = await readTour();
+  const clean = base ? mergeTour(parseTour(base), parseTour(tour), stored) : parseTour(tour);
+  // Every tour that is replaced is kept (the private bucket, `tour-history/`):
+  // a route that took a whole walk to record can always be brought back.
+  if (stored.scenes.length) {
+    try {
+      await s3().send(new PutObjectCommand({
+        Bucket: r2Config().mastersBucket,
+        Key: `tour-history/${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+        Body: JSON.stringify(stored, null, 1),
+        ContentType: "application/json",
+      }));
+    } catch {
+      /* a missing backup never stops a save */
+    }
+  }
   await s3().send(new PutObjectCommand({
     Bucket: r2Config().webBucket,
     Key: TOUR_KEY,

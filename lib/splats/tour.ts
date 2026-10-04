@@ -302,3 +302,41 @@ export function leave(trail: Trail): { trail: Trail; scene: string; pose: Pose }
   const last = trail[trail.length - 1];
   return last ? { trail: trail.slice(0, -1), scene: last.scene, pose: last.pose } : null;
 }
+
+// ── Saving without losing someone else's change ────────────────────────────
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * ⚠️ TWO PAGES, ONE TOUR (operator, 2026-10-04: a recorded route "exists and
+ * is very difficult to record"). The viewer's edit mode and the upload page
+ * each hold a copy; saving one whole copy over the tour wiped what the other
+ * had saved meanwhile — an upload could erase a route recorded minutes before.
+ *
+ * So a save is a three-way merge: `base` is the tour this page last read,
+ * `mine` this page's tour now, `theirs` the tour as stored. Whatever this
+ * page changed since `base` (scene by scene, field by field) is taken from
+ * `mine`; everything else stays as stored.
+ */
+export function mergeTour(base: Tour, mine: Tour, theirs: Tour): Tour {
+  const byId = (t: Tour) => new Map(t.scenes.map((s) => [s.id, s]));
+  const B = byId(base), M = byId(mine), T = byId(theirs);
+  const ids = [...theirs.scenes.map((s) => s.id), ...mine.scenes.map((s) => s.id).filter((id) => !T.has(id))];
+  const scenes: TourScene[] = [];
+  for (const id of ids) {
+    const b = B.get(id), m = M.get(id), t = T.get(id);
+    if (b && !m) continue; // removed here
+    if (!m) { if (t) scenes.push(t); continue; } // not ours to change
+    if (!b) { scenes.push(t ? { ...t, ...m } : m); continue; } // added here
+    if (!t) { if (!same(m, b)) scenes.push(m); continue; } // removed there; kept if changed here
+    const out = { ...t } as Record<string, unknown>;
+    for (const k of Object.keys(m) as Array<keyof TourScene>) if (!same(m[k], b[k])) out[k] = m[k];
+    scenes.push(out as TourScene);
+  }
+  return parseTour({
+    ...theirs,
+    scenes,
+    start: same(mine.start, base.start) ? theirs.start : mine.start,
+    drive: same(mine.drive, base.drive) ? theirs.drive : mine.drive,
+  });
+}

@@ -10,7 +10,7 @@
  *   POST { action: "abort", key, uploadId }
  *   POST { action: "link", key }                       → { url }      (24 h download link)
  *   POST { action: "cors" }                            (lets this site's browser PUT to the bucket)
- *   POST { action: "tour", tour }                      → { tour }     (saves scenes/tour.json)
+ *   POST { action: "tour", tour, base? }               → { tour }     (merges into scenes/tour.json)
  *
  * The bytes go from the browser straight to R2; nothing here touches them.
  */
@@ -114,7 +114,9 @@ export async function POST(req: NextRequest) {
 
     if (action === "tour") {
       if (!body?.tour || typeof body.tour !== "object") return fail(400, "No tour.");
-      return ok({ tour: await writeTour(body.tour) });
+      // `base`: the tour as this page last read it — the save is merged (`mergeTour`).
+      const base = body.base && typeof body.base === "object" ? body.base : undefined;
+      return ok({ tour: await writeTour(body.tour, base) });
     }
 
     const key = typeof body?.key === "string" ? body.key : "";

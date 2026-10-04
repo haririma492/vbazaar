@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
+  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, mergeTour, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
   type Pose,
 } from "./tour.ts";
 
@@ -153,4 +153,26 @@ test("the starting scene and how walking feels are kept and checked", () => {
   t = upsertScene(t, "hallway", "scenes/hallway/hallway-v3.spz");
   assert.deepEqual(t.drive, { ...DEFAULT_DRIVE, speed: 1.2, accel: 2.5 });
   assert.deepEqual(parseTour({ scenes: [], drive: { turn: "x", turnGlide: -1 } }).drive, { ...DEFAULT_DRIVE, turnGlide: 0.05 });
+});
+
+test("saving merges: an upload elsewhere never erases a route recorded here, nor the reverse", () => {
+  const base = built();
+  // Here (the viewer's edit mode): a route recorded, and the drive tuned.
+  const mine = setDrive(updateScene(base, "hallway", { route: [[0, 0, 0], [0, 0, -5]] }), { speed: 1.1 });
+  // Meanwhile (the upload page): the hallway's file replaced, the store's sharper copy added.
+  const theirs = updateScene(upsertScene(base, "hallway", "scenes/hallway/hallway-v9.spz"), "store-01", { fileHQ: "scenes/store-01/store-01-hq.spz" });
+  const m = mergeTour(base, mine, theirs);
+  const hall = sceneById(m, "hallway")!;
+  assert.deepEqual(hall.route, [[0, 0, 0], [0, 0, -5]]);
+  assert.equal(hall.file, "scenes/hallway/hallway-v9.spz");
+  assert.equal(sceneById(m, "store-01")!.fileHQ, "scenes/store-01/store-01-hq.spz");
+  assert.equal(m.drive.speed, 1.1);
+  // A stale page that changed nothing of the route leaves the stored route alone.
+  const stale = mergeTour(base, updateScene(base, "store-01", { pace: 0.5 }), m);
+  assert.deepEqual(sceneById(stale, "hallway")!.route, [[0, 0, 0], [0, 0, -5]]);
+  assert.equal(sceneById(stale, "store-01")!.pace, 0.5);
+  // A scene added here, and one removed here, are kept so.
+  const added = mergeTour(base, upsertScene(base, "alley-1", "scenes/alley-1/alley-1.spz"), theirs);
+  assert.ok(sceneById(added, "alley-1"));
+  assert.equal(sceneById(mergeTour(base, removeScene(base, "store-01"), theirs), "store-01"), null);
 });

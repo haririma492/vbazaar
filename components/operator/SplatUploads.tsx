@@ -328,6 +328,8 @@ export default function SplatUploads() {
   const stopRef = useRef(false);
   const xhrs = useRef(new Set<XMLHttpRequest>());
   const tourRef = useRef(tour);
+  /** The tour as the server last gave it (the merge's base). */
+  const serverTour = useRef(tour);
   const objectsRef = useRef<Obj[]>([]);
   tourRef.current = tour;
 
@@ -338,6 +340,7 @@ export default function SplatUploads() {
       setObjects(out.objects);
       objectsRef.current = out.objects;
       setTour(out.tour);
+      serverTour.current = out.tour;
       setTourDirty(false);
       setListError(null);
     } catch (e) {
@@ -369,7 +372,11 @@ export default function SplatUploads() {
   }
 
   async function saveTour(next: Tour) {
-    const { tour: saved } = await api<{ tour: Tour }>({ action: "tour", tour: next });
+    // `base`: the tour as last read — the server merges, so a route recorded
+    // in the viewer meanwhile is never overwritten by this page's older copy.
+    const { tour: saved } = await api<{ tour: Tour }>({ action: "tour", tour: next, base: serverTour.current });
+    serverTour.current = saved;
+    tourRef.current = saved;
     setTour(saved);
     setTourDirty(false);
     return saved;
