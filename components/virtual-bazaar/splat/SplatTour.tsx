@@ -45,7 +45,8 @@ import {
 } from "@/lib/splats/tour";
 import WalkStick from "./WalkStick";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
-import { recordStep, routePull } from "@/lib/splats/path";
+import { nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
+import { IDENTITY, nudge, toLocal, toWorld, type Place } from "@/lib/splats/place";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 /** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
@@ -147,8 +148,16 @@ type Engine = {
   recentre: () => void;
   /** Start or stop recording the cameraman's route (edit mode); stopping returns it. */
   recordRoute: (on: boolean) => Vec3[];
-  /** The route the visitor is drawn along, in the current scene (and shown in edit mode). */
-  setRoute: (route: Vec3[], show: boolean) => void;
+  /**
+   * The scenes the visitor walks among now: the current one, or every scene
+   * placed in the tour's world when it is one of them — each with its route
+   * (already in world coordinates) and pace. Routes are drawn in edit mode.
+   */
+  setWorld: (members: Array<{ id: string; route: Vec3[]; pace: number }>, show: boolean) => void;
+  /** Show a scene placed at `place` (loading it if need be), see-through while being aligned. */
+  showPlaced: (id: string, place: Place | null, aligning: boolean) => Promise<void>;
+  /** Stop showing a scene (an alignment cancelled). */
+  hide: (id: string) => void;
   /** The on-screen stick: x right, y down, each −1…1; (0, 0) stands still. */
   setMove: (x: number, y: number) => void;
   /** Walking speed, metres per second at full stick. */
@@ -174,6 +183,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 export default function SplatTour() {
   const host = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
+  const walkedInto = useRef<(id: string) => void>(() => {});
   const [tiltOn, setTiltOn] = useState(false);
   const [tiltLevel, setTiltLevel] = useState(0);
   const tiltLevelRef = useRef(0);
@@ -189,6 +199,10 @@ export default function SplatTour() {
   const [editing, setEditing] = useState(false);
   const [debug, setDebug] = useState(false);
   const [recordingRoute, setRecordingRoute] = useState(false);
+  // The Align tool: which scene is being joined to this one, where it sits now, and how big a nudge is.
+  const [align, setAlign] = useState<{ id: string; place: Place; before: Place | null } | null>(null);
+  const [alignTarget, setAlignTarget] = useState("");
+  const [fine, setFine] = useState(true);
   // Walk by tilting is for a phone in the hand.
   const [touch, setTouch] = useState(false);
   useEffect(() => setTouch(window.matchMedia?.("(pointer: coarse)").matches ?? false), []);
@@ -288,8 +302,12 @@ export default function SplatTour() {
     });
 
     const meshes = new Map<string, SplatMesh>();
-    // The cameraman's route in the current scene (`lib/splats/path.ts`), and its line in edit mode.
-    let route: Vec3[] = [];
+    // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
+    let world: Array<{ id: string; route: Vec3[]; pace: number }> = [];
+    let pace = 1;
+    // The scene "here": set by show(), and by walking into another placed scene.
+    let currentId = "";
+    const onWalkedInto = (id: string) => walkedInto.current(id);
     let recording: Vec3[] | null = null;
     const routeLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, depthTest: false }));
     routeLine.renderOrder = 9;
@@ -299,6 +317,37 @@ export default function SplatTour() {
       // A little below the eye, so it reads as a line on the ground ahead.
       routeLine.geometry.dispose();
       routeLine.geometry = new THREE.BufferGeometry().setFromPoints(pts.map((p) => new THREE.Vector3(p[0], p[1] - 0.6, p[2])));
+    };
+    // Every route of the world at once (a break between scenes: LineSegments pairs).
+    const drawWorld = () => {
+      const pts: THREE.Vector3[] = [];
+      for (const m of world) for (let i = 0; i + 1 < m.route.length; i++) {
+        pts.push(new THREE.Vector3(m.route[i][0], m.route[i][1] - 0.6, m.route[i][2]));
+        pts.push(new THREE.Vector3(m.route[i + 1][0], m.route[i + 1][1] - 0.6, m.route[i + 1][2]));
+      }
+      worldLine.geometry.dispose();
+      worldLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+    };
+    const worldLine = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8, depthTest: false }));
+    worldLine.renderOrder = 9;
+    worldLine.visible = false;
+    scene.add(worldLine);
+    /** Where a scene's file sits, and which way up, from the tour (computers get the sharper copy). */
+    const sourceOf = (id: string) => {
+      const s = tourRef.current ? sceneById(tourRef.current, id) : null;
+      if (!s || !baseRef.current) return null;
+      const desktop = !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
+      const file = desktop && s.fileHQ && params.get("hq") !== "0" ? s.fileHQ : s.file;
+      return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null };
+    };
+    const FLIP_Q = new THREE.Quaternion(1, 0, 0, 0);
+    /** Put a scene where its place says: scale, turn about up, move — after turning it upright. */
+    const placeMesh = (mesh: SplatMesh, flip: boolean, place: Place | null) => {
+      const p = place ?? IDENTITY;
+      mesh.position.set(...p.offset);
+      mesh.quaternion.setFromAxisAngle(UP, p.yaw);
+      if (flip) mesh.quaternion.multiply(FLIP_Q);
+      mesh.scale.setScalar(p.scale);
     };
     let firstFrameAt: number | null = null;
 
@@ -388,17 +437,29 @@ export default function SplatTour() {
           src = safeSrc(params.get("src") || "");
           flip = params.get("flip") !== "0";
         } else {
-          const s = tourRef.current ? sceneById(tourRef.current, id) : null;
-          src = s && baseRef.current ? `${baseRef.current}/${s.file}` : null;
-          flip = s?.flip ?? true;
+          const so = sourceOf(id);
+          src = so?.src ?? null;
+          flip = so?.flip ?? true;
         }
         if (!src) throw new Error("No such scene, or NEXT_PUBLIC_SPLAT_BASE_URL is not set.");
         setLoading(0);
         try {
           const mesh = await loadMesh(id, src, flip);
-          mesh.quaternion.set(flip ? 1 : 0, 0, 0, flip ? 0 : 1);
+          currentId = id;
+          const mine = id === "__single" ? null : sourceOf(id)?.place ?? null;
+          placeMesh(mesh, flip, mine);
+          mesh.opacity = 1;
           meshes.forEach((m, k) => (m.visible = k === id));
           applyPose(pose);
+          // ⚠️ ONE WORLD: a scene placed in the tour's world brings the others
+          // placed there along (after it is up), so the visitor walks from
+          // one into the next with no jump.
+          if (mine && tourRef.current) {
+            for (const other of tourRef.current.scenes) {
+              if (other.id === id || !other.place) continue;
+              void engine.current?.showPlaced(other.id, other.place as Place, false).catch(() => {});
+            }
+          }
         } catch (e) {
           rep.error = (e as Error).message;
           publish();
@@ -451,10 +512,25 @@ export default function SplatTour() {
         recording = null;
         return done;
       },
-      setRoute(r, show) {
-        route = r;
-        drawRoute(r);
-        routeLine.visible = show && r.length > 1;
+      setWorld(members, show) {
+        world = members.filter((m) => m.route.length > 1 || members.length === 1);
+        pace = members[0]?.pace ?? 1;
+        drawWorld();
+        worldLine.visible = show && world.some((m) => m.route.length > 1);
+      },
+      hide(id) {
+        const m = meshes.get(id);
+        if (m && id !== currentId) m.visible = false;
+      },
+      async showPlaced(id, place, aligning) {
+        const so = sourceOf(id);
+        if (!so) return;
+        const mesh = meshes.get(id) ?? (await loadMesh(id, so.src, so.flip));
+        placeMesh(mesh, so.flip, place ?? IDENTITY);
+        mesh.opacity = aligning ? 0.55 : 1;
+        mesh.visible = true;
+        // The report is about the scene the visitor is in, not this one.
+        if (currentId) Object.assign(rep, { scene: currentId });
       },
       setGyro(on) {
         gyroOn = on;
@@ -632,11 +708,29 @@ export default function SplatTour() {
       // ⚠️ THE CAMERAMAN'S ROUTE IS A BANKED ROAD (`lib/splats/path.ts`):
       // walking forward with no steering of their own, the visitor is drawn
       // gently along the route that was filmed. Any steering wins.
-      if (route.length > 1 && velFwd > 0.05) {
-        const steering = Math.abs(stickX) > 0.08 || Math.abs(velTurn) > 0.05 || Math.abs(turnTarget - turnYaw) > 0.03 || pointers.size > 0;
-        if (!steering) turnTarget += routePull(route, camera.position.x, camera.position.z, -heading) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
+      // At a fork the nearest route wins: heading into the alley, its route
+      // takes over and carries the visitor in — that is the branching.
+      let nearest: { id: string; route: Vec3[]; pace: number } | null = null;
+      let nearestDist = Infinity;
+      for (const m of world) {
+        if (m.route.length < 2) continue;
+        const n = nearestOnRoute(m.route, camera.position.x, camera.position.z);
+        if (n && n.dist < nearestDist) {
+          nearestDist = n.dist;
+          nearest = m;
+        }
       }
-      velFwd += (wantFwd * walkSpeed * boost - velFwd) * ease;
+      if (nearest && velFwd > 0.05) {
+        const steering = Math.abs(stickX) > 0.08 || Math.abs(velTurn) > 0.05 || Math.abs(turnTarget - turnYaw) > 0.03 || pointers.size > 0;
+        if (!steering) turnTarget += routePull(nearest.route, camera.position.x, camera.position.z, -heading) * dt * Math.min(1, velFwd / walkSpeed + 0.3);
+      }
+      // Walking from one placed scene into the next: it becomes the scene "here".
+      if (nearest && nearest.id !== currentId && nearestDist < 3 && world.length > 1) {
+        currentId = nearest.id;
+        pace = nearest.pace;
+        onWalkedInto(nearest.id);
+      }
+      velFwd += (wantFwd * walkSpeed * pace * boost - velFwd) * ease;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
       if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
       if (Math.abs(velTurn) > 1e-4) turnTarget += velTurn * dt;
@@ -742,8 +836,27 @@ export default function SplatTour() {
   const here = tour && current ? sceneById(tour, current) : null;
   useEffect(() => {
     engine.current?.setMarkers(here?.exits ?? []);
-    engine.current?.setRoute(here?.route ?? [], editing);
-  }, [here, editing]);
+    if (!tour || !here) return engine.current?.setWorld([], false);
+    // Placed in the tour's world: walk among every placed scene, each route
+    // turned into world coordinates; otherwise, this scene alone (its own
+    // coordinates are the world's). The scene here comes first: its pace.
+    const members = here.place ? [here, ...tour.scenes.filter((s) => s.place && s.id !== here.id)] : [here];
+    engine.current?.setWorld(
+      members.map((s) => ({
+        id: s.id,
+        route: s.place ? s.route.map((p) => toWorld(s.place as Place, p)) : s.route,
+        pace: s.pace,
+      })),
+      editing,
+    );
+  }, [here, tour, editing]);
+
+  // Walking from one placed scene into the next makes it the scene here, with
+  // no jump: its title, exits and pace follow.
+  walkedInto.current = (id: string) => {
+    setCurrent(id);
+    window.history.replaceState(window.history.state, "", `?scene=${id}${editing ? "&edit=1" : ""}`);
+  };
 
   // Walking speed: the visitor's last choice on this device.
   const [speedIx, setSpeedIx] = useState(1);
@@ -832,6 +945,52 @@ export default function SplatTour() {
     engine.current?.setTilt(true);
     setTiltOn(true);
     rememberMode("tilt");
+  }
+
+  /**
+   * ALIGN — join another scene to this one (`lib/splats/place.ts`). It is
+   * shown see-through where the operator stands; they nudge it until the
+   * part both filmed lies on itself, then «Done» saves its place. This scene
+   * becomes the world's anchor if it is not placed yet.
+   */
+  function startAlign() {
+    if (!tour || !here || !alignTarget || !engine.current) return;
+    let t = tour;
+    if (!here.place) t = updateScene(t, here.id, { place: IDENTITY });
+    const target = sceneById(t, alignTarget);
+    if (!target) return;
+    const pose = engine.current.pose();
+    const start: Place = target.place ?? { offset: engine.current.pointAhead(3), yaw: -pose.yaw, scale: 1 };
+    changeTour(t);
+    setAlign({ id: target.id, place: start, before: target.place });
+    void engine.current.showPlaced(target.id, start, true);
+  }
+  function alignBy(by: { fwd?: number; side?: number; up?: number; turn?: number; grow?: number }) {
+    if (!align || !engine.current) return;
+    const k = fine ? 1 : 10;
+    const yawNow = engine.current.pose().yaw;
+    // Moves are in the operator's own frame: forward is where they look.
+    const fwd = (by.fwd ?? 0) * 0.05 * k, side = (by.side ?? 0) * 0.05 * k;
+    const move: Vec3 = [Math.sin(yawNow) * fwd + Math.cos(yawNow) * side, (by.up ?? 0) * 0.05 * k, -Math.cos(yawNow) * fwd + Math.sin(yawNow) * side];
+    const place = nudge(align.place, {
+      move,
+      turn: by.turn ? by.turn * (Math.PI / 180) * k : undefined,
+      grow: by.grow ? Math.pow(1.01, by.grow * k) : undefined,
+    }, engine.current.pointAhead(3));
+    setAlign({ ...align, place });
+    void engine.current.showPlaced(align.id, place, true);
+  }
+  function finishAlign(keep: boolean) {
+    if (!align || !tour || !engine.current) return;
+    if (keep) {
+      changeTour(updateScene(tour, align.id, { place: align.place }));
+      void engine.current.showPlaced(align.id, align.place, false);
+    } else if (align.before) {
+      void engine.current.showPlaced(align.id, align.before, false);
+    } else {
+      engine.current.hide(align.id);
+    }
+    setAlign(null);
   }
 
   async function copyReport() {
@@ -985,7 +1144,9 @@ export default function SplatTour() {
                 }
                 const r = engine.current?.recordRoute(false) ?? [];
                 setRecordingRoute(false);
-                if (r.length > 1) changeTour(updateScene(tour, here.id, { route: r }));
+                // Recorded in the world; kept in the scene's own coordinates.
+                const local = here.place ? r.map((p) => toLocal(here.place as Place, p)) : r;
+                if (r.length > 1) changeTour(updateScene(tour, here.id, { route: local }));
               }}
             >
               {recordingRoute ? "■ Stop recording route" : here.route.length ? `● Record route again (${here.route.length} points)` : "● Record the cameraman's route"}
@@ -1003,6 +1164,42 @@ export default function SplatTour() {
               <button className="ms-auto text-rose-300" onClick={() => changeTour(removeExit(tour, here.id, e.id))}>remove</button>
             </div>
           ))}
+          <div className="mt-2 space-y-1.5 border-t border-white/15 pt-2">
+            <div className="font-bold text-sky-200">Join another scene (Align)</div>
+            {!align ? (
+              <div className="flex gap-2">
+                <select className="min-w-0 flex-1 rounded bg-white/10 px-2 py-1" value={alignTarget} onChange={(e) => setAlignTarget(e.target.value)}>
+                  <option value="">scene to join here…</option>
+                  {others.map((s) => <option key={s.id} value={s.id}>{s.title.en} ({s.id}){s.place ? " ✓" : ""}</option>)}
+                </select>
+                <button disabled={!alignTarget} className="rounded-full border border-sky-300/60 px-3 py-1 disabled:opacity-40" onClick={startAlign}>Align</button>
+              </div>
+            ) : (
+              <>
+                <div className="text-white/60">Stand where both scenes were filmed; nudge «{align.id}» until it lies on this one.</div>
+                <div className="grid grid-cols-4 gap-1">
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: 1 })}>↑ away</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: -1 })}>↓ near</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: -1 })}>← left</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: 1 })}>→ right</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: 1 })}>⤒ up</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: -1 })}>⤓ down</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: -1 })}>⟲ turn</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: 1 })}>⟳ turn</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: -1 })}>− smaller</button>
+                  <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: 1 })}>+ bigger</button>
+                  <button className={`col-span-2 rounded py-1 ${fine ? "bg-white/10" : "bg-amber-300/30"}`} onClick={() => setFine(!fine)}>
+                    {fine ? "steps: fine" : "steps: coarse ×10"}
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <button className="rounded-full border border-emerald-300/60 px-3 py-1 text-emerald-100" onClick={() => finishAlign(true)}>Done</button>
+                  <button className="rounded-full border border-white/30 px-3 py-1" onClick={() => finishAlign(false)}>Cancel</button>
+                  <span className="self-center text-white/40">then Save tour</span>
+                </div>
+              </>
+            )}
+          </div>
           {edit.saved && <div className="text-white/50">{edit.saved}</div>}
         </div>
       )}

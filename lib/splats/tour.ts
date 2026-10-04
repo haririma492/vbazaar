@@ -50,6 +50,18 @@ export type TourScene = {
    * (`lib/splats/path.ts`). Empty: no tendency.
    */
   route: Vec3[];
+  /**
+   * Where this scene sits in the tour's one world (`lib/splats/place.ts`),
+   * set with the viewer's Align tool. Placed scenes are shown together and
+   * walked between with no jump; null: a scene of its own, reached by exits.
+   * The route above is in the scene's own coordinates; start and exits are
+   * in the world's.
+   */
+  place: { offset: Vec3; yaw: number; scale: number } | null;
+  /** Walking pace here, as a share of the visitor's speed: below 1 is a stroll (a narrow alley of shops). */
+  pace: number;
+  /** A sharper copy for computers (`…-hq.spz`); phones keep `file`. */
+  fileHQ: string | null;
   exits: Exit[];
 };
 
@@ -98,6 +110,21 @@ function routeOf(v: unknown): Vec3[] {
   return out.length >= 2 ? out : [];
 }
 
+/** `place.ts`'s parsePlace, repeated (this file imports nothing, for `node --test`). */
+function placeOf(v: unknown): TourScene["place"] {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const n = (x: unknown, d: number) => (typeof x === "number" && Number.isFinite(x) ? x : d);
+  const off = Array.isArray(o.offset) ? o.offset : [];
+  const scale = n(o.scale, 1);
+  return { offset: [n(off[0], 0), n(off[1], 0), n(off[2], 0)], yaw: n(o.yaw, 0), scale: scale > 1e-3 && scale < 1e3 ? scale : 1 };
+}
+
+/** A pace between a slow stroll and a brisk walk; 1 when unset. */
+function paceOf(v: unknown): number {
+  return typeof v === "number" && Number.isFinite(v) ? Math.min(1.5, Math.max(0.2, v)) : 1;
+}
+
 const SCENE_FILE_RE = /^scenes\/[a-z0-9-]+\/[A-Za-z0-9][A-Za-z0-9._-]*\.(spz|sog|ksplat|splat|rad)$/;
 
 /** A tour as read from JSON; scenes and exits that do not make sense are dropped. */
@@ -121,7 +148,11 @@ export function parseTour(raw: unknown): Tour {
       exitIds.add(eid);
       exits.push({ id: eid, to, label: label(x.label, to), at: vec3(x.at), ...(x.arrive ? { arrive: pose(x.arrive) } : {}) });
     }
-    scenes.push({ id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route), exits });
+    const hq = str(r.fileHQ, 200);
+    scenes.push({
+      id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route),
+      place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null, exits,
+    });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
   for (const s of scenes) s.exits = s.exits.filter((e) => seen.has(e.to));
@@ -138,7 +169,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -147,7 +178,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 

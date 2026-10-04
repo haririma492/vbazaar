@@ -107,3 +107,21 @@ test("the cameraman's route is kept with the scene, checked, and survives a re-u
   assert.deepEqual(p.scenes[0].route, []);
   assert.deepEqual(p.scenes[1].route, []);
 });
+
+test("placing a scene in the world, its pace and its sharper copy are kept and checked", () => {
+  let t = built();
+  const hall = sceneById(t, "hallway")!;
+  assert.equal(hall.place, null);
+  assert.equal(hall.pace, 1);
+  assert.equal(hall.fileHQ, null);
+  t = updateScene(t, "store-01", { place: { offset: [1, 0, -20], yaw: 1.2, scale: 0.9 }, pace: 0.6, fileHQ: "scenes/store-01/store-01-hq.spz" });
+  t = upsertScene(t, "store-01", "scenes/store-01/store-01-v2.spz");
+  const s = sceneById(t, "store-01")!;
+  assert.deepEqual(s.place, { offset: [1, 0, -20], yaw: 1.2, scale: 0.9 });
+  assert.equal(s.pace, 0.6);
+  assert.equal(s.fileHQ, "scenes/store-01/store-01-hq.spz");
+  const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", place: { scale: 0 }, pace: 9, fileHQ: "https://x/y.spz" }] }).scenes[0];
+  assert.equal(bad.place!.scale, 1);
+  assert.equal(bad.pace, 1.5);
+  assert.equal(bad.fileHQ, null);
+});

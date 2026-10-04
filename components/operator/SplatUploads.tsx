@@ -432,6 +432,13 @@ export default function SplatUploads() {
       }
     }
     const title = it.title.trim();
+    // ⚠️ A «…-hq» FILE IS THE SCENE'S SHARPER COPY for computers; phones keep
+    // the scene's own file. It needs the scene to be in the tour already.
+    if (/-hq\.(spz|sog|ksplat|splat|rad)$/i.test(it.file.name) && sceneById(tourRef.current, it.scene)) {
+      await saveTour(updateScene(tourRef.current, it.scene, { fileHQ: webKey }));
+      patch(it.id, { step: "done", note: `Set as «${it.scene}»'s sharper copy for computers.` });
+      return;
+    }
     await saveTour(upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined));
     patch(it.id, { step: "done" });
   }
@@ -676,6 +683,22 @@ export default function SplatUploads() {
                       <input type="checkbox" checked={s.flip} onChange={(e) => editTour(updateScene(tour, s.id, { flip: e.target.checked }))} />
                       flip upright
                     </label>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-[12px] text-white/60">
+                    <label className="flex items-center gap-2">
+                      Pace
+                      <select
+                        className="rounded bg-black/30 px-2 py-1"
+                        value={s.pace}
+                        onChange={(e) => editTour(updateScene(tour, s.id, { pace: Number(e.target.value) }))}
+                      >
+                        <option value={0.5}>Stroll — window shopping</option>
+                        <option value={0.75}>Easy walk</option>
+                        <option value={1}>Normal</option>
+                      </select>
+                    </label>
+                    <span>{s.place ? "Joined to the tour's world" : "A scene of its own (reached by exits)"}</span>
+                    {s.fileHQ && <span>· sharper copy for computers ✓</span>}
                   </div>
                   <p className="text-[12px] text-white/55">
                     {s.route.length
