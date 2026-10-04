@@ -44,6 +44,12 @@ export type TourScene = {
   /** Most reconstructions are y-down; true turns the splat upright. */
   flip: boolean;
   start: Pose;
+  /**
+   * The route the cameraman walked while filming, recorded once in the
+   * viewer's edit mode: visitors are drawn gently along it
+   * (`lib/splats/path.ts`). Empty: no tendency.
+   */
+  route: Vec3[];
   exits: Exit[];
 };
 
@@ -79,6 +85,19 @@ function label(v: unknown, fallback: string): Label {
   return { fa: fa || en || fallback, en: en || fa || fallback };
 }
 
+/** A recorded route: up to 5000 points (a half-metre apart, 2.5 km); anything else is dropped. */
+const MAX_ROUTE = 5000;
+function routeOf(v: unknown): Vec3[] {
+  if (!Array.isArray(v)) return [];
+  const out: Vec3[] = [];
+  for (const p of v.slice(0, MAX_ROUTE)) {
+    if (Array.isArray(p) && p.length >= 3 && p.slice(0, 3).every((n) => typeof n === "number" && Number.isFinite(n))) {
+      out.push([p[0], p[1], p[2]]);
+    }
+  }
+  return out.length >= 2 ? out : [];
+}
+
 const SCENE_FILE_RE = /^scenes\/[a-z0-9-]+\/[A-Za-z0-9][A-Za-z0-9._-]*\.(spz|sog|ksplat|splat|rad)$/;
 
 /** A tour as read from JSON; scenes and exits that do not make sense are dropped. */
@@ -102,7 +121,7 @@ export function parseTour(raw: unknown): Tour {
       exitIds.add(eid);
       exits.push({ id: eid, to, label: label(x.label, to), at: vec3(x.at), ...(x.arrive ? { arrive: pose(x.arrive) } : {}) });
     }
-    scenes.push({ id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), exits });
+    scenes.push({ id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route), exits });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
   for (const s of scenes) s.exits = s.exits.filter((e) => seen.has(e.to));
@@ -119,7 +138,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -128,7 +147,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 

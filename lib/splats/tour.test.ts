@@ -92,3 +92,18 @@ test("a tour from the bucket is checked: bad scenes, files and exits are dropped
   assert.deepEqual(hall.exits.map((e) => [e.id, e.at]), [["a", [1, 0, 3]]]);
   assert.deepEqual(parseTour(null), { version: 1, start: "hallway", scenes: [] });
 });
+
+test("the cameraman's route is kept with the scene, checked, and survives a re-upload", () => {
+  let t = built();
+  assert.deepEqual(sceneById(t, "hallway")!.route, []);
+  t = updateScene(t, "hallway", { route: [[0, 1.6, 0], [0, 1.6, -5], [3, 1.6, -9]] });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v3.spz");
+  assert.equal(sceneById(t, "hallway")!.route.length, 3);
+  // Junk and single points are not a route.
+  const p = parseTour({ scenes: [
+    { id: "a", file: "scenes/a/a.spz", route: [[0, 0, 0], ["x", 1, 2], [1, 1]] },
+    { id: "b", file: "scenes/b/b.spz", route: "far" },
+  ] });
+  assert.deepEqual(p.scenes[0].route, []);
+  assert.deepEqual(p.scenes[1].route, []);
+});
