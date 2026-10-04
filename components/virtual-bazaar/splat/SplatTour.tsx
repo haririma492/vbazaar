@@ -29,8 +29,9 @@
  *   /vca/splat?edit=1           place exits and start poses (operator token)
  *   /vca/splat?src=<url>        one file alone, no tour (?flip=0 if it is y-up)
  *
- * Controls: drag to look; wheel or pinch to zoom; W A S D / arrows to walk,
- * Q E down and up (Shift: faster); «Phone motion» turns the view with the phone.
+ * Controls: drag to look; wheel or pinch to zoom; W A S D / arrows or the
+ * on-screen stick to walk, Q E down and up (Shift: faster); «Phone motion»
+ * turns the view with the phone.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -77,6 +78,8 @@ type Report = {
 declare global {
   interface Window {
     __splatReport?: Report;
+    /** Where the camera stands now — for a scripted browser checking that walking walks. */
+    __splatPose?: () => Pose | undefined;
   }
 }
 
@@ -134,7 +137,64 @@ type Engine = {
   pointAhead: (meters: number) => Vec3;
   setMarkers: (exits: Exit[]) => void;
   setGyro: (on: boolean) => void;
+  /** The on-screen stick: x right, y down, each −1…1; (0, 0) stands still. */
+  setMove: (x: number, y: number) => void;
 };
+
+/**
+ * THE WALKING STICK — a phone has no W A S D. Drag the knob up to walk the way
+ * you look, down to step back, sideways to sidestep; let go and you stop.
+ * It is the only way a phone walks: the phone's motion (or a finger on the
+ * scene) turns the view, the stick moves you through it.
+ */
+function WalkStick({ onMove }: { onMove: (x: number, y: number) => void }) {
+  const R = 44; // how far the knob travels from the centre, in px
+  const [knob, setKnob] = useState({ x: 0, y: 0 });
+  const origin = useRef<{ x: number; y: number; id: number } | null>(null);
+  const move = (e: React.PointerEvent) => {
+    const o = origin.current;
+    if (!o || e.pointerId !== o.id) return;
+    let x = e.clientX - o.x;
+    let y = e.clientY - o.y;
+    const d = Math.hypot(x, y);
+    if (d > R) {
+      x = (x / d) * R;
+      y = (y / d) * R;
+    }
+    setKnob({ x, y });
+    onMove(x / R, y / R);
+  };
+  const end = (e: React.PointerEvent) => {
+    if (origin.current?.id !== e.pointerId) return;
+    origin.current = null;
+    setKnob({ x: 0, y: 0 });
+    onMove(0, 0);
+  };
+  return (
+    <div
+      role="slider"
+      aria-label="Walk: drag up to go forward, down to go back"
+      aria-valuenow={0}
+      className="absolute bottom-20 right-5 h-32 w-32 touch-none select-none rounded-full border border-white/25 bg-black/40"
+      onPointerDown={(e) => {
+        e.currentTarget.setPointerCapture(e.pointerId);
+        const r = e.currentTarget.getBoundingClientRect();
+        origin.current = { x: r.left + r.width / 2, y: r.top + r.height / 2, id: e.pointerId };
+        move(e);
+      }}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    >
+      <div
+        className="pointer-events-none absolute left-1/2 top-1/2 h-14 w-14 rounded-full border border-amber-300/70 bg-amber-300/30"
+        style={{ transform: `translate(calc(-50% + ${knob.x}px), calc(-50% + ${knob.y}px))` }}
+      />
+      <span className="pointer-events-none absolute left-1/2 top-1 -translate-x-1/2 text-[11px] text-white/50">▲</span>
+      <span className="pointer-events-none absolute bottom-1 left-1/2 -translate-x-1/2 text-[11px] text-white/50">▼</span>
+    </div>
+  );
+}
 
 export default function SplatTour() {
   const host = useRef<HTMLDivElement>(null);
@@ -190,6 +250,8 @@ export default function SplatTour() {
     let yaw = 0;
     let pitch = 0;
     let gyroOn = false;
+    let stickX = 0;
+    let stickY = 0;
     let gyroHave = false;
     const gyroQ = new THREE.Quaternion();
 
@@ -321,7 +383,13 @@ export default function SplatTour() {
       setGyro(on) {
         gyroOn = on;
       },
+      setMove(x, y) {
+        stickX = x;
+        stickY = y;
+      },
     };
+
+    window.__splatPose = () => engine.current?.pose();
 
     // ── Controls ───────────────────────────────────────────────────────────
     const keys = new Set<string>();
@@ -422,6 +490,11 @@ export default function SplatTour() {
       if (keys.has("a") || keys.has("arrowleft")) camera.position.addScaledVector(right, -speed);
       if (keys.has("e")) camera.position.y += speed;
       if (keys.has("q")) camera.position.y -= speed;
+      // The stick: up is forward (screen y grows downward).
+      if (stickX || stickY) {
+        camera.position.addScaledVector(forward, -stickY * 1.5 * dt);
+        camera.position.addScaledVector(right, stickX * 1.5 * dt);
+      }
 
       renderer.render(scene, camera);
 
@@ -641,6 +714,8 @@ export default function SplatTour() {
           {edit.saved && <div className="text-white/50">{edit.saved}</div>}
         </div>
       )}
+
+      <WalkStick onMove={(x, y) => engine.current?.setMove(x, y)} />
 
       <div dir="ltr" className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-2">
         <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
