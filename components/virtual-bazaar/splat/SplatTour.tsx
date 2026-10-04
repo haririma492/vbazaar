@@ -45,6 +45,7 @@ import {
 } from "@/lib/splats/tour";
 import WalkStick from "./WalkStick";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
+import { buildWalkMap, guide, type WalkMap } from "@/lib/splats/walkmap";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 /** Baked in at build time when it was set then; otherwise asked of the server at load (`/api/splats/config`). */
@@ -76,6 +77,8 @@ type Report = {
   dpr: number;
   viewport: string;
   error: string | null;
+  /** The walk map: its size and scale, or why there is none. */
+  walkMap?: string;
 };
 
 declare global {
@@ -144,6 +147,8 @@ type Engine = {
   setTilt: (on: boolean) => void;
   /** Take the phone's present hold as "standing still" again. */
   recentre: () => void;
+  /** The current scene's walk map, and where the visitor stands on it, for the 🗺 view. */
+  mapView: () => { map: WalkMap; x: number; z: number; heading: number } | null;
   /** The on-screen stick: x right, y down, each −1…1; (0, 0) stands still. */
   setMove: (x: number, y: number) => void;
   /** Walking speed, metres per second at full stick. */
@@ -183,6 +188,59 @@ export default function SplatTour() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [debug, setDebug] = useState(false);
+  // 🗺 The walk map seen from above, the visitor on it.
+  const [showMap, setShowMap] = useState(false);
+  const mapCanvas = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!showMap) return;
+    const draw = () => {
+      const cv = mapCanvas.current;
+      const view = engine.current?.mapView();
+      if (!cv) return;
+      const g = cv.getContext("2d")!;
+      const W = cv.width, H = cv.height;
+      g.fillStyle = "rgba(0,0,0,0.65)";
+      g.fillRect(0, 0, W, H);
+      if (!view) {
+        g.fillStyle = "rgba(255,255,255,0.6)";
+        g.font = "12px system-ui";
+        g.fillText("…", W / 2 - 4, H / 2);
+        return;
+      }
+      const { map: m, x, z, heading } = view;
+      // About 30 m across, centred on the visitor, forward up.
+      const span = 30 * m.unitsPerMetre;
+      const px = W / span;
+      g.save();
+      g.translate(W / 2, H / 2);
+      g.rotate(-heading);
+      const reach = Math.ceil(span / m.cell / 1.2);
+      const c0 = Math.floor((x - m.x0) / m.cell), r0 = Math.floor((z - m.z0) / m.cell);
+      for (let r = r0 - reach; r <= r0 + reach; r++) {
+        if (r < 0 || r >= m.rows) continue;
+        for (let c = c0 - reach; c <= c0 + reach; c++) {
+          if (c < 0 || c >= m.cols) continue;
+          const k = r * m.cols + c;
+          if (!m.known[k]) continue;
+          g.fillStyle = m.solid[k] ? "rgba(252,211,77,0.85)" : "rgba(255,255,255,0.12)";
+          const sx = (m.x0 + c * m.cell - x) * px, sz = (m.z0 + r * m.cell - z) * px;
+          g.fillRect(sx, sz, Math.ceil(m.cell * px), Math.ceil(m.cell * px));
+        }
+      }
+      g.restore();
+      // The visitor, facing up.
+      g.fillStyle = "#38bdf8";
+      g.beginPath();
+      g.moveTo(W / 2, H / 2 - 9);
+      g.lineTo(W / 2 - 6, H / 2 + 6);
+      g.lineTo(W / 2 + 6, H / 2 + 6);
+      g.closePath();
+      g.fill();
+    };
+    draw();
+    const t = window.setInterval(draw, 200);
+    return () => window.clearInterval(t);
+  }, [showMap]);
   // Walk by tilting is for a phone in the hand.
   const [touch, setTouch] = useState(false);
   useEffect(() => setTouch(window.matchMedia?.("(pointer: coarse)").matches ?? false), []);
@@ -282,6 +340,27 @@ export default function SplatTour() {
     });
 
     const meshes = new Map<string, SplatMesh>();
+    // Each scene's walk map, read once from its points (null while reading, or when no floor was found).
+    const maps = new Map<string, WalkMap | null>();
+    let currentId = "";
+    function readWalkMap(mesh: SplatMesh, flipped: boolean, eye: Vec3): WalkMap | null {
+      const n = mesh.packedSplats?.numSplats ?? mesh.extSplats?.numSplats ?? 0;
+      if (!n) return null;
+      const pts = new Float32Array(n * 3);
+      let k = 0;
+      try {
+        mesh.forEachSplat((_i, c, _s, _q, opacity) => {
+          if (opacity < 0.15) return; // faint haze is not a wall
+          // The splat is turned upright (180° about x) when flipped: y and z change sign.
+          pts[k++] = c.x;
+          pts[k++] = flipped ? -c.y : c.y;
+          pts[k++] = flipped ? -c.z : c.z;
+        });
+      } catch {
+        return null;
+      }
+      return buildWalkMap(pts.subarray(0, k), eye);
+    }
     let firstFrameAt: number | null = null;
 
     async function loadMesh(id: string, src: string, flip: boolean): Promise<SplatMesh> {
@@ -381,6 +460,21 @@ export default function SplatTour() {
           mesh.quaternion.set(flip ? 1 : 0, 0, 0, flip ? 0 : 1);
           meshes.forEach((m, k) => (m.visible = k === id));
           applyPose(pose);
+          currentId = id;
+          if (!maps.has(id)) {
+            maps.set(id, null);
+            // After the first frames are up: reading millions of points takes a moment.
+            window.setTimeout(() => {
+              if (disposed) return;
+              const t = performance.now();
+              const wm = readWalkMap(mesh, flip, camera.position.toArray() as Vec3);
+              maps.set(id, wm);
+              rep.walkMap = wm
+                ? `${wm.cols}×${wm.rows} cells, ${(1 / wm.unitsPerMetre).toFixed(2)} m/unit, ${Math.round(performance.now() - t)} ms`
+                : "no floor found: walking is not guided";
+              publish();
+            }, 400);
+          }
         } catch (e) {
           rep.error = (e as Error).message;
           publish();
@@ -421,6 +515,11 @@ export default function SplatTour() {
       recentre() {
         tilt = null;
         calib = [];
+      },
+      mapView() {
+        const map = maps.get(currentId);
+        if (!map) return null;
+        return { map, x: camera.position.x, z: camera.position.z, heading: -headingOf(camera.quaternion) };
       },
       setGyro(on) {
         gyroOn = on;
@@ -587,6 +686,16 @@ export default function SplatTour() {
       if (keys.has("a") || keys.has("arrowleft")) wantTurn = -1;
       const boost = keys.has("shift") ? 2.5 : 1;
       const ease = 1 - Math.exp(-dt / EASE_S);
+      // ⚠️ THE WALK MAP HELPS (`lib/splats/walkmap.ts`): walking forward, slow
+      // to a stop at arm's length from a shop window or wall, and lean the
+      // heading along the open way — unless the visitor is steering already.
+      const map = maps.get(currentId) ?? null;
+      if (map && wantFwd > 0) {
+        const g = guide(map, camera.position.x, camera.position.z, -heading);
+        wantFwd *= g.speed;
+        const steering = Math.abs(stickX) > 0.1 || Math.abs(velTurn) > 0.05 || Math.abs(turnTarget - turnYaw) > 0.02;
+        if (!steering) turnTarget += g.steer * dt * Math.min(1, wantFwd * 2);
+      }
       velFwd += (wantFwd * walkSpeed * boost - velFwd) * ease;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
       if (Math.abs(velFwd) > 1e-4) camera.position.addScaledVector(forward, velFwd * dt);
@@ -610,12 +719,14 @@ export default function SplatTour() {
         // ⚠️ A WEAK GRAPHICS CHIP DRAWS FEWER PIXELS, NOT FEWER FRAMES. At a
         // handful of frames a second every push of the stick lands late and
         // far, and walking feels out of control (a 2017 laptop chip, not a
-        // phone). Below 24 fps the canvas renders at a lower resolution, step
-        // by step down to half; above 50 it climbs back.
+        // phone). Below 20 fps the canvas renders at a lower resolution, step
+        // by step, but never below the screen's own pixels; above 50 it climbs back.
         if (rep.firstFrameMs != null) {
           const pr = renderer.getPixelRatio();
           const top = Math.min(window.devicePixelRatio, 2);
-          const next = rep.fps < 24 ? Math.max(0.5, pr * 0.8) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
+          // Never below the screen's own pixels (1): halving them blurred the shop windows.
+          const floor = Math.min(1, top);
+          const next = rep.fps < 20 ? Math.max(floor, pr * 0.85) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
           if (Math.abs(next - pr) > 0.01) {
             renderer.setPixelRatio(next);
             renderer.setSize(el.clientWidth, el.clientHeight);
@@ -826,6 +937,7 @@ export default function SplatTour() {
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
           <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
+          {r?.walkMap && <div className="text-white/60">map {r.walkMap}</div>}
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
         </div>
       ) : (
@@ -877,6 +989,17 @@ export default function SplatTour() {
           ))}
         </div>
       )}
+
+      {showMap && (
+        <canvas ref={mapCanvas} width={180} height={180} className="pointer-events-none absolute left-3 top-14 rounded-xl border border-white/20" aria-label="Map of the walk, seen from above" />
+      )}
+      <button
+        onClick={() => setShowMap((v) => !v)}
+        aria-label="Map"
+        className="absolute left-3 bottom-4 rounded-full border border-white/25 bg-black/60 px-3 py-2 text-[15px] text-white/90"
+      >
+        🗺
+      </button>
 
       {/* Where you can go */}
       {(here?.exits.length || backTo) && (
