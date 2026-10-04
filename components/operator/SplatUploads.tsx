@@ -34,6 +34,9 @@ import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene
 const API = "/api/operator/splats";
 const PARALLEL = 4;
 const TRIES = 4;
+/** A dropped connection (Wi-Fi, a laptop dozing) is retried for about three minutes before giving up. */
+const DROP_TRIES = 10;
+const MAX_BACKOFF_MS = 30_000;
 const RESUME_PREFIX = "sk-splat-upload:";
 
 const BIG = "min-h-[44px] rounded-2xl px-4 text-[14px] font-bold disabled:opacity-40";
@@ -62,6 +65,8 @@ type Item = {
 
 class Stopped extends Error {}
 class NoEtag extends Error {}
+/** The PUT never got an answer: the network went away mid-part. */
+class Dropped extends Error {}
 
 async function api<T = any>(body?: object): Promise<T> {
   const res = await fetch(API, {
@@ -128,7 +133,7 @@ function putPart(url: string, blob: Blob, onBytes: (loaded: number) => void, tra
       const etag = xhr.getResponseHeader("ETag");
       return etag ? resolve(etag) : reject(new NoEtag());
     };
-    xhr.onerror = () => { track.delete(xhr); reject(new NoEtag()); };
+    xhr.onerror = () => { track.delete(xhr); reject(new Dropped()); };
     xhr.onabort = () => { track.delete(xhr); reject(new Stopped()); };
     xhr.send(blob);
   });
@@ -186,9 +191,13 @@ async function uploadBlob(
           break;
         } catch (e) {
           live.delete(part);
-          // A missing ETag on the first try is CORS, not the network: retrying will not help.
-          if (e instanceof Stopped || stop.current || attempt >= TRIES || (e instanceof NoEtag && done.size === 0 && attempt >= 2)) throw e;
-          await new Promise((res) => setTimeout(res, 2000 * 2 ** (attempt - 1)));
+          if (e instanceof Stopped || stop.current) throw e;
+          // Nothing has ever gone through: a refused PUT is the bucket's CORS, and retrying will not help.
+          const nothingYet = done.size === 0 && sent === 0;
+          if ((e instanceof NoEtag || e instanceof Dropped) && nothingYet && attempt >= 2) throw new NoEtag();
+          // Parts went through before, so a dropped one is the network: keep trying for a while.
+          if (attempt >= (e instanceof Dropped ? DROP_TRIES : TRIES)) throw e;
+          await new Promise((res) => setTimeout(res, Math.min(MAX_BACKOFF_MS, 2000 * 2 ** (attempt - 1))));
         }
       }
     }
@@ -311,6 +320,10 @@ export default function SplatUploads() {
       } catch (e) {
         if (e instanceof Stopped) {
           patch(it.id, { step: "paused", note: "Paused. «Start» resumes from the last finished part." });
+          break;
+        }
+        if (e instanceof Dropped) {
+          patch(it.id, { step: "paused", note: "The connection to R2 dropped (Wi-Fi, or the computer slept) and did not come back for a few minutes. «Start again» resumes from the last finished part." });
           break;
         }
         if (e instanceof NoEtag) {
