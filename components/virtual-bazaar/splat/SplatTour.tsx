@@ -80,6 +80,8 @@ type Report = {
   dpr: number;
   viewport: string;
   error: string | null;
+  /** What the walk knows of the path here: the first thing to look at when the path is not followed. */
+  path: string;
 };
 
 declare global {
@@ -345,7 +347,7 @@ export default function SplatTour() {
 
     const rep: Report = {
       scene: "", src: "", bytes: null, downloadMs: null, decodeMs: null, firstFrameMs: null, splats: null, fps: null,
-      gpu: gpuName(renderer.getContext()), dpr: renderer.getPixelRatio(), viewport: `${el.clientWidth}×${el.clientHeight}`, error: null,
+      gpu: gpuName(renderer.getContext()), dpr: renderer.getPixelRatio(), viewport: `${el.clientWidth}×${el.clientHeight}`, error: null, path: "—",
     };
     const publish = () => {
       window.__splatReport = { ...rep };
@@ -1040,6 +1042,15 @@ export default function SplatTour() {
       const now = performance.now();
       if (now - fpsSince >= 2000) {
         rep.fps = Math.round((frames * 1000) / (now - fpsSince));
+        {
+          const mine = world.find((m) => m.id === currentId);
+          const routed = world.filter((m) => m.route.length > 1);
+          rep.path = !mine?.route.length
+            ? `«${currentId}» has NO route saved — record it in edit mode and Save`
+            : `«${currentId}» route ${mine.route.length} pts · ${nearestDist === Infinity ? "—" : nearestDist.toFixed(1)} from it · ` +
+              `${guided ? "following" : "free walking"} · walls ${wallsOn && mine.half > 0 ? mine.half.toFixed(2) : "off"} · ` +
+              `${routed.length} joined scene${routed.length === 1 ? "" : "s"}${links.length ? ` · ${links.length} bridges` : ""}`;
+        }
         frames = 0;
         fpsSince = now;
         // ⚠️ A WEAK GRAPHICS CHIP DRAWS FEWER PIXELS, NOT FEWER FRAMES. At a
@@ -1378,6 +1389,7 @@ export default function SplatTour() {
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
           <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
+          <div className="text-sky-200">path: {r?.path}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
         </div>
       ) : (
@@ -1626,11 +1638,16 @@ export default function SplatTour() {
                   <div>size {fmtMB(r?.bytes ?? null)} · dl {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
                   <div>splats {r?.splats?.toLocaleString() ?? "—"} · {r?.fps ?? "—"} fps · dpr {r?.dpr}</div>
                   <div className="text-white/45">{r?.gpu} · {r?.viewport}</div>
+                  <div className="text-sky-200">path: {r?.path}</div>
                   {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
                   <button className="mt-1 rounded bg-white/10 px-2 py-1 font-sans" onClick={() => void copyReport()}>{copied ? "Copied" : "Copy report"}</button>
                 </div>
               )}
-              {edit.saved && <div className="text-white/40">{edit.saved}</div>}
+              {edit.saved && (
+                <div className={edit.saved.startsWith("not saved") ? "rounded bg-rose-500/30 p-1 font-bold text-rose-100" : edit.saved === "saved" ? "text-emerald-300" : "text-amber-200"}>
+                  {edit.saved === "unsaved changes" ? "Unsaved — press Save, or visitors will not get it" : edit.saved === "saved" ? "✓ Saved — visitors get it now" : edit.saved}
+                </div>
+              )}
             </div>
           </div>
           {/* The grip: drag left to push the dashboard away, tap to bring it back */}
