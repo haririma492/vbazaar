@@ -145,7 +145,13 @@ function putPart(url: string, blob: Blob, onBytes: (loaded: number) => void, tra
       const etag = xhr.getResponseHeader("ETag");
       return etag ? resolve(etag) : reject(new NoEtag());
     };
-    xhr.onerror = () => { track.delete(xhr); reject(new Dropped()); };
+    xhr.onerror = () => {
+      track.delete(xhr);
+      // The browser hides why (CORS and a dropped network look the same here);
+      // its console says which.
+      console.warn("[splat upload] PUT failed with no answer; the console line above, if any, names the reason");
+      reject(new Dropped());
+    };
     xhr.onabort = () => { track.delete(xhr); reject(new Stopped()); };
     xhr.send(blob);
   });
