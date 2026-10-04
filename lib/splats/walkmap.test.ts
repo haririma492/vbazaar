@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildWalkMap, depthAt, findFloor, guide } from "./walkmap.ts";
+import { MIN_SPEED, buildWalkMap, depthAt, findFloor, guide } from "./walkmap.ts";
 
 /**
  * A street in scene units of 2 per metre (so the eye is 3.2 up): floor at
@@ -61,13 +61,13 @@ test("depth: long down the street, short to the shop fronts, open where the side
   assert.ok(depthAt(m, 0, -5 * upm, 0) > 10 * upm);
 });
 
-test("walking at a shop window slows to a stop at arm's length: window shopping", () => {
+test("walking at a shop window slows to a window-shopping pace, never to a stop", () => {
   const m = buildWalkMap(street(), EYE)!;
   const upm = m.unitsPerMetre;
   assert.equal(guide(m, 0, -10 * upm, 0).speed, 1); // open street
   const near = guide(m, 0, -38.5 * upm, 0); // 1.5 m from the end window
-  assert.ok(near.speed > 0 && near.speed < 1, `near ${near.speed}`);
-  assert.equal(guide(m, 0, -39.6 * upm, 0).speed, 0); // at the glass
+  assert.ok(near.speed > MIN_SPEED && near.speed < 1, `near ${near.speed}`);
+  assert.equal(guide(m, 0, -39.6 * upm, 0).speed, MIN_SPEED); // at the glass: slow, not stuck
   // Facing a shop front from the middle of the street: slow, not stopped.
   const facing = guide(m, 0, -10 * upm, Math.PI / 2);
   assert.ok(facing.speed < 1);

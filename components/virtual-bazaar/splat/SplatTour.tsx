@@ -343,6 +343,8 @@ export default function SplatTour() {
     // Each scene's walk map, read once from its points (null while reading, or when no floor was found).
     const maps = new Map<string, WalkMap | null>();
     let currentId = "";
+    // `?guide=off`: walk with no help from the map, to compare.
+    const guideOn = params.get("guide") !== "off";
     function readWalkMap(mesh: SplatMesh, flipped: boolean, eye: Vec3): WalkMap | null {
       const n = mesh.packedSplats?.numSplats ?? mesh.extSplats?.numSplats ?? 0;
       if (!n) return null;
@@ -689,7 +691,7 @@ export default function SplatTour() {
       // ⚠️ THE WALK MAP HELPS (`lib/splats/walkmap.ts`): walking forward, slow
       // to a stop at arm's length from a shop window or wall, and lean the
       // heading along the open way — unless the visitor is steering already.
-      const map = maps.get(currentId) ?? null;
+      const map = guideOn ? maps.get(currentId) ?? null : null;
       if (map && wantFwd > 0) {
         const g = guide(map, camera.position.x, camera.position.z, -heading);
         wantFwd *= g.speed;

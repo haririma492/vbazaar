@@ -16,9 +16,9 @@
  *
  *   • open ahead       walk; if the open way bends a little, the heading is
  *                      drawn gently along it — no fine steering needed
- *   • something ahead  slow down smoothly and stop at arm's length: in front
- *                      of a shop that is window shopping, and the glass is
- *                      never walked through
+ *   • something ahead  slow down smoothly to a window-shopping pace by arm's
+ *                      length — but never to a stop: what the plan calls a
+ *                      wall may be a floater (see MIN_SPEED)
  *
  * Pure: points in (x, y, z triples, y up), plan and guidance out.
  */
@@ -133,14 +133,22 @@ export function depthAt(m: WalkMap, x: number, z: number, heading: number, max =
   return max;
 }
 
-/** Stop this far from what is ahead: arm's length. */
+/** Slowest at this distance from what is ahead: arm's length. */
 const STOP_M = 0.6;
+/**
+ * ⚠️ NEVER A STANDSTILL. The plan is read from a real scene's points, with
+ * floaters, the inside of a shop seen through its glass and uneven ground in
+ * them; read as walls they stopped visitors dead a few metres in (operator,
+ * 2026-10-04). In front of what looks solid the walk slows to this share of
+ * its speed — a window-shopping pace — and always goes on.
+ */
+export const MIN_SPEED = 0.35;
 /** Start slowing this far before it: there is a shop window to look at. */
 const SLOW_M = 2.5;
 /** Look this far either side of the heading for the open way. */
 const LOOK_DEG = 35;
 /** How readily the heading is drawn along an open way (per second, of the angle to it). */
-const PULL = 1.2;
+const PULL = 0.5; // gentle: the plan of a real scene is approximate
 
 /**
  * Help for one moment of walking: how much of the asked speed to allow
@@ -151,7 +159,8 @@ export function guide(m: WalkMap, x: number, z: number, heading: number): { spee
   const upm = m.unitsPerMetre;
   const ahead = depthAt(m, x, z, heading);
   const stop = STOP_M * upm, slow = SLOW_M * upm;
-  const speed = ahead <= stop ? 0 : ahead >= slow ? 1 : (ahead - stop) / (slow - stop);
+  const t = ahead <= stop ? 0 : ahead >= slow ? 1 : (ahead - stop) / (slow - stop);
+  const speed = MIN_SPEED + (1 - MIN_SPEED) * t;
   // The open way: the deepest direction near the heading, nearer ones preferred.
   let bestA = 0, bestScore = ahead;
   for (let deg = -LOOK_DEG; deg <= LOOK_DEG; deg += 5) {
@@ -164,6 +173,6 @@ export function guide(m: WalkMap, x: number, z: number, heading: number): { spee
     }
   }
   // Only lean when the open way is clearly more open than straight ahead.
-  const steer = bestScore > ahead * 1.4 && bestScore > slow ? bestA * PULL : 0;
+  const steer = bestScore > ahead * 1.6 && bestScore > slow * 1.5 ? bestA * PULL : 0;
   return { speed, steer, ahead };
 }
