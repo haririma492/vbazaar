@@ -6,7 +6,7 @@
  * butcher and coverage maps), baked in at build time; loaded by
  * `lib/maps/googleMaps.ts`. On it, enable:
  *   - Maps JavaScript API — the 3D city and Street View. Required.
- *   - Places API (New)    — the address box. Without it: "use my location" only.
+ *   - Places API (New)    — the address box, and finding the pre-typed address.
  *   - Routes API          — fly along the roads. Without it: a straight line,
  *                           higher up, clear of towers.
  *   - Elevation API       — ground height, for landing at eye level. Without
@@ -22,6 +22,24 @@ const plain = (p: any): LatLng => ({
   lat: typeof p.lat === "function" ? p.lat() : p.lat,
   lng: typeof p.lng === "function" ? p.lng() : p.lng,
 });
+
+/** An address typed as text → where it is and how Google writes it, or null. */
+export async function findAddress(text: string): Promise<{ location: LatLng; label: string } | null> {
+  try {
+    const { Place } = await importLibrary("places");
+    const { places } = await Place.searchByText({
+      textQuery: text,
+      fields: ["location", "formattedAddress"],
+      maxResultCount: 1,
+      region: "ca",
+    });
+    const p = places?.[0];
+    return p?.location ? { location: plain(p.location), label: p.formattedAddress || text } : null;
+  } catch (e) {
+    console.warn("Virtual ride: could not find", text, e);
+    return null;
+  }
+}
 
 /** The driving route's polyline, or null (Routes API off, no route, …). */
 export async function roadRoute(origin: LatLng, destination: LatLng): Promise<LatLng[] | null> {

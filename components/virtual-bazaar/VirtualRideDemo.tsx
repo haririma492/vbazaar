@@ -6,7 +6,7 @@ import VirtualRide, { RIDE_EXTRAS_MS, type RideOrigin } from "./VirtualRide";
 import {
   type PaceId, type Vehicle, PACES, distanceMeters, formatDuration, makePath, paceFactor, rideDurationMillis,
 } from "@/lib/virtualRide/flight";
-import { roadRoute } from "./rideGoogle";
+import { findAddress, roadRoute } from "./rideGoogle";
 import { DISTRICTS, districtById } from "@/lib/virtualRide/districts";
 import { importLibrary } from "./rideGoogle";
 
@@ -17,6 +17,8 @@ import { importLibrary } from "./rideGoogle";
  */
 
 const REMEMBER = "sk-ride-origin";
+/** Typed in the address box until the visitor picks their own (operator, 2026-10-05). */
+const DEFAULT_ADDRESS = "41 Eleanor Cir, Richmond Hill, ON L4C 6K6";
 const REMEMBER_VEHICLE = "sk-ride-vehicle";
 const REMEMBER_PACE = "sk-ride-pace";
 /** Roads are longer than the crow flies; until the route is back, this much. */
@@ -109,7 +111,18 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
 
   const Scene = to.enterOnArrival && to.entryScene ? PRELOADABLE[to.entryScene] ?? null : null;
 
-  useEffect(() => setOrigin(remembered()), []);
+  // The visitor's own last pick, else the pre-typed address (found by Google, not remembered).
+  useEffect(() => {
+    const r = remembered();
+    if (r) return setOrigin(r);
+    let gone = false;
+    void findAddress(DEFAULT_ADDRESS).then((o) => {
+      if (!gone && o) setOrigin((cur) => cur ?? o);
+    });
+    return () => {
+      gone = true;
+    };
+  }, []);
 
   const pick = (o: RideOrigin) => {
     setOrigin(o);
@@ -168,12 +181,7 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
 
         <section className="space-y-2">
           <h2 className="text-sm text-neutral-400">Where are you starting from?</h2>
-          <AddressPicker onPick={pick} />
-          {origin && (
-            <p className="text-sm">
-              Starting from <span className="font-semibold">{origin.label}</span>
-            </p>
-          )}
+          <AddressPicker value={origin?.label ?? DEFAULT_ADDRESS} onPick={pick} />
         </section>
 
         <section className="space-y-2">
@@ -267,13 +275,20 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
   );
 }
 
-/** Google's address box (Places API (New)), plus "use my location". */
-function AddressPicker({ onPick }: { onPick: (o: RideOrigin) => void }) {
+/** Google's address box (Places API (New)), showing the address the ride starts from. */
+function AddressPicker({ value, onPick }: { value: string; onPick: (o: RideOrigin) => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<any>(null);
   const pickRef = useRef(onPick);
   pickRef.current = onPick;
+  const valueRef = useRef(value);
+  valueRef.current = value;
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [locating, setLocating] = useState(false);
+
+  // The starting address, typed in the box.
+  useEffect(() => {
+    try { if (boxRef.current) boxRef.current.value = value; } catch { /* an older element: placeholder only */ }
+  }, [value]);
 
   useEffect(() => {
     let gone = false;
@@ -285,6 +300,8 @@ function AddressPicker({ onPick }: { onPick: (o: RideOrigin) => void }) {
         box = new PlaceAutocompleteElement({ includedRegionCodes: ["ca"] });
         box.style.cssText = "width:100%;color-scheme:light";
         box.setAttribute("placeholder", "Your address");
+        try { box.value = valueRef.current; } catch { /* an older element: placeholder only */ }
+        boxRef.current = box;
         const choose = async (place: any) => {
           await place.fetchFields({ fields: ["location", "formattedAddress", "displayName"] });
           const loc = place.location;
@@ -310,32 +327,14 @@ function AddressPicker({ onPick }: { onPick: (o: RideOrigin) => void }) {
     return () => {
       gone = true;
       box?.remove();
+      boxRef.current = null;
     };
   }, []);
-
-  const here = () => {
-    if (!navigator.geolocation) return setSearchError("This browser can't share its location.");
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (p) => {
-        setLocating(false);
-        pickRef.current({ location: { lat: p.coords.latitude, lng: p.coords.longitude }, label: "my location" });
-      },
-      () => {
-        setLocating(false);
-        setSearchError("Location wasn't shared.");
-      },
-      { enableHighAccuracy: true, timeout: 15_000 },
-    );
-  };
 
   return (
     <div className="space-y-2">
       <div ref={hostRef} className="rounded-lg bg-white" />
       {searchError && <p className="text-sm text-amber-300">{searchError}</p>}
-      <button type="button" onClick={here} className="text-sm underline text-neutral-300">
-        {locating ? "Finding you…" : "Use my current location"}
-      </button>
     </div>
   );
 }
