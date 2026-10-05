@@ -3,7 +3,8 @@
  * extra API is not enabled still flies, just less well.
  *
  * ⚠️ ONE BROWSER KEY, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (shared with the
- * butcher and coverage maps), baked in at build time. On it, enable:
+ * butcher and coverage maps), baked in at build time; loaded by
+ * `lib/maps/googleMaps.ts`. On it, enable:
  *   - Maps JavaScript API — the 3D city and Street View. Required.
  *   - Places API (New)    — the address box. Without it: "use my location" only.
  *   - Routes API          — fly along the roads. Without it: a straight line,
@@ -13,38 +14,9 @@
  */
 
 import type { LatLng } from "@/lib/virtualRide/flight";
+import { importLibrary } from "@/lib/maps/googleMaps";
 
-export const MAPS_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
-
-let mapsLoad: Promise<any> | null = null;
-
-/** The Maps JavaScript API, loaded once per page. */
-export function loadMaps(): Promise<any> {
-  const w = window as any;
-  if (!MAPS_KEY) return Promise.reject(new Error("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is not set"));
-  if (w.google?.maps?.importLibrary) return Promise.resolve(w.google);
-  if (mapsLoad) return mapsLoad;
-  mapsLoad = new Promise((resolve, reject) => {
-    w.__skRideMapsReady = () => resolve(w.google);
-    const s = document.createElement("script");
-    s.src =
-      `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(MAPS_KEY)}` +
-      `&v=weekly&loading=async&region=CA&callback=__skRideMapsReady`;
-    s.async = true;
-    s.onerror = () => {
-      mapsLoad = null;
-      s.remove();
-      reject(new Error("Google Maps failed to load"));
-    };
-    document.head.appendChild(s);
-  });
-  return mapsLoad;
-}
-
-export async function importLibrary(name: string): Promise<any> {
-  const google = await loadMaps();
-  return google.maps.importLibrary(name);
-}
+export { MAPS_KEY, loadMaps, importLibrary } from "@/lib/maps/googleMaps";
 
 const plain = (p: any): LatLng => ({
   lat: typeof p.lat === "function" ? p.lat() : p.lat,
