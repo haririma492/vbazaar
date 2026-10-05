@@ -3,13 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  type LatLng, bearingDegrees, distanceMeters, flightFrame, groundProfile, makePath, planFlight,
-  samplePath, straightPath,
+  type LatLng, type Vehicle, RIDE, bearingDegrees, distanceMeters, flightFrame, groundProfile, makePath,
+  planFlight, rideDistance, samplePath, straightPath,
 } from "@/lib/virtualRide/flight";
 import type { RideDistrict } from "@/lib/virtualRide/districts";
 import { BOARDING, BOARDING_MS, alightingFrame, boardingFrame, type BoardingFrame } from "@/lib/virtualRide/boarding";
 import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle";
 import { createDrone, type DronePlayer } from "./rideDrone";
+import { TAXI_ALIGHTING_MS, TAXI_BOARDING_MS, taxiAlightingFrame, taxiBoardingFrame } from "@/lib/virtualRide/taxi";
+import { createTaxi, type TaxiPlayer } from "./rideTaxi";
 
 /**
  * The Virtual Ride: from the rider's own address to a shopping district.
@@ -25,6 +27,11 @@ import { createDrone, type DronePlayer } from "./rideDrone";
  * cross-fades straight into it),
  * or Street View, to walk on from where they landed. Google is the TRANSPORT
  * only: this component knows nothing of splats or R2.
+ *
+ * By taxi instead (`vehicle`): a yellow cab pulls up in Street View, the
+ * rider gets in, and the 3D city follows it along the roads from a few
+ * metres up and behind; at the district it pulls up, they get out, it
+ * drives off.
  *
  * The camera is driven frame by frame from `flightFrame` (lib/virtualRide),
  * not by Google's `flyCameraTo`, whose single parabolic arc climbs far too
@@ -86,10 +93,13 @@ export default function VirtualRide({
   onExit,
   onEnter,
   enterReady = false,
+  vehicle = "drone",
 }: {
   origin: RideOrigin;
   to: RideDistrict;
   onExit: () => void;
+  /** By drone (the default) or by taxi; a taxi needs a road route, else it goes by drone. */
+  vehicle?: Vehicle;
   /**
    * The destination's scene is mounted (preloading) underneath the ride: on
    * landing, the ride fades away to show it and calls this — no page change,
@@ -119,6 +129,7 @@ export default function VirtualRide({
     let gone = false;
     let map: any = null;
     let drone: DronePlayer | null = null;
+    let taxi: TaxiPlayer | null = null;
     let raf = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
     const later = (fn: () => void, ms: number) => timers.push(setTimeout(fn, ms));
@@ -160,7 +171,9 @@ export default function VirtualRide({
             ? bearingDegrees(start, origin.location)
             : bearingDegrees(start, landing)
           : undefined,
+        vehicle,
       });
+      const byTaxi = plan.vehicle === "taxi";
 
       // 2. Street View in front of home on top; the 3D city at the same spot
       // underneath it; the destination's Street View waiting below both.
@@ -195,7 +208,13 @@ export default function VirtualRide({
       }
       if (gone || !mapHostRef.current) return;
       // `mode` is required: without it Map3DElement renders nothing.
-      map = new Map3DElement({ ...flightFrame(plan, 0), mode: "SATELLITE", defaultUIHidden: true });
+      map = new Map3DElement({
+        ...flightFrame(plan, 0),
+        mode: "SATELLITE",
+        defaultUIHidden: true,
+        // The taxi is drawn with this same field of view, so it sits on the road.
+        ...(byTaxi ? { fov: RIDE.taxi.fov } : {}),
+      });
       map.style.cssText = "width:100%;height:100%;display:block";
       map.addEventListener("gmp-error", () => fail("Google 3D Maps reported an error (key, billing or API not enabled?)"));
       mapHostRef.current.appendChild(map);
@@ -216,6 +235,19 @@ export default function VirtualRide({
         }
       };
 
+      /** The taxi over Street View, playing one of its timelines (kept for the drive). */
+      const playTaxi = async (frameAt: typeof taxiBoardingFrame, durationMs: number) => {
+        if (!droneRef.current) return;
+        try {
+          taxi ??= await createTaxi(droneRef.current);
+          if (gone) return;
+          taxi.street();
+          await taxi.play(frameAt, durationMs);
+        } catch (e) {
+          console.warn("Virtual ride: no taxi", e);
+        }
+      };
+
       // 3. Fly once home has drawn, after a beat.
       let started = false;
       const fly = () => {
@@ -223,16 +255,30 @@ export default function VirtualRide({
         started = true;
         later(async () => {
           if (gone) return;
-          // Board the drone in front of home.
+          // Board the drone, or get into the taxi, in front of home.
           if (homePano) {
             setStage("boarding");
-            await playDrone(boardingFrame, homePano);
-            drone?.dispose();
-            drone = null;
+            if (byTaxi) await playTaxi(taxiBoardingFrame, TAXI_BOARDING_MS);
+            else {
+              await playDrone(boardingFrame, homePano);
+              drone?.dispose();
+              drone = null;
+            }
+            if (gone) return;
+          }
+          if (byTaxi && droneRef.current) {
+            try {
+              taxi ??= await createTaxi(droneRef.current);
+              taxi.chase();
+            } catch (e) {
+              console.warn("Virtual ride: no taxi", e);
+            }
             if (gone) return;
           }
           setStage("flying");
           const t0 = performance.now();
+          let lastT = 0;
+          let lastS = 0;
           const step = (now: number) => {
             if (gone) return;
             const t = now - t0;
@@ -250,6 +296,16 @@ export default function VirtualRide({
             if ((spot || (enter && !onEnterRef.current)) && mapHostRef.current) {
               const fade = (t - (plan.durationMs - CROSSFADE_MS)) / CROSSFADE_MS;
               mapHostRef.current.style.opacity = String(1 - Math.min(1, Math.max(0, fade)));
+            }
+            if (byTaxi && taxi) {
+              // The cab on the road at the view's centre, fading in from Street View and out to it.
+              const s = rideDistance(plan, t);
+              const dt = Math.max(1e-3, (t - lastT) / 1000);
+              const fadeIn = homePano ? Math.min(1, t / CROSSFADE_MS) : 1;
+              const fadeOut = spot ? 1 - Math.min(1, Math.max(0, (t - (plan.durationMs - CROSSFADE_MS)) / CROSSFADE_MS)) : 1;
+              taxi.pose({ car: { x: 0, y: 0, z: -RIDE.taxi.behind }, yaw: 0, speed: (s - lastS) / dt, opacity: Math.min(fadeIn, fadeOut) }, dt);
+              lastT = t;
+              lastS = s;
             }
             if (t < plan.durationMs) {
               raf = requestAnimationFrame(step);
@@ -270,11 +326,12 @@ export default function VirtualRide({
                 later(() => !gone && onEnterRef.current?.(), REVEAL_MS);
               };
               if (destPano) {
-                // Off the drone on the pavement outside, then into the scene.
+                // Off the drone (or out of the taxi) on the pavement outside, then into the scene.
                 map.remove();
                 map = null;
                 setStage("alighting");
-                void playDrone(alightingFrame, destPano).then(() => {
+                const off = byTaxi ? playTaxi(taxiAlightingFrame, TAXI_ALIGHTING_MS) : playDrone(alightingFrame, destPano);
+                void off.then(() => {
                   if (gone) return;
                   setStage("entering");
                   later(reveal, PARKED_MS);
@@ -305,8 +362,9 @@ export default function VirtualRide({
       timers.forEach(clearTimeout);
       map?.remove();
       drone?.dispose();
+      taxi?.dispose();
     };
-  }, [origin, to]);
+  }, [origin, to, vehicle]);
 
   const walking = stage === "walking";
 

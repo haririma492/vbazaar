@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import dynamic from "next/dynamic";
 import VirtualRide, { type RideOrigin } from "./VirtualRide";
+import type { Vehicle } from "@/lib/virtualRide/flight";
 import { DISTRICTS, districtById } from "@/lib/virtualRide/districts";
 import { importLibrary } from "./rideGoogle";
 
@@ -13,6 +14,12 @@ import { importLibrary } from "./rideGoogle";
  */
 
 const REMEMBER = "sk-ride-origin";
+const REMEMBER_VEHICLE = "sk-ride-vehicle";
+
+const VEHICLES: { id: Vehicle; en: string; fa: string; icon: string; note: string }[] = [
+  { id: "drone", en: "By drone", fa: "با پهپاد", icon: "🚁", note: "Low over the roads, landing on the pavement" },
+  { id: "taxi", en: "By taxi", fa: "با تاکسی", icon: "🚕", note: "Along the streets, pulling up at the door" },
+];
 
 type Preloadable = ComponentType<{ preload?: boolean; onReady?: () => void }>;
 
@@ -42,6 +49,17 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
   const [origin, setOrigin] = useState<RideOrigin | null>(null);
   const [toIdState, setToId] = useState<string>(districtById(toId)?.id ?? DISTRICTS[0].id);
   const [riding, setRiding] = useState(false);
+  const [vehicle, setVehicle] = useState<Vehicle>("drone");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(REMEMBER_VEHICLE);
+      if (v === "drone" || v === "taxi") setVehicle(v);
+    } catch { /* the default */ }
+  }, []);
+  const chooseVehicle = (v: Vehicle) => {
+    setVehicle(v);
+    try { localStorage.setItem(REMEMBER_VEHICLE, v); } catch { /* fine without */ }
+  };
   const [sceneReady, setSceneReady] = useState(false);
   const [entered, setEntered] = useState(false);
   const to = districtById(toIdState)!;
@@ -69,12 +87,12 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
       <>
         <Scene preload={!entered} onReady={() => setSceneReady(true)} />
         {!entered && (
-          <VirtualRide origin={origin} to={to} onExit={exit} onEnter={enter} enterReady={sceneReady} />
+          <VirtualRide origin={origin} to={to} vehicle={vehicle} onExit={exit} onEnter={enter} enterReady={sceneReady} />
         )}
       </>
     );
   }
-  if (riding && origin) return <VirtualRide origin={origin} to={to} onExit={exit} />;
+  if (riding && origin) return <VirtualRide origin={origin} to={to} vehicle={vehicle} onExit={exit} />;
 
   return (
     <main dir="ltr" className="min-h-screen grid place-items-center p-4 bg-neutral-950 text-white">
@@ -112,13 +130,36 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
           </div>
         </section>
 
+        <section className="space-y-2">
+          <h2 className="text-sm text-neutral-400">How?</h2>
+          <div className="grid grid-cols-2 gap-2">
+            {VEHICLES.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => chooseVehicle(v.id)}
+                aria-pressed={v.id === vehicle}
+                className={`rounded-xl border p-3 text-left ${
+                  v.id === vehicle ? "bg-white text-black border-white" : "border-neutral-600"
+                }`}
+              >
+                <div className="text-lg font-semibold">
+                  {v.icon} {v.en}
+                </div>
+                <div className="text-sm" dir="rtl">{v.fa}</div>
+                <div className={`text-xs ${v.id === vehicle ? "text-neutral-600" : "text-neutral-400"}`}>{v.note}</div>
+              </button>
+            ))}
+          </div>
+        </section>
+
         <button
           type="button"
           disabled={!origin}
           onClick={() => setRiding(true)}
           className="w-full px-6 py-3 rounded-full bg-white text-black font-semibold disabled:opacity-40"
         >
-          Take Virtual Ride → {to.name.en}
+          Take Virtual Ride {vehicle === "taxi" ? "🚕" : "🚁"} → {to.name.en}
         </button>
       </div>
     </main>

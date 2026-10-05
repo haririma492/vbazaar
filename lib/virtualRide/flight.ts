@@ -204,11 +204,33 @@ export const RIDE = {
   /** Departure from, and arrival at, street level: a standing person's eye, looking almost level. */
   eyeHeight: 1.7,
   landTilt: MAX_TILT,
+  /**
+   * By taxi: on the road, the camera a few metres up and behind the car
+   * (which `components/virtual-bazaar/rideTaxi.ts` draws at the view's
+   * centre), slower than the drone — 25 s plus 9 s per km, 30–90 s.
+   */
+  taxi: {
+    baseMs: 25_000,
+    msPerKm: 9_000,
+    minMs: 30_000,
+    maxMs: 90_000,
+    accel: 0.12,
+    decel: 0.18,
+    /** Camera height and distance behind the car, metres. */
+    height: 6,
+    behind: 14,
+    /** Map3DElement's vertical field of view while driving (Google's default is 35). */
+    fov: 50,
+    lookahead: 30,
+  },
 } as const;
 
-export function rideDurationMillis(meters: number): number {
-  const ms = RIDE.baseMs + (Math.max(0, meters) / 1000) * RIDE.msPerKm;
-  return Math.round(Math.min(RIDE.maxMs, Math.max(RIDE.minMs, ms)));
+export type Vehicle = "drone" | "taxi";
+
+export function rideDurationMillis(meters: number, vehicle: Vehicle = "drone"): number {
+  const k = vehicle === "taxi" ? RIDE.taxi : RIDE;
+  const ms = k.baseMs + (Math.max(0, meters) / 1000) * k.msPerKm;
+  return Math.round(Math.min(k.maxMs, Math.max(k.minMs, ms)));
 }
 
 /**
@@ -236,6 +258,8 @@ export function cruiseHeight(speed: number, followsRoad: boolean): number {
 }
 
 export type FlightPlan = {
+  /** A taxi needs a road route; without one the ride goes by drone. */
+  vehicle: Vehicle;
   path: RidePath;
   /** Ground height above sea level `s` metres along the path. */
   ground: (s: number) => number;
@@ -257,10 +281,13 @@ export function planFlight(opts: {
   followsRoad: boolean;
   finalHeading?: number;
   startHeading?: number;
+  vehicle?: Vehicle;
 }): FlightPlan {
   const { path, ground, followsRoad } = opts;
-  const durationMs = rideDurationMillis(path.length);
+  const vehicle: Vehicle = opts.vehicle === "taxi" && followsRoad ? "taxi" : "drone";
+  const durationMs = rideDurationMillis(path.length, vehicle);
   return {
+    vehicle,
     path,
     ground,
     durationMs,
@@ -308,6 +335,7 @@ export function homeCamera(plan: FlightPlan): RideCamera {
  * the destination, standing on the ground at `durationMs`.
  */
 export function flightFrame(plan: FlightPlan, tMs: number): RideCamera {
+  if (plan.vehicle === "taxi") return taxiFrame(plan, tMs);
   const { path, ground, cruise } = plan;
   const u = Math.min(1, Math.max(0, tMs / plan.durationMs));
   const s = path.length * travelFraction(u);
@@ -326,4 +354,29 @@ export function flightFrame(plan: FlightPlan, tMs: number): RideCamera {
   const flying = eyeCamera(eye, height, heading, tilt, ground(s));
 
   return !fromStreet && lift < 1 ? mixCamera(homeCamera(plan), flying, lift) : flying;
+}
+
+/* ─── By taxi. ─────────────────────────────────────────────────────── */
+
+/** Metres along the path `tMs` into the ride (for the taxi's wheels and engine). */
+export function rideDistance(plan: FlightPlan, tMs: number): number {
+  const u = Math.min(1, Math.max(0, tMs / plan.durationMs));
+  const k = plan.vehicle === "taxi" ? RIDE.taxi : RIDE;
+  return plan.path.length * travelFraction(u, k.accel, k.decel);
+}
+
+/**
+ * The chase camera: looking at the taxi (on the road at the view's centre)
+ * from `behind` metres back and `height` up, turning with the road.
+ */
+export function taxiFrame(plan: FlightPlan, tMs: number): RideCamera {
+  const T = RIDE.taxi;
+  const s = rideDistance(plan, tMs);
+  const car = pointAt(plan.path, s);
+  return {
+    center: { lat: car.lat, lng: car.lng, altitude: plan.ground(s) },
+    range: Math.hypot(T.behind, T.height),
+    tilt: deg(Math.atan2(T.behind, T.height)),
+    heading: headingAt(plan.path, s, T.lookahead),
+  };
 }

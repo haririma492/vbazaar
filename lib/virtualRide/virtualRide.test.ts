@@ -253,3 +253,51 @@ test("alighting: boarding backwards, still carried forward, ending parked and st
     lastCarried = c;
   }
 });
+
+test("by taxi: slower, on the road, the camera behind and above the car at the view's centre", async () => {
+  const path = makePath([O, offset(O, 0, 3000), offset(offset(O, 0, 3000), 90, 2000)]);
+  const taxi = planFlight({ path, ground: () => 150, followsRoad: true, vehicle: "taxi" });
+  const drone = planFlight({ path, ground: () => 150, followsRoad: true });
+  assert.equal(taxi.vehicle, "taxi");
+  assert.equal(taxi.durationMs, rideDurationMillis(path.length, "taxi"));
+  assert.ok(taxi.durationMs > drone.durationMs);
+  // No road, no taxi: a straight line through the city is the drone's.
+  assert.equal(planFlight({ path, ground: () => 150, followsRoad: false, vehicle: "taxi" }).vehicle, "drone");
+
+  for (const u of [0, 0.3, 0.7, 1]) {
+    const c = flightFrame(taxi, taxi.durationMs * u);
+    // The looked-at point is the car, on the road.
+    const s = path.length * travelFraction(u, RIDE.taxi.accel, RIDE.taxi.decel);
+    near(distanceMeters(c.center, pointAt(path, s)), 0, 0.01, `u=${u}`);
+    near(cameraHeight(c), RIDE.taxi.height, 1e-6);
+    near(c.range * Math.sin((c.tilt * Math.PI) / 180), RIDE.taxi.behind, 1e-6);
+    assert.equal(c.center.altitude, 150);
+  }
+  near(flightFrame(taxi, taxi.durationMs * 0.3).heading, 0, 1);
+  near(flightFrame(taxi, taxi.durationMs * 0.9).heading, 90, 1);
+});
+
+test("taxi in Street View: pulls up, waits, the rider gets in; gets out, it drives off", async () => {
+  const { TAXI, TAXI_ALIGHTING_MS, TAXI_BOARDING_MS, taxiAlightingFrame, taxiBoardingFrame } = await import("./taxi.ts");
+  const arriving = taxiBoardingFrame(0);
+  assert.deepEqual(arriving.car, { x: TAXI.offSide, y: 0, z: -TAXI.kerbAhead });
+  assert.ok(arriving.speed > 10, String(arriving.speed));
+  const stopped = taxiBoardingFrame(TAXI.driveInMs + TAXI.waitMs / 2);
+  near(stopped.car.x, 0, 1e-9);
+  assert.equal(stopped.speed, 0);
+  assert.equal(stopped.opacity, 1);
+  const inside = taxiBoardingFrame(TAXI_BOARDING_MS);
+  near(inside.car.z, -TAXI.inAhead, 1e-9);
+  assert.equal(inside.opacity, 0);
+  assert.equal(inside.speed, 0);
+
+  const out = taxiAlightingFrame(0);
+  assert.equal(out.opacity, 0);
+  near(out.car.z, -TAXI.inAhead, 1e-9);
+  const parked = taxiAlightingFrame(TAXI.getOutMs + TAXI.waitMs / 2);
+  assert.deepEqual(parked.car, { x: 0, y: 0, z: -TAXI.kerbAhead });
+  assert.equal(parked.opacity, 1);
+  const gone = taxiAlightingFrame(TAXI_ALIGHTING_MS);
+  near(gone.car.x, -TAXI.offSide, 1e-9);
+  assert.ok(gone.speed > 10);
+});
