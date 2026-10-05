@@ -139,3 +139,77 @@ export function bridges(lanes: Lane[], max = BRIDGE_MAX): Lane[] {
   });
   return out;
 }
+
+/** Distance from (x, z) to the segment a–b on the ground. */
+function segDist(a: Vec3, b: Vec3, x: number, z: number): number {
+  const vx = b[0] - a[0], vz = b[2] - a[2];
+  const len2 = vx * vx + vz * vz;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((x - a[0]) * vx + (z - a[2]) * vz) / len2)) : 0;
+  return Math.hypot(x - (a[0] + vx * t), z - (a[2] + vz * t));
+}
+const nearRoute = (r: Vec3[], p: Vec3, tol: number, upTo = r.length - 1) => {
+  for (let i = 0; i < Math.min(upTo, r.length - 1); i++) if (segDist(r[i], r[i + 1], p[0], p[2]) <= tol) return true;
+  return false;
+};
+
+/**
+ * ONE LINE WHERE ONE WAS WALKED (operator, 2026-10-05: "double blue line…
+ * it is going to turn around from the middle and return"). A cameraman films
+ * an alley walking in AND back out, and the next scene's walk begins where
+ * the last one ended — so recorded routes retrace themselves and each other.
+ * Walking back needs no second line (the path is followed either way), so:
+ *   • a route is cut where it starts going back over itself;
+ *   • a later route's beginning and end that run over an earlier route are
+ *     dropped (the bridges then join what is left).
+ * `tol`: how near counts as "over" (scene units). Routes in a stable order.
+ */
+export function untangle(routes: Vec3[][], tol = 0.5): Vec3[][] {
+  const RUN = 3; // points in a row: one crossing is not a retrace
+  const cut = routes.map((r) => {
+    for (let i = 2; i + RUN <= r.length; i++) {
+      let back = true;
+      for (let k = 0; k < RUN && back; k++) back = nearRoute(r, r[i + k], tol, i - 1);
+      if (back) return r.slice(0, i);
+    }
+    return r;
+  });
+  return cut.map((r, j) => {
+    const earlier = cut.slice(0, j).filter((e) => e.length > 1);
+    if (!earlier.length || r.length < 2) return r;
+    const over = (p: Vec3) => earlier.some((e) => nearRoute(e, p, tol));
+    let a = 0, b = r.length;
+    while (a < b && over(r[a])) a++;
+    while (b > a && over(r[b - 1])) b--;
+    // Keep one point on the shared ground at each trimmed end, so it still meets the earlier route.
+    return r.slice(Math.max(0, a - 1), Math.min(r.length, b + 1));
+  });
+}
+
+/**
+ * THE SEAM BETWEEN TWO JOINED SCENES (operator, 2026-10-05: "the circle area
+ * around the entrance … got corrupted"). Both films saw the entrance; joined,
+ * the two reconstructions of it overlap and blur each other. Where one
+ * scene's route ends near where the next one's begins, a seam crosses the
+ * walk there: the first scene is shown up to it, the next from it on.
+ * `dir`: the way the walk goes through the seam (unit, on the ground).
+ */
+export function seams(routes: Array<{ id: string; route: Vec3[] }>, max = BRIDGE_MAX): Array<{ from: string; to: string; at: Vec3; dir: [number, number] }> {
+  const out: Array<{ from: string; to: string; at: Vec3; dir: [number, number] }> = [];
+  for (const a of routes) {
+    if (a.route.length < 2) continue;
+    const end = a.route[a.route.length - 1];
+    // The way the walk arrives: over the last unit or so.
+    let k = a.route.length - 2;
+    while (k > 0 && Math.hypot(end[0] - a.route[k][0], end[2] - a.route[k][2]) < 1) k--;
+    const dx = end[0] - a.route[k][0], dz = end[2] - a.route[k][2];
+    const L = Math.hypot(dx, dz);
+    if (L < 1e-6) continue;
+    for (const b of routes) {
+      if (b === a || b.route.length < 2) continue;
+      const start = b.route[0];
+      if (Math.hypot(start[0] - end[0], start[2] - end[2]) > max) continue;
+      out.push({ from: a.id, to: b.id, at: [(end[0] + start[0]) / 2, (end[1] + start[1]) / 2, (end[2] + start[2]) / 2], dir: [dx / L, dz / L] });
+    }
+  }
+  return out;
+}
