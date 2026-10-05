@@ -91,14 +91,21 @@ export const DRIVE_LIMITS: Record<keyof Drive, [number, number]> = {
   speed: [0.2, 3], accel: [0.1, 2.5], turn: [0.2, 3], turnGlide: [0.05, 2],
 };
 
-export type Tour = { version: 1; start: string; scenes: TourScene[]; drive: Drive };
+/**
+ * THE SAFE SPOT (operator, 2026-10-05): where «⌂ Centre» brings a visitor who
+ * is lost — the middle of the shopping centre, set by the operator standing
+ * there. Null: the tour's start.
+ */
+export type Hub = { scene: string; pose: Pose };
+
+export type Tour = { version: 1; start: string; scenes: TourScene[]; drive: Drive; hub: Hub | null };
 
 export const TOUR_KEY = "scenes/tour.json";
 
 export const ORIGIN_POSE: Pose = { position: [0, 0, 0], yaw: 0, pitch: 0 };
 
 export function emptyTour(): Tour {
-  return { version: 1, start: "hallway", scenes: [], drive: { ...DEFAULT_DRIVE } };
+  return { version: 1, start: "hallway", scenes: [], drive: { ...DEFAULT_DRIVE }, hub: null };
 }
 
 // ── Reading (a tour is data from a bucket: nothing is trusted) ─────────────
@@ -213,7 +220,10 @@ export function parseTour(raw: unknown): Tour {
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
   for (const s of scenes) s.exits = s.exits.filter((e) => seen.has(e.to));
   const start = str(o.start, 40);
-  return { version: 1, start: seen.has(start) ? start : scenes[0]?.id ?? "hallway", scenes, drive: driveOf(o.drive) };
+  const h = (o.hub ?? null) as Record<string, unknown> | null;
+  const hubScene = h ? str(h.scene, 40) : "";
+  const hub: Hub | null = h && seen.has(hubScene) ? { scene: hubScene, pose: pose(h.pose) } : null;
+  return { version: 1, start: seen.has(start) ? start : scenes[0]?.id ?? "hallway", scenes, drive: driveOf(o.drive), hub };
 }
 
 export const sceneById = (t: Tour, id: string) => t.scenes.find((s) => s.id === id) ?? null;
@@ -264,6 +274,18 @@ export function removeExit(t: Tour, from: string, exitId: string): Tour {
 /** The scene a visitor's tour begins in. Unknown scenes are ignored. */
 export function setStartScene(t: Tour, id: string): Tour {
   return sceneById(t, id) ? parseTour({ ...t, start: id }) : t;
+}
+
+/** The safe spot «⌂ Centre» brings visitors to (null: the tour's start). */
+export function setHub(t: Tour, hub: Hub | null): Tour {
+  return parseTour({ ...t, hub });
+}
+
+/** Where «⌂ Centre» goes: the safe spot, or the tour's start. */
+export function hubOf(t: Tour): Hub | null {
+  if (t.hub) return t.hub;
+  const s = sceneById(t, t.start);
+  return s ? { scene: s.id, pose: s.start } : null;
 }
 
 /** How walking feels (any part of it), kept within its limits. */
@@ -338,5 +360,6 @@ export function mergeTour(base: Tour, mine: Tour, theirs: Tour): Tour {
     scenes,
     start: same(mine.start, base.start) ? theirs.start : mine.start,
     drive: same(mine.drive, base.drive) ? theirs.drive : mine.drive,
+    hub: same(mine.hub, base.hub) ? theirs.hub : mine.hub,
   });
 }
