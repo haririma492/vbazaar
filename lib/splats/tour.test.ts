@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, mergeTour, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
+  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, hubOf, mergeTour, setHub, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
   type Pose,
 } from "./tour.ts";
 
@@ -90,7 +90,7 @@ test("a tour from the bucket is checked: bad scenes, files and exits are dropped
   const hall = sceneById(t, "hallway")!;
   assert.equal(hall.flip, false);
   assert.deepEqual(hall.exits.map((e) => [e.id, e.at]), [["a", [1, 0, 3]]]);
-  assert.deepEqual(parseTour(null), { version: 1, start: "hallway", scenes: [], drive: DEFAULT_DRIVE });
+  assert.deepEqual(parseTour(null), { version: 1, start: "hallway", scenes: [], drive: DEFAULT_DRIVE, hub: null });
 });
 
 test("the cameraman's route is kept with the scene, checked, and survives a re-upload", () => {
@@ -175,4 +175,16 @@ test("saving merges: an upload elsewhere never erases a route recorded here, nor
   const added = mergeTour(base, upsertScene(base, "alley-1", "scenes/alley-1/alley-1.spz"), theirs);
   assert.ok(sceneById(added, "alley-1"));
   assert.equal(sceneById(mergeTour(base, removeScene(base, "store-01"), theirs), "store-01"), null);
+});
+
+test("the safe spot: set, kept through a merge, the start when unset", () => {
+  const base = built();
+  assert.deepEqual(hubOf(base), { scene: base.start, pose: sceneById(base, base.start)!.start });
+  const pose = { position: [1, 1.6, -3] as [number, number, number], yaw: 0.5, pitch: 0 };
+  const mine = setHub(base, { scene: "store-01", pose });
+  assert.deepEqual(hubOf(mine), { scene: "store-01", pose });
+  const merged = mergeTour(base, mine, setDrive(base, { speed: 1.3 }));
+  assert.deepEqual(merged.hub, { scene: "store-01", pose });
+  assert.equal(merged.drive.speed, 1.3);
+  assert.equal(parseTour({ scenes: base.scenes, hub: { scene: "nowhere", pose } }).hub, null);
 });

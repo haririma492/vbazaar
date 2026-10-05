@@ -41,7 +41,7 @@ import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
-  DEFAULT_DRIVE, DRIVE_LIMITS, setDrive, setStartScene,
+  DEFAULT_DRIVE, DRIVE_LIMITS, hubOf, setDrive, setHub, setStartScene,
   type Door, type Drive, type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
@@ -49,7 +49,7 @@ import WalkStick from "./WalkStick";
 import { downloadSplat, makeMarker, splatBase } from "./load";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
-import { IDENTITY, joinAtEnd, nudge, toLocal, toWorld, type Place } from "@/lib/splats/place";
+import { IDENTITY, joinAtEnd, toLocal, toWorld, type Place } from "@/lib/splats/place";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 const FADE_MS = 250;
@@ -231,10 +231,6 @@ export default function SplatTour() {
     if (!g.moved) setPanelX(panelX < -10 ? 0 : AWAY);
     else setPanelX((x) => (x < AWAY / 2 ? AWAY : 0));
   };
-  // The Align tool: which scene is being joined to this one, where it sits now, and how big a nudge is.
-  const [align, setAlign] = useState<{ id: string; place: Place; before: Place | null } | null>(null);
-  const [alignTarget, setAlignTarget] = useState("");
-  const [fine, setFine] = useState(true);
   // Walk by tilting is for a phone in the hand.
   const [touch, setTouch] = useState(false);
   useEffect(() => setTouch(window.matchMedia?.("(pointer: coarse)").matches ?? false), []);
@@ -364,6 +360,15 @@ export default function SplatTour() {
     // ⚠️ JOINED SCENES LOAD AS THE VISITOR NEARS THEM, and on a phone are let
     // go when far behind: all of them at once is more than iOS allows a page.
     let nearCheckAt = 0;
+    // ⚠️ ONE SCENE SHOWN AT A TIME (operator, 2026-10-05: "things get
+    // unstable then blurry and corrupt"). Two reconstructions of one place
+    // drawn together, never exactly lined up, blur each other — and a phone
+    // draws twice as much. The scene walked in shows; walking into the next
+    // one (the paths carry on) fades it in over half a second.
+    let shownId = "";
+    let fadeFrom = "";
+    let fadeT = 1;
+    const FADE_S = 0.45;
     const NEAR_LOAD = 30, FAR_DROP = 80; // scene units from a scene's path
     const nearLoad = () => {
       const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
@@ -612,9 +617,11 @@ export default function SplatTour() {
           placeMesh(mesh, flip, mine);
           applySeams(id, mesh);
           mesh.opacity = 1;
-          // This scene, and the scenes joined with it, show; others hide.
-          const joined = new Set(mine ? (tourRef.current?.scenes ?? []).filter((s) => s.place).map((s) => s.id) : []);
-          meshes.forEach((m, k) => (m.visible = k === id || joined.has(k)));
+          // One scene shows: this one (the loop keeps it so — `shownId`).
+          shownId = id;
+          fadeFrom = "";
+          fadeT = 1;
+          meshes.forEach((m, k) => (m.visible = k === id));
           // ⚠️ ON A PHONE, LET GO OF SCENES LEFT BEHIND (not this one, not
           // those placed in its world): each holds tens of MB, and too many
           // make iOS reload the page. Going back loads it again.
@@ -771,7 +778,9 @@ export default function SplatTour() {
         aligningId = aligning ? id : aligningId === id ? null : aligningId;
         meshes.forEach((m, k) => applySeams(k, m));
         mesh.opacity = aligning ? 0.55 : 1;
-        mesh.visible = true;
+        // Being aligned: seen through the scene here. Otherwise it waits,
+        // hidden, until the visitor walks into it (the loop fades it in).
+        mesh.visible = aligning || id === shownId;
         // The report is about the scene the visitor is in, not this one.
         if (currentId) Object.assign(rep, { scene: currentId });
       },
@@ -1093,6 +1102,24 @@ export default function SplatTour() {
         }
       }
 
+      // The scene walked in is the one shown; a change fades across.
+      if (currentId && currentId !== shownId && meshes.has(currentId) && fadeT >= 1) {
+        fadeFrom = shownId;
+        shownId = currentId;
+        fadeT = 0;
+      }
+      if (fadeT < 1) fadeT = Math.min(1, fadeT + dt / FADE_S);
+      meshes.forEach((m, k) => {
+        if (k === aligningId) return;
+        if (k === shownId) {
+          m.visible = true;
+          m.opacity = fadeT;
+        } else if (k === fadeFrom && fadeT < 1) {
+          m.visible = true;
+          m.opacity = 1 - fadeT;
+        } else m.visible = false;
+      });
+
       renderer.render(scene, camera);
 
       if (firstFrameAt != null && rep.firstFrameMs == null) {
@@ -1218,8 +1245,8 @@ export default function SplatTour() {
 
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
-    engine.current?.setWalls(!(recordingRoute || align || (editing && wallsOff)));
-  }, [recordingRoute, align, editing, wallsOff]);
+    engine.current?.setWalls(!(recordingRoute || (editing && wallsOff)));
+  }, [recordingRoute, editing, wallsOff]);
 
   // Walking from one placed scene into the next makes it the scene here, with
   // no jump: its title, exits and pace follow.
@@ -1267,6 +1294,29 @@ export default function SplatTour() {
     window.history.pushState({ splatDepth: step.trail.length }, "", `?scene=${step.scene}${editing ? "&edit=1" : ""}`);
   }
   exitHandler.current = (e) => void take(e);
+
+  /**
+   * ⌂ CENTRE (operator, 2026-10-05): a shopper lost — in a wall, off every
+   * path, somewhere strange — is brought back to the safe spot the operator
+   * set (the middle of the shopping centre), or the tour's start.
+   */
+  async function goCentre() {
+    const t = tourRef.current;
+    const h = t ? hubOf(t) : null;
+    if (!h) return;
+    setTrail([]);
+    await go(h.scene, h.pose);
+    window.history.replaceState({ splatDepth: 0 }, "", `?scene=${h.scene}${editing ? "&edit=1" : ""}`);
+  }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+      if (e.key === "h" || e.key === "H" || e.key === "Home") void goCentre();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
 
   async function back() {
     const step = leave(trailRef.current);
@@ -1321,78 +1371,6 @@ export default function SplatTour() {
     engine.current?.setTilt(true);
     setTiltOn(true);
     rememberMode("tilt");
-  }
-
-  /**
-   * ALIGN — join another scene to this one (`lib/splats/place.ts`). It is
-   * shown see-through where the operator stands; they nudge it until the
-   * part both filmed lies on itself, then «Done» saves its place. This scene
-   * becomes the world's anchor if it is not placed yet.
-   */
-  function startAlign() {
-    if (!tour || !here || !alignTarget || !engine.current) return;
-    let t = tour;
-    if (!here.place) t = updateScene(t, here.id, { place: IDENTITY });
-    const target = sceneById(t, alignTarget);
-    if (!target) return;
-    const pose = engine.current.pose();
-    const start: Place = target.place ?? { offset: engine.current.pointAhead(3), yaw: -pose.yaw, scale: 1 };
-    changeTour(t);
-    setAlign({ id: target.id, place: start, before: target.place });
-    void engine.current.showPlaced(target.id, start, true).catch(() => {});
-  }
-  /**
-   * AUTO-JOIN (`joinAtEnd`): the chosen scene's route set off from the end of
-   * this one's, the way it arrives — then the Align tool, to fine-tune by eye.
-   */
-  function autoJoin() {
-    if (!tour || !here || !alignTarget || !engine.current) return;
-    const target = sceneById(tour, alignTarget);
-    if (!target || here.route.length < 2 || target.route.length < 2) return;
-    let t = tour;
-    if (!here.place) t = updateScene(t, here.id, { place: IDENTITY });
-    const hp = (sceneById(t, here.id)!.place ?? IDENTITY) as Place;
-    const place = joinAtEnd(here.route.map((p) => toWorld(hp, p)), target.route, hp.scale);
-    if (!place) return;
-    // ⚠️ SAVED AT ONCE, NOTHING LOADED. Showing the second scene to line it
-    // up meant tens of MB more on the phone — where iOS reloads the page and
-    // the join was lost before «Done». From the two paths alone it is
-    // joined and saved now; «Line up by eye» is there to fine-tune.
-    const next = updateScene(t, target.id, { place });
-    setTour(next);
-    void saveTour(next);
-  }
-
-  function alignBy(by: { fwd?: number; side?: number; up?: number; turn?: number; grow?: number }) {
-    if (!align || !engine.current) return;
-    const k = fine ? 1 : 10;
-    const yawNow = engine.current.pose().yaw;
-    // Moves are in the operator's own frame: forward is where they look.
-    const fwd = (by.fwd ?? 0) * 0.05 * k, side = (by.side ?? 0) * 0.05 * k;
-    const move: Vec3 = [Math.sin(yawNow) * fwd + Math.cos(yawNow) * side, (by.up ?? 0) * 0.05 * k, -Math.cos(yawNow) * fwd + Math.sin(yawNow) * side];
-    const place = nudge(align.place, {
-      move,
-      turn: by.turn ? by.turn * (Math.PI / 180) * k : undefined,
-      grow: by.grow ? Math.pow(1.01, by.grow * k) : undefined,
-    }, engine.current.pointAhead(3));
-    setAlign({ ...align, place });
-    void engine.current.showPlaced(align.id, place, true).catch(() => {});
-  }
-  function finishAlign(keep: boolean) {
-    if (!align || !tour || !engine.current) return;
-    if (keep) {
-      // ⚠️ DONE SAVES. A join left unsaved was lost on the next load and the
-      // visitor was stranded at the end of the first scene's path.
-      const next = updateScene(tour, align.id, { place: align.place });
-      setTour(next);
-      void saveTour(next);
-      void engine.current.showPlaced(align.id, align.place, false).catch(() => {});
-    } else if (align.before) {
-      void engine.current.showPlaced(align.id, align.before, false).catch(() => {});
-    } else {
-      engine.current.hide(align.id);
-    }
-    setAlign(null);
   }
 
   async function copyReport() {
@@ -1659,6 +1637,16 @@ export default function SplatTour() {
                     <button className="rounded bg-white/10 px-2 py-1" onClick={() => changeTour(updateScene(tour, here.id, { start: engine.current!.pose() }))}>
                       Scene starts here
                     </button>
+                    <button className="rounded bg-white/10 px-2 py-1" onClick={() => {
+                      const next = setHub(tour, { scene: here.id, pose: engine.current!.pose() });
+                      setTour(next);
+                      void saveTour(next);
+                    }}>
+                      ⌂ Safe spot here
+                    </button>
+                  </div>
+                  <div className="text-white/45">
+                    ⌂ Centre brings visitors to {tour.hub ? `the safe spot in «${tour.hub.scene}»` : "the tour's start (no safe spot set yet)"}.
                   </div>
                   <div className="text-white/45">{tour.start === here.id ? "▶ The tour begins in this scene." : `The tour begins in «${tour.start}».`}</div>
                   <div className="flex items-center gap-1.5 border-t border-white/10 pt-1.5">
@@ -1732,14 +1720,14 @@ export default function SplatTour() {
 
               {panelTab === "scenes" && (
                 <>
-                  <div className="text-white/45">At the end of this scene, go on to:</div>
-                  <select className="w-full rounded bg-white/10 px-1 py-1" value="" onChange={(e) => e.target.value && addNextAtEnd(e.target.value)} disabled={!others.length}>
+                  {/* ⚠️ ONE WAY TO JOIN (operator, 2026-10-05: "the align and join is
+                      confusing, leave only one"): pick what comes next. */}
+                  <div className="font-bold text-sky-200">At the end of this path, go on to:</div>
+                  <select className="w-full rounded bg-white/10 px-1 py-1.5" value="" onChange={(e) => e.target.value && addNextAtEnd(e.target.value)} disabled={!others.length}>
                     <option value="">{others.length ? "next scene…" : "no other scene yet (upload its .spz)"}</option>
-                    {others.map((s) => <option key={s.id} value={s.id}>{s.title.en} ({s.id})</option>)}
+                    {others.map((s) => <option key={s.id} value={s.id}>{s.title.en}{s.place ? " ✓" : ""}</option>)}
                   </select>
-                  <div className="text-white/40">Its blue line then starts where this one ends, and visitors walk straight on (saved at once). A scene with no path yet gets a button instead.</div>
-                  <div className="border-t border-white/10 pt-1.5 font-bold text-sky-200">Join seamlessly (Align)</div>
-                  {/* Which scenes walk as one, as this page has it (saved: see the line under Save). */}
+                  <div className="text-white/40">Its blue line then carries on from the end of this one (saved at once).</div>
                   <div className="space-y-0.5 rounded bg-white/5 p-1.5">
                     {tour.scenes.map((s) => (
                       <div key={s.id} className="flex justify-between gap-2">
@@ -1749,56 +1737,7 @@ export default function SplatTour() {
                         </span>
                       </div>
                     ))}
-                    {tour.scenes.filter((s) => s.place).length < 2 && (
-                      <div className="text-amber-200/80">Visitors walk on only into joined scenes. Join one below.</div>
-                    )}
                   </div>
-                  {!align ? (
-                    <div className="flex gap-1">
-                      <select className="min-w-0 flex-1 rounded bg-white/10 px-1 py-1" value={alignTarget} onChange={(e) => setAlignTarget(e.target.value)} disabled={!others.length}>
-                        <option value="">scene to join here…</option>
-                        {others.map((s) => <option key={s.id} value={s.id}>{s.title.en}{s.place ? " ✓" : ""}</option>)}
-                      </select>
-                      <button disabled={!alignTarget} className="rounded border border-sky-300/60 px-2 py-1 disabled:opacity-40" onClick={startAlign}>Align</button>
-                    </div>
-                  ) : null}
-                  {!align && alignTarget && (
-                    <>
-                      <button
-                        disabled={!here.route.length || !sceneById(tour, alignTarget)?.route.length}
-                        className="w-full rounded border border-sky-300/60 bg-sky-400/15 px-2 py-1.5 font-bold text-sky-50 disabled:opacity-40"
-                        onClick={autoJoin}
-                      >
-                        ⇢ Join at the end of this path (saves now)
-                      </button>
-                      <div className="text-white/40">
-                        {!here.route.length || !sceneById(tour, alignTarget)?.route.length
-                          ? "Needs both scenes' paths."
-                          : "Its path's start goes on this path's end, from the paths alone — nothing to load. Then walk there; if the shops don't line up, «Align» to nudge it (on a computer is easier)."}
-                      </div>
-                    </>
-                  )}
-                  {align && (
-                    <>
-                      <div className="grid grid-cols-4 gap-1">
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: 1 })}>↑</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ fwd: -1 })}>↓</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: -1 })}>←</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ side: 1 })}>→</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: 1 })}>⤒</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ up: -1 })}>⤓</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: -1 })}>⟲</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ turn: 1 })}>⟳</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: -1 })}>−</button>
-                        <button className="rounded bg-white/10 py-1" onClick={() => alignBy({ grow: 1 })}>+</button>
-                        <button className={`col-span-2 rounded py-1 ${fine ? "bg-white/10" : "bg-amber-300/30"}`} onClick={() => setFine(!fine)}>{fine ? "fine" : "coarse ×10"}</button>
-                      </div>
-                      <div className="flex gap-1">
-                        <button className="rounded border border-emerald-300/60 px-2 py-1 text-emerald-100" onClick={() => finishAlign(true)}>Done</button>
-                        <button className="rounded border border-white/30 px-2 py-1" onClick={() => finishAlign(false)}>Cancel</button>
-                      </div>
-                    </>
-                  )}
                 </>
               )}
 
@@ -1852,6 +1791,11 @@ export default function SplatTour() {
 
       {/* Left of the stick, never under it: a column of small switches. */}
       <div dir="ltr" className="absolute bottom-4 left-3 flex max-w-[calc(100vw-210px)] flex-col items-start gap-1.5 [&>button]:px-3 [&>button]:py-1.5 [&>button]:text-[12px] [&>button]:leading-tight">
+        {tour && (
+          <button onClick={() => void goCentre()} className="rounded-full border border-emerald-300/70 bg-emerald-400/20 text-emerald-50" title="H">
+            ⌂ مرکز · Centre
+          </button>
+        )}
         {touch && (
           <button onClick={() => void toggleTilt()} className={`rounded-full border px-4 py-2 text-[13px] ${tiltOn ? "border-amber-300/70 bg-amber-300/25 text-amber-50" : "border-white/25 bg-black/60 text-white/90"}`}>
             {tiltOn ? "جوی‌استیک · Use joystick" : "راه رفتن با کج کردن · Walk by tilting"}
