@@ -155,6 +155,10 @@ test("districts: unique ids, real places", () => {
     assert.ok(d.groundAltitude > -100 && d.groundAltitude < 5000, d.id);
     assert.ok(d.name.en && d.name.fa, d.id);
   }
+  for (const d of DISTRICTS) if (d.enterOnArrival) assert.ok(d.entryScene?.startsWith("/"), d.id);
   assert.equal(districtById("world-on-yonge")?.name.en, "World on Yonge");
+  // The splat tour's hallway is at World on Yonge: the ride lands into it.
+  assert.equal(districtById("world-on-yonge")?.entryScene, "/vca/splat");
+  assert.equal(districtById("world-on-yonge")?.enterOnArrival, true);
   assert.equal(districtById("nowhere"), null);
 });

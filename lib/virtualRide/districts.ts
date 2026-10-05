@@ -21,6 +21,12 @@ export type RideDistrict = {
   groundAltitude: number;
   /** Our page for the district, or null while it has no scene yet. */
   entryScene: string | null;
+  /**
+   * true: the ride lands at eye level outside and goes straight into
+   * `entryScene` at its start. false: it lands in Street View to walk on,
+   * with an «Enter» link to `entryScene` if there is one.
+   */
+  enterOnArrival: boolean;
 };
 
 export const DISTRICTS: RideDistrict[] = [
@@ -30,7 +36,10 @@ export const DISTRICTS: RideDistrict[] = [
     // 7181–7191 Yonge St, just north of Steeles, east side (approximate).
     location: { lat: 43.8031, lng: -79.4196 },
     groundAltitude: 190,
-    entryScene: null,
+    // The splat tour's hallway was filmed here (operator, 2026-10-05): the
+    // ride lands outside and the tour opens at its start scene.
+    entryScene: "/vca/splat",
+    enterOnArrival: true,
   },
 ];
 

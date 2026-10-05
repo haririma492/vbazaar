@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   type LatLng, bearingDegrees, distanceMeters, flightFrame, groundProfile, homeCamera, makePath, planFlight,
   samplePath, straightPath,
@@ -11,9 +12,10 @@ import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle"
 /**
  * The Virtual Ride: from the rider's own address to a shopping district,
  * low over the real roads in Google's photorealistic 3D city, down to eye
- * level on the pavement outside — then Street View, so they walk on from
- * where they landed. Google is the TRANSPORT only: this component knows
- * nothing of splats or R2; a district with its own scene links to it.
+ * level on the pavement outside — then either straight into the district's
+ * own scene at its start (`enterOnArrival`: World on Yonge → `/vca/splat`),
+ * or Street View, to walk on from where they landed. Google is the TRANSPORT
+ * only: this component knows nothing of splats or R2.
  *
  * The camera is driven frame by frame from `flightFrame` (lib/virtualRide),
  * not by Google's `flyCameraTo`, whose single parabolic arc climbs far too
@@ -23,13 +25,13 @@ import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle"
 
 export type RideOrigin = { location: LatLng; label: string };
 
-type Stage = "planning" | "loading" | "flying" | "walking" | "landed" | "failed";
+type Stage = "planning" | "loading" | "flying" | "entering" | "walking" | "landed" | "failed";
 
 /** Longest wait for the home neighbourhood to draw before taking off anyway. */
 const READY_WAIT_MS = 6_000;
 /** A beat over home before taking off. */
 const HOME_HOLD_MS = 1_500;
-/** Street View fades in over the last moments of the descent. */
+/** Street View (or black, before the scene) fades in over the last moments of the descent. */
 const CROSSFADE_MS = 1_500;
 
 const bar: React.CSSProperties = {
@@ -68,6 +70,9 @@ export default function VirtualRide({
   to: RideDistrict;
   onExit: () => void;
 }) {
+  const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const mapHostRef = useRef<HTMLDivElement>(null);
   const streetRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState<Stage>("planning");
@@ -85,6 +90,9 @@ export default function VirtualRide({
       setError(m);
       setStage("failed");
     };
+
+    // Landing into our own scene: no Street View step, the scene opens instead.
+    const enter = to.enterOnArrival && to.entryScene ? to.entryScene : null;
 
     (async () => {
       // 1. Plan: where to land, which roads, how high the ground is.
@@ -118,7 +126,7 @@ export default function VirtualRide({
       map.addEventListener("gmp-error", () => fail("Google 3D Maps reported an error (key, billing or API not enabled?)"));
       mapHostRef.current.appendChild(map);
 
-      if (spot && streetRef.current) {
+      if (spot && !enter && streetRef.current) {
         try {
           const { StreetViewPanorama } = await importLibrary("streetView");
           new StreetViewPanorama(streetRef.current, {
@@ -151,7 +159,7 @@ export default function VirtualRide({
             map.range = c.range;
             map.tilt = c.tilt;
             map.heading = c.heading;
-            if (spot && mapHostRef.current) {
+            if ((spot || enter) && mapHostRef.current) {
               const fade = (t - (plan.durationMs - CROSSFADE_MS)) / CROSSFADE_MS;
               mapHostRef.current.style.opacity = String(1 - Math.min(1, Math.max(0, fade)));
             }
@@ -160,7 +168,10 @@ export default function VirtualRide({
               return;
             }
             console.log("ARRIVED", to.id);
-            if (spot) {
+            if (enter) {
+              setStage("entering");
+              routerRef.current.push(enter);
+            } else if (spot) {
               map.remove(); // Street View from here; stop drawing the city
               map = null;
               setStage("walking");
@@ -197,6 +208,7 @@ export default function VirtualRide({
             : `${origin.label} → ${to.name.en}`}
           {stage === "planning" && " · planning the route…"}
           {stage === "loading" && " · getting ready…"}
+          {stage === "entering" && " · entering…"}
           {stage === "flying" && !byRoad && " · (straight line: Routes API unavailable)"}
         </span>
         <span style={{ display: "flex", gap: 8 }}>
