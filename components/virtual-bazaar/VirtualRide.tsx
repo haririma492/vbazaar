@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  type LatLng, type Vehicle, RIDE, bearingDegrees, distanceMeters, flightFrame, groundProfile, makePath,
-  planFlight, rideDistance, samplePath, straightPath,
+  type LatLng, type Vehicle, RIDE, bearingDegrees, distanceMeters, flightFrame, formatDuration, groundProfile,
+  makePath, planFlight, rideDistance, samplePath, straightPath,
 } from "@/lib/virtualRide/flight";
 import type { RideDistrict } from "@/lib/virtualRide/districts";
 import { BOARDING, BOARDING_MS, alightingFrame, boardingFrame, type BoardingFrame } from "@/lib/virtualRide/boarding";
@@ -54,6 +54,14 @@ const CROSSFADE_MS = 1_500;
 const REVEAL_MS = 1_200;
 /** The parked drone stays a moment before the scene fades in. */
 const PARKED_MS = 600;
+
+/**
+ * Everything but the flight, when there is Street View at both ends and the
+ * ride lands into a scene: the beat at home, boarding, getting off, the beat
+ * by the parked drone, the fade into the scene. For the start screen's
+ * estimate.
+ */
+export const RIDE_EXTRAS_MS = STREET_HOLD_MS + BOARDING_MS + BOARDING_MS + PARKED_MS + REVEAL_MS;
 /** Street View zoom 1 is 90° across, as the drone's camera; carrying dollies in to this. */
 const CARRY_ZOOM = 1.35;
 const dolly = (pano: any) => (f: BoardingFrame) => {
@@ -94,12 +102,18 @@ export default function VirtualRide({
   onEnter,
   enterReady = false,
   vehicle = "drone",
+  pace = 1,
+  estimateMs,
 }: {
   origin: RideOrigin;
   to: RideDistrict;
   onExit: () => void;
   /** By drone (the default) or by taxi; a taxi needs a road route, else it goes by drone. */
   vehicle?: Vehicle;
+  /** A multiplier on the flight's duration (`PACES`: slower 1.6, faster 0.6). */
+  pace?: number;
+  /** The start screen's estimate of the whole ride, shown until the ride's own clock starts. */
+  estimateMs?: number;
   /**
    * The destination's scene is mounted (preloading) underneath the ride: on
    * landing, the ride fades away to show it and calls this — no page change,
@@ -124,6 +138,15 @@ export default function VirtualRide({
   const [stage, setStage] = useState<Stage>("planning");
   const [error, setError] = useState<string | null>(null);
   const [byRoad, setByRoad] = useState(true);
+  // The countdown: when the ride (boarding to scene) will be over, by performance.now().
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (endsAt == null) return;
+    setNow(performance.now());
+    const id = setInterval(() => setNow(performance.now()), 1000);
+    return () => clearInterval(id);
+  }, [endsAt]);
 
   useEffect(() => {
     let gone = false;
@@ -172,6 +195,7 @@ export default function VirtualRide({
             : bearingDegrees(start, landing)
           : undefined,
         vehicle,
+        pace,
       });
       const byTaxi = plan.vehicle === "taxi";
 
@@ -255,6 +279,15 @@ export default function VirtualRide({
         started = true;
         later(async () => {
           if (gone) return;
+          // The clock the rider sees: boarding, the flight, getting off and into the scene.
+          setEndsAt(
+            performance.now() +
+              (homePano ? (byTaxi ? TAXI_BOARDING_MS : BOARDING_MS) : 0) +
+              plan.durationMs +
+              (enter && onEnterRef.current
+                ? (destPano ? (byTaxi ? TAXI_ALIGHTING_MS : BOARDING_MS) + PARKED_MS : 0) + REVEAL_MS
+                : 0),
+          );
           // Board the drone, or get into the taxi, in front of home.
           if (homePano) {
             setStage("boarding");
@@ -364,7 +397,7 @@ export default function VirtualRide({
       drone?.dispose();
       taxi?.dispose();
     };
-  }, [origin, to, vehicle]);
+  }, [origin, to, vehicle, pace]);
 
   const walking = stage === "walking";
 
@@ -382,6 +415,9 @@ export default function VirtualRide({
           {walking
             ? `${to.name.en} — walk with the arrows on the street`
             : `${origin.label} → ${to.name.en}`}
+          {endsAt != null
+            ? !walking && stage !== "failed" && stage !== "landed" && ` · ≈ ${formatDuration(endsAt - now)} left`
+            : estimateMs != null && stage !== "failed" && ` · ≈ ${formatDuration(estimateMs)}`}
           {stage === "planning" && " · planning the route…"}
           {stage === "loading" && " · getting ready…"}
           {stage === "flying" && !byRoad && " · (straight line: Routes API unavailable)"}

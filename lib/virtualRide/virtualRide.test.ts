@@ -301,3 +301,29 @@ test("taxi in Street View: pulls up, waits, the rider gets in; gets out, it driv
   near(gone.car.x, -TAXI.offSide, 1e-9);
   assert.ok(gone.speed > 10);
 });
+
+test("pace: slower takes longer and flies lower, faster the opposite", async () => {
+  const { PACES, paceFactor } = await import("./flight.ts");
+  const path = makePath([O, offset(O, 0, 5000)]);
+  const plan = (id: string) => planFlight({ path, ground: () => 0, followsRoad: true, pace: paceFactor(id) });
+  const slow = plan("slower"), normal = plan("normal"), fast = plan("faster");
+  assert.equal(normal.durationMs, rideDurationMillis(5000));
+  near(slow.durationMs, normal.durationMs * 1.6, 1);
+  near(fast.durationMs, normal.durationMs * 0.6, 1);
+  assert.ok(slow.cruise <= normal.cruise && normal.cruise < fast.cruise, `${slow.cruise} ${normal.cruise} ${fast.cruise}`);
+  assert.equal(paceFactor("nonsense"), 1);
+  assert.equal(paceFactor(null), 1);
+  assert.deepEqual(PACES.map((p) => p.id), ["slower", "normal", "faster"]);
+  // Still lands standing at the end, whatever the pace.
+  near(cameraHeight(flightFrame(fast, fast.durationMs)), RIDE.eyeHeight, 1e-6);
+});
+
+test("durations read the way a rider reads them", async () => {
+  const { formatDuration } = await import("./flight.ts");
+  assert.equal(formatDuration(0), "5 s");
+  assert.equal(formatDuration(42_000), "40 s");
+  assert.equal(formatDuration(43_000), "45 s");
+  assert.equal(formatDuration(60_000), "1 min");
+  assert.equal(formatDuration(81_000), "1 min 20 s");
+  assert.equal(formatDuration(125_000), "2 min 5 s");
+});
