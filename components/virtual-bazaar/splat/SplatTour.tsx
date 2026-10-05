@@ -1464,11 +1464,46 @@ export default function SplatTour() {
   }
 
   /** «At the end, go on to»: an exit to that scene where this scene's route ends. */
+  /**
+   * ⚠️ «AT THE END, GO ON TO» JOINS THE PATHS (operator, 2026-10-05: "at the
+   * end of this blue line one or more other blue lines appear so visitors
+   * can continue their journey"). The next scene is placed so its path sets
+   * off from this path's end (`joinAtEnd`) and saved at once — its blue line
+   * continues this one. Only a scene with no path yet gets an exit instead.
+   * Exits already left at this end for it (earlier tries) are cleared.
+   */
   function addNextAtEnd(to: string) {
     if (!tour || !here || !engine.current) return;
-    const last = here.route[here.route.length - 1];
-    const at: Vec3 = last ? (here.place ? toWorld(here.place as Place, last) : last) : engine.current.pointAhead(1.5);
-    changeTour(addExit(tour, here.id, to, at));
+    const target = sceneById(tour, to);
+    if (!target) return;
+    let t = tour;
+    if (!here.place) t = updateScene(t, here.id, { place: IDENTITY });
+    const hp = (sceneById(t, here.id)!.place ?? IDENTITY) as Place;
+    const worldRoute = here.route.map((p) => toWorld(hp, p));
+    const end = worldRoute[worldRoute.length - 1];
+    const place = here.route.length > 1 && target.route.length > 1 ? joinAtEnd(worldRoute, target.route, hp.scale) : null;
+    let next: Tour;
+    if (place) {
+      next = updateScene(t, to, { place });
+      for (const e of sceneById(next, here.id)!.exits) {
+        if (e.to === to && (!end || Math.hypot(e.at[0] - end[0], e.at[2] - end[2]) < 3)) next = removeExit(next, here.id, e.id);
+      }
+    } else {
+      const at: Vec3 = end ?? engine.current.pointAhead(1.5);
+      next = sceneById(t, here.id)!.exits.some((e) => e.to === to) ? t : addExit(t, here.id, to, at);
+    }
+    setTour(next);
+    void saveTour(next);
+  }
+
+  // The right-hand list: one button per other scene (its exit when there is one).
+  const goList: Exit[] = [];
+  if (tour && here) {
+    for (const e of here.exits) if (!goList.some((g) => g.to === e.to)) goList.push(e);
+    for (const s of tour.scenes) {
+      if (s.id === here.id || goList.some((g) => g.to === s.id)) continue;
+      goList.push({ id: `go-${s.id}`, to: s.id, label: s.title, at: here.start.position });
+    }
   }
 
   const r = report;
@@ -1546,16 +1581,18 @@ export default function SplatTour() {
 
 
       {/* Where you can go */}
-      {(here?.exits.length || backTo) && (
-        <div dir="ltr" className="absolute right-3 top-3 flex max-w-[45vw] flex-col items-end gap-2">
+      {/* ⚠️ EVERY SCENE OF THE PLACE, ONCE (operator, 2026-10-05): this
+          scene's exits first, then the others — a jump to where each begins. */}
+      {(goList.length > 0 || backTo) && (
+        <div dir="ltr" className="absolute right-3 top-3 flex max-w-[45vw] flex-col items-end gap-1.5">
           {backTo && (
             <button onClick={() => window.history.back()} className="rounded-full border border-white/30 bg-black/70 px-4 py-2 text-[13px] text-white">
               ← {backTo.title.en}
             </button>
           )}
-          {here?.exits.map((e) => (
-            <button key={e.id} onClick={() => void take(e)} className="rounded-full border border-amber-300/60 bg-black/70 px-4 py-2 text-[13px] text-amber-100">
-              {e.label.en} →
+          {goList.map((g) => (
+            <button key={g.to} onClick={() => void take(g)} className="max-w-full truncate rounded-full border border-amber-300/60 bg-black/70 px-3 py-1.5 text-[12px] text-amber-100">
+              {g.label.en} →
             </button>
           ))}
         </div>
@@ -1700,7 +1737,7 @@ export default function SplatTour() {
                     <option value="">{others.length ? "next scene…" : "no other scene yet (upload its .spz)"}</option>
                     {others.map((s) => <option key={s.id} value={s.id}>{s.title.en} ({s.id})</option>)}
                   </select>
-                  <div className="text-white/40">An exit at the route&apos;s end{here.route.length ? "" : " (no route: 1.5 ahead)"}; visitors take it with Enter or a tap.</div>
+                  <div className="text-white/40">Its blue line then starts where this one ends, and visitors walk straight on (saved at once). A scene with no path yet gets a button instead.</div>
                   <div className="border-t border-white/10 pt-1.5 font-bold text-sky-200">Join seamlessly (Align)</div>
                   {/* Which scenes walk as one, as this page has it (saved: see the line under Save). */}
                   <div className="space-y-0.5 rounded bg-white/5 p-1.5">
