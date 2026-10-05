@@ -32,7 +32,7 @@ import { XRControllerModelFactory } from "three/examples/jsm/webxr/XRControllerM
 import { XRHandModelFactory } from "three/examples/jsm/webxr/XRHandModelFactory.js";
 import type { SplatMesh } from "@sparkjsdev/spark";
 import { enter, leave, parseTour, sceneById, DEFAULT_DRIVE, type Door, type Exit, type Pose, type Tour, type Trail, type Vec3 } from "@/lib/splats/tour";
-import { bridges, doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
+import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import { angleDiff, guideStep, nearestOnRoute } from "@/lib/splats/path";
 import { IDENTITY, toWorld, type Place } from "@/lib/splats/place";
 import { SNAP_TURN, STICK_REST, standBefore, stickAxes, stickIntent, teleportOnto, type StickState } from "@/lib/splats/xr";
@@ -42,7 +42,7 @@ const DECODE_TIMEOUT_MS = 120_000;
 const UP = new THREE.Vector3(0, 1, 0);
 const DOOR_RGB = "244, 114, 182";
 
-type Member = { id: string; route: Vec3[]; pace: number; half: number; doors: Door[] };
+type Member = { id: string; route: Vec3[]; pace: number; half: number; doors: Door[]; order: number };
 type Support = "checking" | "vr" | "none";
 
 type Engine = {
@@ -292,6 +292,27 @@ export default function SplatVR() {
 
     // ── Walking ────────────────────────────────────────────────────────────
     let world: Member[] = [];
+    // Where joined scenes meet (`seams`, as in `/vca/splat`): each shows its
+    // side only, so the entrance both filmed is drawn once, not twice over itself.
+    let seamList: ReturnType<typeof seams> = [];
+    const applySeams = (id: string, mesh: SplatMesh) => {
+      if (!sparkMod) return;
+      const mine = seamList.filter((x) => x.from === id || x.to === id);
+      if (!mine.length) {
+        mesh.edits = [];
+        return;
+      }
+      const edit = new sparkMod.SplatEdit({ rgbaBlendMode: sparkMod.SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0.4 });
+      for (const sm of mine) {
+        const keep = sm.from === id ? new THREE.Vector3(-sm.dir[0], 0, -sm.dir[1]) : new THREE.Vector3(sm.dir[0], 0, sm.dir[1]);
+        const sdf = new sparkMod.SplatEditSdf({ type: sparkMod.SplatEditSdfType.PLANE, opacity: 0 });
+        sdf.position.set(...sm.at);
+        sdf.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), keep);
+        sdf.updateMatrixWorld();
+        edit.addSdf(sdf);
+      }
+      mesh.edits = [edit];
+    };
     let links: Lane[] = [];
     let routes: Vec3[][] = [];
     let currentId = "";
@@ -407,6 +428,7 @@ export default function SplatVR() {
           const mesh = await loadMesh(id, so.src, so.flip);
           currentId = id;
           placeMesh(mesh, so.flip, so.place);
+          applySeams(id, mesh);
           meshes.forEach((m, k) => (m.visible = k === id));
           // Let go of scenes left behind (not this one, not those placed in its world): a headset's memory is a phone's.
           const keep = new Set([id, ...(so.place ? (tourRef.current?.scenes ?? []).filter((s) => s.place).map((s) => s.id) : [])]);
@@ -425,6 +447,7 @@ export default function SplatVR() {
               if (!os) continue;
               void loadMesh(other.id, os.src, os.flip, true).then((m) => {
                 placeMesh(m, os.flip, os.place);
+                applySeams(other.id, m);
                 m.visible = true;
               }).catch(() => {});
             }
@@ -454,8 +477,18 @@ export default function SplatVR() {
         }
       },
       setWorld(members) {
-        world = members.filter((m) => m.route.length > 1 || members.length === 1);
         pace = members[0]?.pace ?? 1;
+        // One line where one was walked (`untangle`), in the tour's order — as in `/vca/splat`.
+        const sorted = [...members].sort((a, b) => a.order - b.order);
+        const halves = sorted.map((m) => m.half).filter((h) => h > 0);
+        const tol = Math.min(1, Math.max(0.3, 0.35 * (halves.length ? Math.min(...halves) : 1.5)));
+        const clean = untangle(sorted.map((m) => m.route), tol);
+        const byId = new Map(sorted.map((m, i) => [m.id, clean[i]]));
+        world = members
+          .map((m) => ({ ...m, route: byId.get(m.id) ?? m.route }))
+          .filter((m) => m.route.length > 1 || members.length === 1);
+        seamList = world.length > 1 ? seams(sorted.map((m) => ({ id: m.id, route: byId.get(m.id) ?? m.route }))) : [];
+        meshes.forEach((m, id) => applySeams(id, m));
         links = world.length > 1 ? bridges(world.map((m) => ({ route: m.route, half: m.half }))) : [];
         routes = [...world.filter((m) => m.route.length > 1).map((m) => m.route), ...links.map((l) => l.route)];
         drawBand(routes);
@@ -712,6 +745,7 @@ export default function SplatVR() {
       pace: s.pace,
       half: s.walls * (s.place?.scale ?? 1),
       doors: s.doors,
+      order: tour.scenes.findIndex((x) => x.id === s.id),
     })));
   }, [here, tour]);
 
