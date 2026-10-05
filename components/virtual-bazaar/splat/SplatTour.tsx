@@ -1353,7 +1353,11 @@ export default function SplatTour() {
   function finishAlign(keep: boolean) {
     if (!align || !tour || !engine.current) return;
     if (keep) {
-      changeTour(updateScene(tour, align.id, { place: align.place }));
+      // ⚠️ DONE SAVES. A join left unsaved was lost on the next load and the
+      // visitor was stranded at the end of the first scene's path.
+      const next = updateScene(tour, align.id, { place: align.place });
+      setTour(next);
+      void saveTour(next);
       void engine.current.showPlaced(align.id, align.place, false).catch(() => {});
     } else if (align.before) {
       void engine.current.showPlaced(align.id, align.before, false).catch(() => {});
@@ -1379,8 +1383,10 @@ export default function SplatTour() {
     setTour(t);
     setEdit((x) => ({ ...x, saved: "unsaved changes" }));
   };
-  async function saveTour() {
+  async function saveTour(next: Tour | null = tour) {
+    const tour = next;
     if (!tour) return;
+    setEdit((x) => ({ ...x, saved: "saving…" }));
     try {
       const res = await fetch("/api/operator/splats", {
         method: "POST",
@@ -1660,6 +1666,20 @@ export default function SplatTour() {
                   </select>
                   <div className="text-white/40">An exit at the route&apos;s end{here.route.length ? "" : " (no route: 1.5 ahead)"}; visitors take it with Enter or a tap.</div>
                   <div className="border-t border-white/10 pt-1.5 font-bold text-sky-200">Join seamlessly (Align)</div>
+                  {/* Which scenes walk as one, as this page has it (saved: see the line under Save). */}
+                  <div className="space-y-0.5 rounded bg-white/5 p-1.5">
+                    {tour.scenes.map((s) => (
+                      <div key={s.id} className="flex justify-between gap-2">
+                        <span className="truncate">{s.title.en}</span>
+                        <span className={s.place ? "text-emerald-300" : "text-amber-200"}>
+                          {s.place ? "✓ joined" : "not joined"}{s.route.length ? "" : " · no path"}
+                        </span>
+                      </div>
+                    ))}
+                    {tour.scenes.filter((s) => s.place).length < 2 && (
+                      <div className="text-amber-200/80">Visitors walk on only into joined scenes. Join one below.</div>
+                    )}
+                  </div>
                   {!align ? (
                     <div className="flex gap-1">
                       <select className="min-w-0 flex-1 rounded bg-white/10 px-1 py-1" value={alignTarget} onChange={(e) => setAlignTarget(e.target.value)} disabled={!others.length}>
