@@ -322,7 +322,22 @@ export default function VirtualRide({
           {stage === "loading" && " · getting ready…"}
           {stage === "flying" && !byRoad && " · (straight line: Routes API unavailable)"}
         </span>
-        <span style={{ display: "flex", gap: 8 }}>
+        <span style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span
+            title="Virtual Shopping Ride"
+            style={{
+              padding: "3px 8px",
+              borderRadius: 6,
+              background: "rgba(0,0,0,.45)",
+              border: "1px solid rgba(242,163,58,.7)",
+              font: "600 11px/1.2 system-ui, sans-serif",
+              letterSpacing: ".04em",
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span style={{ color: "#f2a33a" }}>VCR</span>
+            <span style={{ fontWeight: 400, opacity: 0.85 }}> · Virtual Shopping Ride</span>
+          </span>
           {walking && to.entryScene && (
             <a href={to.entryScene} style={pill}>Enter {to.name.en}</a>
           )}

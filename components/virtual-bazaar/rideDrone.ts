@@ -1,6 +1,7 @@
 /**
  * The Virtual Ride's drone, drawn by us over Google's Street View: a
- * passenger quadcopter (Three.js, built from shapes, no model file) on a
+ * passenger quadcopter (Three.js, built from shapes, no model file), its
+ * door labelled «VCR · Virtual Shopping Ride», on a
  * transparent canvas, posed each frame from `lib/virtualRide/boarding.ts`.
  * Street View has no 3D scene to put it in, so it is drawn in the rider's
  * own frame with a camera matching Street View's: eye `STREET_EYE` above the
@@ -94,6 +95,50 @@ export async function createDrone(container: HTMLElement): Promise<DronePlayer> 
     drone.add(prop);
     props.push({ group: prop, dir: i % 2 ? 1 : -1 });
   });
+
+  // The passenger door, labelled, on the back (the side the rider sees while
+  // it waits) and on both flanks.
+  const door = document.createElement("canvas");
+  door.width = 512;
+  door.height = 256;
+  const g = door.getContext("2d")!;
+  g.clearRect(0, 0, 512, 256);
+  g.fillStyle = "#e9ebef";
+  g.strokeStyle = "#5b6370";
+  g.lineWidth = 8;
+  g.beginPath();
+  if (g.roundRect) g.roundRect(14, 14, 484, 228, 40);
+  else g.rect(14, 14, 484, 228);
+  g.fill();
+  g.stroke();
+  g.fillStyle = "#23272e";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "800 112px system-ui, sans-serif";
+  g.fillText("VCR", 256, 112);
+  g.fillStyle = "#c97a17";
+  g.font = "600 34px system-ui, sans-serif";
+  g.fillText("Virtual Shopping Ride", 256, 196);
+  g.fillStyle = "#5b6370"; // the handle
+  g.fillRect(462, 84, 12, 56);
+  const doorTex = new THREE.CanvasTexture(door);
+  doorTex.colorSpace = THREE.SRGBColorSpace;
+  doorTex.anisotropy = 4;
+  const doorMat = mat(
+    new THREE.MeshStandardMaterial({
+      map: doorTex,
+      metalness: 0.1,
+      roughness: 0.5,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+    }),
+  );
+  const back = add(new THREE.PlaneGeometry(0.42, 0.21), doorMat, 0, 0.42, 0.776);
+  back.rotation.y = 0;
+  for (const sx of [-1, 1]) {
+    const side = add(new THREE.PlaneGeometry(0.5, 0.25), doorMat, sx * 0.578, 0.42, 0.05);
+    side.rotation.y = (sx * Math.PI) / 2;
+  }
 
   // Skids and their struts.
   for (const sx of [-0.48, 0.48]) {
