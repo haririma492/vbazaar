@@ -5,7 +5,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { bridges, doorLane, inReach, keepInside, type Lane, type Vec3 } from "./corridor.ts";
+import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane, type Vec3 } from "./corridor.ts";
 
 /** An alley down −z, 20 long, eye height rising from 1.6 to 2.0. */
 const ALLEY: Lane = { route: [[0, 1.6, 0], [0, 1.8, -10], [0, 2.0, -20]], half: 1 };
@@ -70,4 +70,33 @@ test("joined scenes whose routes stop short of each other are bridged", () => {
   assert.equal(keepInside([outside, inside, ...b], 0, -22.5).outside, 0);
   // Too far apart: no bridge (they are not one place).
   assert.equal(bridges([outside, { route: [[0, 1.6, -60], [0, 1.6, -80]], half: 1 }]).length, 0);
+});
+
+test("a route filmed in and back out is cut where it turns back", () => {
+  const inOut: Vec3[] = [[0, 0, 0], [0, 0, -1], [0, 0, -2], [0, 0, -3], [0, 0, -4], [0.1, 0, -3], [0.1, 0, -2], [0.1, 0, -1], [0.1, 0, 0]];
+  const [r] = untangle([inOut]);
+  assert.deepEqual(r[r.length - 1], [0, 0, -4]);
+  // A route that only crosses itself once is left whole.
+  const loop: Vec3[] = [[0, 0, 0], [0, 0, -4], [4, 0, -4], [4, 0, 0], [-2, 0, -2], [-6, 0, -2]];
+  assert.equal(untangle([loop])[0].length, loop.length);
+});
+
+test("the next scene's walk over the end of this one is dropped: one line, then on", () => {
+  const outside: Vec3[] = [[0, 0, 0], [0, 0, -5], [0, 0, -10]];
+  const alley: Vec3[] = [[0.2, 0, -7], [0.2, 0, -9], [0.1, 0, -10.5], [3, 0, -12], [8, 0, -12]];
+  const [, a] = untangle([outside, alley]);
+  assert.ok(a.length < alley.length);
+  assert.deepEqual(a[a.length - 1], [8, 0, -12]);
+  assert.ok(a[0][2] <= -9); // starts at most one point back on the shared ground
+});
+
+test("a seam crosses the walk where one scene ends and the next begins", () => {
+  const s = seams([
+    { id: "outside", route: [[0, 0, 0], [0, 0, -10]] },
+    { id: "alley", route: [[0, 0, -11], [5, 0, -11]] },
+  ]);
+  assert.equal(s.length, 1);
+  assert.deepEqual([s[0].from, s[0].to], ["outside", "alley"]);
+  assert.deepEqual(s[0].at, [0, 0, -10.5]);
+  assert.deepEqual(s[0].dir.map((v) => Math.round(v * 100) / 100), [0, -1]);
 });

@@ -44,7 +44,7 @@ import {
   DEFAULT_DRIVE, DRIVE_LIMITS, setDrive, setStartScene,
   type Door, type Drive, type Exit, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
-import { bridges, doorLane, inReach, keepInside, type Lane } from "@/lib/splats/corridor";
+import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { downloadSplat, makeMarker, splatBase } from "./load";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
@@ -101,7 +101,7 @@ const fmtMB = (n: number | null) => (n == null ? "—" : `${(n / 1024 / 1024).to
 const fmtMs = (n: number | null) => (n == null ? "—" : n < 1000 ? `${Math.round(n)} ms` : `${(n / 1000).toFixed(2)} s`);
 
 /** A scene walked among: its route and doors in world coordinates, its walls (world units either side; 0 none), its pace. */
-type Member = { id: string; route: Vec3[]; pace: number; half: number; doors: Door[] };
+type Member = { id: string; route: Vec3[]; pace: number; half: number; doors: Door[]; order: number };
 /** What Enter would go into now. */
 type Reach = { kind: "door" | "exit"; id: string; label: string } | null;
 
@@ -357,6 +357,31 @@ export default function SplatTour() {
     const meshes = new Map<string, SplatMesh>();
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
+    // Where joined scenes meet (`seams`): each shows its side only, so the
+    // entrance both filmed is drawn once, not twice over itself.
+    let seamList: ReturnType<typeof seams> = [];
+    let aligningId: string | null = null;
+    const applySeams = (id: string, mesh: SplatMesh) => {
+      if (!sparkMod) return;
+      // Aligning: every scene shows whole — the overlap is what is being lined up.
+      const mine = aligningId ? [] : seamList.filter((s) => s.from === id || s.to === id);
+      if (!mine.length) {
+        mesh.edits = [];
+        return;
+      }
+      const edit = new sparkMod.SplatEdit({ rgbaBlendMode: sparkMod.SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0.4 });
+      for (const s of mine) {
+        // The plane hides where its own z < 0: ahead of the seam for the scene
+        // the walk leaves, behind it for the scene it enters.
+        const keep = s.from === id ? new THREE.Vector3(-s.dir[0], 0, -s.dir[1]) : new THREE.Vector3(s.dir[0], 0, s.dir[1]);
+        const sdf = new sparkMod.SplatEditSdf({ type: sparkMod.SplatEditSdfType.PLANE, opacity: 0 });
+        sdf.position.set(...s.at);
+        sdf.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), keep);
+        sdf.updateMatrixWorld();
+        edit.addSdf(sdf);
+      }
+      mesh.edits = [edit];
+    };
     // Straight lanes across the gaps between joined scenes' routes (`bridges`).
     let links: Lane[] = [];
     // When the end of a route last carried the visitor on through its exit.
@@ -564,6 +589,7 @@ export default function SplatTour() {
           currentId = id;
           const mine = id === "__single" ? null : sourceOf(id)?.place ?? null;
           placeMesh(mesh, flip, mine);
+          applySeams(id, mesh);
           mesh.opacity = 1;
           meshes.forEach((m, k) => (m.visible = k === id));
           // ⚠️ ON A PHONE, LET GO OF SCENES LEFT BEHIND (not this one, not
@@ -641,8 +667,21 @@ export default function SplatTour() {
         return done;
       },
       setWorld(members, show) {
-        world = members.filter((m) => m.route.length > 1 || members.length === 1);
         pace = members[0]?.pace ?? 1;
+        // ⚠️ ONE LINE WHERE ONE WAS WALKED (`untangle`): a walk filmed in and
+        // back out, and the next scene's walk over the end of this one, are
+        // trimmed — in the tour's order, so the line does not change as the
+        // visitor walks from one scene into the next.
+        const sorted = [...members].sort((a, b) => a.order - b.order);
+        const halves = sorted.map((m) => m.half).filter((h) => h > 0);
+        const tol = Math.min(1, Math.max(0.3, 0.35 * (halves.length ? Math.min(...halves) : 1.5)));
+        const clean = untangle(sorted.map((m) => m.route), tol);
+        const byId = new Map(sorted.map((m, i) => [m.id, clean[i]]));
+        world = members
+          .map((m) => ({ ...m, route: byId.get(m.id) ?? m.route }))
+          .filter((m) => m.route.length > 1 || members.length === 1);
+        seamList = world.length > 1 ? seams(sorted.map((m) => ({ id: m.id, route: byId.get(m.id) ?? m.route }))) : [];
+        meshes.forEach((m, id) => applySeams(id, m));
         links = world.length > 1 ? bridges(world.map((m) => ({ route: m.route, half: m.half }))) : [];
         drawWorld();
         drawBand([...world.map((m) => m.route), ...links.map((l) => l.route)]);
@@ -681,6 +720,10 @@ export default function SplatTour() {
         return true;
       },
       hide(id) {
+        if (aligningId === id) {
+          aligningId = null;
+          meshes.forEach((mm, k) => applySeams(k, mm));
+        }
         const m = meshes.get(id);
         if (m && id !== currentId) m.visible = false;
       },
@@ -705,6 +748,9 @@ export default function SplatTour() {
           }
         }
         placeMesh(mesh, so.flip, place ?? IDENTITY);
+        // While being aligned the whole scene shows, overlap and all: that is what is lined up.
+        aligningId = aligning ? id : aligningId === id ? null : aligningId;
+        meshes.forEach((m, k) => applySeams(k, m));
         mesh.opacity = aligning ? 0.55 : 1;
         mesh.visible = true;
         // The report is about the scene the visitor is in, not this one.
@@ -1136,6 +1182,7 @@ export default function SplatTour() {
         pace: s.pace,
         half: s.walls * (s.place?.scale ?? 1),
         doors: s.doors,
+        order: tour.scenes.findIndex((x) => x.id === s.id),
       })),
       editing,
     );
