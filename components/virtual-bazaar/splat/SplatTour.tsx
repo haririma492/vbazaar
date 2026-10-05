@@ -177,8 +177,24 @@ const DRIVE_ROWS: Array<{ key: keyof Drive; label: string; unit: string; hint: s
 ];
 
 
-export default function SplatTour() {
+export default function SplatTour({
+  preload = false,
+  onReady,
+}: {
+  /**
+   * Load the tour and its first scene, but draw nothing: the Virtual Ride
+   * (`/vca/ride`) mounts the tour underneath itself during the flight, so the
+   * visitor lands straight into a scene that is already there.
+   */
+  preload?: boolean;
+  /** Called once the first scene is loaded and can be shown. */
+  onReady?: () => void;
+} = {}) {
   const host = useRef<HTMLDivElement>(null);
+  const preloadRef = useRef(preload);
+  preloadRef.current = preload;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const engine = useRef<Engine | null>(null);
   const walkedInto = useRef<(id: string) => void>(() => {});
   const [tiltOn, setTiltOn] = useState(false);
@@ -255,6 +271,9 @@ export default function SplatTour() {
     try { window.localStorage.setItem(MODE_KEY, mode); } catch { /* fine */ }
   };
   const [sceneReady, setSceneReady] = useState(false);
+  useEffect(() => {
+    if (sceneReady) onReadyRef.current?.();
+  }, [sceneReady]);
   useEffect(() => {
     if (!touch || !sceneReady || tiltOn) return;
     let mode: string | null = null;
@@ -977,6 +996,8 @@ export default function SplatTour() {
     let fpsSince = performance.now();
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
+      // Preloading under the Virtual Ride: loaded, not drawn — the GPU is the ride's.
+      if (preloadRef.current) return;
       // Steering (stick left/right) turns the view. With phone motion on it is
       // added to the phone's own heading, so both turn you.
       if (gyroOn && gyroHave && !tiltOn) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
