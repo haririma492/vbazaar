@@ -14,7 +14,9 @@ import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle"
  * It begins in Street View on the street in front of their home, facing it,
  * cross-fades into the 3D city at the same spot and lifts off, low over the real roads in Google's photorealistic 3D city, down to eye
  * level on the pavement outside — then either straight into the district's
- * own scene at its start (`enterOnArrival`: World on Yonge → `/vca/splat`),
+ * own scene at its start (`enterOnArrival`: World on Yonge → `/vca/splat`;
+ * with `onEnter` the scene is already loaded underneath and the landing
+ * cross-fades straight into it),
  * or Street View, to walk on from where they landed. Google is the TRANSPORT
  * only: this component knows nothing of splats or R2.
  *
@@ -35,6 +37,8 @@ const HOME_HOLD_MS = 1_500;
 const STREET_HOLD_MS = 3_000;
 /** Street View fades out over the first moments of the climb, and in (or black, before a scene) over the last of the descent. */
 const CROSSFADE_MS = 1_500;
+/** Landing into a scene preloaded underneath: the whole ride fades away over this. */
+const REVEAL_MS = 1_200;
 
 const bar: React.CSSProperties = {
   position: "absolute",
@@ -67,14 +71,29 @@ export default function VirtualRide({
   origin,
   to,
   onExit,
+  onEnter,
+  enterReady = false,
 }: {
   origin: RideOrigin;
   to: RideDistrict;
   onExit: () => void;
+  /**
+   * The destination's scene is mounted (preloading) underneath the ride: on
+   * landing, the ride fades away to show it and calls this — no page change,
+   * no loading screen. Unset: the ride opens `entryScene` as a new page.
+   */
+  onEnter?: () => void;
+  /** The preloading scene is ready to show; the ride holds at the landing spot until it is. */
+  enterReady?: boolean;
 }) {
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
+  const onEnterRef = useRef(onEnter);
+  onEnterRef.current = onEnter;
+  const readyRef = useRef(enterReady);
+  readyRef.current = enterReady;
+  const outerRef = useRef<HTMLDivElement>(null);
   const mapHostRef = useRef<HTMLDivElement>(null);
   const streetRef = useRef<HTMLDivElement>(null);
   const homeStreetRef = useRef<HTMLDivElement>(null);
@@ -185,7 +204,8 @@ export default function VirtualRide({
               homeStreetRef.current.style.opacity = String(1 - away);
               if (away >= 1) homeStreetRef.current.style.display = "none";
             }
-            if ((spot || enter) && mapHostRef.current) {
+            // To black before a scene that opens as a new page; a preloaded one cross-fades from the street instead.
+            if ((spot || (enter && !onEnterRef.current)) && mapHostRef.current) {
               const fade = (t - (plan.durationMs - CROSSFADE_MS)) / CROSSFADE_MS;
               mapHostRef.current.style.opacity = String(1 - Math.min(1, Math.max(0, fade)));
             }
@@ -194,7 +214,22 @@ export default function VirtualRide({
               return;
             }
             console.log("ARRIVED", to.id);
-            if (enter) {
+            if (enter && onEnterRef.current) {
+              setStage("entering");
+              const reveal = () => {
+                if (gone) return;
+                if (!readyRef.current) {
+                  raf = requestAnimationFrame(reveal); // hold on the pavement until the scene is there
+                  return;
+                }
+                if (outerRef.current) {
+                  outerRef.current.style.transition = `opacity ${REVEAL_MS}ms ease`;
+                  outerRef.current.style.opacity = "0";
+                }
+                later(() => !gone && onEnterRef.current?.(), REVEAL_MS);
+              };
+              reveal();
+            } else if (enter) {
               setStage("entering");
               routerRef.current.push(enter);
             } else if (spot) {
@@ -221,7 +256,7 @@ export default function VirtualRide({
   const walking = stage === "walking";
 
   return (
-    <div dir="ltr" style={{ position: "fixed", inset: 0, zIndex: 50, background: "#000" }}>
+    <div ref={outerRef} dir="ltr" style={{ position: "fixed", inset: 0, zIndex: 50, background: "#000" }}>
       <div ref={streetRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />
       {!walking && <div ref={mapHostRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />}
       {!walking && <div ref={homeStreetRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />}
@@ -235,7 +270,6 @@ export default function VirtualRide({
             : `${origin.label} → ${to.name.en}`}
           {stage === "planning" && " · planning the route…"}
           {stage === "loading" && " · getting ready…"}
-          {stage === "entering" && " · entering…"}
           {stage === "flying" && !byRoad && " · (straight line: Routes API unavailable)"}
         </span>
         <span style={{ display: "flex", gap: 8 }}>

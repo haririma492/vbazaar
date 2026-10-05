@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
+import dynamic from "next/dynamic";
 import VirtualRide, { type RideOrigin } from "./VirtualRide";
 import { DISTRICTS, districtById } from "@/lib/virtualRide/districts";
 import { importLibrary } from "./rideGoogle";
@@ -12,6 +13,17 @@ import { importLibrary } from "./rideGoogle";
  */
 
 const REMEMBER = "sk-ride-origin";
+
+type Preloadable = ComponentType<{ preload?: boolean; onReady?: () => void }>;
+
+/**
+ * Our scenes the ride can load in the background during the flight, by the
+ * `entryScene` address a district names. The visitor lands straight into it:
+ * no page change, no «Getting ready». Any other address opens as a new page.
+ */
+const PRELOADABLE: Record<string, Preloadable> = {
+  "/vca/splat": dynamic(() => import("./splat/SplatTour"), { ssr: false }),
+};
 
 function remembered(): RideOrigin | null {
   try {
@@ -30,7 +42,10 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
   const [origin, setOrigin] = useState<RideOrigin | null>(null);
   const [toIdState, setToId] = useState<string>(districtById(toId)?.id ?? DISTRICTS[0].id);
   const [riding, setRiding] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [entered, setEntered] = useState(false);
   const to = districtById(toIdState)!;
+  const Scene = to.enterOnArrival && to.entryScene ? PRELOADABLE[to.entryScene] ?? null : null;
 
   useEffect(() => setOrigin(remembered()), []);
 
@@ -39,7 +54,27 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
     remember(o);
   };
 
-  if (riding && origin) return <VirtualRide origin={origin} to={to} onExit={() => setRiding(false)} />;
+  const exit = () => {
+    setRiding(false);
+    setSceneReady(false);
+  };
+  const enter = () => {
+    setEntered(true);
+    // The scene's own address from here: a reload or a shared link opens it.
+    try { window.history.replaceState({ splatDepth: 0 }, "", to.entryScene!); } catch { /* stays /vca/ride */ }
+  };
+
+  if (riding && origin && Scene) {
+    return (
+      <>
+        <Scene preload={!entered} onReady={() => setSceneReady(true)} />
+        {!entered && (
+          <VirtualRide origin={origin} to={to} onExit={exit} onEnter={enter} enterReady={sceneReady} />
+        )}
+      </>
+    );
+  }
+  if (riding && origin) return <VirtualRide origin={origin} to={to} onExit={exit} />;
 
   return (
     <main dir="ltr" className="min-h-screen grid place-items-center p-4 bg-neutral-950 text-white">
