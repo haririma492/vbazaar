@@ -192,7 +192,7 @@ export const RIDE = {
   /** Fractions of the ride spent speeding up and slowing down. */
   accel: 0.15,
   decel: 0.3,
-  /** Departure: looking down at the rider's home from this far away. */
+  /** Departure without a street spot at home: looking down at it from this far away. */
   homeRange: 260,
   homeTilt: 50,
   cruiseTilt: 68,
@@ -201,7 +201,7 @@ export const RIDE = {
   minCruiseRoad: 70,
   minCruiseStraight: 160,
   maxCruise: 450,
-  /** Arrival: a standing person's eye, looking almost level. */
+  /** Departure from, and arrival at, street level: a standing person's eye, looking almost level. */
   eyeHeight: 1.7,
   landTilt: MAX_TILT,
 } as const;
@@ -243,6 +243,12 @@ export type FlightPlan = {
   cruise: number;
   /** The way the rider faces once standing at the destination. */
   finalHeading: number;
+  /**
+   * Set: the ride starts standing on the street at the path's first point,
+   * facing this way (toward home), and lifts off from there. Unset: it
+   * starts looking down at home from above.
+   */
+  startHeading: number | null;
 };
 
 export function planFlight(opts: {
@@ -250,6 +256,7 @@ export function planFlight(opts: {
   ground: (s: number) => number;
   followsRoad: boolean;
   finalHeading?: number;
+  startHeading?: number;
 }): FlightPlan {
   const { path, ground, followsRoad } = opts;
   const durationMs = rideDurationMillis(path.length);
@@ -259,6 +266,7 @@ export function planFlight(opts: {
     durationMs,
     cruise: cruiseHeight(cruiseSpeed(path.length, durationMs), followsRoad),
     finalHeading: opts.finalHeading ?? headingAt(path, path.length),
+    startHeading: opts.startHeading ?? null,
   };
 }
 
@@ -280,7 +288,7 @@ function mixCamera(a: RideCamera, b: RideCamera, t: number): RideCamera {
   };
 }
 
-/** Looking down at the rider's home, facing the way the ride will leave. */
+/** Looking down at the rider's home, facing the way the ride will leave (no street spot there). */
 export function homeCamera(plan: FlightPlan): RideCamera {
   const home = plan.path.points[0];
   return {
@@ -292,8 +300,9 @@ export function homeCamera(plan: FlightPlan): RideCamera {
 }
 
 /**
- * The camera `tMs` into the ride. 0: looking at home. Takeoff: the view
- * lifts off home into the rider's eye, already moving along the road.
+ * The camera `tMs` into the ride. 0: standing on the street in front of
+ * home, facing it (or, without a street spot, looking down at it). Takeoff:
+ * rising straight up while turning to the road, already moving along it.
  * Cruise: `plan.cruise` metres over the road, looking ahead and turning into
  * corners. Landing: slowing, descending to eye height and turning to face
  * the destination, standing on the ground at `durationMs`.
@@ -306,12 +315,15 @@ export function flightFrame(plan: FlightPlan, tMs: number): RideCamera {
   const lift = smoothstep(u / RIDE.accel);
   const land = smoothstep((u - (1 - RIDE.decel)) / RIDE.decel);
   const turn = smoothstep((u - (1 - RIDE.decel * 0.6)) / (RIDE.decel * 0.6));
+  const fromStreet = plan.startHeading !== null;
+  const rising = fromStreet && u < RIDE.accel;
 
-  const height = u < RIDE.accel ? cruise : lerp(cruise, RIDE.eyeHeight, land);
-  const tilt = lerp(RIDE.cruiseTilt, RIDE.landTilt, land);
+  const height = rising ? lerp(RIDE.eyeHeight, cruise, lift) : lerp(cruise, RIDE.eyeHeight, land);
+  const tilt = rising ? lerp(RIDE.landTilt, RIDE.cruiseTilt, lift) : lerp(RIDE.cruiseTilt, RIDE.landTilt, land);
   const lookahead = Math.min(150, Math.max(40, height * 1.5));
-  const heading = lerpAngle(headingAt(path, s, lookahead), plan.finalHeading, turn);
+  let heading = lerpAngle(headingAt(path, s, lookahead), plan.finalHeading, turn);
+  if (rising) heading = lerpAngle(plan.startHeading!, heading, lift);
   const flying = eyeCamera(eye, height, heading, tilt, ground(s));
 
-  return lift < 1 ? mixCamera(homeCamera(plan), flying, lift) : flying;
+  return !fromStreet && lift < 1 ? mixCamera(homeCamera(plan), flying, lift) : flying;
 }

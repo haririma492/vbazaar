@@ -139,6 +139,30 @@ test("flight: over home, low over the road, then standing facing the destination
   assert.deepEqual(flightFrame(plan, plan.durationMs * 2), end);
 });
 
+test("from the street: standing in front of home facing it, then up to cruise", () => {
+  const path = makePath([O, offset(O, 0, 3000), offset(O, 45, 5000)]);
+  const plan = planFlight({ path, ground: () => 150, followsRoad: true, startHeading: 270 });
+  const start = flightFrame(plan, 0);
+  near(cameraHeight(start), RIDE.eyeHeight, 1e-6);
+  assert.equal(start.tilt, RIDE.landTilt);
+  near(start.heading, 270, 1e-6);
+  const eye = offset(start.center, start.heading + 180, start.range * Math.sin((start.tilt * Math.PI) / 180));
+  near(distanceMeters(eye, O), 0, 0.5);
+  // Climbing all through takeoff, at cruise once it ends, facing the road.
+  let last = 0;
+  for (let i = 1; i <= 10; i++) {
+    const h = cameraHeight(flightFrame(plan, plan.durationMs * RIDE.accel * (i / 10)));
+    assert.ok(h >= last - 1e-9, `i=${i}`);
+    last = h;
+  }
+  near(last, plan.cruise, 1e-6);
+  const cruising = flightFrame(plan, plan.durationMs * 0.4);
+  near(cruising.tilt, RIDE.cruiseTilt, 1e-6);
+  // Without a street spot it still starts above home.
+  assert.deepEqual(flightFrame(planFlight({ path, ground: () => 150, followsRoad: true }), 0),
+    homeCamera(planFlight({ path, ground: () => 150, followsRoad: true })));
+});
+
 test("a straight-line ride flies higher, clear of towers", () => {
   const path = straightPath(O, offset(O, 0, 5000));
   const road = planFlight({ path, ground: () => 0, followsRoad: true });

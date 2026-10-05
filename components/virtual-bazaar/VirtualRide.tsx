@@ -3,15 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  type LatLng, bearingDegrees, distanceMeters, flightFrame, groundProfile, homeCamera, makePath, planFlight,
+  type LatLng, bearingDegrees, distanceMeters, flightFrame, groundProfile, makePath, planFlight,
   samplePath, straightPath,
 } from "@/lib/virtualRide/flight";
 import type { RideDistrict } from "@/lib/virtualRide/districts";
 import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle";
 
 /**
- * The Virtual Ride: from the rider's own address to a shopping district,
- * low over the real roads in Google's photorealistic 3D city, down to eye
+ * The Virtual Ride: from the rider's own address to a shopping district.
+ * It begins in Street View on the street in front of their home, facing it,
+ * cross-fades into the 3D city at the same spot and lifts off, low over the real roads in Google's photorealistic 3D city, down to eye
  * level on the pavement outside — then either straight into the district's
  * own scene at its start (`enterOnArrival`: World on Yonge → `/vca/splat`),
  * or Street View, to walk on from where they landed. Google is the TRANSPORT
@@ -29,9 +30,10 @@ type Stage = "planning" | "loading" | "flying" | "entering" | "walking" | "lande
 
 /** Longest wait for the home neighbourhood to draw before taking off anyway. */
 const READY_WAIT_MS = 6_000;
-/** A beat over home before taking off. */
+/** A beat at home before taking off: longer when standing in front of it in Street View. */
 const HOME_HOLD_MS = 1_500;
-/** Street View (or black, before the scene) fades in over the last moments of the descent. */
+const STREET_HOLD_MS = 3_000;
+/** Street View fades out over the first moments of the climb, and in (or black, before a scene) over the last of the descent. */
 const CROSSFADE_MS = 1_500;
 
 const bar: React.CSSProperties = {
@@ -47,7 +49,7 @@ const bar: React.CSSProperties = {
   color: "#fff",
   font: "500 14px/1.3 system-ui, sans-serif",
   textShadow: "0 1px 3px rgba(0,0,0,.8)",
-  zIndex: 3,
+  zIndex: 4,
 };
 
 const pill: React.CSSProperties = {
@@ -75,6 +77,7 @@ export default function VirtualRide({
   routerRef.current = router;
   const mapHostRef = useRef<HTMLDivElement>(null);
   const streetRef = useRef<HTMLDivElement>(null);
+  const homeStreetRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState<Stage>("planning");
   const [error, setError] = useState<string | null>(null);
   const [byRoad, setByRoad] = useState(true);
@@ -95,13 +98,15 @@ export default function VirtualRide({
     const enter = to.enterOnArrival && to.entryScene ? to.entryScene : null;
 
     (async () => {
-      // 1. Plan: where to land, which roads, how high the ground is.
-      const spot = await streetSpot(to.location);
+      // 1. Plan: where to stand at home and land at the district (the
+      // nearest Street View spots), which roads, how high the ground is.
+      const [homeSpot, spot] = await Promise.all([streetSpot(origin.location, 100), streetSpot(to.location)]);
+      const start = homeSpot?.location ?? origin.location;
       const landing = spot?.location ?? to.location;
-      const road = await roadRoute(origin.location, landing);
+      const road = await roadRoute(start, landing);
       if (gone) return;
       setByRoad(!!road);
-      const path = road ? makePath([origin.location, ...road, landing]) : straightPath(origin.location, landing);
+      const path = road ? makePath([start, ...road, landing]) : straightPath(start, landing);
       const heights = await groundAlong(samplePath(path, 48), 128);
       if (gone) return;
       const plan = planFlight({
@@ -109,10 +114,38 @@ export default function VirtualRide({
         ground: heights ? groundProfile(path, heights) : () => to.groundAltitude,
         followsRoad: !!road,
         finalHeading: distanceMeters(landing, to.location) > 8 ? bearingDegrees(landing, to.location) : undefined,
+        // Standing on the street, facing the house.
+        startHeading: homeSpot
+          ? distanceMeters(start, origin.location) > 5
+            ? bearingDegrees(start, origin.location)
+            : bearingDegrees(start, landing)
+          : undefined,
       });
 
-      // 2. The 3D city over home, and Street View waiting underneath it.
+      // 2. Street View in front of home on top; the 3D city at the same spot
+      // underneath it; the destination's Street View waiting below both.
       setStage("loading");
+      let StreetViewPanorama: any = null;
+      if ((homeSpot || (spot && !enter))) {
+        try {
+          ({ StreetViewPanorama } = await importLibrary("streetView"));
+        } catch { /* no Street View: the ride still flies */ }
+      }
+      const panorama = (el: HTMLDivElement, pano: string, heading: number) =>
+        new StreetViewPanorama(el, {
+          pano,
+          pov: { heading, pitch: 0 },
+          zoom: 0,
+          addressControl: false,
+          fullscreenControl: false,
+          motionTracking: false,
+          motionTrackingControl: false,
+          showRoadLabels: false,
+        });
+      if (gone) return;
+      if (homeSpot && StreetViewPanorama && homeStreetRef.current) {
+        panorama(homeStreetRef.current, homeSpot.pano, plan.startHeading!);
+      }
       let Map3DElement: any;
       try {
         ({ Map3DElement } = await importLibrary("maps3d"));
@@ -121,25 +154,13 @@ export default function VirtualRide({
       }
       if (gone || !mapHostRef.current) return;
       // `mode` is required: without it Map3DElement renders nothing.
-      map = new Map3DElement({ ...homeCamera(plan), mode: "SATELLITE", defaultUIHidden: true });
+      map = new Map3DElement({ ...flightFrame(plan, 0), mode: "SATELLITE", defaultUIHidden: true });
       map.style.cssText = "width:100%;height:100%;display:block";
       map.addEventListener("gmp-error", () => fail("Google 3D Maps reported an error (key, billing or API not enabled?)"));
       mapHostRef.current.appendChild(map);
 
-      if (spot && !enter && streetRef.current) {
-        try {
-          const { StreetViewPanorama } = await importLibrary("streetView");
-          new StreetViewPanorama(streetRef.current, {
-            pano: spot.pano,
-            pov: { heading: plan.finalHeading, pitch: 0 },
-            zoom: 0,
-            addressControl: false,
-            fullscreenControl: false,
-            motionTracking: false,
-            motionTrackingControl: false,
-            showRoadLabels: false,
-          });
-        } catch { /* no walk; the ride still lands */ }
+      if (spot && !enter && StreetViewPanorama && streetRef.current) {
+        panorama(streetRef.current, spot.pano, plan.finalHeading);
       }
 
       // 3. Fly once home has drawn, after a beat.
@@ -159,6 +180,11 @@ export default function VirtualRide({
             map.range = c.range;
             map.tilt = c.tilt;
             map.heading = c.heading;
+            if (homeStreetRef.current) {
+              const away = Math.min(1, t / CROSSFADE_MS);
+              homeStreetRef.current.style.opacity = String(1 - away);
+              if (away >= 1) homeStreetRef.current.style.display = "none";
+            }
             if ((spot || enter) && mapHostRef.current) {
               const fade = (t - (plan.durationMs - CROSSFADE_MS)) / CROSSFADE_MS;
               mapHostRef.current.style.opacity = String(1 - Math.min(1, Math.max(0, fade)));
@@ -178,7 +204,7 @@ export default function VirtualRide({
             } else setStage("landed");
           };
           raf = requestAnimationFrame(step);
-        }, HOME_HOLD_MS);
+        }, homeSpot ? STREET_HOLD_MS : HOME_HOLD_MS);
       };
       map.addEventListener("gmp-steadychange", (e: any) => e?.isSteady && fly());
       later(fly, READY_WAIT_MS);
@@ -198,8 +224,9 @@ export default function VirtualRide({
     <div dir="ltr" style={{ position: "fixed", inset: 0, zIndex: 50, background: "#000" }}>
       <div ref={streetRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />
       {!walking && <div ref={mapHostRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />}
+      {!walking && <div ref={homeStreetRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />}
       {/* Swallows touches while flying: a grab would fight the camera. */}
-      {!walking && <div style={{ position: "absolute", inset: 0, zIndex: 2 }} />}
+      {!walking && <div style={{ position: "absolute", inset: 0, zIndex: 3 }} />}
 
       <div style={bar}>
         <span>
@@ -226,7 +253,7 @@ export default function VirtualRide({
           style={{
             position: "absolute",
             inset: 0,
-            zIndex: 3,
+            zIndex: 4,
             display: "grid",
             placeItems: "center",
             padding: 16,
