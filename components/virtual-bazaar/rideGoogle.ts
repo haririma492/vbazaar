@@ -56,11 +56,7 @@ export async function groundAlong(points: LatLng[], samples: number): Promise<nu
 }
 
 /** The nearest outdoor Street View spot within `radius` metres, or null. */
-export async function streetSpot(
-  near: LatLng,
-  radius = 80,
-  quiet = false,
-): Promise<{ pano: string; location: LatLng } | null> {
+export async function streetSpot(near: LatLng, radius = 80): Promise<{ pano: string; location: LatLng } | null> {
   try {
     const { StreetViewService } = await importLibrary("streetView");
     const { data } = await new StreetViewService().getPanorama({
@@ -76,7 +72,7 @@ export async function streetSpot(
     return loc?.pano && loc?.latLng ? { pano: loc.pano, location: plain(loc.latLng) } : null;
   } catch (e) {
     // ZERO_RESULTS (no Street View that close) lands here too.
-    if (!quiet) console.warn("Virtual ride: no Street View spot near", near, e);
+    console.warn("Virtual ride: no Street View spot near", near, e);
     return null;
   }
 }
