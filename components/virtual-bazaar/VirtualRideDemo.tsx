@@ -2,8 +2,11 @@
 
 import { useEffect, useRef, useState, type ComponentType } from "react";
 import dynamic from "next/dynamic";
-import VirtualRide, { type RideOrigin } from "./VirtualRide";
-import type { Vehicle } from "@/lib/virtualRide/flight";
+import VirtualRide, { RIDE_EXTRAS_MS, type RideOrigin } from "./VirtualRide";
+import {
+  type PaceId, type Vehicle, PACES, distanceMeters, formatDuration, makePath, paceFactor, rideDurationMillis,
+} from "@/lib/virtualRide/flight";
+import { roadRoute } from "./rideGoogle";
 import { DISTRICTS, districtById } from "@/lib/virtualRide/districts";
 import { importLibrary } from "./rideGoogle";
 
@@ -15,6 +18,9 @@ import { importLibrary } from "./rideGoogle";
 
 const REMEMBER = "sk-ride-origin";
 const REMEMBER_VEHICLE = "sk-ride-vehicle";
+const REMEMBER_PACE = "sk-ride-pace";
+/** Roads are longer than the crow flies; until the route is back, this much. */
+const ROAD_FACTOR = 1.3;
 
 /**
  * ⚠️ BY TAXI IS OFF (operator, 2026-10-05: the cab wandered across the road
@@ -62,6 +68,17 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
       if (VEHICLES.some((x) => x.id === v)) setVehicle(v as Vehicle);
     } catch { /* the default */ }
   }, []);
+  const [pace, setPace] = useState<PaceId>("normal");
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(REMEMBER_PACE);
+      if (PACES.some((p) => p.id === v)) setPace(v as PaceId);
+    } catch { /* the default */ }
+  }, []);
+  const choosePace = (v: PaceId) => {
+    setPace(v);
+    try { localStorage.setItem(REMEMBER_PACE, v); } catch { /* fine without */ }
+  };
   const chooseVehicle = (v: Vehicle) => {
     setVehicle(v);
     try { localStorage.setItem(REMEMBER_VEHICLE, v); } catch { /* fine without */ }
@@ -69,6 +86,27 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
   const [sceneReady, setSceneReady] = useState(false);
   const [entered, setEntered] = useState(false);
   const to = districtById(toIdState)!;
+  // How far the ride goes: by the road route once Google answers, as the crow flies × ROAD_FACTOR until then.
+  const [route, setRoute] = useState<{ key: string; meters: number; byRoad: boolean } | null>(null);
+  const landingAt = to.street ? { lat: to.street.lat, lng: to.street.lng } : to.location;
+  const routeKey = origin ? `${origin.location.lat},${origin.location.lng}→${to.id}` : "";
+  useEffect(() => {
+    if (!origin) return;
+    let gone = false;
+    setRoute({ key: routeKey, meters: distanceMeters(origin.location, landingAt) * ROAD_FACTOR, byRoad: false });
+    void roadRoute(origin.location, landingAt).then((pts) => {
+      if (!gone && pts) setRoute({ key: routeKey, meters: makePath(pts).length, byRoad: true });
+    });
+    return () => {
+      gone = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeKey]);
+  const meters = route?.key === routeKey ? route.meters : null;
+  const estimate = (id: PaceId) =>
+    meters == null ? null : rideDurationMillis(meters, vehicle, paceFactor(id)) + RIDE_EXTRAS_MS;
+  const estimateMs = estimate(pace);
+
   const Scene = to.enterOnArrival && to.entryScene ? PRELOADABLE[to.entryScene] ?? null : null;
 
   useEffect(() => setOrigin(remembered()), []);
@@ -93,12 +131,32 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
       <>
         <Scene preload={!entered} onReady={() => setSceneReady(true)} />
         {!entered && (
-          <VirtualRide origin={origin} to={to} vehicle={vehicle} onExit={exit} onEnter={enter} enterReady={sceneReady} />
+          <VirtualRide
+            origin={origin}
+            to={to}
+            vehicle={vehicle}
+            pace={paceFactor(pace)}
+            estimateMs={estimateMs ?? undefined}
+            onExit={exit}
+            onEnter={enter}
+            enterReady={sceneReady}
+          />
         )}
       </>
     );
   }
-  if (riding && origin) return <VirtualRide origin={origin} to={to} vehicle={vehicle} onExit={exit} />;
+  if (riding && origin) {
+    return (
+      <VirtualRide
+        origin={origin}
+        to={to}
+        vehicle={vehicle}
+        pace={paceFactor(pace)}
+        estimateMs={estimateMs ?? undefined}
+        onExit={exit}
+      />
+    );
+  }
 
   return (
     <main dir="ltr" className="min-h-screen grid place-items-center p-4 bg-neutral-950 text-white">
@@ -158,6 +216,43 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
             ))}
           </div>
         </section>}
+
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm text-neutral-400">Ride time</h2>
+            <div className="text-lg font-semibold">
+              {estimateMs == null ? "—" : `≈ ${formatDuration(estimateMs)}`}
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {PACES.map((p) => {
+              const ms = estimate(p.id);
+              const on = p.id === pace;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => choosePace(p.id)}
+                  aria-pressed={on}
+                  className={`rounded-xl border px-2 py-2 text-center ${
+                    on ? "bg-white text-black border-white" : "border-neutral-600"
+                  }`}
+                >
+                  <div className="font-semibold">{p.en}</div>
+                  <div className="text-xs" dir="rtl">{p.fa}</div>
+                  <div className={`text-xs ${on ? "text-neutral-600" : "text-neutral-400"}`}>
+                    {ms == null ? "—" : `≈ ${formatDuration(ms)}`}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {meters != null && (
+            <p className="text-xs text-neutral-500">
+              {(meters / 1000).toFixed(1)} km {route?.byRoad ? "by road" : "(estimated, finding the route…)"}
+            </p>
+          )}
+        </section>
 
         <button
           type="button"

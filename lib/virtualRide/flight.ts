@@ -227,10 +227,32 @@ export const RIDE = {
 
 export type Vehicle = "drone" | "taxi";
 
-export function rideDurationMillis(meters: number, vehicle: Vehicle = "drone"): number {
+/**
+ * The rider's choice of pace: a multiplier on the flight's duration (the
+ * boarding and alighting scenes keep their own). Slower also flies lower,
+ * faster higher — the cruise height follows the speed.
+ */
+export const PACES = [
+  { id: "slower", factor: 1.6, en: "Slower", fa: "آهسته‌تر" },
+  { id: "normal", factor: 1, en: "Normal", fa: "معمولی" },
+  { id: "faster", factor: 0.6, en: "Faster", fa: "تندتر" },
+] as const;
+export type PaceId = (typeof PACES)[number]["id"];
+export const paceFactor = (id: string | null | undefined): number => PACES.find((p) => p.id === id)?.factor ?? 1;
+
+/** A duration as a rider reads it: to the nearest 5 s — «45 s», «1 min», «1 min 20 s». */
+export function formatDuration(ms: number): string {
+  const total = Math.max(5, Math.round(Math.max(0, ms) / 5000) * 5);
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  if (!m) return `${sec} s`;
+  return sec ? `${m} min ${sec} s` : `${m} min`;
+}
+
+export function rideDurationMillis(meters: number, vehicle: Vehicle = "drone", pace = 1): number {
   const k = vehicle === "taxi" ? RIDE.taxi : RIDE;
   const ms = k.baseMs + (Math.max(0, meters) / 1000) * k.msPerKm;
-  return Math.round(Math.min(k.maxMs, Math.max(k.minMs, ms)));
+  return Math.round(Math.min(k.maxMs, Math.max(k.minMs, ms)) * (pace > 0 ? pace : 1));
 }
 
 /**
@@ -282,10 +304,12 @@ export function planFlight(opts: {
   finalHeading?: number;
   startHeading?: number;
   vehicle?: Vehicle;
+  /** A multiplier on the duration (`PACES`); 1 is normal. */
+  pace?: number;
 }): FlightPlan {
   const { path, ground, followsRoad } = opts;
   const vehicle: Vehicle = opts.vehicle === "taxi" && followsRoad ? "taxi" : "drone";
-  const durationMs = rideDurationMillis(path.length, vehicle);
+  const durationMs = rideDurationMillis(path.length, vehicle, opts.pace ?? 1);
   return {
     vehicle,
     path,
