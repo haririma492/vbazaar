@@ -1,41 +1,36 @@
-// The shopping districts a Virtual Ride can join. Any two of them make a
-// ride: `/vca/ride?from=<id>&to=<id>`. Adding a district is adding an entry
-// here — nothing in the ride is written for a particular pair.
+// The shopping districts a Virtual Ride can take someone to, from the
+// address they type. Adding a district is adding an entry here — nothing in
+// the ride is written for a particular place. `/vca/ride?to=<id>` preselects.
 //
-// Google 3D is only the TRANSPORT between our own scenes. A district's
+// Google 3D is only the TRANSPORT to our own scenes. A district's
 // `entryScene` is OUR page (the procedural bazaar, a splat tour, a 360° walk,
 // all served from R2 by our code); Google's imagery is streamed by Google's
 // own API during the ride and never stored by us.
 
-import type { LatLng, RideFraming } from "./camera";
+import type { LatLng } from "./flight";
 
 export type RideDistrict = {
   id: string;
   name: { fa: string; en: string };
+  /**
+   * The place itself — its entrance. The ride lands on the nearest street
+   * spot Google has Street View for, and the rider stands facing this.
+   */
   location: LatLng;
+  /** Ground height there in metres above sea level, used when Google's Elevation API is unavailable. */
+  groundAltitude: number;
   /** Our page for the district, or null while it has no scene yet. */
   entryScene: string | null;
-  /** How the ride's camera frames this district on leaving and arriving. */
-  rideArrival: RideFraming;
 };
 
 export const DISTRICTS: RideDistrict[] = [
   {
-    id: "home",
-    name: { fa: "بازار مجازی سرکوچه", en: "Sarekooche Virtual Bazaar" },
-    // ⚠️ PLACEHOLDER: Mel Lastman Square, North York. The virtual bazaar has
-    // no street address of its own yet — put the real "home" here.
-    location: { lat: 43.7676, lng: -79.4142 },
-    entryScene: "/vca",
-    rideArrival: { altitude: 180, tilt: 65, range: 380 },
-  },
-  {
     id: "world-on-yonge",
     name: { fa: "ورلد آن یانگ", en: "World on Yonge" },
-    // 7181–7191 Yonge St, just north of Steeles (approximate; check on the map).
+    // 7181–7191 Yonge St, just north of Steeles, east side (approximate).
     location: { lat: 43.8031, lng: -79.4196 },
+    groundAltitude: 190,
     entryScene: null,
-    rideArrival: { altitude: 190, heading: 200, tilt: 62, range: 320 },
   },
 ];
 
