@@ -214,12 +214,22 @@ export default function SplatVR() {
       const file = params.get("hq") === "1" && s.fileHQ ? s.fileHQ : s.file;
       return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null };
     };
-    async function loadMesh(id: string, src: string, flip: boolean): Promise<SplatMesh> {
+    // A scene already on its way is waited for, not downloaded again.
+    const pending = new Map<string, Promise<SplatMesh>>();
+    function loadMesh(id: string, src: string, flip: boolean, quiet = false): Promise<SplatMesh> {
+      const on = pending.get(id);
+      if (on) return on;
+      const p = loadMeshNow(id, src, flip, quiet).finally(() => pending.delete(id));
+      pending.set(id, p);
+      return p;
+    }
+    /** `quiet`: a scene joined to the one shown, loading behind the view — no progress bar over it. */
+    async function loadMeshNow(id: string, src: string, flip: boolean, quiet: boolean): Promise<SplatMesh> {
       const have = meshes.get(id);
       if (have) return have;
       await sparkReady;
       if (!sparkMod) throw new Error("Spark did not load.");
-      const bytes = await downloadSplat(src, setLoading);
+      const bytes = await downloadSplat(src, (share) => { if (!quiet) setLoading(share); });
       const mesh = new sparkMod.SplatMesh({
         fileBytes: bytes,
         fileName: new URL(src).pathname.split("/").pop() || "scene.spz",
@@ -413,7 +423,7 @@ export default function SplatVR() {
               if (other.id === id || !other.place) continue;
               const os = sourceOf(other.id);
               if (!os) continue;
-              void loadMesh(other.id, os.src, os.flip).then((m) => {
+              void loadMesh(other.id, os.src, os.flip, true).then((m) => {
                 placeMesh(m, os.flip, os.place);
                 m.visible = true;
               }).catch(() => {});

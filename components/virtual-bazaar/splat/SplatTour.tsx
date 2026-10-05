@@ -473,7 +473,17 @@ export default function SplatTour() {
     };
     let firstFrameAt: number | null = null;
 
-    async function loadMesh(id: string, src: string, flip: boolean): Promise<SplatMesh> {
+    // A scene already on its way is waited for, not downloaded again (each Align nudge asks for it).
+    const pending = new Map<string, Promise<SplatMesh>>();
+    function loadMesh(id: string, src: string, flip: boolean, quiet = false): Promise<SplatMesh> {
+      const on = pending.get(id);
+      if (on) return on;
+      const p = loadMeshNow(id, src, flip, quiet).finally(() => pending.delete(id));
+      pending.set(id, p);
+      return p;
+    }
+    /** `quiet`: a scene loading in the background (joined to the one shown) — no «Getting ready» over the view. */
+    async function loadMeshNow(id: string, src: string, flip: boolean, quiet: boolean): Promise<SplatMesh> {
       const have = meshes.get(id);
       if (have) {
         Object.assign(rep, { scene: id, src, error: null });
@@ -486,7 +496,7 @@ export default function SplatTour() {
       publish();
 
       const tFetch = performance.now();
-      const bytes = await downloadSplat(src, setLoading);
+      const bytes = await downloadSplat(src, (share) => { if (!quiet) setLoading(share); });
       const got = bytes.length;
       rep.bytes = got;
       rep.downloadMs = performance.now() - tFetch;
@@ -677,7 +687,23 @@ export default function SplatTour() {
       async showPlaced(id, place, aligning) {
         const so = sourceOf(id);
         if (!so) return;
-        const mesh = meshes.get(id) ?? (await loadMesh(id, so.src, so.flip));
+        // ⚠️ THE «GETTING READY» SCREEN ALWAYS GOES AWAY. A joined scene
+        // loading for Align shows its progress and clears it when done — or
+        // failed, with the reason on screen; one loading for a visitor (the
+        // world's other scenes) loads quietly behind the view.
+        let mesh = meshes.get(id);
+        if (!mesh) {
+          if (aligning) setLoading(0);
+          try {
+            mesh = await loadMesh(id, so.src, so.flip, !aligning);
+          } catch (e) {
+            rep.error = `«${id}» did not load: ${(e as Error).message}`;
+            publish();
+            throw e;
+          } finally {
+            if (aligning) setLoading(null);
+          }
+        }
         placeMesh(mesh, so.flip, place ?? IDENTITY);
         mesh.opacity = aligning ? 0.55 : 1;
         mesh.visible = true;
@@ -1242,7 +1268,7 @@ export default function SplatTour() {
     const start: Place = target.place ?? { offset: engine.current.pointAhead(3), yaw: -pose.yaw, scale: 1 };
     changeTour(t);
     setAlign({ id: target.id, place: start, before: target.place });
-    void engine.current.showPlaced(target.id, start, true);
+    void engine.current.showPlaced(target.id, start, true).catch(() => {});
   }
   /**
    * AUTO-JOIN (`joinAtEnd`): the chosen scene's route set off from the end of
@@ -1259,7 +1285,7 @@ export default function SplatTour() {
     if (!place) return;
     changeTour(t);
     setAlign({ id: target.id, place, before: target.place });
-    void engine.current.showPlaced(target.id, place, true);
+    void engine.current.showPlaced(target.id, place, true).catch(() => {});
   }
 
   function alignBy(by: { fwd?: number; side?: number; up?: number; turn?: number; grow?: number }) {
@@ -1275,15 +1301,15 @@ export default function SplatTour() {
       grow: by.grow ? Math.pow(1.01, by.grow * k) : undefined,
     }, engine.current.pointAhead(3));
     setAlign({ ...align, place });
-    void engine.current.showPlaced(align.id, place, true);
+    void engine.current.showPlaced(align.id, place, true).catch(() => {});
   }
   function finishAlign(keep: boolean) {
     if (!align || !tour || !engine.current) return;
     if (keep) {
       changeTour(updateScene(tour, align.id, { place: align.place }));
-      void engine.current.showPlaced(align.id, align.place, false);
+      void engine.current.showPlaced(align.id, align.place, false).catch(() => {});
     } else if (align.before) {
-      void engine.current.showPlaced(align.id, align.before, false);
+      void engine.current.showPlaced(align.id, align.before, false).catch(() => {});
     } else {
       engine.current.hide(align.id);
     }
