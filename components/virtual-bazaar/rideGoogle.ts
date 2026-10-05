@@ -63,7 +63,9 @@ export async function streetSpot(near: LatLng, radius = 80): Promise<{ pano: str
       location: near,
       radius,
       // Google's StreetViewSource / StreetViewPreference values are lowercase.
-      sources: ["outdoor"],
+      // Several sources are an intersection: Google's own outdoor imagery only —
+      // no indoor tours, no visitors' photo spheres.
+      sources: ["google", "outdoor"],
       preference: "nearest",
     });
     const loc = data?.location;

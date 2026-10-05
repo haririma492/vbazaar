@@ -184,6 +184,12 @@ test("districts: unique ids, real places", () => {
   // The splat tour's hallway is at World on Yonge: the ride lands into it.
   assert.equal(districtById("world-on-yonge")?.entryScene, "/vca/splat");
   assert.equal(districtById("world-on-yonge")?.enterOnArrival, true);
+  // It lands on Yonge in front of 7171 Yonge St, facing the building — not inside it.
+  const woy = districtById("world-on-yonge")!;
+  assert.deepEqual(woy.street, { lat: 43.8027855, lng: -79.4212847, heading: 69.91 });
+  assert.ok(woy.street!.lng < woy.location.lng, "the street spot is west of the towers");
+  near(bearingDegrees(woy.street!, woy.location), woy.street!.heading, 20);
+  for (const d of DISTRICTS) if (d.street) assert.ok(distanceMeters(d.street, d.location) < 150, d.id);
   assert.equal(districtById("nowhere"), null);
 });
 

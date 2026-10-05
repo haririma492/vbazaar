@@ -134,9 +134,13 @@ export default function VirtualRide({
     (async () => {
       // 1. Plan: where to stand at home and land at the district (the
       // nearest Street View spots), which roads, how high the ground is.
-      const [homeSpot, spot] = await Promise.all([streetSpot(origin.location, 100), streetSpot(to.location)]);
+      const [homeSpot, spot] = await Promise.all([
+        streetSpot(origin.location, 100),
+        // A district's own street spot is exact; snap only to its panorama.
+        to.street ? streetSpot(to.street, 25) : streetSpot(to.location),
+      ]);
       const start = homeSpot?.location ?? origin.location;
-      const landing = spot?.location ?? to.location;
+      const landing = spot?.location ?? (to.street ? { lat: to.street.lat, lng: to.street.lng } : to.location);
       const road = await roadRoute(start, landing);
       if (gone) return;
       setByRoad(!!road);
@@ -147,7 +151,9 @@ export default function VirtualRide({
         path,
         ground: heights ? groundProfile(path, heights) : () => to.groundAltitude,
         followsRoad: !!road,
-        finalHeading: distanceMeters(landing, to.location) > 8 ? bearingDegrees(landing, to.location) : undefined,
+        finalHeading:
+          to.street?.heading ??
+          (distanceMeters(landing, to.location) > 8 ? bearingDegrees(landing, to.location) : undefined),
         // Standing on the street, facing the house.
         startHeading: homeSpot
           ? distanceMeters(start, origin.location) > 5
