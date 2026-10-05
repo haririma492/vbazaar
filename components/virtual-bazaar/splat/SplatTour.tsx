@@ -50,6 +50,7 @@ import { downloadSplat, makeMarker, splatBase } from "./load";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, joinAtEnd, toLocal, toWorld, type Place } from "@/lib/splats/place";
+import { register, type Fit } from "@/lib/splats/register";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 const FADE_MS = 250;
@@ -139,6 +140,13 @@ type Engine = {
   setSpeed: (mps: number) => void;
   /** How walking feels (the tour's Drive, tuned in edit mode): speed-up time, turn amount, turn glide. */
   setDrive: (d: Drive) => void;
+  /**
+   * Join by the pictures (`lib/splats/register.ts`): the points scene `a`
+   * (as placed) and scene `b` (its own coordinates) have within `radius` of
+   * where they meet — `seam` in the world, `bStart` in b's — fitted onto each
+   * other from the guess. Loads both. Null when there is too little to fit.
+   */
+  matchJoin: (a: string, b: string, guess: Place, seam: Vec3, bStart: Vec3, radius: number) => Promise<Fit | null>;
 };
 
 /** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
@@ -211,6 +219,8 @@ export default function SplatTour({
     try { if (window.localStorage.getItem(GUIDED_KEY) === "off") setGuided(false); } catch { /* private mode: on */ }
   }, []);
   const [doorName, setDoorName] = useState("");
+  // How the last «go on to» join was made: by the pictures, or the paths only (and why).
+  const [joinNote, setJoinNote] = useState("");
   const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "scenes" | "info">("route");
   // How far the dashboard is pushed left (0: open; −(PANEL_W − GRIP_W): only the grip shows).
   const [panelX, setPanelX] = useState(0);
@@ -820,6 +830,30 @@ export default function SplatTour({
       },
       setSpeed(mps) {
         walkSpeed = mps;
+      },
+      async matchJoin(aId, bId, guess, seam, bStart, radius) {
+        const sa = sourceOf(aId), sb = sourceOf(bId);
+        if (!sa || !sb) return null;
+        const ma = meshes.get(aId) ?? (await loadMesh(aId, sa.src, sa.flip, true));
+        const mb = meshes.get(bId) ?? (await loadMesh(bId, sb.src, sb.flip, true));
+        placeMesh(ma, sa.flip, sa.place);
+        ma.updateMatrixWorld(true);
+        await new Promise((r) => setTimeout(r, 30)); // let the page say «matching…» first
+        const a: number[] = [], b: number[] = [];
+        const v = new THREE.Vector3();
+        const r2 = radius * radius, rb2 = (radius / guess.scale) ** 2;
+        ma.forEachSplat((_i, c, _s, _q, opacity) => {
+          if (opacity < 0.25) return;
+          v.copy(c).applyMatrix4(ma.matrixWorld);
+          if ((v.x - seam[0]) ** 2 + (v.z - seam[2]) ** 2 < r2) a.push(v.x, v.y, v.z);
+        });
+        mb.forEachSplat((_i, c, _s, _q, opacity) => {
+          if (opacity < 0.25) return;
+          // The scene's own coordinates are after its upright turn (as `Place` maps them).
+          const x = c.x, y = sb.flip ? -c.y : c.y, z = sb.flip ? -c.z : c.z;
+          if ((x - bStart[0]) ** 2 + (z - bStart[2]) ** 2 < rb2) b.push(x, y, z);
+        });
+        return register(Float32Array.from(a), Float32Array.from(b), guess, radius / 4);
       },
       setDrive(d) {
         drive = d;
@@ -1493,6 +1527,31 @@ export default function SplatTour({
     }
     setTour(next);
     void saveTour(next);
+    if (!place) return setJoinNote(`«${to}» has no path yet: it is a button on the right instead.`);
+    // ⚠️ THEN BY THE PICTURES (`register`): the paths only guess how the next
+    // scene is turned — the view jumped where they met. Both scenes saw the
+    // common area; its points are fitted onto each other. Both scenes are
+    // loaded for it: on a computer, not a phone.
+    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    if (phone) return setJoinNote("Joined by the paths. For an exact join, choose it again here on a computer.");
+    const len = (r: Vec3[]) => r.reduce((t, p, i) => (i ? t + Math.hypot(p[0] - r[i - 1][0], p[2] - r[i - 1][2]) : 0), 0);
+    // The common area and the shop fronts round it: generous — too little
+    // (two pillars) looks the same turned round.
+    const radius = Math.min(30, Math.max(10, 0.8 * Math.min(len(worldRoute), len(target.route) * hp.scale)));
+    setJoinNote("Matching the two scenes' pictures where they meet… (a few seconds; the page may pause)");
+    void engine.current
+      .matchJoin(here.id, to, place, end, target.route[0], radius)
+      .then((fit) => {
+        if (!fit || fit.share < 0.3) {
+          setJoinNote(`Joined by the paths only: the pictures did not match well enough${fit ? ` (${Math.round(fit.share * 100)}%)` : ""}.`);
+          return;
+        }
+        const exact = updateScene(next, to, { place: fit.place });
+        setTour(exact);
+        void saveTour(exact);
+        setJoinNote(`✓ Joined by the pictures: ${Math.round(fit.share * 100)}% of the common area matched.`);
+      })
+      .catch((e) => setJoinNote(`Joined by the paths only: ${(e as Error).message}`));
   }
 
   // The right-hand list: one button per other scene (its exit when there is one).
@@ -1749,6 +1808,7 @@ export default function SplatTour({
                     {others.map((s) => <option key={s.id} value={s.id}>{s.title.en}{s.place ? " ✓" : ""}</option>)}
                   </select>
                   <div className="text-white/40">Its blue line then carries on from the end of this one (saved at once).</div>
+                  {joinNote && <div className={joinNote.startsWith("✓") ? "text-emerald-300" : "text-amber-200"}>{joinNote}</div>}
                   <div className="space-y-0.5 rounded bg-white/5 p-1.5">
                     {tour.scenes.map((s) => (
                       <div key={s.id} className="flex justify-between gap-2">
