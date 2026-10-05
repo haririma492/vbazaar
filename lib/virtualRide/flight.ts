@@ -404,3 +404,79 @@ export function taxiFrame(plan: FlightPlan, tMs: number): RideCamera {
     heading: headingAt(plan.path, s, T.lookahead),
   };
 }
+
+/* ─── The last stretch, at street level in Street View. ────────────── */
+
+/**
+ * The drone flies all but the last stretch of the route; the rest is ridden
+ * through Google's Street View photographs, a stop every `spacing` metres,
+ * looking out to the side the destination is on — real street-level
+ * imagery where the 3D city is soft. A stop is shown for `hopMs` (× pace).
+ */
+export const STREET = {
+  /** Metres of the route ridden in Street View… */
+  stretch: 300,
+  /** …but never more than this share of a short route. */
+  maxShare: 0.4,
+  /** Metres between stops. */
+  spacing: 20,
+  /** Each stop's time on screen, at normal pace. */
+  hopMs: 750,
+  /** Fewer stops than this: no street stretch, the drone lands as before. */
+  minStops: 4,
+  /** Looking this far off the road, toward the destination's side. */
+  look: 60,
+} as const;
+
+/** The part of `path` from `from` to `to` metres along it. */
+export function subPath(path: RidePath, from: number, to: number): RidePath {
+  const a = Math.max(0, Math.min(from, path.length));
+  const b = Math.max(a, Math.min(to, path.length));
+  const inner = path.points.filter((_, i) => path.cum[i] > a && path.cum[i] < b);
+  return makePath([pointAt(path, a), ...inner, pointAt(path, b)], 0);
+}
+
+/** How long the street stretch is for a route of `meters` (0: none). */
+export function streetStretchMeters(meters: number): number {
+  const s = Math.min(STREET.stretch, meters * STREET.maxShare);
+  return s / STREET.spacing + 1 >= STREET.minStops ? s : 0;
+}
+
+/** The route split into the drone's flight and the street stretch; null when too short for one. */
+export function splitForStreet(path: RidePath): { flight: RidePath; street: RidePath } | null {
+  const s = streetStretchMeters(path.length);
+  if (!s) return null;
+  return { flight: subPath(path, 0, path.length - s), street: subPath(path, path.length - s, path.length) };
+}
+
+/** The stops along the street stretch, first to last (the destination), each with the road's heading there. */
+export function streetStops(street: RidePath): { at: LatLng; heading: number }[] {
+  const n = Math.max(2, Math.round(street.length / STREET.spacing) + 1);
+  return Array.from({ length: n }, (_, i) => {
+    const s = (street.length * i) / (n - 1);
+    return { at: pointAt(street, s), heading: headingAt(street, s, 30) };
+  });
+}
+
+/** +1 when `target` is to the right of the road at `s`, −1 to the left. */
+export function sideOf(path: RidePath, s: number, target: LatLng): 1 | -1 {
+  const d = bearingDegrees(pointAt(path, s), target) - headingAt(path, s, 30);
+  return Math.sin(rad(d)) >= 0 ? 1 : -1;
+}
+
+/** One stop's time on screen at a pace (kept between half a second and 1.2 s). */
+export function hopMillis(pace = 1): number {
+  return Math.round(Math.min(1_200, Math.max(500, STREET.hopMs * (pace > 0 ? pace : 1))));
+}
+
+/** The street stretch's duration: one hop between each pair of stops. */
+export function streetMillis(meters: number, pace = 1): number {
+  const s = streetStretchMeters(meters);
+  return s ? Math.round(s / STREET.spacing) * hopMillis(pace) : 0;
+}
+
+/** The drone's flight plus the street stretch, for a route of `meters` (the ends' scenes are the caller's). */
+export function rideEstimateMillis(meters: number, pace = 1, vehicle: Vehicle = "drone"): number {
+  if (vehicle !== "drone") return rideDurationMillis(meters, vehicle, pace);
+  return rideDurationMillis(meters - streetStretchMeters(meters), vehicle, pace) + streetMillis(meters, pace);
+}

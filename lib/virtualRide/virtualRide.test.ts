@@ -327,3 +327,54 @@ test("durations read the way a rider reads them", async () => {
   assert.equal(formatDuration(81_000), "1 min 20 s");
   assert.equal(formatDuration(125_000), "2 min 5 s");
 });
+
+test("the last stretch: split off the route's end, stops every 20 m, on the destination's side", async () => {
+  const F = await import("./flight.ts");
+  const bend = offset(O, 0, 4000);
+  const end = offset(bend, 90, 1000);
+  const path = makePath([O, bend, end]);
+  const split = F.splitForStreet(path)!;
+  near(split.street.length, F.STREET.stretch, 0.5);
+  near(split.flight.length + split.street.length, path.length, 0.5);
+  near(distanceMeters(split.flight.points.at(-1)!, split.street.points[0]), 0, 0.01);
+  near(distanceMeters(split.street.points.at(-1)!, end), 0, 0.01);
+
+  const stops = F.streetStops(split.street);
+  assert.equal(stops.length, F.STREET.stretch / F.STREET.spacing + 1);
+  near(distanceMeters(stops[0].at, split.street.points[0]), 0, 0.01);
+  near(distanceMeters(stops.at(-1)!.at, end), 0, 0.01);
+  for (const st of stops) near(st.heading, 90, 1); // heading east along the last leg
+
+  // A shop north of the road (on the left going east) and one south (right).
+  assert.equal(F.sideOf(split.street, 0, offset(end, 0, 40)), -1);
+  assert.equal(F.sideOf(split.street, 0, offset(end, 180, 40)), 1);
+
+  // Short routes: a share of the route, or none at all.
+  near(F.streetStretchMeters(500), 200, 1e-9);
+  assert.equal(F.streetStretchMeters(100), 0);
+  assert.equal(F.splitForStreet(makePath([O, offset(O, 0, 100)])), null);
+
+  // Timing follows the pace, within bounds, and the estimate adds up.
+  assert.equal(F.hopMillis(1), F.STREET.hopMs);
+  assert.ok(F.hopMillis(1.6) > F.hopMillis(1) && F.hopMillis(0.6) < F.hopMillis(1));
+  assert.equal(F.hopMillis(10), 1_200);
+  assert.equal(F.streetMillis(5000), (F.STREET.stretch / F.STREET.spacing) * F.STREET.hopMs);
+  assert.equal(F.rideEstimateMillis(5000), rideDurationMillis(5000 - F.STREET.stretch) + F.streetMillis(5000));
+  assert.equal(F.rideEstimateMillis(5000, 1, "taxi"), rideDurationMillis(5000, "taxi"));
+});
+
+test("aboard: steady under the rider, spinning, solid; getting off starts from there", async () => {
+  const { BOARDING, aboardFrame, alightingFrame } = await import("./boarding.ts");
+  for (const t of [0, 1234, 9999]) {
+    const f = aboardFrame(t);
+    near(f.drone.z, -BOARDING.boardAhead, 1e-9);
+    near(f.drone.y, BOARDING.boardHeight, 1e-9);
+    assert.equal(f.opacity, 1);
+    near(f.spin, BOARDING.maxSpin, 1e-9);
+    assert.ok(Math.abs(f.bob) <= 0.04);
+  }
+  // Getting off, joined at the moment it is solid: same place, same spin.
+  const join = alightingFrame(BOARDING.fadeMs);
+  assert.equal(join.opacity, 1);
+  assert.deepEqual(join.drone, aboardFrame(0).drone);
+});

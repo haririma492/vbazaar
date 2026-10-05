@@ -3,11 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  type LatLng, type Vehicle, RIDE, bearingDegrees, distanceMeters, flightFrame, formatDuration, groundProfile,
-  makePath, planFlight, rideDistance, samplePath, straightPath,
+  type LatLng, type Vehicle, RIDE, STREET, bearingDegrees, distanceMeters, flightFrame, formatDuration,
+  groundProfile, headingAt, hopMillis, lerpAngle, makePath, planFlight, rideDistance, samplePath, sideOf,
+  splitForStreet, straightPath, streetStops,
 } from "@/lib/virtualRide/flight";
 import type { RideDistrict } from "@/lib/virtualRide/districts";
-import { BOARDING, BOARDING_MS, alightingFrame, boardingFrame, type BoardingFrame } from "@/lib/virtualRide/boarding";
+import {
+  BOARDING, BOARDING_MS, aboardFrame, alightingFrame, boardingFrame, type BoardingFrame,
+} from "@/lib/virtualRide/boarding";
 import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle";
 import { createDrone, type DronePlayer } from "./rideDrone";
 import { TAXI_ALIGHTING_MS, TAXI_BOARDING_MS, taxiAlightingFrame, taxiBoardingFrame } from "@/lib/virtualRide/taxi";
@@ -19,7 +22,11 @@ import { createTaxi, type TaxiPlayer } from "./rideTaxi";
  * a drone waits on the street, spins up and glides in under them, carries
  * them a couple of metres and fades as the view cross-fades into the 3D
  * city at the same spot and lifts off, low over the real roads in Google's photorealistic 3D city, down to eye
- * level on the pavement outside, into Street View there with the drone
+ * level 300 m short of the district — and rides that last stretch at street
+ * level through Google's Street View photographs, a stop every 20 m, looking
+ * out at the destination's side of the street (real imagery where the 3D
+ * city is soft), turning at the end to face the district; on the pavement
+ * outside, in Street View, with the drone
  * still under them, which carries them on and sets down ahead — then either
  * straight into the district's
  * own scene at its start (`enterOnArrival`: World on Yonge → `/vca/splat`;
@@ -41,7 +48,8 @@ import { createTaxi, type TaxiPlayer } from "./rideTaxi";
 
 export type RideOrigin = { location: LatLng; label: string };
 
-type Stage = "planning" | "loading" | "boarding" | "flying" | "alighting" | "entering" | "walking" | "landed" | "failed";
+type Stage =
+  | "planning" | "loading" | "boarding" | "flying" | "street" | "alighting" | "entering" | "walking" | "landed" | "failed";
 
 /** Longest wait for the home neighbourhood to draw before taking off anyway. */
 const READY_WAIT_MS = 6_000;
@@ -54,6 +62,13 @@ const CROSSFADE_MS = 1_500;
 const REVEAL_MS = 1_200;
 /** The parked drone stays a moment before the scene fades in. */
 const PARKED_MS = 600;
+/** The street stretch's last stop turns from the side window to face the district over this. */
+const TURN_MS = 900;
+/** In each stop: the next photograph loads hidden, then cross-fades in over this share of the stop. */
+const HOP_LOAD = 0.45;
+const HOP_FADE = 0.4;
+/** Each stop drifts this much closer (Street View zoom) while it is shown, for a sense of moving on. */
+const HOP_DRIFT = 0.15;
 
 /**
  * Everything but the flight, when there is Street View at both ends and the
@@ -133,6 +148,9 @@ export default function VirtualRide({
   const outerRef = useRef<HTMLDivElement>(null);
   const mapHostRef = useRef<HTMLDivElement>(null);
   const streetRef = useRef<HTMLDivElement>(null);
+  // The street stretch's two Street View layers: one shown, the next loading under it.
+  const streetARef = useRef<HTMLDivElement>(null);
+  const streetBRef = useRef<HTMLDivElement>(null);
   const homeStreetRef = useRef<HTMLDivElement>(null);
   const droneRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState<Stage>("planning");
@@ -179,15 +197,36 @@ export default function VirtualRide({
       if (gone) return;
       setByRoad(!!road);
       const path = road ? makePath([start, ...road, landing]) : straightPath(start, landing);
-      const heights = await groundAlong(samplePath(path, 48), 128);
+
+      // The last stretch at street level (by drone, along a road, with Street View at the district):
+      // its photographs, one a stop, found now — too few and the drone flies the whole way.
+      const split = vehicle === "drone" && road && spot ? splitForStreet(path) : null;
+      const look = split ? sideOf(split.street, 0, to.location) * STREET.look : 0;
+      const findHops = async (): Promise<{ pano: string; heading: number }[] | null> => {
+        if (!split || !spot) return null;
+        const stops = streetStops(split.street);
+        const found = await Promise.all(stops.slice(0, -1).map((st) => streetSpot(st.at, 15, true)));
+        const hops: { pano: string; heading: number }[] = [];
+        found.forEach((f, i) => {
+          if (f && f.pano !== spot.pano && f.pano !== hops[hops.length - 1]?.pano)
+            hops.push({ pano: f.pano, heading: (stops[i].heading + look + 360) % 360 });
+        });
+        hops.push({ pano: spot.pano, heading: (stops[stops.length - 1].heading + look + 360) % 360 });
+        return hops.length >= STREET.minStops ? hops : null;
+      };
+      const [heights, hops] = await Promise.all([groundAlong(samplePath(path, 48), 128), findHops()]);
       if (gone) return;
+      /** Standing outside the district at the end: the way to face it. */
+      const standHeading =
+        to.street?.heading ??
+        (distanceMeters(landing, to.location) > 8 ? bearingDegrees(landing, to.location) : undefined);
       const plan = planFlight({
-        path,
+        // With a street stretch the drone comes down where it begins, looking out of the side window.
+        path: hops && split ? split.flight : path,
+        // (The flight is the route's beginning, so the full route's ground profile serves it.)
         ground: heights ? groundProfile(path, heights) : () => to.groundAltitude,
         followsRoad: !!road,
-        finalHeading:
-          to.street?.heading ??
-          (distanceMeters(landing, to.location) > 8 ? bearingDegrees(landing, to.location) : undefined),
+        finalHeading: hops ? hops[0].heading : standHeading,
         // Standing on the street, facing the house.
         startHeading: homeSpot
           ? distanceMeters(start, origin.location) > 5
@@ -243,21 +282,105 @@ export default function VirtualRide({
       map.addEventListener("gmp-error", () => fail("Google 3D Maps reported an error (key, billing or API not enabled?)"));
       mapHostRef.current.appendChild(map);
 
-      const destPano =
-        spot && StreetViewPanorama && streetRef.current ? panorama(streetRef.current, spot.pano, plan.finalHeading) : null;
+      // The district's Street View, under the city: the street stretch's first stop (layer A, with
+      // layer B for the next), or the landing spot itself.
+      const svOK = !!(spot && StreetViewPanorama && streetARef.current && streetBRef.current);
+      const streetHops = svOK ? hops : null;
+      const destPano = svOK
+        ? panorama(streetARef.current!, streetHops ? streetHops[0].pano : spot!.pano, plan.finalHeading)
+        : null;
+      const nextPano = streetHops ? panorama(streetBRef.current!, streetHops[1].pano, streetHops[1].heading) : null;
+      const hop = hopMillis(pace);
+      const streetMs = streetHops ? (streetHops.length - 1) * hop + TURN_MS : 0;
 
-      /** The drone over Street View, playing one of its timelines; null if it can't be drawn. */
-      const playDrone = async (frameAt: (t: number) => BoardingFrame, pano: any) => {
+      /** The drone over Street View, playing one of its timelines; `fresh`: a new drone (else the one already there). */
+      const playDrone = async (
+        frameAt: (t: number) => BoardingFrame,
+        pano: any,
+        durationMs = BOARDING_MS,
+        fresh = true,
+      ) => {
         if (!droneRef.current) return;
         try {
-          drone?.dispose();
-          drone = await createDrone(droneRef.current);
+          if (fresh) {
+            drone?.dispose();
+            drone = null;
+          }
+          drone ??= await createDrone(droneRef.current);
           if (gone) return;
-          await drone.play(frameAt, BOARDING_MS, dolly(pano));
+          await drone.play(frameAt, durationMs, pano ? dolly(pano) : undefined);
         } catch (e) {
           console.warn("Virtual ride: no drone", e);
         }
       };
+
+      /**
+       * The street stretch: stop after stop, each loading in the hidden layer and cross-fading in
+       * while the shown one drifts closer; at the last (the landing spot) turning to face the
+       * district. Resolves with the panorama left showing.
+       */
+      const rideStreet = (stops: { pano: string; heading: number }[]) =>
+        new Promise<any>((resolve) => {
+          const layers = [
+            { el: streetARef.current!, pano: destPano },
+            { el: streetBRef.current!, pano: nextPano },
+          ];
+          let shown = 0;
+          let i = 0;
+          let hopStart = performance.now();
+          const drift = () => {
+            if (gone) return;
+            const k = Math.min(1, (performance.now() - hopStart) / hop);
+            try { layers[shown].pano.setZoom(1 + HOP_DRIFT * k); } catch { /* fine */ }
+            raf = requestAnimationFrame(drift);
+          };
+          raf = requestAnimationFrame(drift);
+          const advance = () => {
+            if (gone) return resolve(null);
+            i++;
+            if (i >= stops.length) {
+              // Facing the district, from the side window.
+              cancelAnimationFrame(raf);
+              const from = stops[stops.length - 1].heading;
+              const to_ = standHeading ?? from;
+              const t0 = performance.now();
+              const turn = (now: number) => {
+                if (gone) return resolve(null);
+                const k = Math.min(1, (now - t0) / TURN_MS);
+                try { layers[shown].pano.setPov({ heading: lerpAngle(from, to_, k * k * (3 - 2 * k)), pitch: 0 }); } catch { /* fine */ }
+                if (k < 1) raf = requestAnimationFrame(turn);
+                else resolve(layers[shown].pano);
+              };
+              raf = requestAnimationFrame(turn);
+              return;
+            }
+            const back = layers[1 - shown];
+            // (Stop 1 is already loading in layer B since the flight.)
+            if (i > 1) {
+              try {
+                back.pano.setPano(stops[i].pano);
+                back.pano.setPov({ heading: stops[i].heading, pitch: 0 });
+                back.pano.setZoom(1);
+              } catch { /* that stop is skipped visually */ }
+            }
+            later(() => {
+              if (gone) return;
+              back.el.style.transition = `opacity ${hop * HOP_FADE}ms linear`;
+              back.el.style.zIndex = "1";
+              back.el.style.opacity = "1";
+              const front = layers[shown];
+              front.el.style.zIndex = "0";
+              later(() => {
+                front.el.style.transition = "none";
+                front.el.style.opacity = "0";
+              }, hop * HOP_FADE);
+              shown = 1 - shown;
+              hopStart = performance.now();
+              later(advance, hop * (1 - HOP_LOAD));
+            }, hop * HOP_LOAD);
+          };
+          later(advance, hop * (1 - HOP_LOAD));
+        });
 
       /** The taxi over Street View, playing one of its timelines (kept for the drive). */
       const playTaxi = async (frameAt: typeof taxiBoardingFrame, durationMs: number) => {
@@ -284,8 +407,11 @@ export default function VirtualRide({
             performance.now() +
               (homePano ? (byTaxi ? TAXI_BOARDING_MS : BOARDING_MS) : 0) +
               plan.durationMs +
+              streetMs +
               (enter && onEnterRef.current
-                ? (destPano ? (byTaxi ? TAXI_ALIGHTING_MS : BOARDING_MS) + PARKED_MS : 0) + REVEAL_MS
+                ? (destPano
+                    ? (byTaxi ? TAXI_ALIGHTING_MS : streetHops ? BOARDING_MS - BOARDING.fadeMs : BOARDING_MS) + PARKED_MS
+                    : 0) + REVEAL_MS
                 : 0),
           );
           // Board the drone, or get into the taxi, in front of home.
@@ -344,6 +470,22 @@ export default function VirtualRide({
               raf = requestAnimationFrame(step);
               return;
             }
+            void arrive();
+          };
+          /** At the end of the flight: the street stretch (if any), then the district. */
+          const arrive = async () => {
+            let atDoor = destPano;
+            if (streetHops) {
+              map?.remove(); // Street View from here; stop drawing the city
+              map = null;
+              setStage("street");
+              const [last] = await Promise.all([
+                rideStreet(streetHops),
+                playDrone(aboardFrame, null, streetMs, true),
+              ]);
+              if (gone) return;
+              atDoor = last ?? destPano;
+            }
             console.log("ARRIVED", to.id);
             if (enter && onEnterRef.current) {
               const reveal = () => {
@@ -358,12 +500,17 @@ export default function VirtualRide({
                 }
                 later(() => !gone && onEnterRef.current?.(), REVEAL_MS);
               };
-              if (destPano) {
+              if (atDoor) {
                 // Off the drone (or out of the taxi) on the pavement outside, then into the scene.
-                map.remove();
+                map?.remove();
                 map = null;
                 setStage("alighting");
-                const off = byTaxi ? playTaxi(taxiAlightingFrame, TAXI_ALIGHTING_MS) : playDrone(alightingFrame, destPano);
+                const off = byTaxi
+                  ? playTaxi(taxiAlightingFrame, TAXI_ALIGHTING_MS)
+                  : streetHops
+                    ? // Already aboard and solid after the street stretch: getting off from there.
+                      playDrone((t) => alightingFrame(t + BOARDING.fadeMs), atDoor, BOARDING_MS - BOARDING.fadeMs, false)
+                    : playDrone(alightingFrame, atDoor);
                 void off.then(() => {
                   if (gone) return;
                   setStage("entering");
@@ -377,8 +524,10 @@ export default function VirtualRide({
               setStage("entering");
               routerRef.current.push(enter);
             } else if (spot) {
-              map.remove(); // Street View from here; stop drawing the city
+              map?.remove(); // Street View from here; stop drawing the city
               map = null;
+              drone?.dispose();
+              drone = null;
               setStage("walking");
             } else setStage("landed");
           };
@@ -403,7 +552,10 @@ export default function VirtualRide({
 
   return (
     <div ref={outerRef} dir="ltr" style={{ position: "fixed", inset: 0, zIndex: 50, background: "#000" }}>
-      <div ref={streetRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />
+      <div ref={streetRef} style={{ position: "absolute", inset: 0, zIndex: 0 }}>
+        <div ref={streetARef} style={{ position: "absolute", inset: 0, zIndex: 1, opacity: 1 }} />
+        <div ref={streetBRef} style={{ position: "absolute", inset: 0, zIndex: 0, opacity: 0 }} />
+      </div>
       {!walking && <div ref={mapHostRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />}
       {!walking && <div ref={homeStreetRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />}
       <div ref={droneRef} style={{ position: "absolute", inset: 0, zIndex: 3, pointerEvents: "none" }} />

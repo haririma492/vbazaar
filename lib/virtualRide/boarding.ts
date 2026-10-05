@@ -84,3 +84,14 @@ export function alightingFrame(tMs: number): BoardingFrame {
   const f = boardingFrame(BOARDING_MS - Math.max(0, tMs));
   return { ...f, carried: BOARDING.carryMeters - f.carried };
 }
+
+/**
+ * Riding aboard, between boarding and getting off (the street stretch at
+ * the destination): just ahead of and below the rider's eye, propellers at
+ * full spin, hovering.
+ */
+export function aboardFrame(tMs: number): BoardingFrame {
+  const B = BOARDING;
+  const f = boardingFrame(B.spinUpMs + B.approachMs);
+  return { ...f, bob: 0.04 * Math.sin((Math.max(0, tMs) / 1000) * Math.PI * 1.6) };
+}

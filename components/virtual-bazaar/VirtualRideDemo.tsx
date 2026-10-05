@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ComponentType } from "react";
 import dynamic from "next/dynamic";
 import VirtualRide, { RIDE_EXTRAS_MS, type RideOrigin } from "./VirtualRide";
 import {
-  type PaceId, type Vehicle, PACES, distanceMeters, formatDuration, makePath, paceFactor, rideDurationMillis,
+  type PaceId, type Vehicle, PACES, distanceMeters, formatDuration, makePath, paceFactor, rideEstimateMillis,
 } from "@/lib/virtualRide/flight";
 import { roadRoute } from "./rideGoogle";
 import { DISTRICTS, districtById } from "@/lib/virtualRide/districts";
@@ -104,7 +104,7 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
   }, [routeKey]);
   const meters = route?.key === routeKey ? route.meters : null;
   const estimate = (id: PaceId) =>
-    meters == null ? null : rideDurationMillis(meters, vehicle, paceFactor(id)) + RIDE_EXTRAS_MS;
+    meters == null ? null : rideEstimateMillis(meters, paceFactor(id), vehicle) + RIDE_EXTRAS_MS;
   const estimateMs = estimate(pace);
 
   const Scene = to.enterOnArrival && to.entryScene ? PRELOADABLE[to.entryScene] ?? null : null;
