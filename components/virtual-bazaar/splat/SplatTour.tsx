@@ -126,6 +126,8 @@ type Engine = {
   setWorld: (members: Member[], show: boolean) => void;
   /** Walls on (`lib/splats/corridor.ts`); off while the operator records a route or aligns. */
   setWalls: (on: boolean) => void;
+  /** ↩ Turn the body round to face back along the blue line (exactly, near it), gliding. */
+  turnAround: () => void;
   /** Follow the path (`guideStep`): «go» and «back» are all a visitor needs; the route steers. */
   setGuided: (on: boolean) => void;
   /** Enter / «Go in»: through the exit or shop door in reach. False when none is. */
@@ -820,6 +822,20 @@ export default function SplatTour({
       setGuided(on) {
         guided = on;
       },
+      turnAround() {
+        // ⚠️ BACK THE WAY THEY CAME (operator, 2026-10-05): a shopper who
+        // turns round walks the same blue line the other way. Turning 180°
+        // by twisting a phone takes several twists; this does it in one
+        // glide, onto the line's exact opposite direction where there is one.
+        // Tilting forward then follows the line back (`guideStep` goes
+        // whichever way along it the visitor faces).
+        const facing = -headingOf(camera.quaternion) + (turnTarget - turnYaw);
+        let want = facing + Math.PI;
+        const g = guideStep([...world.filter((m) => m.route.length > 1).map((m) => m.route), ...links.map((l) => l.route)], camera.position.x, camera.position.z, want);
+        if (g) want = g.aim;
+        turnTarget += angleDiff(want, facing);
+        userTurnAt = performance.now();
+      },
       goIn() {
         if (reachTarget.exit) {
           exitHandler.current(reachTarget.exit);
@@ -1429,6 +1445,7 @@ export default function SplatTour({
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (e.key === "h" || e.key === "H" || e.key === "Home") void goCentre();
+      if (e.key === "u" || e.key === "U") engine.current?.turnAround();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1936,6 +1953,11 @@ export default function SplatTour({
         {tour && (
           <button onClick={() => void goCentre()} className="rounded-full border border-emerald-300/70 bg-emerald-400/20 text-emerald-50" title="H">
             ⌂ مرکز · Centre
+          </button>
+        )}
+        {tour && (
+          <button onClick={() => engine.current?.turnAround()} className="rounded-full border border-sky-300/60 bg-black/60 text-sky-50" title="U">
+            ↩ برگشت · Turn around
           </button>
         )}
         {touch && (
