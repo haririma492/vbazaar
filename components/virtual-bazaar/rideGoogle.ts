@@ -90,12 +90,15 @@ export async function streetSpot(near: LatLng, radius = 80): Promise<{ pano: str
     const { data } = await new StreetViewService().getPanorama({
       location: near,
       radius,
-      sources: ["OUTDOOR"],
-      preference: "NEAREST",
+      // Google's StreetViewSource / StreetViewPreference values are lowercase.
+      sources: ["outdoor"],
+      preference: "nearest",
     });
     const loc = data?.location;
     return loc?.pano && loc?.latLng ? { pano: loc.pano, location: plain(loc.latLng) } : null;
-  } catch {
+  } catch (e) {
+    // ZERO_RESULTS (no Street View that close) lands here too.
+    console.warn("Virtual ride: no Street View spot near", near, e);
     return null;
   }
 }
