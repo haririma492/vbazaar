@@ -16,9 +16,15 @@ import { importLibrary } from "./rideGoogle";
 const REMEMBER = "sk-ride-origin";
 const REMEMBER_VEHICLE = "sk-ride-vehicle";
 
+/**
+ * ⚠️ BY TAXI IS OFF (operator, 2026-10-05: the cab wandered across the road
+ * and drove on the wrong side). The route is the road's centreline and the
+ * chase camera puts the car on it, so it is never in a lane. Its code stays
+ * (rideTaxi.ts, lib/virtualRide/taxi.ts, `vehicle: "taxi"` in the flight
+ * plan); listing it here again brings the «How?» choice back.
+ */
 const VEHICLES: { id: Vehicle; en: string; fa: string; icon: string; note: string }[] = [
   { id: "drone", en: "By drone", fa: "با پهپاد", icon: "🚁", note: "Low over the roads, landing on the pavement" },
-  { id: "taxi", en: "By taxi", fa: "با تاکسی", icon: "🚕", note: "Along the streets, pulling up at the door" },
 ];
 
 type Preloadable = ComponentType<{ preload?: boolean; onReady?: () => void }>;
@@ -53,7 +59,7 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
   useEffect(() => {
     try {
       const v = localStorage.getItem(REMEMBER_VEHICLE);
-      if (v === "drone" || v === "taxi") setVehicle(v);
+      if (VEHICLES.some((x) => x.id === v)) setVehicle(v as Vehicle);
     } catch { /* the default */ }
   }, []);
   const chooseVehicle = (v: Vehicle) => {
@@ -130,7 +136,7 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
           </div>
         </section>
 
-        <section className="space-y-2">
+        {VEHICLES.length > 1 && <section className="space-y-2">
           <h2 className="text-sm text-neutral-400">How?</h2>
           <div className="grid grid-cols-2 gap-2">
             {VEHICLES.map((v) => (
@@ -151,7 +157,7 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
               </button>
             ))}
           </div>
-        </section>
+        </section>}
 
         <button
           type="button"
