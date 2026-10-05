@@ -7,13 +7,19 @@ import {
   samplePath, straightPath,
 } from "@/lib/virtualRide/flight";
 import type { RideDistrict } from "@/lib/virtualRide/districts";
+import { BOARDING, BOARDING_MS, alightingFrame, boardingFrame, type BoardingFrame } from "@/lib/virtualRide/boarding";
 import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle";
+import { createDrone, type DronePlayer } from "./rideDrone";
 
 /**
  * The Virtual Ride: from the rider's own address to a shopping district.
- * It begins in Street View on the street in front of their home, facing it,
- * cross-fades into the 3D city at the same spot and lifts off, low over the real roads in Google's photorealistic 3D city, down to eye
- * level on the pavement outside — then either straight into the district's
+ * It begins in Street View on the street in front of their home, facing it:
+ * a drone waits on the street, spins up and glides in under them, carries
+ * them a couple of metres and fades as the view cross-fades into the 3D
+ * city at the same spot and lifts off, low over the real roads in Google's photorealistic 3D city, down to eye
+ * level on the pavement outside, into Street View there with the drone
+ * still under them, which carries them on and sets down ahead — then either
+ * straight into the district's
  * own scene at its start (`enterOnArrival`: World on Yonge → `/vca/splat`;
  * with `onEnter` the scene is already loaded underneath and the landing
  * cross-fades straight into it),
@@ -28,7 +34,7 @@ import { groundAlong, importLibrary, roadRoute, streetSpot } from "./rideGoogle"
 
 export type RideOrigin = { location: LatLng; label: string };
 
-type Stage = "planning" | "loading" | "flying" | "entering" | "walking" | "landed" | "failed";
+type Stage = "planning" | "loading" | "boarding" | "flying" | "alighting" | "entering" | "walking" | "landed" | "failed";
 
 /** Longest wait for the home neighbourhood to draw before taking off anyway. */
 const READY_WAIT_MS = 6_000;
@@ -39,6 +45,13 @@ const STREET_HOLD_MS = 3_000;
 const CROSSFADE_MS = 1_500;
 /** Landing into a scene preloaded underneath: the whole ride fades away over this. */
 const REVEAL_MS = 1_200;
+/** The parked drone stays a moment before the scene fades in. */
+const PARKED_MS = 600;
+/** Street View zoom 1 is 90° across, as the drone's camera; carrying dollies in to this. */
+const CARRY_ZOOM = 1.35;
+const dolly = (pano: any) => (f: BoardingFrame) => {
+  try { pano?.setZoom(1 + (CARRY_ZOOM - 1) * (f.carried / BOARDING.carryMeters)); } catch { /* still flies */ }
+};
 
 const bar: React.CSSProperties = {
   position: "absolute",
@@ -97,6 +110,7 @@ export default function VirtualRide({
   const mapHostRef = useRef<HTMLDivElement>(null);
   const streetRef = useRef<HTMLDivElement>(null);
   const homeStreetRef = useRef<HTMLDivElement>(null);
+  const droneRef = useRef<HTMLDivElement>(null);
   const [stage, setStage] = useState<Stage>("planning");
   const [error, setError] = useState<string | null>(null);
   const [byRoad, setByRoad] = useState(true);
@@ -104,6 +118,7 @@ export default function VirtualRide({
   useEffect(() => {
     let gone = false;
     let map: any = null;
+    let drone: DronePlayer | null = null;
     let raf = 0;
     const timers: ReturnType<typeof setTimeout>[] = [];
     const later = (fn: () => void, ms: number) => timers.push(setTimeout(fn, ms));
@@ -145,7 +160,7 @@ export default function VirtualRide({
       // underneath it; the destination's Street View waiting below both.
       setStage("loading");
       let StreetViewPanorama: any = null;
-      if ((homeSpot || (spot && !enter))) {
+      if (homeSpot || spot) {
         try {
           ({ StreetViewPanorama } = await importLibrary("streetView"));
         } catch { /* no Street View: the ride still flies */ }
@@ -154,7 +169,7 @@ export default function VirtualRide({
         new StreetViewPanorama(el, {
           pano,
           pov: { heading, pitch: 0 },
-          zoom: 0,
+          zoom: 1,
           addressControl: false,
           fullscreenControl: false,
           motionTracking: false,
@@ -162,9 +177,10 @@ export default function VirtualRide({
           showRoadLabels: false,
         });
       if (gone) return;
-      if (homeSpot && StreetViewPanorama && homeStreetRef.current) {
-        panorama(homeStreetRef.current, homeSpot.pano, plan.startHeading!);
-      }
+      const homePano =
+        homeSpot && StreetViewPanorama && homeStreetRef.current
+          ? panorama(homeStreetRef.current, homeSpot.pano, plan.startHeading!)
+          : null;
       let Map3DElement: any;
       try {
         ({ Map3DElement } = await importLibrary("maps3d"));
@@ -178,17 +194,37 @@ export default function VirtualRide({
       map.addEventListener("gmp-error", () => fail("Google 3D Maps reported an error (key, billing or API not enabled?)"));
       mapHostRef.current.appendChild(map);
 
-      if (spot && !enter && StreetViewPanorama && streetRef.current) {
-        panorama(streetRef.current, spot.pano, plan.finalHeading);
-      }
+      const destPano =
+        spot && StreetViewPanorama && streetRef.current ? panorama(streetRef.current, spot.pano, plan.finalHeading) : null;
+
+      /** The drone over Street View, playing one of its timelines; null if it can't be drawn. */
+      const playDrone = async (frameAt: (t: number) => BoardingFrame, pano: any) => {
+        if (!droneRef.current) return;
+        try {
+          drone?.dispose();
+          drone = await createDrone(droneRef.current);
+          if (gone) return;
+          await drone.play(frameAt, BOARDING_MS, dolly(pano));
+        } catch (e) {
+          console.warn("Virtual ride: no drone", e);
+        }
+      };
 
       // 3. Fly once home has drawn, after a beat.
       let started = false;
       const fly = () => {
         if (gone || started) return;
         started = true;
-        later(() => {
+        later(async () => {
           if (gone) return;
+          // Board the drone in front of home.
+          if (homePano) {
+            setStage("boarding");
+            await playDrone(boardingFrame, homePano);
+            drone?.dispose();
+            drone = null;
+            if (gone) return;
+          }
           setStage("flying");
           const t0 = performance.now();
           const step = (now: number) => {
@@ -215,7 +251,6 @@ export default function VirtualRide({
             }
             console.log("ARRIVED", to.id);
             if (enter && onEnterRef.current) {
-              setStage("entering");
               const reveal = () => {
                 if (gone) return;
                 if (!readyRef.current) {
@@ -228,7 +263,20 @@ export default function VirtualRide({
                 }
                 later(() => !gone && onEnterRef.current?.(), REVEAL_MS);
               };
-              reveal();
+              if (destPano) {
+                // Off the drone on the pavement outside, then into the scene.
+                map.remove();
+                map = null;
+                setStage("alighting");
+                void playDrone(alightingFrame, destPano).then(() => {
+                  if (gone) return;
+                  setStage("entering");
+                  later(reveal, PARKED_MS);
+                });
+              } else {
+                setStage("entering");
+                reveal();
+              }
             } else if (enter) {
               setStage("entering");
               routerRef.current.push(enter);
@@ -250,6 +298,7 @@ export default function VirtualRide({
       cancelAnimationFrame(raf);
       timers.forEach(clearTimeout);
       map?.remove();
+      drone?.dispose();
     };
   }, [origin, to]);
 
@@ -260,6 +309,7 @@ export default function VirtualRide({
       <div ref={streetRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />
       {!walking && <div ref={mapHostRef} style={{ position: "absolute", inset: 0, zIndex: 1 }} />}
       {!walking && <div ref={homeStreetRef} style={{ position: "absolute", inset: 0, zIndex: 2 }} />}
+      <div ref={droneRef} style={{ position: "absolute", inset: 0, zIndex: 3, pointerEvents: "none" }} />
       {/* Swallows touches while flying: a grab would fight the camera. */}
       {!walking && <div style={{ position: "absolute", inset: 0, zIndex: 3 }} />}
 
