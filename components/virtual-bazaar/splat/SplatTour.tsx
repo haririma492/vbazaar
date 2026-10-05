@@ -1427,6 +1427,13 @@ export default function SplatTour() {
       if (!json.ok) throw new Error(json.error);
       setTour(json.tour);
       serverTour.current = json.tour;
+      // ⚠️ CHECKED, NOT ASSUMED: the tour is read back as a visitor reads it,
+      // and every join this page has must be in it — else say so, in red.
+      const back = await fetch("/api/splats/tour", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
+      const stored = back?.tour ? parseTour(back.tour) : null;
+      if (!stored) throw new Error("saved, but it could not be read back to check");
+      const lost = tour.scenes.filter((s) => s.place && !sceneById(stored, s.id)?.place).map((s) => s.id);
+      if (lost.length) throw new Error(`saved, but visitors do not get the join of ${lost.join(", ")}`);
       setEdit((x) => ({ ...x, saved: "saved" }));
     } catch (e) {
       setEdit((x) => ({ ...x, saved: `not saved: ${(e as Error).message}` }));
@@ -1484,6 +1491,7 @@ export default function SplatTour() {
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
           <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
+          <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
         </div>
       ) : (
@@ -1764,13 +1772,14 @@ export default function SplatTour() {
                   <div>splats {r?.splats?.toLocaleString() ?? "—"} · {r?.fps ?? "—"} fps · dpr {r?.dpr}</div>
                   <div className="text-white/45">{r?.gpu} · {r?.viewport}</div>
                   <div className="text-sky-200">path: {r?.path}</div>
+                  <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
                   {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
                   <button className="mt-1 rounded bg-white/10 px-2 py-1 font-sans" onClick={() => void copyReport()}>{copied ? "Copied" : "Copy report"}</button>
                 </div>
               )}
               {edit.saved && (
                 <div className={edit.saved.startsWith("not saved") ? "rounded bg-rose-500/30 p-1 font-bold text-rose-100" : edit.saved === "saved" ? "text-emerald-300" : "text-amber-200"}>
-                  {edit.saved === "unsaved changes" ? "Unsaved — press Save, or visitors will not get it" : edit.saved === "saved" ? "✓ Saved — visitors get it now" : edit.saved}
+                  {edit.saved === "unsaved changes" ? "Unsaved — press Save, or visitors will not get it" : edit.saved === "saved" ? "✓ Saved and checked — visitors get it now" : edit.saved}
                 </div>
               )}
             </div>
