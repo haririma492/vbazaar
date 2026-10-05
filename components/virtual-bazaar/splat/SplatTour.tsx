@@ -361,6 +361,27 @@ export default function SplatTour() {
     // entrance both filmed is drawn once, not twice over itself.
     let seamList: ReturnType<typeof seams> = [];
     let aligningId: string | null = null;
+    // ⚠️ JOINED SCENES LOAD AS THE VISITOR NEARS THEM, and on a phone are let
+    // go when far behind: all of them at once is more than iOS allows a page.
+    let nearCheckAt = 0;
+    const NEAR_LOAD = 30, FAR_DROP = 80; // scene units from a scene's path
+    const nearLoad = () => {
+      const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+      const x = camera.position.x, z = camera.position.z;
+      for (const m of world) {
+        if (m.id === currentId || m.route.length < 2) continue;
+        const d = nearestOnRoute(m.route, x, z)?.dist ?? Infinity;
+        const place = tourRef.current ? (sceneById(tourRef.current, m.id)?.place as Place | null) : null;
+        if (d < NEAR_LOAD && !meshes.has(m.id) && place) {
+          void engine.current?.showPlaced(m.id, place, false).catch(() => {});
+        } else if (phone && d > FAR_DROP && meshes.has(m.id) && m.id !== aligningId) {
+          const mesh = meshes.get(m.id)!;
+          scene.remove(mesh);
+          mesh.dispose();
+          meshes.delete(m.id);
+        }
+      }
+    };
     const applySeams = (id: string, mesh: SplatMesh) => {
       if (!sparkMod) return;
       // Aligning: every scene shows whole — the overlap is what is being lined up.
@@ -591,7 +612,9 @@ export default function SplatTour() {
           placeMesh(mesh, flip, mine);
           applySeams(id, mesh);
           mesh.opacity = 1;
-          meshes.forEach((m, k) => (m.visible = k === id));
+          // This scene, and the scenes joined with it, show; others hide.
+          const joined = new Set(mine ? (tourRef.current?.scenes ?? []).filter((s) => s.place).map((s) => s.id) : []);
+          meshes.forEach((m, k) => (m.visible = k === id || joined.has(k)));
           // ⚠️ ON A PHONE, LET GO OF SCENES LEFT BEHIND (not this one, not
           // those placed in its world): each holds tens of MB, and too many
           // make iOS reload the page. Going back loads it again.
@@ -608,12 +631,8 @@ export default function SplatTour() {
           // ⚠️ ONE WORLD: a scene placed in the tour's world brings the others
           // placed there along (after it is up), so the visitor walks from
           // one into the next with no jump.
-          if (mine && tourRef.current) {
-            for (const other of tourRef.current.scenes) {
-              if (other.id === id || !other.place) continue;
-              void engine.current?.showPlaced(other.id, other.place as Place, false).catch(() => {});
-            }
-          }
+          // They come as the visitor nears them (the loop: `nearLoad`), not all at once.
+          nearCheckAt = 0;
         } catch (e) {
           rep.error = (e as Error).message;
           publish();
@@ -1044,6 +1063,11 @@ export default function SplatTour() {
         }
       }
 
+      if (performance.now() - nearCheckAt > 700) {
+        nearCheckAt = performance.now();
+        nearLoad();
+      }
+
       // What Enter would go into: the nearest exit or shop door faced, near.
       {
         const h = -heading;
@@ -1330,9 +1354,13 @@ export default function SplatTour() {
     const hp = (sceneById(t, here.id)!.place ?? IDENTITY) as Place;
     const place = joinAtEnd(here.route.map((p) => toWorld(hp, p)), target.route, hp.scale);
     if (!place) return;
-    changeTour(t);
-    setAlign({ id: target.id, place, before: target.place });
-    void engine.current.showPlaced(target.id, place, true).catch(() => {});
+    // ⚠️ SAVED AT ONCE, NOTHING LOADED. Showing the second scene to line it
+    // up meant tens of MB more on the phone — where iOS reloads the page and
+    // the join was lost before «Done». From the two paths alone it is
+    // joined and saved now; «Line up by eye» is there to fine-tune.
+    const next = updateScene(t, target.id, { place });
+    setTour(next);
+    void saveTour(next);
   }
 
   function alignBy(by: { fwd?: number; side?: number; up?: number; turn?: number; grow?: number }) {
@@ -1461,7 +1489,7 @@ export default function SplatTour() {
       ) : (
         <>
           {here && (
-            <div className="pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 rounded-full bg-black/45 px-4 py-1.5 text-center text-[15px] text-white/90">
+            <div className="pointer-events-none absolute left-1/2 top-4 max-w-[70vw] -translate-x-1/2 truncate rounded-full bg-black/45 px-4 py-1.5 text-center text-[15px] text-white/90">
               {here.title.fa !== here.title.en ? `${here.title.fa} · ${here.title.en}` : here.title.en}
             </div>
           )}
@@ -1696,12 +1724,12 @@ export default function SplatTour() {
                         className="w-full rounded border border-sky-300/60 bg-sky-400/15 px-2 py-1.5 font-bold text-sky-50 disabled:opacity-40"
                         onClick={autoJoin}
                       >
-                        ⇢ Auto-join at the end of this path
+                        ⇢ Join at the end of this path (saves now)
                       </button>
                       <div className="text-white/40">
                         {!here.route.length || !sceneById(tour, alignTarget)?.route.length
-                          ? "Needs both scenes' routes."
-                          : "Puts its path's start on this path's end. Walk there to check; nudge if the shops don't line up; Done, then Save."}
+                          ? "Needs both scenes' paths."
+                          : "Its path's start goes on this path's end, from the paths alone — nothing to load. Then walk there; if the shops don't line up, «Align» to nudge it (on a computer is easier)."}
                       </div>
                     </>
                   )}
