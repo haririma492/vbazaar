@@ -50,7 +50,7 @@ import { downloadSplat, makeMarker, splatBase } from "./load";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, joinAtEnd, toLocal, toWorld, type Place } from "@/lib/splats/place";
-import { register, type Fit } from "@/lib/splats/register";
+import { type Fit } from "@/lib/splats/register";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 const FADE_MS = 250;
@@ -609,7 +609,71 @@ export default function SplatTour({
       if (firstFrameAt == null) firstFrameAt = performance.now();
       publish();
       meshes.set(id, mesh);
+      if (prepareJoins) void pointsOf(id, mesh, flip);
       return mesh;
+    }
+
+    // ⚠️ JOINING BY THE PICTURES, PREPARED AHEAD (operator, 2026-10-05: "make
+    // this preparation ahead of time so there is no pause"). In edit mode on a
+    // computer each scene's points are read as soon as it is loaded — in small
+    // pieces, between frames — and the other scenes of the tour are loaded
+    // quietly to be read too. The fit itself runs in a worker. Nothing waits.
+    const prepareJoins = params.get("edit") === "1" && !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
+    const points = new Map<string, Promise<Float32Array>>();
+    const between = () => new Promise<void>((r) => setTimeout(r, 0));
+    /** A scene's points in its own coordinates (after its upright turn), the faint ones left out: at most 400 000. */
+    function pointsOf(id: string, mesh: SplatMesh, flip: boolean): Promise<Float32Array> {
+      const have = points.get(id);
+      if (have) return have;
+      const p = (async () => {
+        const src = (mesh.extSplats ?? mesh.packedSplats) as { numSplats: number; getSplat: (i: number) => { center: THREE.Vector3; opacity: number } } | undefined;
+        if (!src) return new Float32Array(0);
+        const n = src.numSplats;
+        const stride = Math.max(1, Math.ceil(n / 400_000));
+        const out = new Float32Array(Math.ceil(n / stride) * 3);
+        let k = 0;
+        for (let i = 0; i < n; i += stride) {
+          const sp = src.getSplat(i);
+          if (sp.opacity >= 0.25) {
+            out[k++] = sp.center.x;
+            out[k++] = flip ? -sp.center.y : sp.center.y;
+            out[k++] = flip ? -sp.center.z : sp.center.z;
+          }
+          if ((i / stride) % 20_000 === 0) await between(); // a frame's worth at a time
+        }
+        return out.slice(0, k);
+      })();
+      points.set(id, p);
+      return p;
+    }
+    /** In edit mode on a computer: the tour's other scenes, one after another, loaded quietly and read. */
+    let preparing = false;
+    async function prepareAll() {
+      if (!prepareJoins || preparing) return;
+      preparing = true;
+      for (const s of tourRef.current?.scenes ?? []) {
+        if (disposed) return;
+        const so = sourceOf(s.id);
+        if (!so) continue;
+        try {
+          const m = meshes.get(s.id) ?? (await loadMesh(s.id, so.src, so.flip, true));
+          if (s.id !== shownId) m.visible = false;
+          await pointsOf(s.id, m, so.flip);
+        } catch {
+          /* a scene that does not load is simply not prepared */
+        }
+      }
+    }
+    let worker: Worker | null = null;
+    function fitInWorker(a: Float32Array, b: Float32Array, guess: Place, reach: number): Promise<Fit | null> {
+      worker ??= new Worker(new URL("./register.worker.ts", import.meta.url));
+      const w = worker;
+      return new Promise((resolve, reject) => {
+        w.onmessage = (e: MessageEvent<{ ok: boolean; fit?: Fit | null; error?: string }>) =>
+          e.data.ok ? resolve(e.data.fit ?? null) : reject(new Error(e.data.error));
+        w.onerror = (e) => reject(new Error(e.message || "the matching stopped"));
+        w.postMessage({ a, b, guess, reach }, [a.buffer, b.buffer]);
+      });
     }
 
     const applyPose = (p: Pose) => {
@@ -669,6 +733,7 @@ export default function SplatTour({
           // one into the next with no jump.
           // They come as the visitor nears them (the loop: `nearLoad`), not all at once.
           nearCheckAt = 0;
+          setTimeout(() => void prepareAll(), 1500);
         } catch (e) {
           rep.error = (e as Error).message;
           publish();
@@ -836,24 +901,19 @@ export default function SplatTour({
         if (!sa || !sb) return null;
         const ma = meshes.get(aId) ?? (await loadMesh(aId, sa.src, sa.flip, true));
         const mb = meshes.get(bId) ?? (await loadMesh(bId, sb.src, sb.flip, true));
-        placeMesh(ma, sa.flip, sa.place);
-        ma.updateMatrixWorld(true);
-        await new Promise((r) => setTimeout(r, 30)); // let the page say «matching…» first
+        // Read ahead (`prepareAll`); only if not yet, now — in pieces either way.
+        const [pa, pb] = await Promise.all([pointsOf(aId, ma, sa.flip), pointsOf(bId, mb, sb.flip)]);
+        const placeA = (sa.place ?? IDENTITY) as Place;
         const a: number[] = [], b: number[] = [];
-        const v = new THREE.Vector3();
         const r2 = radius * radius, rb2 = (radius / guess.scale) ** 2;
-        ma.forEachSplat((_i, c, _s, _q, opacity) => {
-          if (opacity < 0.25) return;
-          v.copy(c).applyMatrix4(ma.matrixWorld);
-          if ((v.x - seam[0]) ** 2 + (v.z - seam[2]) ** 2 < r2) a.push(v.x, v.y, v.z);
-        });
-        mb.forEachSplat((_i, c, _s, _q, opacity) => {
-          if (opacity < 0.25) return;
-          // The scene's own coordinates are after its upright turn (as `Place` maps them).
-          const x = c.x, y = sb.flip ? -c.y : c.y, z = sb.flip ? -c.z : c.z;
-          if ((x - bStart[0]) ** 2 + (z - bStart[2]) ** 2 < rb2) b.push(x, y, z);
-        });
-        return register(Float32Array.from(a), Float32Array.from(b), guess, radius / 4);
+        for (let i = 0; i < pa.length; i += 3) {
+          const w = toWorld(placeA, [pa[i], pa[i + 1], pa[i + 2]]);
+          if ((w[0] - seam[0]) ** 2 + (w[2] - seam[2]) ** 2 < r2) a.push(w[0], w[1], w[2]);
+        }
+        for (let i = 0; i < pb.length; i += 3) {
+          if ((pb[i] - bStart[0]) ** 2 + (pb[i + 2] - bStart[2]) ** 2 < rb2) b.push(pb[i], pb[i + 1], pb[i + 2]);
+        }
+        return fitInWorker(Float32Array.from(a), Float32Array.from(b), guess, radius / 4);
       },
       setDrive(d) {
         drive = d;
@@ -1219,6 +1279,7 @@ export default function SplatTour({
 
     return () => {
       disposed = true;
+      worker?.terminate();
       engine.current = null;
       renderer.setAnimationLoop(null);
       window.removeEventListener("keydown", onKey);
@@ -1538,7 +1599,7 @@ export default function SplatTour({
     // The common area and the shop fronts round it: generous — too little
     // (two pillars) looks the same turned round.
     const radius = Math.min(30, Math.max(10, 0.8 * Math.min(len(worldRoute), len(target.route) * hp.scale)));
-    setJoinNote("Matching the two scenes' pictures where they meet… (a few seconds; the page may pause)");
+    setJoinNote("Matching the two scenes' pictures where they meet… (in the background — keep going)");
     void engine.current
       .matchJoin(here.id, to, place, end, target.route[0], radius)
       .then((fit) => {
