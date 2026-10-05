@@ -6,6 +6,9 @@
 // `npm test`. During the drive the taxi sits still in the chase camera's
 // frame (`RIDE.taxi` in flight.ts).
 
+/** The rider's eye above the street in Street View (a camera on a car roof). */
+export const STREET_EYE = 2.5;
+
 export const TAXI = {
   /** Pulling up from the right, slowing to a stop at the kerb ahead. */
   driveInMs: 2_600,

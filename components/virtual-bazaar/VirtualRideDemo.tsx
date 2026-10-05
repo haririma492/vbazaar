@@ -32,7 +32,7 @@ const ROAD_FACTOR = 1.3;
  * plan); listing it here again brings the «How?» choice back.
  */
 const VEHICLES: { id: Vehicle; en: string; fa: string; icon: string; note: string }[] = [
-  { id: "drone", en: "By drone", fa: "با پهپاد", icon: "🚁", note: "Low over the roads, landing on the pavement" },
+  { id: "drone", en: "From the air", fa: "از بالا", icon: "", note: "Low over the roads, landing on the pavement" },
 ];
 
 type Preloadable = ComponentType<{ preload?: boolean; onReady?: () => void }>;
@@ -268,7 +268,7 @@ export default function VirtualRideDemo({ toId }: { toId: string | null }) {
           onClick={() => setRiding(true)}
           className="w-full px-6 py-3 rounded-full bg-white text-black font-semibold disabled:opacity-40"
         >
-          Take Virtual Ride {vehicle === "taxi" ? "🚕" : "🚁"} → {to.name.en}
+          Take Virtual Ride → {to.name.en}
         </button>
       </div>
     </main>

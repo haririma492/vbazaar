@@ -14,8 +14,7 @@
  */
 
 import { RIDE } from "@/lib/virtualRide/flight";
-import { STREET_EYE } from "@/lib/virtualRide/boarding";
-import { TAXI, type TaxiFrame } from "@/lib/virtualRide/taxi";
+import { STREET_EYE, TAXI, type TaxiFrame } from "@/lib/virtualRide/taxi";
 
 export type TaxiPlayer = {
   street(): void;
