@@ -156,9 +156,9 @@ type Engine = {
 /** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
 /** «Slow / Normal / Fast»: shares of the tour's Normal speed (`tour.drive.speed`, set by the operator). */
 const SPEEDS = [
-  { label: "آهسته · Slow", k: 0.45 },
-  { label: "معمولی · Normal", k: 1 },
-  { label: "تند · Fast", k: 2 },
+  { label: "Slow", k: 0.45 },
+  { label: "Normal", k: 1 },
+  { label: "Fast", k: 2 },
 ];
 const SPEED_KEY = "sk-splat-speed";
 /** On a phone: "tilt" (the default) or "stick", the visitor's last choice. */
@@ -1774,7 +1774,7 @@ export default function SplatTour({
           for us: ?debug=1 (or the operator's ?edit=1) shows them. */}
       {debug ? (
         <div dir="ltr" className="pointer-events-none absolute left-3 top-3 max-w-[calc(100vw-24px)] space-y-1 rounded-xl bg-black/60 p-3 text-left font-mono text-[11px] leading-snug text-white/85">
-          <div className="text-[12px] font-bold text-amber-200">{here ? `${here.title.en} · ${here.title.fa}` : "Splat test"}</div>
+          <div className="text-[12px] font-bold text-amber-200">{here ? here.title.en : "Splat test"}</div>
           <div className="break-all text-white/50">{r?.src}</div>
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
@@ -1788,7 +1788,7 @@ export default function SplatTour({
         <>
           {here && (
             <div className="pointer-events-none absolute left-1/2 top-4 max-w-[70vw] -translate-x-1/2 truncate rounded-full bg-black/45 px-4 py-1.5 text-center text-[15px] text-white/90">
-              {here.title.fa !== here.title.en ? `${here.title.fa} · ${here.title.en}` : here.title.en}
+              {here.title.en}
             </div>
           )}
           {loading != null && (
@@ -1796,7 +1796,7 @@ export default function SplatTour({
               <div className="h-1.5 w-48 overflow-hidden rounded-full bg-white/15">
                 <div className="h-full bg-amber-300/80 transition-[width]" style={{ width: `${Math.round((loading || 0.02) * 100)}%` }} />
               </div>
-              <div className="text-[15px]">در حال آماده‌سازی… · Getting ready…</div>
+              <div className="text-[15px]">Getting ready…</div>
             </div>
           )}
           {(r?.error || error) && (
@@ -1810,18 +1810,16 @@ export default function SplatTour({
       {needStart && !tiltOn && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/45 px-6 text-center">
           <button onClick={() => void toggleTilt()} className="rounded-full border border-amber-300/70 bg-amber-300/25 px-8 py-4 text-[18px] font-bold text-amber-50">
-            شروع · Start
+            Start
           </button>
           <p className="max-w-xs text-[14px] leading-relaxed text-white/85">
-            گوشی را راحت در دست بگیرید. کمی به عقب کج کنید تا راه بروید؛ مثل فرمان بچرخانید تا بپیچید.
-            <br />
-            <span dir="ltr">Hold the phone comfortably. Tilt it back a little to walk; turn it like a steering wheel to turn.</span>
+            Hold the phone comfortably. Tilt it back a little to walk; turn it like a steering wheel to turn.
           </p>
           <button
             onClick={() => { setNeedStart(false); rememberMode("stick"); }}
             className="text-[13px] text-white/60 underline"
           >
-            جوی‌استیک · Use the joystick instead
+            Use the joystick instead
           </button>
         </div>
       )}
@@ -1860,7 +1858,7 @@ export default function SplatTour({
           onClick={() => engine.current?.goIn()}
           className="absolute bottom-[19rem] left-1/2 -translate-x-1/2 rounded-full border border-amber-300/70 bg-black/75 px-5 py-2.5 text-[15px] text-amber-50"
         >
-          {touch ? "" : "↵ Enter · "}برو داخل · Go in: {reach.label}
+          {touch ? "" : "↵ Enter · "}Go in: {reach.label}
         </button>
       )}
 
@@ -2082,22 +2080,22 @@ export default function SplatTour({
       <div dir="ltr" className="absolute bottom-4 left-3 flex max-w-[calc(100vw-210px)] flex-col items-start gap-1.5 [&>button]:px-3 [&>button]:py-1.5 [&>button]:text-[12px] [&>button]:leading-tight">
         {tour && (
           <button onClick={() => void goCentre()} className="rounded-full border border-emerald-300/70 bg-emerald-400/20 text-emerald-50" title="H">
-            ⌂ مرکز · Centre
+            ⌂ Centre
           </button>
         )}
         {tour && (
           <button onClick={() => engine.current?.turnAround()} className="rounded-full border border-sky-300/60 bg-black/60 text-sky-50" title="U">
-            ↩ برگشت · Turn around
+            ↩ Turn around
           </button>
         )}
         {touch && (
           <button onClick={() => void toggleTilt()} className={`rounded-full border px-4 py-2 text-[13px] ${tiltOn ? "border-amber-300/70 bg-amber-300/25 text-amber-50" : "border-white/25 bg-black/60 text-white/90"}`}>
-            {tiltOn ? "جوی‌استیک · Use joystick" : "راه رفتن با کج کردن · Walk by tilting"}
+            {tiltOn ? "Use joystick" : "Walk by tilting"}
           </button>
         )}
         {tiltOn && (
           <button onClick={() => engine.current?.recentre()} className="rounded-full border border-white/25 bg-black/60 px-3 py-2 text-[13px] text-white/90" title="Hold the phone comfortably, then tap">
-            ⟲ حالت راحت · Reset hold
+            ⟲ Reset hold
           </button>
         )}
         <button
@@ -2107,10 +2105,10 @@ export default function SplatTour({
           }}
           className={`rounded-full border px-4 py-2 text-[13px] ${guided ? "border-sky-300/70 bg-sky-300/20 text-sky-50" : "border-white/25 bg-black/60 text-white/90"}`}
         >
-          {guided ? "دنبال مسیر ✓ · Follow the path" : "راه رفتن آزاد · Free walking"}
+          {guided ? "Follow the path ✓" : "Free walking"}
         </button>
         {!tiltOn && <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
-          {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد · Phone motion refused" : "نگاه با گوشی · Look by phone"}
+          {gyro === "on" ? "Look by finger" : gyro === "refused" ? "Phone motion refused" : "Look by phone"}
         </button>}
         {debug && (
           <button onClick={() => void copyReport()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
