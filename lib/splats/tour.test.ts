@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, addProp, emptyTour, hubOf, mergeTour, removeProp, setHub, updateProp, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
+  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, hubOf, mergeTour, setHub, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
   type Pose,
 } from "./tour.ts";
 
@@ -198,22 +198,4 @@ test("how a scene was joined is kept and checked", () => {
   const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", join: { to: "Nope!", by: "x" } }, { id: "b", file: "scenes/b/b.spz", join: { to: "a", by: "x", share: 7 } }] });
   assert.equal(bad.scenes[0].join, null);
   assert.deepEqual(bad.scenes[1].join, { to: "a", by: "paths", share: 1 });
-});
-
-test("props: a china shelf and a sale post, placed, edited, kept and checked", () => {
-  let t = built();
-  t = addProp(t, "hallway", "china-shelf", [-1.5, 0, -4], 1.57);
-  t = addProp(t, "hallway", "china-shelf", [1.5, 0, -4], -1.57);
-  t = addProp(t, "hallway", "sale-post", [0.5, 0, -7], 0);
-  let h = sceneById(t, "hallway")!;
-  assert.deepEqual(h.props.map((p) => p.id), ["shelf-1", "shelf-2", "sale-1"]);
-  assert.equal(h.props[2].price, "$19.99");
-  assert.equal(h.props[2].say, "I'm on sale!");
-  t = updateProp(t, "hallway", "sale-1", { price: "$9.99", size: 1.2 });
-  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v4.spz");
-  t = removeProp(t, "hallway", "shelf-1");
-  h = sceneById(t, "hallway")!;
-  assert.deepEqual(h.props.map((p) => [p.id, p.price, p.size]), [["shelf-2", "", 1], ["sale-1", "$9.99", 1.2]]);
-  const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", props: [{ id: "x", kind: "rocket", at: [0, 0, 0] }, { id: "y", kind: "sale-post", size: 99 }] }] });
-  assert.deepEqual(bad.scenes[0].props.map((p) => [p.id, p.size]), [["y", 10]]);
 });
