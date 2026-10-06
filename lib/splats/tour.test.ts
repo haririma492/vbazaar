@@ -188,3 +188,14 @@ test("the safe spot: set, kept through a merge, the start when unset", () => {
   assert.equal(merged.drive.speed, 1.3);
   assert.equal(parseTour({ scenes: base.scenes, hub: { scene: "nowhere", pose } }).hub, null);
 });
+
+test("how a scene was joined is kept and checked", () => {
+  let t = built();
+  assert.equal(sceneById(t, "store-01")!.join, null);
+  t = updateScene(t, "store-01", { join: { to: "hallway", by: "pictures", share: 0.87 } });
+  t = upsertScene(t, "store-01", "scenes/store-01/store-01-v3.spz");
+  assert.deepEqual(sceneById(t, "store-01")!.join, { to: "hallway", by: "pictures", share: 0.87 });
+  const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", join: { to: "Nope!", by: "x" } }, { id: "b", file: "scenes/b/b.spz", join: { to: "a", by: "x", share: 7 } }] });
+  assert.equal(bad.scenes[0].join, null);
+  assert.deepEqual(bad.scenes[1].join, { to: "a", by: "paths", share: 1 });
+});
