@@ -41,8 +41,8 @@ import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
-  DEFAULT_DRIVE, DRIVE_LIMITS, hubOf, setDrive, setHub, setStartScene,
-  type Door, type Drive, type Exit, type TourScene, type Pose, type Tour, type Trail, type Vec3,
+  DEFAULT_DRIVE, DRIVE_LIMITS, addProp, hubOf, removeProp, setDrive, setHub, setStartScene, updateProp,
+  type Door, type Drive, type Exit, type Prop, type TourScene, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
@@ -51,6 +51,7 @@ import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, joinAtEnd, toLocal, toWorld, type Place } from "@/lib/splats/place";
 import { type Fit } from "@/lib/splats/register";
+import { announce, chinaShelf, salePost, unlockSound, type SalePost } from "./props";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 const FADE_MS = 250;
@@ -132,6 +133,8 @@ type Engine = {
   turnAround: () => void;
   /** Follow the path (`guideStep`): «go» and «back» are all a visitor needs; the route steers. */
   setGuided: (on: boolean) => void;
+  /** The things placed into the scenes walked among (`./props`), and whether the sale posts speak. */
+  setProps: (props: Prop[], sound: boolean) => void;
   /** Enter / «Go in»: through the exit or shop door in reach. False when none is. */
   goIn: () => boolean;
   /** Show a scene placed at `place` (loading it if need be), see-through while being aligned. */
@@ -219,13 +222,18 @@ export default function SplatTour({
   // Edit mode: walk through the walls (to look a scene over), and the next shop door's name.
   const [wallsOff, setWallsOff] = useState(false);
   const [guided, setGuided] = useState(true);
+  // The sale posts' voice: on unless this device turned it off.
+  const [sound, setSound] = useState(true);
+  useEffect(() => {
+    try { if (window.localStorage.getItem("sk-splat-sound") === "off") setSound(false); } catch { /* on */ }
+  }, []);
   useEffect(() => {
     try { if (window.localStorage.getItem(GUIDED_KEY) === "off") setGuided(false); } catch { /* private mode: on */ }
   }, []);
   const [doorName, setDoorName] = useState("");
   // How the last «go on to» join was made: by the pictures, or the paths only (and why).
   const [joinNote, setJoinNote] = useState("");
-  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "scenes" | "info">("route");
+  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "props" | "scenes" | "info">("route");
   // How far the dashboard is pushed left (0: open; −(PANEL_W − GRIP_W): only the grip shows).
   const [panelX, setPanelX] = useState(0);
   // Where the operator left the dashboard (and its tab) survives a reload.
@@ -233,7 +241,7 @@ export default function SplatTour({
     try {
       const saved = JSON.parse(window.localStorage.getItem(PANEL_KEY) || "{}") as { x?: number; tab?: string };
       if (typeof saved.x === "number") setPanelX(saved.x < -10 ? -(PANEL_W - GRIP_W) : 0);
-      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "scenes" || saved.tab === "info") setPanelTab(saved.tab);
+      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "scenes" || saved.tab === "props" || saved.tab === "info") setPanelTab(saved.tab);
     } catch { /* fine */ }
   }, []);
   useEffect(() => {
@@ -351,6 +359,23 @@ export default function SplatTour({
     const camera = new THREE.PerspectiveCamera(70, el.clientWidth / el.clientHeight, 0.05, 500);
     const markers = new THREE.Group();
     scene.add(markers);
+    // Light for the things placed into the scenes (the splats carry their own).
+    scene.add(new THREE.HemisphereLight(0xfff8ee, 0x6b5b4b, 1.6));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+    sun.position.set(2, 5, 3);
+    scene.add(sun);
+    const propsGroup = new THREE.Group();
+    scene.add(propsGroup);
+    let posts: Array<{ post: SalePost; prop: Prop }> = [];
+    let soundOn = true;
+    // A browser makes sound only after a tap: the shopper's first one unlocks it.
+    const unlock = () => {
+      unlockSound();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
     let yaw = 0;
     let pitch = 0;
     let gyroOn = false;
@@ -871,6 +896,36 @@ export default function SplatTour({
       setWalls(on) {
         wallsOn = on;
       },
+      setProps(list, sound) {
+        soundOn = sound;
+        propsGroup.children.slice().forEach((c) => {
+          propsGroup.remove(c);
+          c.traverse((o) => {
+            const m = o as THREE.Mesh;
+            m.geometry?.dispose();
+            const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+            mats.forEach((x) => x.dispose());
+          });
+        });
+        posts = [];
+        list.forEach((p, i) => {
+          let obj: THREE.Object3D;
+          if (p.kind === "sale-post") {
+            const post = salePost(p.price, i + 3);
+            posts.push({ post, prop: p });
+            obj = post.group;
+          } else {
+            let seed = 0;
+            for (const ch of p.id) seed = (seed * 31 + ch.charCodeAt(0)) | 0;
+            obj = chinaShelf(seed);
+          }
+          obj.position.set(...p.at);
+          obj.rotation.y = p.yaw;
+          obj.scale.setScalar(p.size);
+          obj.userData.propId = p.id;
+          propsGroup.add(obj);
+        });
+      },
       setGuided(on) {
         guided = on;
       },
@@ -1261,6 +1316,15 @@ export default function SplatTour({
         nearLoad();
       }
 
+      // ⚠️ THE SALE POSTS: walking past, the tag rises and it speaks — once a pass.
+      for (const { post, prop } of posts) {
+        const d = Math.hypot(camera.position.x - prop.at[0], camera.position.z - prop.at[2]) / prop.size;
+        post.update(dt, d, () => {
+          // A voice reads «$19.99» as nineteen dollars ninety-nine.
+          if (soundOn) announce(`${prop.say} Only ${prop.price}.`);
+        });
+      }
+
       // What Enter would go into: the nearest exit or shop door faced, near.
       {
         const h = -heading;
@@ -1357,6 +1421,8 @@ export default function SplatTour({
     return () => {
       disposed = true;
       worker?.terminate();
+      window.removeEventListener("pointerdown", unlock);
+      window.removeEventListener("keydown", unlock);
       engine.current = null;
       renderer.setAnimationLoop(null);
       window.removeEventListener("keydown", onKey);
@@ -1435,6 +1501,13 @@ export default function SplatTour({
   useEffect(() => {
     engine.current?.setGuided(guided && !recordingRoute);
   }, [guided, recordingRoute]);
+
+  // The things placed into the scenes walked among: this one's, and its joined scenes'.
+  useEffect(() => {
+    if (!tour || !here) return engine.current?.setProps([], sound);
+    const members = here.place ? [here, ...tour.scenes.filter((s) => s.place && s.id !== here.id)] : [here];
+    engine.current?.setProps(members.flatMap((s) => s.props), sound);
+  }, [here, tour, sound]);
 
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
@@ -1678,6 +1751,40 @@ export default function SplatTour({
   }
 
   /**
+   * A shelf against the wall to the left or right of where the operator
+   * stands on the path (just past the walls' lane), facing the path; or a
+   * sale post a few steps ahead, at the path's right edge. On the floor — an
+   * eye height below the path — then nudged into place.
+   */
+  function placeProp(kind: Prop["kind"], side: -1 | 1) {
+    if (!tour || !here || !engine.current) return;
+    const pose = engine.current.pose();
+    const [x, y, z] = pose.position;
+    const fwd = [Math.sin(pose.yaw), -Math.cos(pose.yaw)], right = [Math.cos(pose.yaw), Math.sin(pose.yaw)];
+    const half = here.walls > 0 ? here.walls * ((here.place as Place | null)?.scale ?? 1) : 1.4;
+    const floor = y - 1.6;
+    let at: Vec3;
+    if (kind === "china-shelf") at = [x + right[0] * side * (half + 0.25), floor, z + right[1] * side * (half + 0.25)];
+    else at = [x + fwd[0] * 3 + right[0] * half * 0.75, floor, z + fwd[1] * 3 + right[1] * half * 0.75];
+    // Its front (+z) toward the path where the operator stands.
+    const yaw = Math.atan2(x - at[0], z - at[2]);
+    changeTour(addProp(tour, here.id, kind, at, yaw, 1));
+  }
+
+  function nudgeProp(p: Prop, by: { fwd?: number; side?: number; up?: number; turn?: number; grow?: number }) {
+    if (!tour || !here || !engine.current) return;
+    const yaw = engine.current.pose().yaw;
+    const step = 0.1 * p.size;
+    const f = (by.fwd ?? 0) * step, sd = (by.side ?? 0) * step;
+    const at: Vec3 = [p.at[0] + Math.sin(yaw) * f + Math.cos(yaw) * sd, p.at[1] + (by.up ?? 0) * step * 0.5, p.at[2] - Math.cos(yaw) * f + Math.sin(yaw) * sd];
+    changeTour(updateProp(tour, here.id, p.id, {
+      at,
+      yaw: p.yaw + (by.turn ?? 0) * (Math.PI / 12),
+      size: Math.round(p.size * (by.grow ? (by.grow > 0 ? 1.1 : 1 / 1.1) : 1) * 100) / 100,
+    }));
+  }
+
+  /**
    * ⚠️ JOINED BY THE PICTURES, OR IT JUMPS (operator, 2026-10-06: "the visual
    * transition was a jump, we did not see the 6–7 metres … recorded in the
    * end of the first scene and the beginning of the second"). The paths only
@@ -1890,7 +1997,7 @@ export default function SplatTour({
               </button>
             </div>
             <div className="flex border-b border-white/10">
-              {(["route", "drive", "shops", "scenes", "info"] as const).map((t) => (
+              {(["route", "drive", "shops", "props", "scenes", "info"] as const).map((t) => (
                 <button key={t} onClick={() => setPanelTab(t)} className={`flex-1 py-1 capitalize ${panelTab === t ? "bg-white/15 text-amber-200" : "text-white/55"}`}>{t}</button>
               ))}
             </div>
@@ -2030,6 +2137,45 @@ export default function SplatTour({
                 </>
               )}
 
+              {panelTab === "props" && (
+                <>
+                  <div className="text-white/45">Stand on the path where it should be:</div>
+                  <div className="grid grid-cols-2 gap-1">
+                    <button className="rounded border border-amber-300/60 px-2 py-1" onClick={() => placeProp("china-shelf", -1)}>+ China shelf, left wall</button>
+                    <button className="rounded border border-amber-300/60 px-2 py-1" onClick={() => placeProp("china-shelf", 1)}>+ China shelf, right wall</button>
+                    <button className="col-span-2 rounded border border-rose-300/60 px-2 py-1" onClick={() => placeProp("sale-post", 1)}>+ Sale post ahead, on the right (it speaks)</button>
+                  </div>
+                  {here.props.map((p) => (
+                    <div key={p.id} className="space-y-1 rounded bg-white/5 p-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold">{p.kind === "china-shelf" ? "▤ China shelf" : "◉ Sale post"}</span>
+                        <span className="text-white/40">{p.id}</span>
+                        <button className="ms-auto text-rose-300" onClick={() => changeTour(removeProp(tour, here.id, p.id))}>remove</button>
+                      </div>
+                      <div className="grid grid-cols-5 gap-1">
+                        <button className="rounded bg-white/10 py-0.5" title="away" onClick={() => nudgeProp(p, { fwd: 1 })}>↑</button>
+                        <button className="rounded bg-white/10 py-0.5" title="nearer" onClick={() => nudgeProp(p, { fwd: -1 })}>↓</button>
+                        <button className="rounded bg-white/10 py-0.5" onClick={() => nudgeProp(p, { side: -1 })}>←</button>
+                        <button className="rounded bg-white/10 py-0.5" onClick={() => nudgeProp(p, { side: 1 })}>→</button>
+                        <button className="rounded bg-white/10 py-0.5" title="turn" onClick={() => nudgeProp(p, { turn: 1 })}>⟳</button>
+                        <button className="rounded bg-white/10 py-0.5" title="up" onClick={() => nudgeProp(p, { up: 1 })}>⤒</button>
+                        <button className="rounded bg-white/10 py-0.5" title="down" onClick={() => nudgeProp(p, { up: -1 })}>⤓</button>
+                        <button className="rounded bg-white/10 py-0.5" title="smaller" onClick={() => nudgeProp(p, { grow: -1 })}>−</button>
+                        <button className="rounded bg-white/10 py-0.5" title="bigger" onClick={() => nudgeProp(p, { grow: 1 })}>+</button>
+                        <span className="self-center text-center text-white/40">×{p.size.toFixed(2)}</span>
+                      </div>
+                      {p.kind === "sale-post" && (
+                        <div className="flex gap-1">
+                          <input className="w-20 rounded bg-white/10 px-1.5 py-1" value={p.price} onChange={(e) => changeTour(updateProp(tour, here.id, p.id, { price: e.target.value }))} />
+                          <input className="min-w-0 flex-1 rounded bg-white/10 px-1.5 py-1" value={p.say} onChange={(e) => changeTour(updateProp(tour, here.id, p.id, { say: e.target.value }))} />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <div className="text-white/40">Then Save. Visitors see them; a sale post's tag rises and it speaks as they walk past.</div>
+                </>
+              )}
+
               {panelTab === "info" && (
                 <div className="space-y-0.5 font-mono text-[10.5px] text-white/70">
                   <div className="break-all text-white/45">{r?.src}</div>
@@ -2088,6 +2234,19 @@ export default function SplatTour({
         {tour && (
           <button onClick={() => engine.current?.turnAround()} className="rounded-full border border-sky-300/60 bg-black/60 text-sky-50" title="U">
             ↩ برگشت · Turn around
+          </button>
+        )}
+        {tour?.scenes.some((s) => s.props.some((p) => p.kind === "sale-post")) && (
+          <button
+            onClick={() => {
+              const next = !sound;
+              setSound(next);
+              if (next) unlockSound();
+              try { window.localStorage.setItem("sk-splat-sound", next ? "on" : "off"); } catch { /* fine */ }
+            }}
+            className="rounded-full border border-white/25 bg-black/60 text-white/90"
+          >
+            {sound ? "🔊 صدا · Sound on" : "🔇 بی‌صدا · Sound off"}
           </button>
         )}
         {touch && (
