@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RectAreaLightUniformsLib } from "three/examples/jsm/lights/RectAreaLightUniformsLib.js";
 import type { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { grasscloth, marbleFloor, marbleSlab, plaster, signTexture, walnut } from "./textures";
+import { grasscloth, marbleFloor, marbleSlab, plaster, saleCardTexture, signTexture, walnut } from "./textures";
 
 /**
  * THE SIMULATED STORE — the environment, and nothing commercial.
@@ -108,14 +108,14 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   // there for the glaze's reflections, the room is lit by its own fixtures.
   for (const m of [floorMat, outsideFloorMat, slabMat, woodMat, clothMat, plasterMat, ceilingMat, blackMat]) m.envMapIntensity = 0.45;
 
-  const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, opts: { r?: number; grain?: "x" | "y" | "z"; shadow?: boolean } = {}) => {
+  const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, opts: { r?: number; grain?: "x" | "y" | "z"; shadow?: boolean; parent?: THREE.Object3D } = {}) => {
     const g = opts.r ? new RoundedBoxGeometry(w, h, d, 2, opts.r) : new THREE.BoxGeometry(w, h, d);
     g.translate(x, y, z);
     metricUV(g, opts.grain ?? "x");
     const m = new THREE.Mesh(g, mat);
     m.castShadow = opts.shadow ?? true;
     m.receiveShadow = true;
-    root.add(m);
+    (opts.parent ?? root).add(m);
     return m;
   };
 
@@ -222,11 +222,74 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
 
   // Plates hung on the wall either side of the unit are added by dress().
 
-  // ── the plinth by the door ───────────────────────────────────────────
+  // ── the side walls: a smaller unit on each, the same heights ─────────
+  // Built facing +z with its back at z 0, then turned to face the room:
+  // the left one (side −1) looks along +x, the right one along −x.
+  const SIDE = { w: 2.0, z: 0.6, wallX: 3.6 };
+  const sideToWorld = (side: -1 | 1, lx: number, y: number, lz: number) =>
+    new THREE.Vector3(side * (SIDE.wallX - lz), y, SIDE.z + side * lx);
+  for (const side of [-1, 1] as const) {
+    const g = new THREE.Group();
+    g.position.set(side * SIDE.wallX, 0, SIDE.z);
+    g.rotation.y = (-side * Math.PI) / 2;
+    root.add(g);
+    g.updateMatrixWorld(true);
+    const at = { parent: g };
+    const WS = SIDE.w;
+    box(WS, 0.08, 0.38, blackMat, 0, 0.04, 0.2, at);
+    box(WS, 0.8, 0.42, woodMat, 0, 0.48, 0.21, { ...at, grain: "y" });
+    for (let i = 0; i < 3; i++) {
+      const x = -WS / 2 + (WS / 3) * (i + 0.5);
+      box(WS / 3 - 0.006, 0.79, 0.02, woodMat, x, 0.475, 0.43, { ...at, r: 0.004, grain: "y" });
+      box(WS / 3 - 0.12, 0.6, 0.012, woodMat, x, 0.475, 0.445, { ...at, r: 0.004, grain: "y" });
+      const knob = new THREE.Mesh(new THREE.SphereGeometry(0.014, 24, 16), brassMat);
+      knob.position.set(x, 0.74, 0.465);
+      knob.castShadow = true;
+      g.add(knob);
+    }
+    box(WS + 0.03, 0.035, 0.47, slabMat, 0, 0.9 - 0.0175, 0.235, { ...at, r: 0.006 });
+    const top = 2.12;
+    box(WS - 0.08, top - 0.9, 0.02, clothMat, 0, 0.9 + (top - 0.9) / 2, 0.01, { ...at, shadow: false });
+    for (const sx of [-1, 1]) box(0.045, top - 0.9, 0.38, woodMat, sx * (WS / 2 - 0.0225), 0.9 + (top - 0.9) / 2, 0.19, { ...at, r: 0.004, grain: "y" });
+    box(WS + 0.06, 0.1, 0.42, woodMat, 0, top + 0.05, 0.21, { ...at, r: 0.006 });
+    for (const y of [1.28, 1.66]) {
+      box(WS - 0.09, 0.035, 0.34, woodMat, 0, y - 0.0175, 0.18, { ...at, r: 0.004 });
+      box(WS - 0.09, 0.006, 0.006, brassMat, 0, y - 0.004, 0.352, at);
+    }
+    for (const y of [1.28, 1.66, top]) {
+      const strip = new THREE.Mesh(new THREE.BoxGeometry(WS - 0.14, 0.004, 0.012), ledMat);
+      strip.position.set(0, y - (y === top ? 0.002 : 0.037), 0.31);
+      g.add(strip);
+      const area = new THREE.RectAreaLight(LED, y === 1.28 ? 5 : 4, WS - 0.16, 0.05);
+      area.position.set(0, y - 0.04, 0.28);
+      g.add(area);
+      area.lookAt(g.localToWorld(new THREE.Vector3(0, 0, 0.14)));
+    }
+  }
+
+  // ── the sale post by the door ────────────────────────────────────────
   const PL = { x: -1.12, z: 1.95, w: 0.78, d: 0.5, h: 0.92 };
   box(PL.w - 0.04, 0.05, PL.d - 0.04, brassMat, PL.x, 0.025, PL.z);
   box(PL.w, PL.h - 0.08, PL.d, slabMat, PL.x, 0.05 + (PL.h - 0.08) / 2, PL.z, { r: 0.004 });
   box(PL.w + 0.02, 0.03, PL.d + 0.02, slabMat, PL.x, PL.h - 0.015, PL.z, { r: 0.006 });
+  // A little brass-framed card on the post: what the post is for.
+  {
+    const card = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.16, 0.1),
+      new THREE.MeshStandardMaterial({ map: saleCardTexture(), roughness: 0.55 }),
+    );
+    const holder = new THREE.Group();
+    holder.position.set(PL.x + 0.27, PL.h, PL.z + 0.17);
+    holder.rotation.y = 0.35;
+    card.position.set(0, 0.06, 0);
+    card.rotation.x = -0.22;
+    card.castShadow = true;
+    const stand = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.012, 0.03), brassMat);
+    stand.position.set(0, 0.006, 0.005);
+    stand.castShadow = true;
+    holder.add(card, stand);
+    root.add(holder);
+  }
 
   // ── a round table of stock on the right ──────────────────────────────
   const TB = { x: 1.75, z: 1.2, r: 0.55, h: 0.76 };
@@ -270,6 +333,11 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   spot([-0.75, H, -0.55], [-0.6, 1.0, -2.3], 42, 0.42, true);
   spot([0.75, H, -0.55], [0.6, 1.0, -2.3], 42, 0.42, true);
   spot([0.0, H, -0.85], [0.03, 1.2, -2.3], 22, 0.3, true);
+  // The side units.
+  for (const side of [-1, 1] as const) {
+    const t = sideToWorld(side, 0, 1.15, 0.2);
+    spot([side * 2.55, H, SIDE.z - 0.3], [t.x, t.y, t.z], 30, 0.48, true, 1024);
+  }
   // The plinth and the table.
   spot([PL.x + 0.1, H, PL.z - 0.4], [PL.x, PL.h, PL.z], 20, 0.36, true, 1024);
   spot([TB.x - 0.1, H, TB.z - 0.3], [TB.x, TB.h, TB.z], 14, 0.45, true, 1024);
@@ -288,8 +356,10 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   // ── stock, unlabelled: copies of the catalogue's models ──────────────
   const dress = async (loader: GLTFLoader) => {
     const load = async (url: string) => (await loader.loadAsync(url)).scene;
-    const [plate, bowl, cup, sugar, jar, vase] = await Promise.all(
-      ["dinner-plate", "bowl", "cup-saucer", "sugar-bowl", "ginger-jar", "celadon-vase"].map((n) => load(`/models/china/${n}.glb`)),
+    const [plate, bowl, cup, sugar, jar, vase, pPlate, pBowl, pCup, cPlate, cBowl] = await Promise.all(
+      ["dinner-plate", "bowl", "cup-saucer", "sugar-bowl", "ginger-jar", "celadon-vase", "prunus-plate", "prunus-bowl", "prunus-cup-saucer", "celadon-plate", "celadon-bowl"].map((n) =>
+        load(`/models/china/${n}.glb`),
+      ),
     );
     const put = (src: THREE.Object3D, x: number, y: number, z: number, opts: { yaw?: number; tilt?: number; scale?: number } = {}) => {
       const o = src.clone(true);
@@ -317,6 +387,23 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     // Plates hung on the wall either side, three high.
     for (const sx of [-1, 1])
       for (let i = 0; i < 3; i++) put(plate, sx * 2.2, 1.15 + i * 0.36, -2.49, { tilt: Math.PI / 2, yaw: 0 });
+    // The side units' stock: the Prunus wall left, the Celadon wall right.
+    const onSide = (src: THREE.Object3D, side: -1 | 1, lx: number, y: number, opts: { yaw?: number; scale?: number; lz?: number } = {}) => {
+      const p = sideToWorld(side, lx, y, opts.lz ?? 0.2);
+      return put(src, p.x, p.y, p.z, { yaw: (-side * Math.PI) / 2 + (opts.yaw ?? 0), scale: opts.scale });
+    };
+    for (let i = 0; i < 5; i++) onSide(pPlate, -1, -0.6, 1.66 + i * 0.0165, { yaw: i * 0.8 });
+    onSide(pCup, -1, -0.1, 1.66, { yaw: 0.4 });
+    onSide(pCup, -1, 0.15, 1.66, { yaw: 0.2 });
+    onSide(jar, -1, 0.62, 1.66, { scale: 0.85, yaw: 0.9 });
+    onSide(pBowl, -1, -0.75, 1.28, { lz: 0.14 });
+    onSide(jar, -1, 0.75, 0.9, { scale: 0.7, yaw: 2 });
+    for (let i = 0; i < 5; i++) onSide(cPlate, 1, 0.6, 1.66 + i * 0.0165, { yaw: i * 0.8 });
+    onSide(cBowl, 1, 0.05, 1.66);
+    onSide(vase, 1, -0.45, 1.66, { scale: 0.8 });
+    onSide(vase, 1, -0.7, 1.66, { scale: 0.62, yaw: 1 });
+    onSide(cBowl, 1, 0.65, 1.28, { scale: 0.85, lz: 0.14 });
+    onSide(vase, 1, -0.65, 1.28, { scale: 0.7 });
     // The table: a stack of plates, two bowls, a cup.
     for (let i = 0; i < 6; i++) put(plate, TB.x - 0.16, TB.h + i * 0.0165, TB.z + 0.05, { yaw: i * 0.9 });
     put(bowl, TB.x + 0.2, TB.h, TB.z - 0.12);
@@ -333,6 +420,9 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
       blocked: [
         { x0: PL.x - PL.w / 2 - 0.25, x1: PL.x + PL.w / 2 + 0.25, z0: PL.z - PL.d / 2 - 0.25, z1: PL.z + PL.d / 2 + 0.25 },
         { x0: TB.x - TB.r - 0.25, x1: TB.x + TB.r + 0.25, z0: TB.z - TB.r - 0.25, z1: TB.z + TB.r + 0.25 },
+        // The side units.
+        { x0: -9, x1: -SIDE.wallX + 0.75, z0: SIDE.z - SIDE.w / 2 - 0.2, z1: SIDE.z + SIDE.w / 2 + 0.2 },
+        { x0: SIDE.wallX - 0.75, x1: 9, z0: SIDE.z - SIDE.w / 2 - 0.2, z1: SIDE.z + SIDE.w / 2 + 0.2 },
         // The front wall either side of the doorway.
         { x0: -9, x1: -DOOR_W / 2 + 0.2, z0: FRONT_Z - 0.3, z1: FRONT_Z + 0.3 },
         { x0: DOOR_W / 2 - 0.2, x1: 9, z0: FRONT_Z - 0.3, z1: FRONT_Z + 0.3 },

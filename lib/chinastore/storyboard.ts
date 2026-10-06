@@ -15,24 +15,26 @@
 export type Key = { t: number; eye: [number, number, number]; look: [number, number, number] };
 
 export const KEYS: Key[] = [
-  // 0–3 s: outside, then through the doorway (the threshold is at z 4.6).
+  // 0–3 s: outside, then through the doorway (the threshold is at z 4.6),
+  // a glance at the Celadon wall on the right.
   { t: 0, eye: [0.32, 1.64, 7.6], look: [0.05, 1.9, 0] },
-  { t: 3, eye: [0.05, 1.63, 4.3], look: [-0.25, 1.38, 0] },
-  // 3–7 s: past the plinth — its labels come and go — toward the wall.
-  { t: 6.2, eye: [-0.12, 1.62, 2.1], look: [-0.45, 1.2, -1.2] },
-  // 7–11 s: the wall fills the view; its labels appear.
-  { t: 9.6, eye: [-0.06, 1.61, 0.15], look: [-0.05, 1.18, -2.25] },
+  { t: 3, eye: [0.05, 1.63, 4.3], look: [1.4, 1.35, 0.6] },
+  // 3–7.5 s: past the sale post — the ginger jar speaks up, its tag rises.
+  { t: 5.6, eye: [-0.15, 1.62, 3.0], look: [-1.15, 1.0, 1.85] },
+  { t: 7.6, eye: [-0.12, 1.62, 1.55], look: [-0.5, 1.2, -1.4] },
+  // 7.5–11 s: the wall fills the view; its labels appear.
+  { t: 10.0, eye: [-0.06, 1.61, 0.15], look: [-0.05, 1.18, -2.25] },
   // 11–14 s: in to the teapot.
-  { t: 13.2, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
+  { t: 13.4, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
 ];
 
 export const CUES = {
   /** The hero's highlight is up by now (it begins as it becomes selectable). */
-  select: 13.9,
+  select: 14.1,
   /** «Add to basket» pressed. */
-  addToBasket: 18.4,
+  addToBasket: 18.6,
   /** The demo has said what it came to say. */
-  end: 20.5,
+  end: 20.8,
 } as const;
 
 export const DURATION = KEYS[KEYS.length - 1].t;

@@ -5,14 +5,15 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATALOG, HOTSPOTS, SCENE_ID, formatPrice, productsFor, type CatalogItem } from "./products.ts";
-import { FADE_M, damp, distanceOpacity, labelState, viewOpacity } from "./proximity.ts";
+import { CATALOG, HOTSPOTS, SCENE_ID, formatPrice, priceNow, productsFor, type CatalogItem } from "./products.ts";
+import { AD_REARM_M, FADE_M, adStep, damp, distance, distanceOpacity, labelState, viewOpacity } from "./proximity.ts";
 import { CUES, DURATION, KEYS, progressAt } from "./storyboard.ts";
 
-test("every hotspot in the demo scene joins a catalogue row, and there are eight", () => {
+test("every hotspot in the demo scene joins a catalogue row, each with its own id", () => {
   const products = productsFor(SCENE_ID);
-  assert.equal(products.length, 8);
-  assert.equal(new Set(products.map((p) => p.id)).size, 8);
+  assert.equal(products.length, HOTSPOTS.length);
+  assert.equal(new Set(products.map((p) => p.id)).size, products.length);
+  assert.equal(products.length, 15);
   for (const p of products) {
     assert.ok(p.modelUrl.endsWith(".glb"), p.id);
     assert.ok(p.labelDistance > p.selectionDistance, p.id);
@@ -37,9 +38,9 @@ test("a price change is a catalogue edit: same hotspot, new price", () => {
 
 test("a hotspot whose SKU left the catalogue is dropped; other scenes are not mixed in", () => {
   const catalog = CATALOG.filter((c) => c.sku !== "CT-1002");
-  assert.equal(productsFor(SCENE_ID, catalog).length, 7);
+  assert.equal(productsFor(SCENE_ID, catalog).length, HOTSPOTS.length - 1);
   const elsewhere = [...HOTSPOTS, { ...HOTSPOTS[0], sceneId: "another-store", id: "x" }];
-  assert.equal(productsFor(SCENE_ID, CATALOG, elsewhere).length, 8);
+  assert.equal(productsFor(SCENE_ID, CATALOG, elsewhere).length, HOTSPOTS.length);
 });
 
 test("price on the label", () => {
@@ -158,8 +159,59 @@ test("from the doorway no label shows; from the wall every shelf label does", ()
   };
   const start = at(KEYS[0]);
   for (const p of products) assert.equal(start(p), 0, p.id);
-  const wall = at(KEYS[3]);
+  const wall = at(KEYS.find((k) => k.eye[2] < 0.5 && k.eye[2] > 0)!);
   for (const p of products.filter((p) => p.anchor.z < -2)) assert.ok(wall(p) > 0.9, p.id);
   // …and the plinth by the door, now beside and behind, has faded.
   for (const p of products.filter((p) => p.anchor.z > 1)) assert.ok(wall(p) < 0.05, p.id);
+});
+
+test("sale prices: the shopper pays the sale price; a 'sale' above the price is ignored", () => {
+  assert.equal(priceNow({ price: 129, salePrice: 99 }), 99);
+  assert.equal(priceNow({ price: 89 }), 89);
+  assert.equal(priceNow({ price: 50, salePrice: 60 }), 50);
+  const onSale = productsFor(SCENE_ID).filter((p) => p.salePrice !== undefined);
+  assert.ok(onSale.length >= 3);
+  for (const p of onSale) assert.ok(p.salePrice! < p.price, p.id);
+});
+
+test("the ad speaks once per pass, only in view, and re-arms after walking away", () => {
+  let s = { fire: false, armed: true };
+  s = adStep(s.armed, 3.0, 1, 2.6);
+  assert.equal(s.fire, false);
+  s = adStep(s.armed, 2.0, 0, 2.6); // close but behind
+  assert.equal(s.fire, false);
+  s = adStep(s.armed, 2.0, 1, 2.6);
+  assert.equal(s.fire, true);
+  s = adStep(s.armed, 1.5, 1, 2.6);
+  assert.equal(s.fire, false);
+  s = adStep(s.armed, 2.6 + AD_REARM_M - 0.1, 1, 2.6);
+  assert.equal(s.armed, false);
+  s = adStep(s.armed, 2.6 + AD_REARM_M + 0.1, 1, 2.6);
+  assert.equal(s.armed, true);
+  s = adStep(s.armed, 2.0, 1, 2.6);
+  assert.equal(s.fire, true);
+});
+
+test("the scripted walk sets the sale post's ad off on the way in, before the wall", () => {
+  const ad = productsFor(SCENE_ID).find((p) => p.ad && p.adDistance)!;
+  assert.ok(ad, "an ad product exists");
+  let armed = true;
+  let firedAt = -1;
+  const pos = (t: number) => {
+    // Linear between keys is close enough to find the moment.
+    const i = Math.max(0, KEYS.findIndex((k) => k.t >= t) - 1);
+    const a = KEYS[i], b = KEYS[Math.min(i + 1, KEYS.length - 1)];
+    const f = b.t === a.t ? 0 : (t - a.t) / (b.t - a.t);
+    const lerp = (u: number[], v: number[]) => ({ x: u[0] + (v[0] - u[0]) * f, y: u[1] + (v[1] - u[1]) * f, z: u[2] + (v[2] - u[2]) * f });
+    return { eye: lerp(a.eye, b.eye), look: lerp(a.look, b.look) };
+  };
+  for (let t = 0; t <= DURATION && firedAt < 0; t += 0.05) {
+    const { eye, look } = pos(t);
+    const f = { x: look.x - eye.x, y: look.y - eye.y, z: look.z - eye.z };
+    const l = Math.hypot(f.x, f.y, f.z);
+    const r = adStep(armed, distance(eye, ad.anchor), viewOpacity(eye, { x: f.x / l, y: f.y / l, z: f.z / l }, ad.anchor), ad.adDistance!);
+    armed = r.armed;
+    if (r.fire) firedAt = t;
+  }
+  assert.ok(firedAt > 3 && firedAt < 8, `fired at ${firedAt}`);
 });

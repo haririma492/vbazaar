@@ -32,6 +32,8 @@ export type EngineEvents = {
   onBasket?: (count: number, product: Product) => void;
   onHold?: (state: HoldState | null) => void;
   onFocus?: (product: Product | null) => void;
+  /** A product's audio ad is due (pan: −1 left … 1 right). */
+  onAd?: (product: Product, pan: number) => void;
   /** Scripted beats: the demo's tap on the teapot, its press of «Add to basket», its end. */
   onCue?: (cue: "tap" | "press-add" | "end", at?: { x: number; y: number }) => void;
   onDemoTime?: (t: number) => void;
@@ -171,6 +173,7 @@ export class ChinaStoreEngine {
         this.events.onHold?.(s);
       },
       onFocus: (p) => this.events.onFocus?.(p),
+      onAd: (p, pan) => this.events.onAd?.(p, pan),
     }, { standIns: true, handUrl: "/models/china/hand.glb", glowTexture: glowTexture() });
 
     progress.total = this.products.length + 1;

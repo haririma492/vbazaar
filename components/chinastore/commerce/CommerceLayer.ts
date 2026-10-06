@@ -1,8 +1,8 @@
 import * as THREE from "three";
 import type { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Product } from "@/lib/chinastore/products";
-import { formatPrice } from "@/lib/chinastore/products";
-import { FADE_RATE, damp, labelState } from "@/lib/chinastore/proximity";
+import { formatPrice, priceNow } from "@/lib/chinastore/products";
+import { FADE_RATE, adStep, damp, labelState, viewOpacity } from "@/lib/chinastore/proximity";
 
 /**
  * THE COMMERCE LAYER — what turns a 3D place into a shop.
@@ -29,6 +29,11 @@ export type CommerceEvents = {
   onHold?: (state: HoldState | null) => void;
   /** The product a tap would take now (nearest selectable in view), or null. */
   onFocus?: (product: Product | null) => void;
+  /**
+   * A product's audio ad is due: the shopper has come near it. `pan` is
+   * where it is across the view, −1 (left) … 1 (right), for the sound.
+   */
+  onAd?: (product: Product, pan: number) => void;
 };
 
 type Runtime = {
@@ -42,6 +47,8 @@ type Runtime = {
   opacity: number;
   materials: THREE.MeshPhysicalMaterial[];
   glow: number;
+  /** The ad's latch: ready to speak on the next approach. */
+  adArmed: boolean;
 };
 
 type Pose = { pos: THREE.Vector3; quat: THREE.Quaternion };
@@ -126,7 +133,7 @@ export class CommerceLayer {
       }
       tick();
       this.items.push({
-        p, shelf, home, materials, glow: 0,
+        p, shelf, home, materials, glow: 0, adArmed: true,
         anchor: new THREE.Vector3(p.anchor.x, p.anchor.y, p.anchor.z),
         el: this.makeLabel(p),
         opacity: 0,
@@ -163,19 +170,22 @@ export class CommerceLayer {
 
   private makeLabel(p: Product): HTMLElement {
     const el = document.createElement("div");
-    el.className = `cs-label ${p.labelSide === "below" ? "cs-below" : "cs-above"}${p.hero ? " cs-hero" : ""}`;
+    const onSale = priceNow(p) < p.price;
+    el.className = `cs-label ${p.labelSide === "below" ? "cs-below" : "cs-above"}${p.hero ? " cs-hero" : ""}${onSale ? " cs-sale" : ""}`;
     el.innerHTML = `
       <span class="cs-dot"></span>
       <span class="cs-leader"></span>
       <span class="cs-card">
+        <span class="cs-badge">Sale</span>
         <span class="cs-name"></span>
         <span class="cs-sku"></span>
-        <span class="cs-price"></span>
+        <span class="cs-price"><s class="cs-was"></s><span class="cs-now"></span></span>
         <span class="cs-hint">Tap to pick up</span>
       </span>`;
     el.querySelector(".cs-name")!.textContent = p.name;
     el.querySelector(".cs-sku")!.textContent = p.sku;
-    el.querySelector(".cs-price")!.textContent = formatPrice(p.price);
+    el.querySelector(".cs-now")!.textContent = formatPrice(priceNow(p));
+    if (onSale) el.querySelector(".cs-was")!.textContent = formatPrice(p.price);
     el.style.opacity = "0";
     el.style.visibility = "hidden";
     this.overlay.appendChild(el);
@@ -212,6 +222,7 @@ export class CommerceLayer {
         }
       }
       this.placeLabel(r, s.distance, width, height);
+      if (r.p.ad && r.p.adDistance) this.checkAd(r, s.distance, fwd);
     }
     if (best !== this.focus) {
       this.focus?.el.classList.remove("cs-focus");
@@ -221,6 +232,18 @@ export class CommerceLayer {
     }
     this.updateHighlight(dt, now);
     this.updateHeld(dt);
+  }
+
+  /** The audio ad: once per approach; while it speaks, its tag rises with «Sale». */
+  private checkAd(r: Runtime, distance: number, fwd: THREE.Vector3) {
+    const view = viewOpacity(this.camera.position, fwd, r.anchor);
+    const step = adStep(r.adArmed, distance, view, r.p.adDistance!);
+    if (step.armed && !r.adArmed) r.el.classList.remove("cs-live");
+    r.adArmed = step.armed;
+    if (!step.fire || this.held) return;
+    r.el.classList.add("cs-live");
+    const v = this.tmp.v.copy(r.anchor).project(this.camera);
+    this.events.onAd?.(r.p, Math.max(-1, Math.min(1, v.x)));
   }
 
   private placeLabel(r: Runtime, distance: number, width: number, height: number) {
@@ -379,6 +402,8 @@ export class CommerceLayer {
     for (const r of this.items) {
       r.opacity = 0;
       r.glow = 0;
+      r.adArmed = true;
+      r.el.classList.remove("cs-live");
       r.el.style.visibility = "hidden";
     }
     this.events.onHold?.(null);

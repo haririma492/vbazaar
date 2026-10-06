@@ -31,6 +31,10 @@ export type CatalogItem = {
   modelUrl: string;
   /** A line for the product card. */
   blurb?: string;
+  /** A sale price, while the merchant runs one (the label shows both). */
+  salePrice?: number;
+  /** What the product says out loud as a shopper passes (an audio ad). */
+  ad?: string;
 };
 
 /**
@@ -60,6 +64,8 @@ export type Hotspot = {
    */
   display?: { position: Vec3; yaw?: number; tilt?: number; scale?: number };
   grasp?: Grasp;
+  /** Within this distance (m), in view, the product's audio ad plays (once per pass). */
+  adDistance?: number;
 };
 
 /** The joined record the interaction layer works with. */
@@ -76,15 +82,30 @@ export const CATALOG: CatalogItem[] = [
   { sku: "CT-1004", name: "Porcelain Teapot", price: 89, currency: "CAD", modelUrl: "/models/china/teapot.glb", blurb: "Cobalt Royal · 1.1 L · hand-gilded" },
   { sku: "CT-1005", name: "Serving Platter", price: 64, currency: "CAD", modelUrl: "/models/china/platter.glb", blurb: "Cobalt Royal · 34 cm" },
   { sku: "CT-1006", name: "Sugar Bowl", price: 34, currency: "CAD", modelUrl: "/models/china/sugar-bowl.glb", blurb: "Cobalt Royal · gilded handles" },
-  { sku: "CT-1042", name: "Prunus Ginger Jar", price: 129, currency: "CAD", modelUrl: "/models/china/ginger-jar.glb", blurb: "Cobalt ground · cracked ice & blossom" },
-  { sku: "CT-1043", name: "Celadon Vase", price: 72, currency: "CAD", modelUrl: "/models/china/celadon-vase.glb", blurb: "Crackle glaze · 30 cm" },
+  // On the sale post by the door.
+  {
+    sku: "CT-1042", name: "Prunus Ginger Jar", price: 129, salePrice: 99, currency: "CAD", modelUrl: "/models/china/ginger-jar.glb", blurb: "Cobalt ground · cracked ice & blossom",
+    ad: "Psst — over here! I'm on sale! The Prunus Ginger Jar: was one twenty-nine, today just ninety-nine dollars.",
+  },
+  { sku: "CT-1043", name: "Celadon Vase", price: 72, salePrice: 58, currency: "CAD", modelUrl: "/models/china/celadon-vase.glb", blurb: "Crackle glaze · 30 cm" },
+  { sku: "CT-1044", name: "Celadon Bud Vase", price: 38, salePrice: 29, currency: "CAD", modelUrl: "/models/china/celadon-vase.glb", blurb: "Crackle glaze · 18 cm" },
+  // The Prunus wall (left).
+  { sku: "CT-1051", name: "Prunus Dinner Plate", price: 45, currency: "CAD", modelUrl: "/models/china/prunus-plate.glb", blurb: "Prunus · 27 cm" },
+  { sku: "CT-1052", name: "Prunus Bowl", price: 62, currency: "CAD", modelUrl: "/models/china/prunus-bowl.glb", blurb: "Prunus · 21 cm" },
+  { sku: "CT-1053", name: "Prunus Cup & Saucer", price: 34, currency: "CAD", modelUrl: "/models/china/prunus-cup-saucer.glb", blurb: "Prunus · gilded rim" },
+  // The Celadon wall (right).
+  { sku: "CT-1061", name: "Celadon Teapot", price: 95, currency: "CAD", modelUrl: "/models/china/celadon-teapot.glb", blurb: "Crackle glaze · 1.1 L" },
+  { sku: "CT-1062", name: "Celadon Bowl", price: 55, currency: "CAD", modelUrl: "/models/china/celadon-bowl.glb", blurb: "Crackle glaze · 21 cm" },
+  { sku: "CT-1063", name: "Celadon Plate", price: 42, currency: "CAD", modelUrl: "/models/china/celadon-plate.glb", blurb: "Crackle glaze · 27 cm" },
 ];
 
 // ── where they sit in the simulated store ─────────────────────────────────
 //
 // The display wall: its counter top at y 0.90, a shelf at y 1.28, the wall
-// at z −2.45. The plinth the shopper passes on the way in stands at x −1.15,
-// z 2.0, its top at y 0.92.
+// at z −2.45. The sale post the shopper passes on the way in stands at
+// x −1.12, z 1.95, its top at y 0.92. Two smaller units stand against the
+// side walls (x ±3.6), centred at z 0.6, with the same counter and shelf
+// heights; their pieces sit at x ±3.38 and face into the room.
 
 const SHELF_Y = 1.28;
 const COUNTER_Y = 0.9;
@@ -111,9 +132,41 @@ export const HOTSPOTS: Hotspot[] = [
   { sceneId: SCENE_ID, sku: "CT-1003", id: "bowl-01", labelSide: "below", anchor: { x: 0.0, y: COUNTER_Y + 0.04, z: -2.12 }, labelDistance: 3.2, selectionDistance: 1.6, display: { position: { x: 0.0, y: COUNTER_Y, z: -2.12 } } },
   { sceneId: SCENE_ID, sku: "CT-1002", id: "plate-01", labelSide: "below", anchor: { x: 0.72, y: COUNTER_Y + 0.15, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.72, y: COUNTER_Y + 0.15, z: -2.2 }, tilt: PLATE_TILT } },
   // The plinth by the entrance.
-  { sceneId: SCENE_ID, sku: "CT-1042", id: "jar-01", anchor: { x: -1.27, y: PLINTH_Y + 0.13, z: 2.02 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.27, y: PLINTH_Y, z: 2.02 }, yaw: 0.4 } },
-  { sceneId: SCENE_ID, sku: "CT-1043", id: "vase-01", anchor: { x: -0.98, y: PLINTH_Y + 0.16, z: 1.86 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.98, y: PLINTH_Y, z: 1.86 } } },
+  { sceneId: SCENE_ID, sku: "CT-1042", id: "jar-01", adDistance: 2.6, anchor: { x: -1.3, y: PLINTH_Y + 0.13, z: 2.0 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.3, y: PLINTH_Y, z: 2.0 }, yaw: 0.4 } },
+  { sceneId: SCENE_ID, sku: "CT-1043", id: "vase-01", anchor: { x: -0.97, y: PLINTH_Y + 0.16, z: 1.84 }, labelDistance: 3.0, selectionDistance: 1.6, labelSide: "below", display: { position: { x: -0.97, y: PLINTH_Y, z: 1.84 } } },
+  { sceneId: SCENE_ID, sku: "CT-1044", id: "budvase-01", anchor: { x: -1.06, y: PLINTH_Y + 0.09, z: 2.1 }, labelDistance: 2.6, selectionDistance: 1.6, labelSide: "below", display: { position: { x: -1.06, y: PLINTH_Y, z: 2.1 }, scale: 0.6, yaw: 1.1 } },
+  // The Prunus wall, left: facing +x.
+  ...sideUnit(-1, [
+    { sku: "CT-1053", id: "prunus-cup-01", at: "shelf", z: 1.05, rise: 0.05 },
+    { sku: "CT-1052", id: "prunus-bowl-01", at: "shelf", z: 0.2, rise: 0.04 },
+    { sku: "CT-1051", id: "prunus-plate-01", at: "counter", z: 0.6, rise: 0.15, plate: true },
+  ]),
+  // The Celadon wall, right: facing −x.
+  ...sideUnit(1, [
+    { sku: "CT-1061", id: "celadon-teapot-01", at: "shelf", z: 0.6, rise: 0.085 },
+    { sku: "CT-1062", id: "celadon-bowl-01", at: "counter", z: 0.12, rise: 0.04 },
+    { sku: "CT-1063", id: "celadon-plate-01", at: "counter", z: 1.08, rise: 0.15, plate: true },
+  ]),
 ];
+
+/** Hotspots on a side-wall unit: side −1 is the left wall, 1 the right. */
+function sideUnit(side: -1 | 1, items: { sku: string; id: string; at: "shelf" | "counter"; z: number; rise: number; plate?: boolean }[]): Hotspot[] {
+  const x = side * 3.38;
+  const yaw = (-side * Math.PI) / 2; // the piece's front (+z) turned to face the room
+  return items.map((it) => {
+    const base = it.at === "shelf" ? SHELF_Y : COUNTER_Y;
+    // A plate on its stand stands forward of the wall, centred at its own height.
+    const y = it.plate ? base + it.rise : base;
+    const px = it.plate ? x - side * 0.02 : x;
+    return {
+      sceneId: SCENE_ID, sku: it.sku, id: it.id,
+      anchor: { x: px, y: base + it.rise, z: it.z },
+      labelDistance: 3.0, selectionDistance: 1.6,
+      labelSide: it.at === "counter" ? "below" : "above",
+      display: { position: { x: px, y, z: it.z }, yaw, ...(it.plate ? { tilt: PLATE_TILT } : {}) },
+    } satisfies Hotspot;
+  });
+}
 
 /**
  * Joins the catalogue to a scene's hotspots by SKU. A hotspot whose SKU the
@@ -131,6 +184,11 @@ export function productsFor(sceneId: string, catalog: CatalogItem[] = CATALOG, h
     out.push({ ...item, ...place });
   }
   return out;
+}
+
+/** What the shopper pays now: the sale price while there is one. */
+export function priceNow(item: Pick<CatalogItem, "price" | "salePrice">): number {
+  return item.salePrice !== undefined && item.salePrice < item.price ? item.salePrice : item.price;
 }
 
 /** "$89" for whole dollars, "$89.50" otherwise — the label's price. */

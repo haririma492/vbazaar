@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HoldState } from "./commerce/CommerceLayer";
 import type { ChinaStoreEngine } from "./ChinaStoreEngine";
-import { formatPrice, type Product } from "@/lib/chinastore/products";
+import { formatPrice, priceNow, type Product } from "@/lib/chinastore/products";
+import { AdVoice } from "./adVoice";
 
 /**
  * `/chinastore` — the VCA investor preview: a short walk into a china
@@ -22,11 +23,11 @@ import { formatPrice, type Product } from "@/lib/chinastore/products";
 type Phase = "loading" | "title" | "demo" | "ended" | "explore";
 
 const CAPTIONS: { from: number; to: number; text: string }[] = [
-  { from: 0.4, to: 3.4, text: "Walk in." },
-  { from: 3.8, to: 7.2, text: "Discover what is around you." },
-  { from: 7.8, to: 12.2, text: "Details appear when they matter — and only then." },
-  { from: 14.6, to: 17.6, text: "Pick it up. Turn it in your hand." },
-  { from: 18.2, to: 20.8, text: "Buy it." },
+  { from: 0.4, to: 3.2, text: "Walk in." },
+  { from: 3.6, to: 7.6, text: "Offers speak up as you pass." },
+  { from: 8.2, to: 12.6, text: "Details appear when they matter — and only then." },
+  { from: 14.8, to: 17.8, text: "Pick it up. Turn it in your hand." },
+  { from: 18.4, to: 21, text: "Buy it." },
 ];
 
 export default function ChinaStore({ serifClass }: { serifClass?: string }) {
@@ -34,6 +35,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   const overlayRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<ChinaStoreEngine | null>(null);
   const params = useRef<URLSearchParams | null>(null);
+  const voiceRef = useRef<AdVoice | null>(null);
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [progress, setProgress] = useState(0);
@@ -48,6 +50,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   const [debug, setDebug] = useState<{ id: string; distance: number; opacity: number }[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [hint, setHint] = useState(false);
+  const [muted, setMuted] = useState(false);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -56,6 +59,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
     setDev(q.get("dev") === "1");
     let cancelled = false;
     let engine: ChinaStoreEngine | null = null;
+    voiceRef.current = new AdVoice();
     (async () => {
       const { ChinaStoreEngine } = await import("./ChinaStoreEngine");
       if (cancelled || !stageRef.current || !overlayRef.current) return;
@@ -65,8 +69,11 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
         onProgress: setProgress,
         onWebgl: setWebgl,
         onBasket: (count, product) => {
-          setBasket((b) => ({ count, total: b.total + product.price, last: product }));
-          setToast(`${product.name} · ${formatPrice(product.price)} — in your basket`);
+          setBasket((b) => ({ count, total: b.total + priceNow(product), last: product }));
+          setToast(`${product.name} · ${formatPrice(priceNow(product))} — in your basket`);
+        },
+        onAd: (product, pan) => {
+          if (product.ad) voiceRef.current?.play(product.ad, pan);
         },
         onHold: setHold,
         onCue: (cue, at) => {
@@ -97,6 +104,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
     })();
     return () => {
       cancelled = true;
+      voiceRef.current?.stop();
       engine?.dispose();
       engineRef.current = null;
     };
@@ -115,6 +123,8 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   }, [toast]);
 
   const play = useCallback(() => {
+    voiceRef.current?.unlock();
+    voiceRef.current?.stop();
     setBasket({ count: 0, total: 0, last: null });
     setHold(null);
     setToast(null);
@@ -124,6 +134,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   }, []);
 
   const explore = useCallback(() => {
+    voiceRef.current?.unlock();
     engineRef.current?.explore();
     setPhase("explore");
     setHint(true);
@@ -153,6 +164,30 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
         <span className="cs-brand-sub">Virtual China Store · preview</span>
       </div>
 
+      {/* Sound */}
+      <button
+        type="button"
+        className="cs-sound"
+        aria-label={muted ? "Turn sound on" : "Turn sound off"}
+        onClick={() => {
+          const v = voiceRef.current;
+          if (!v) return;
+          v.unlock();
+          v.muted = !v.muted;
+          if (v.muted) v.stop();
+          setMuted(v.muted);
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden>
+          <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+          {muted ? (
+            <path d="M16 9.5l5 5M21 9.5l-5 5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          ) : (
+            <path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          )}
+        </svg>
+      </button>
+
       {/* Basket */}
       <div className={`cs-basket ${basket.count ? "cs-basket-full" : ""}`} aria-live="polite">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
@@ -174,7 +209,9 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
             <span className="cs-panel-name">{holding.name}</span>
             <span className="cs-panel-meta">{holding.sku}{holding.blurb ? ` · ${holding.blurb}` : ""}</span>
             <span className="cs-panel-price">
-              {formatPrice(holding.price)} <small>{holding.currency}</small>
+              {priceNow(holding) < holding.price && <s className="cs-panel-was">{formatPrice(holding.price)}</s>}
+              {formatPrice(priceNow(holding))} <small>{holding.currency}</small>
+              {priceNow(holding) < holding.price && <span className="cs-panel-sale">Sale</span>}
             </span>
             <button type="button" className={`cs-btn cs-btn-primary ${pressed ? "cs-pressed" : ""}`} onClick={add} disabled={phase === "demo"}>
               Add to Basket

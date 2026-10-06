@@ -138,6 +138,107 @@
   display: block;
 }
 
+/* ── sale tags and the audio ad ─────────────────────────────────────── */
+
+.cs-badge,
+.cs-was {
+  display: none;
+}
+.cs-sale .cs-badge {
+  display: inline-block;
+  align-self: flex-start;
+  margin-bottom: 3px;
+  padding: 2px 6px 1px;
+  border-radius: 2px;
+  background: #b3261e;
+  color: #fff;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.cs-sale .cs-was {
+  display: inline;
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--cs-dim);
+  text-decoration-thickness: 1px;
+}
+.cs-sale .cs-now {
+  color: #ffd9cf;
+}
+.cs-sale .cs-card {
+  border-left-color: #e0564c;
+}
+.cs-sale .cs-leader,
+.cs-sale .cs-card {
+  transition: transform 0.9s cubic-bezier(0.2, 0.9, 0.25, 1.2), height 0.9s cubic-bezier(0.2, 0.9, 0.25, 1.2), box-shadow 0.6s ease;
+}
+/* The product speaking: its tag lifts up off the shelf, larger, «Sale» lit. */
+.cs-live .cs-card {
+  transform: translateY(-56px) scale(1.18);
+  transform-origin: 0 100%;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(224, 86, 76, 0.55), 0 0 24px rgba(224, 86, 76, 0.35);
+}
+.cs-below.cs-live .cs-card {
+  transform: translateY(56px) scale(1.18);
+  transform-origin: 0 0;
+}
+.cs-above.cs-live .cs-leader,
+.cs-below.cs-live .cs-leader {
+  height: calc(66px + 34px * var(--grow, 1));
+  background: #e0564c;
+}
+.cs-live .cs-dot {
+  background: #e0564c;
+  animation: cs-ping 1.4s ease-out infinite;
+}
+.cs-live .cs-badge {
+  animation: cs-badge 1.2s ease-in-out infinite;
+}
+@keyframes cs-ping {
+  0% { box-shadow: 0 0 0 0 rgba(224, 86, 76, 0.7); }
+  100% { box-shadow: 0 0 0 14px rgba(224, 86, 76, 0); }
+}
+@keyframes cs-badge {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+.cs-sound {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  right: 150px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(255, 250, 240, 0.16);
+  border-radius: 999px;
+  background: var(--cs-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--cs-ink);
+  cursor: pointer;
+}
+.cs-panel-was {
+  margin-right: 10px;
+  font-size: 22px;
+  color: var(--cs-dim);
+}
+.cs-panel-sale {
+  margin-left: 10px;
+  padding: 3px 7px 2px;
+  border-radius: 2px;
+  background: #b3261e;
+  font-family: var(--cs-sans);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
 /* ── the demo's tap ──────────────────────────────────────────────────── */
 
 .cs-ripple {

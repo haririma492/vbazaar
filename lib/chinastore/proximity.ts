@@ -72,3 +72,22 @@ export function labelState(
 export function damp(current: number, target: number, rate: number, dt: number): number {
   return target + (current - target) * Math.exp(-rate * dt);
 }
+
+/** How much farther than adDistance a shopper must go before an ad may play again. */
+export const AD_REARM_M = 1.5;
+
+/**
+ * The audio ad's latch: a product with an ad speaks once as the shopper
+ * comes within adDistance with it in view, and not again until they have
+ * walked away (beyond adDistance + AD_REARM_M) and come back.
+ */
+export function adStep(
+  armed: boolean,
+  distance: number,
+  view: number,
+  adDistance: number,
+): { fire: boolean; armed: boolean } {
+  if (armed && distance <= adDistance && view > 0.3) return { fire: true, armed: false };
+  if (!armed && distance > adDistance + AD_REARM_M) return { fire: false, armed: true };
+  return { fire: false, armed };
+}

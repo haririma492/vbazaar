@@ -266,4 +266,26 @@ export function signTexture(text: string, sub: string): THREE.Texture {
   return t;
 }
 
+/** The sale post's card: ivory, a red SALE, small print. */
+export function saleCardTexture(): THREE.Texture {
+  const c = canvas(512, 320);
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#f4efe6";
+  ctx.fillRect(0, 0, 512, 320);
+  ctx.strokeStyle = "#b08a4f";
+  ctx.lineWidth = 6;
+  ctx.strokeRect(14, 14, 484, 292);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#a3201c";
+  ctx.font = '600 120px "Cormorant Garamond", "Didot", Georgia, serif';
+  ctx.fillText(spaced("SALE"), 256, 165);
+  ctx.fillStyle = "#3a3128";
+  ctx.font = '400 30px "Helvetica Neue", Arial, sans-serif';
+  ctx.fillText(spaced("UP TO 25% OFF"), 256, 240);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  return t;
+}
+
 const spaced = (s: string) => s.split("").join(" ");
