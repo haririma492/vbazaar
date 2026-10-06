@@ -10,8 +10,8 @@ import "./chinastore.css";
 // stays (components/chinastore/commerce, lib/chinastore). English, for the
 // investors it is shown to. Not linked from the site.
 export const metadata: Metadata = {
-  title: "VCA — The Virtual China Store",
-  description: "Walk into a china boutique, see each piece's details appear as you near it, pick up the teapot and add it to your basket.",
+  title: "VCA — The Virtual Mall",
+  description: "Walk into a china boutique, pick up the teapot, carry the basket next door to the jeweller, and pay once for the whole trip.",
   robots: { index: false },
 };
 

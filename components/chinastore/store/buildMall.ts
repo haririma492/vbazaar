@@ -53,23 +53,29 @@ export function buildMall(renderer: THREE.WebGLRenderer): Mall {
     map: nero.color, normalMap: nero.normal, roughnessMap: nero.rough, roughness: 1,
     normalScale: new THREE.Vector2(0.3, 0.3), clearcoat: 1, clearcoatRoughness: 0.06,
   });
-  const plasterMat = new THREE.MeshStandardMaterial({ map: plasterTex.color, normalMap: plasterTex.normal, roughness: 0.92, color: new THREE.Color(1.25, 1.22, 1.18) });
+  const plasterMat = new THREE.MeshStandardMaterial({ normalMap: plasterTex.normal, normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.9, color: new THREE.Color(0.62, 0.6, 0.57) });
   const ceilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.7, 0.69, 0.67), roughness: 0.95 });
   const darkCeil = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.04, 0.04, 0.045), roughness: 0.9 });
-  const lacquer = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.022, 0.022, 0.026), roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.05 });
+  // Midnight-navy lacquer: near black, but blue-black, so the warm light on it reads as depth, not olive.
+  // Matte midnight-navy lacquer, no clear coat: the HDR that makes the stones
+  // sparkle is a warm room, and a coat mirrors it onto every wall (olive,
+  // once tone-mapped). The walls are lit by the room's own lights only.
+  const lacquer = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.006, 0.009, 0.024), roughness: 0.55, specularIntensity: 0.15 });
   const brass = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.82, 0.62, 0.35), metalness: 1, roughness: 0.22 });
   const velvet = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(0.018, 0.022, 0.05), roughness: 1, sheen: 1, sheenColor: new THREE.Color(0.22, 0.26, 0.55), sheenRoughness: 0.45,
+    color: new THREE.Color(0.008, 0.01, 0.026), roughness: 1, sheen: 0.6, sheenColor: new THREE.Color(0.04, 0.05, 0.12), sheenRoughness: 0.6,
   });
   const glass = new THREE.MeshPhysicalMaterial({
-    color: new THREE.Color(0.9, 0.95, 0.95), roughness: 0.02, metalness: 0, transparent: true, opacity: 0.1, depthWrite: false, envMapIntensity: 1.4,
+    color: new THREE.Color(0.9, 0.95, 0.95), roughness: 0.02, metalness: 0, transparent: true, opacity: 0.04, depthWrite: false, envMapIntensity: 0.15, specularIntensity: 0.4,
   });
   const steel = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.2, 0.2, 0.21), metalness: 1, roughness: 0.35 });
   const walnutish = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.2, 0.12, 0.07), roughness: 0.5 });
   const lightStrip = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(2.4) });
   const halo = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.88, 0.7).multiplyScalar(3) });
-  const shopGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.55, 0.5, 0.45) });
+  const shopGlow = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.07, 0.065, 0.06) });
   for (const m of [corridorFloor, plasterMat, ceilingMat, darkCeil, walnutish]) m.envMapIntensity = 0.45;
+  lacquer.envMapIntensity = 0.05;
+  velvet.envMapIntensity = 0.3;
 
   const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, opts: { r?: number; shadow?: boolean; parent?: THREE.Object3D } = {}) => {
     const g = opts.r ? new RoundedBoxGeometry(w, h, d, 2, opts.r) : new THREE.BoxGeometry(w, h, d);
@@ -127,6 +133,14 @@ export function buildMall(renderer: THREE.WebGLRenderer): Mall {
     glow.rotation.y = Math.PI;
     root.add(glow);
     box(0.12, 4, 0.2, steel, x - w / 2, 2, 12.5, { shadow: false });
+    // Mullions, and a row of lit display shapes deep inside: a store asleep.
+    for (let k = 1; k < 4; k++) box(0.03, 2.9, 0.05, steel, x - w / 2 + (w * k) / 4, 1.45, 12.47, { shadow: false });
+    for (let k = 0; k < 3; k++) {
+      const lit = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.32, 0.28, 0.22) }));
+      lit.position.set(x - w / 3 + (k * w) / 3, 1.2, 12.57);
+      lit.rotation.y = Math.PI;
+      root.add(lit);
+    }
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(1.8, 0.225),
       new THREE.MeshStandardMaterial({ map: signTexture("OPENING  SOON", "VCA  MALL"), roughness: 0.5, emissive: new THREE.Color(0.2, 0.17, 0.12) }),
@@ -135,6 +149,11 @@ export function buildMall(renderer: THREE.WebGLRenderer): Mall {
     sign.rotation.y = Math.PI;
     root.add(sign);
   }
+  // The mall's front on this side beyond the two stores: plain stone.
+  box(15 - 11.3, 4.2, 0.1, plasterMat, (15 + 11.3) / 2, 2.1, FRONT + 0.1, { shadow: false });
+  box(0.9, 4.2, 0.1, plasterMat, -7.55, 2.1, FRONT + 0.1, { shadow: false });
+  // The corridor's two ends.
+  for (const x of [-8.0, 15.0]) box(0.1, 4, 8, plasterMat, x, 2, 8.6, { shadow: false });
   // A stone pilaster between the two stores, a bench in the corridor.
   box(0.3, 3.9, 0.3, plasterMat, 3.85, 1.95, FRONT + 0.2);
   box(1.6, 0.06, 0.45, walnutish, 2.0, 0.45, 10.4, { r: 0.01 });
@@ -173,11 +192,12 @@ export function buildMall(renderer: THREE.WebGLRenderer): Mall {
   box(DOOR, H - DOOR_H, 0.2, lacquer, JX, DOOR_H + (H - DOOR_H) / 2, FRONT, { shadow: false });
   // Facade: black with brass trim; the sign above the door.
   for (const [x0, x1] of [[3.85, JX - DOOR / 2], [JX + DOOR / 2, 11.3]] as const) {
-    box(x1 - x0, 4.2, 0.04, lacquer, (x0 + x1) / 2, 2.1, FRONT + 0.12, { shadow: false });
+    box(x1 - x0, 4.2, 0.04, lacquer, (x0 + x1) / 2, 2.1, FRONT + 0.125, { shadow: false });
   }
   box(DOOR, 4.2 - DOOR_H, 0.04, lacquer, JX, DOOR_H + (4.2 - DOOR_H) / 2, FRONT + 0.12, { shadow: false });
-  for (const sx of [-1, 1]) box(0.04, DOOR_H, 0.26, brass, JX + sx * (DOOR / 2 + 0.02), DOOR_H / 2, FRONT, { r: 0.004 });
-  box(DOOR + 0.08, 0.04, 0.26, brass, JX, DOOR_H + 0.02, FRONT, { r: 0.004 });
+  // The jambs stand just inside the opening, so no face lies on the wall's.
+  for (const sx of [-1, 1]) box(0.04, DOOR_H, 0.32, brass, JX + sx * (DOOR / 2 - 0.012), DOOR_H / 2, FRONT + 0.02, { r: 0.004 });
+  box(DOOR + 0.08, 0.04, 0.32, brass, JX, DOOR_H + 0.02, FRONT + 0.02, { r: 0.004 });
   {
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(2.4, 0.3),
@@ -218,10 +238,11 @@ export function buildMall(renderer: THREE.WebGLRenderer): Mall {
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(0.01, GT - 0.98, 0.01, brass, JX + sx * VW / 2, (GT + 0.98) / 2, VZ + sz * 0.3);
   // The vitrine's own light, a strip under its lid.
   {
-    const strip = new THREE.Mesh(new THREE.BoxGeometry(VW - 0.1, 0.004, 0.01), lightStrip);
+    // Dimmer than the corridor's lines: inches from the shopper's eye, it must not bloom.
+    const strip = new THREE.Mesh(new THREE.BoxGeometry(VW - 0.1, 0.004, 0.01), new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 0.95, 0.88).multiplyScalar(0.9) }));
     strip.position.set(JX, GT - 0.01, VZ + 0.24);
     root.add(strip);
-    const area = new THREE.RectAreaLight(new THREE.Color(1, 0.95, 0.88), 9, VW - 0.12, 0.04);
+    const area = new THREE.RectAreaLight(new THREE.Color(1, 0.95, 0.88), 4, VW - 0.12, 0.04);
     area.position.set(JX, GT - 0.015, VZ + 0.22);
     area.lookAt(JX, 0.9, VZ - 0.05);
     root.add(area);
@@ -286,9 +307,9 @@ export function buildMall(renderer: THREE.WebGLRenderer): Mall {
 
   // ── light ────────────────────────────────────────────────────────────
   // Tight, warm, from above: the stones need small bright sources to sparkle.
-  spot([JX - 0.6, H, -0.3], [JX - 0.3, 0.98, -1.25], 22, 0.32, true, undefined, jewelryLights);
-  spot([JX + 0.6, H, -0.3], [JX + 0.5, 0.98, -1.25], 22, 0.32, true, undefined, jewelryLights);
-  spot([JX, H, -0.6], [JX, 0.98, -1.22], 14, 0.16, false, new THREE.Color(1, 0.98, 0.95), jewelryLights);
+  spot([JX - 0.6, H, -0.3], [JX - 0.3, 0.98, -1.25], 13, 0.3, true, undefined, jewelryLights);
+  spot([JX + 0.6, H, -0.3], [JX + 0.5, 0.98, -1.25], 13, 0.3, true, undefined, jewelryLights);
+  spot([JX, H, -0.6], [JX, 0.98, -1.22], 10, 0.12, false, new THREE.Color(1, 0.98, 0.95), jewelryLights);
   for (const [x, z] of [[JX - 1.8, 1.8], [JX + 1.8, 1.8], [JX, 3.2], [JX, 0.6]] as const)
     spot([x, H, z], [x, 0, z + 0.01], 5, 0.7, false, undefined, jewelryLights);
   // The facade, washed from the corridor ceiling.

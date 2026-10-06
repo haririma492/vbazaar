@@ -45,7 +45,7 @@ export const MALL_KEYS: Key[] = [
   // In through its door, to the vitrine at the back.
   { t: 32.4, eye: [7.5, 1.63, 4.0], look: [7.5, 1.25, -1.2] },
   { t: 35.0, eye: [7.46, 1.6, 0.7], look: [7.5, 1.05, -1.25] },
-  { t: 37.2, eye: [7.5, 1.42, -0.6], look: [7.5, 1.02, -1.22] },
+  { t: 37.2, eye: [7.5, 1.34, -0.74], look: [7.5, 1.02, -1.22] },
 ];
 
 /** The end of the first leg (the teapot). */

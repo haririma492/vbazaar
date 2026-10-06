@@ -438,7 +438,7 @@ export class CommerceLayer {
     const view = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.32, r.p.grasp ? -0.42 : 0.35, 0, "YXZ"));
     // Held at a distance that suits its size: a teapot at arm's length, a
     // ring close enough to see the stone.
-    const dist = THREE.MathUtils.clamp(r.radius * 4.2, 0.2, -HOLD_OFFSET.z);
+    const dist = THREE.MathUtils.clamp(r.radius * 4.2, 0.13, -HOLD_OFFSET.z);
     const k = dist / -HOLD_OFFSET.z;
     const pose = this.cameraPose(new THREE.Vector3(HOLD_OFFSET.x * k, HOLD_OFFSET.y * k, -dist), view.premultiply(this.held!.spin));
     // Hold by the hand's grip, not the model's base: centre the product's mass in view.
