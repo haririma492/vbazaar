@@ -42,7 +42,7 @@ import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
   DEFAULT_DRIVE, DRIVE_LIMITS, hubOf, setDrive, setHub, setStartScene,
-  type Door, type Drive, type Exit, type Pose, type Tour, type Trail, type Vec3,
+  type Door, type Drive, type Exit, type TourScene, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
@@ -1663,7 +1663,7 @@ export default function SplatTour({
     const place = here.route.length > 1 && target.route.length > 1 ? joinAtEnd(worldRoute, target.route, hp.scale) : null;
     let next: Tour;
     if (place) {
-      next = updateScene(t, to, { place });
+      next = updateScene(t, to, { place, join: { to: here.id, by: "paths", share: null } });
       for (const e of sceneById(next, here.id)!.exits) {
         if (e.to === to && (!end || Math.hypot(e.at[0] - end[0], e.at[2] - end[2]) < 3)) next = removeExit(next, here.id, e.id);
       }
@@ -1674,31 +1674,82 @@ export default function SplatTour({
     setTour(next);
     void saveTour(next);
     if (!place) return setJoinNote(`«${to}» has no path yet: it is a button on the right instead.`);
-    // ⚠️ THEN BY THE PICTURES (`register`): the paths only guess how the next
-    // scene is turned — the view jumped where they met. Both scenes saw the
-    // common area; its points are fitted onto each other. Both scenes are
-    // loaded for it: on a computer, not a phone.
-    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
-    if (phone) return setJoinNote("Joined by the paths. For an exact join, choose it again here on a computer.");
-    const len = (r: Vec3[]) => r.reduce((t, p, i) => (i ? t + Math.hypot(p[0] - r[i - 1][0], p[2] - r[i - 1][2]) : 0), 0);
+    void matchByPictures(here.id, to, next);
+  }
+
+  /**
+   * ⚠️ JOINED BY THE PICTURES, OR IT JUMPS (operator, 2026-10-06: "the visual
+   * transition was a jump, we did not see the 6–7 metres … recorded in the
+   * end of the first scene and the beginning of the second"). The paths only
+   * put the second film's start on the first film's end — but the second
+   * film started back in the middle of the common area, metres before the
+   * first one ended, so the paths' join skips that stretch. Fitting the
+   * pictures both films took of it (`register`, in a worker) puts it right.
+   * On any device: a phone near the join holds both scenes anyway.
+   */
+  async function matchByPictures(fromId: string, toId: string, t: Tour): Promise<boolean> {
+    const from = sceneById(t, fromId), target = sceneById(t, toId);
+    if (!engine.current || !from || !target?.place || from.route.length < 2 || target.route.length < 2) return false;
+    const hp = (from.place ?? IDENTITY) as Place;
+    const worldRoute = from.route.map((p) => toWorld(hp, p));
+    const end = worldRoute[worldRoute.length - 1];
+    const len = (r: Vec3[]) => r.reduce((n, p, i) => (i ? n + Math.hypot(p[0] - r[i - 1][0], p[2] - r[i - 1][2]) : 0), 0);
     // The common area and the shop fronts round it: generous — too little
     // (two pillars) looks the same turned round.
     const radius = Math.min(30, Math.max(10, 0.8 * Math.min(len(worldRoute), len(target.route) * hp.scale)));
-    setJoinNote("Matching the two scenes' pictures where they meet… (in the background — keep going)");
-    void engine.current
-      .matchJoin(here.id, to, place, end, target.route[0], radius)
-      .then((fit) => {
-        if (!fit || fit.share < 0.3) {
-          setJoinNote(`Joined by the paths only: the pictures did not match well enough${fit ? ` (${Math.round(fit.share * 100)}%)` : ""}.`);
-          return;
-        }
-        const exact = updateScene(next, to, { place: fit.place });
-        setTour(exact);
-        void saveTour(exact);
-        setJoinNote(`✓ Joined by the pictures: ${Math.round(fit.share * 100)}% of the common area matched.`);
-      })
-      .catch((e) => setJoinNote(`Joined by the paths only: ${(e as Error).message}`));
+    setJoinNote(`Matching «${toId}» to «${fromId}» by the pictures… (in the background — keep going)`);
+    try {
+      const fit = await engine.current.matchJoin(fromId, toId, target.place as Place, end, target.route[0], radius);
+      if (!fit || fit.share < 0.3) {
+        setJoinNote(`«${toId}» is joined by the paths only — the pictures did not match well enough${fit ? ` (${Math.round(fit.share * 100)}%)` : ""}; the view may jump there.`);
+        return false;
+      }
+      const latest = tourRef.current ?? t;
+      const exact = updateScene(latest, toId, { place: fit.place, join: { to: fromId, by: "pictures", share: Math.round(fit.share * 100) / 100 } });
+      setTour(exact);
+      await saveTour(exact);
+      setJoinNote(`✓ «${toId}» joined by the pictures: ${Math.round(fit.share * 100)}% of the shared ground matched.`);
+      return true;
+    } catch (e) {
+      setJoinNote(`«${toId}» is joined by the paths only: ${(e as Error).message}`);
+      return false;
+    }
   }
+
+  /**
+   * How a scene was joined — as recorded, or, for a join made before that was
+   * recorded, worked out: by the paths, onto the joined scene whose path ends
+   * nearest where this one's begins.
+   */
+  function joinOfScene(t: Tour, s: TourScene): { to: string; by: "paths" | "pictures"; share: number | null } | null {
+    if (s.join) return s.join;
+    if (!s.place || s.route.length < 2) return null;
+    const start = toWorld(s.place as Place, s.route[0]);
+    let best: { to: string; d: number } | null = null;
+    for (const o of t.scenes) {
+      if (o.id === s.id || !o.place || o.route.length < 2) continue;
+      const end = toWorld(o.place as Place, o.route[o.route.length - 1]);
+      const d = Math.hypot(end[0] - start[0], end[2] - start[2]);
+      if (d < 15 && (!best || d < best.d)) best = { to: o.id, d };
+    }
+    return best ? { to: best.to, by: "paths", share: null } : null;
+  }
+
+  // On a computer in edit mode, joins made by the paths alone (on a phone, or
+  // before this existed) are matched by the pictures on their own, one by one.
+  const autoMatched = useRef(false);
+  useEffect(() => {
+    if (!editing || !tour || !sceneReady || autoMatched.current) return;
+    if (window.matchMedia?.("(pointer: coarse)").matches) return;
+    autoMatched.current = true;
+    const todo = tour.scenes
+      .map((s) => ({ s, j: joinOfScene(tour, s) }))
+      .filter(({ j }) => j?.by === "paths" && sceneById(tour, j.to));
+    void (async () => {
+      for (const { s, j } of todo) await matchByPictures(j!.to, s.id, tourRef.current ?? tour);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, tour, sceneReady]);
 
   // The right-hand list: one button per other scene (its exit when there is one).
   const goList: Exit[] = [];
@@ -1959,9 +2010,20 @@ export default function SplatTour({
                     {tour.scenes.map((s) => (
                       <div key={s.id} className="flex justify-between gap-2">
                         <span className="truncate">{s.title.en}</span>
-                        <span className={s.place ? "text-emerald-300" : "text-amber-200"}>
-                          {s.place ? "✓ joined" : "not joined"}{s.route.length ? "" : " · no path"}
-                        </span>
+                        {(() => {
+                          const j = joinOfScene(tour, s);
+                          return (
+                            <span className={!s.place ? "text-amber-200" : j?.by === "paths" ? "text-amber-200" : "text-emerald-300"}>
+                              {!s.place ? "not joined" : j?.by === "pictures" ? "✓ joined by the pictures" : j ? "joined by paths only — may jump" : "✓ start of the walk"}
+                              {s.route.length ? "" : " · no path"}
+                              {j?.by === "paths" && sceneById(tour, j.to) && (
+                                <button className="ms-1 rounded bg-sky-400/25 px-1.5 text-sky-50" onClick={() => void matchByPictures(j.to, s.id, tour)}>
+                                  Match by pictures
+                                </button>
+                              )}
+                            </span>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
