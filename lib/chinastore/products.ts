@@ -133,8 +133,8 @@ export const HOTSPOTS: Hotspot[] = [
   { sceneId: SCENE_ID, sku: "CT-1002", id: "plate-01", labelSide: "below", anchor: { x: 0.72, y: COUNTER_Y + 0.15, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.72, y: COUNTER_Y + 0.15, z: -2.2 }, tilt: PLATE_TILT } },
   // The plinth by the entrance.
   { sceneId: SCENE_ID, sku: "CT-1042", id: "jar-01", adDistance: 2.6, anchor: { x: -1.3, y: PLINTH_Y + 0.13, z: 2.0 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.3, y: PLINTH_Y, z: 2.0 }, yaw: 0.4 } },
-  { sceneId: SCENE_ID, sku: "CT-1043", id: "vase-01", anchor: { x: -0.97, y: PLINTH_Y + 0.16, z: 1.84 }, labelDistance: 3.0, selectionDistance: 1.6, labelSide: "below", display: { position: { x: -0.97, y: PLINTH_Y, z: 1.84 } } },
-  { sceneId: SCENE_ID, sku: "CT-1044", id: "budvase-01", anchor: { x: -1.06, y: PLINTH_Y + 0.09, z: 2.1 }, labelDistance: 2.6, selectionDistance: 1.6, labelSide: "below", display: { position: { x: -1.06, y: PLINTH_Y, z: 2.1 }, scale: 0.6, yaw: 1.1 } },
+  { sceneId: SCENE_ID, sku: "CT-1043", id: "vase-01", anchor: { x: -1.08, y: PLINTH_Y + 0.16, z: 1.82 }, labelDistance: 3.0, selectionDistance: 1.6, labelSide: "below", display: { position: { x: -1.08, y: PLINTH_Y, z: 1.82 } } },
+  { sceneId: SCENE_ID, sku: "CT-1044", id: "budvase-01", anchor: { x: -0.86, y: PLINTH_Y + 0.09, z: 2.08 }, labelDistance: 2.6, selectionDistance: 1.6, display: { position: { x: -0.86, y: PLINTH_Y, z: 2.08 }, scale: 0.6, yaw: 1.1 } },
   // The Prunus wall, left: facing +x.
   ...sideUnit(-1, [
     { sku: "CT-1053", id: "prunus-cup-01", at: "shelf", z: 1.05, rise: 0.05 },
