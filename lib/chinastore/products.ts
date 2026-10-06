@@ -72,6 +72,14 @@ export type Hotspot = {
 export type Product = CatalogItem & Omit<Hotspot, "sku">;
 
 export const SCENE_ID = "vca-china-sim-01";
+/** Next door in the same mall: the jewellery store. */
+export const JEWELRY_SCENE_ID = "vca-jewelry-sim-01";
+
+/** Each scene is one store; the basket and the checkout span them all. */
+export const STORES: Record<string, string> = {
+  [SCENE_ID]: "VCA Porcelain",
+  [JEWELRY_SCENE_ID]: "VCA Fine Jewellery",
+};
 
 // ── the merchant's catalogue ──────────────────────────────────────────────
 
@@ -97,6 +105,13 @@ export const CATALOG: CatalogItem[] = [
   { sku: "CT-1061", name: "Celadon Teapot", price: 95, currency: "CAD", modelUrl: "/models/china/celadon-teapot.glb", blurb: "Crackle glaze · 1.1 L" },
   { sku: "CT-1062", name: "Celadon Bowl", price: 55, currency: "CAD", modelUrl: "/models/china/celadon-bowl.glb", blurb: "Crackle glaze · 21 cm" },
   { sku: "CT-1063", name: "Celadon Plate", price: 42, currency: "CAD", modelUrl: "/models/china/celadon-plate.glb", blurb: "Crackle glaze · 27 cm" },
+  // ── the jewellery store's catalogue ──
+  { sku: "JW-2001", name: "Solitaire Diamond Ring", price: 4900, currency: "CAD", modelUrl: "/models/china/ring-solitaire.glb", blurb: "1.0 ct round brilliant · 18k gold" },
+  { sku: "JW-2002", name: "Diamond Eternity Band", price: 2350, currency: "CAD", modelUrl: "/models/china/ring-eternity.glb", blurb: "22 brilliants · white gold" },
+  { sku: "JW-2003", name: "Sapphire Halo Pendant", price: 1850, currency: "CAD", modelUrl: "/models/china/pendant-sapphire.glb", blurb: "Oval sapphire · diamond halo · 18k" },
+  { sku: "JW-2004", name: "Akoya Pearl Strand", price: 1290, currency: "CAD", modelUrl: "/models/china/pearl-strand.glb", blurb: "7.5 mm pearls · 45 cm" },
+  { sku: "JW-2005", name: "Gold Oval Bangle", price: 980, currency: "CAD", modelUrl: "/models/china/bangle-gold.glb", blurb: "18k yellow gold" },
+  { sku: "JW-2006", name: "Pear Diamond Drops", price: 2750, currency: "CAD", modelUrl: "/models/china/earrings-drop.glb", blurb: "Pear & round brilliants · white gold" },
 ];
 
 // ── where they sit in the simulated store ─────────────────────────────────
@@ -149,6 +164,30 @@ export const HOTSPOTS: Hotspot[] = [
   ]),
 ];
 
+// ── next door: the jewellery store ────────────────────────────────────────
+//
+// Its room runs x 4.1 … 10.9 (centre 7.5), z −2.45 … 4.6, the door at x 7.5.
+// A glass vitrine across the back (velvet deck at y 0.98, z −1.25) holds the
+// rings, the earrings and the bangle; two counters by the walls carry
+// velvet neck forms with the pearls (left) and the pendant (right).
+
+const DECK_Y = 0.98;
+const JX = 7.5;
+
+export const JEWELRY_HOTSPOTS: Hotspot[] = [
+  { sceneId: JEWELRY_SCENE_ID, sku: "JW-2001", id: "ring-01", hero: true, anchor: { x: JX, y: DECK_Y + 0.05, z: -1.22 }, labelDistance: 2.8, selectionDistance: 1.3, display: { position: { x: JX, y: DECK_Y + 0.03, z: -1.22 }, yaw: 0.35 } },
+  { sceneId: JEWELRY_SCENE_ID, sku: "JW-2002", id: "eternity-01", labelSide: "below", anchor: { x: JX - 0.48, y: DECK_Y + 0.045, z: -1.22 }, labelDistance: 2.6, selectionDistance: 1.3, display: { position: { x: JX - 0.48, y: DECK_Y + 0.03, z: -1.22 }, yaw: -0.3 } },
+  { sceneId: JEWELRY_SCENE_ID, sku: "JW-2006", id: "earrings-01", labelSide: "below", anchor: { x: JX + 0.46, y: DECK_Y + 0.05, z: -1.25 }, labelDistance: 2.6, selectionDistance: 1.3, display: { position: { x: JX + 0.46, y: DECK_Y + 0.075, z: -1.25 } } },
+  { sceneId: JEWELRY_SCENE_ID, sku: "JW-2005", id: "bangle-01", anchor: { x: JX + 0.95, y: DECK_Y + 0.03, z: -1.25 }, labelDistance: 2.6, selectionDistance: 1.3, display: { position: { x: JX + 0.95, y: DECK_Y, z: -1.25 }, yaw: -0.4 } },
+  { sceneId: JEWELRY_SCENE_ID, sku: "JW-2004", id: "pearls-01", anchor: { x: 4.98, y: 1.24, z: 0.6 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 4.98, y: 1.17, z: 0.6 }, yaw: Math.PI / 2, tilt: -0.12 } },
+  { sceneId: JEWELRY_SCENE_ID, sku: "JW-2003", id: "pendant-01", anchor: { x: 10.02, y: 1.2, z: 0.6 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 10.02, y: 1.16, z: 0.6 }, yaw: -Math.PI / 2, tilt: -0.12 } },
+];
+
+/** Every product in the mall, store by store. */
+export function mallProducts(catalog: CatalogItem[] = CATALOG): Product[] {
+  return [...productsFor(SCENE_ID, catalog), ...productsFor(JEWELRY_SCENE_ID, catalog, JEWELRY_HOTSPOTS)];
+}
+
 /** Hotspots on a side-wall unit: side −1 is the left wall, 1 the right. */
 function sideUnit(side: -1 | 1, items: { sku: string; id: string; at: "shelf" | "counter"; z: number; rise: number; plate?: boolean }[]): Hotspot[] {
   const x = side * 3.38;
@@ -191,8 +230,23 @@ export function priceNow(item: Pick<CatalogItem, "price" | "salePrice">): number
   return item.salePrice !== undefined && item.salePrice < item.price ? item.salePrice : item.price;
 }
 
-/** "$89" for whole dollars, "$89.50" otherwise — the label's price. */
+/** "$89" for whole dollars, "$89.50" otherwise, "$4,900" with thousands — the label's price. */
 export function formatPrice(price: number): string {
   const whole = Math.round(price * 100) % 100 === 0;
-  return `$${whole ? Math.round(price).toString() : price.toFixed(2)}`;
+  const [int, frac] = (whole ? Math.round(price).toString() : price.toFixed(2)).split(".");
+  return `$${int.replace(/\B(?=(\d{3})+(?!\d))/g, ",")}${frac ? `.${frac}` : ""}`;
+}
+
+export type BasketLine = { sku: string; name: string; store: string; price: number };
+
+/** The checkout: lines grouped by store, in the order first visited, and the total. */
+export function checkout(lines: BasketLine[]): { stores: { store: string; lines: BasketLine[]; subtotal: number }[]; total: number } {
+  const stores: { store: string; lines: BasketLine[]; subtotal: number }[] = [];
+  for (const l of lines) {
+    let s = stores.find((x) => x.store === l.store);
+    if (!s) stores.push((s = { store: l.store, lines: [], subtotal: 0 }));
+    s.lines.push(l);
+    s.subtotal += l.price;
+  }
+  return { stores, total: stores.reduce((a, s) => a + s.subtotal, 0) };
 }

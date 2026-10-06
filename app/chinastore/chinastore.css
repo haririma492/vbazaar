@@ -239,6 +239,114 @@
   vertical-align: middle;
 }
 
+/* ── the checkout ───────────────────────────────────────────────────── */
+
+.cs-basket {
+  color: var(--cs-ink);
+  cursor: pointer;
+  font-family: var(--cs-sans);
+}
+.cs-till {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(380px, calc(100% - 32px));
+  padding: 22px 24px 20px;
+  border-radius: 8px;
+  background: rgba(16, 14, 12, 0.72);
+  backdrop-filter: blur(18px) saturate(1.1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  border: 1px solid rgba(255, 250, 240, 0.16);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  animation: cs-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.cs-till-title {
+  font-family: var(--cs-display);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.1;
+  margin-bottom: 6px;
+}
+.cs-till-sub {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--cs-dim);
+}
+.cs-till-store {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0 8px;
+  border-top: 1px solid rgba(255, 250, 240, 0.12);
+}
+.cs-till-storename {
+  font-size: 9.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--cs-gold);
+}
+.cs-till-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13.5px;
+}
+.cs-till-line small {
+  margin-left: 8px;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--cs-dim);
+}
+.cs-till-line span:last-child {
+  font-family: var(--cs-display);
+  font-size: 17px;
+}
+.cs-till-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 12px 0 14px;
+  border-top: 1px solid rgba(255, 250, 240, 0.28);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.cs-till-total span:last-child {
+  font-family: var(--cs-display);
+  font-size: 30px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cs-till-total small {
+  font-family: var(--cs-sans);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--cs-dim);
+}
+.cs-paid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 4px;
+  text-align: center;
+}
+.cs-paid-tick {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--cs-gold);
+  color: #17120b;
+  font-size: 28px;
+  animation: cs-count 0.6s cubic-bezier(0.2, 0.9, 0.25, 1.25);
+}
+
 /* ── the demo's tap ──────────────────────────────────────────────────── */
 
 .cs-ripple {

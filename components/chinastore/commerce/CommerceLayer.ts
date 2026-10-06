@@ -49,6 +49,8 @@ type Runtime = {
   glow: number;
   /** The ad's latch: ready to speak on the next approach. */
   adArmed: boolean;
+  /** The model's bounding radius (m): a ring is held closer than a teapot. */
+  radius: number;
 };
 
 type Pose = { pos: THREE.Vector3; quat: THREE.Quaternion };
@@ -113,8 +115,10 @@ export class CommerceLayer {
         home.pos.set(d.position.x, d.position.y, d.position.z);
         home.quat.setFromEuler(new THREE.Euler(d.tilt ?? 0, d.yaw ?? 0, 0, "YXZ"));
       }
+      let radius = 0.15;
       if (this.opts.standIns) {
-        shelf = (await loader.loadAsync(p.modelUrl)).scene;
+        shelf = (await loader.loadAsync(p.modelUrl)).scene.clone(true);
+        radius = new THREE.Box3().setFromObject(shelf).getBoundingSphere(new THREE.Sphere()).radius * (d?.scale ?? 1);
         shelf.name = `product:${p.id}`;
         shelf.position.copy(home.pos);
         shelf.quaternion.copy(home.quat);
@@ -133,7 +137,7 @@ export class CommerceLayer {
       }
       tick();
       this.items.push({
-        p, shelf, home, materials, glow: 0, adArmed: true,
+        p, shelf, home, materials, glow: 0, adArmed: true, radius,
         anchor: new THREE.Vector3(p.anchor.x, p.anchor.y, p.anchor.z),
         el: this.makeLabel(p),
         opacity: 0,
@@ -432,7 +436,11 @@ export class CommerceLayer {
   /** The held pose: in front of the shopper, a three-quarter turn, plus their spin. */
   private holdPose(r: Runtime): Pose {
     const view = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.32, r.p.grasp ? -0.42 : 0.35, 0, "YXZ"));
-    const pose = this.cameraPose(HOLD_OFFSET, view.premultiply(this.held!.spin));
+    // Held at a distance that suits its size: a teapot at arm's length, a
+    // ring close enough to see the stone.
+    const dist = THREE.MathUtils.clamp(r.radius * 4.2, 0.2, -HOLD_OFFSET.z);
+    const k = dist / -HOLD_OFFSET.z;
+    const pose = this.cameraPose(new THREE.Vector3(HOLD_OFFSET.x * k, HOLD_OFFSET.y * k, -dist), view.premultiply(this.held!.spin));
     // Hold by the hand's grip, not the model's base: centre the product's mass in view.
     const lift = new THREE.Vector3(0, -(r.anchor.y - r.home.pos.y), 0).applyQuaternion(pose.quat);
     pose.pos.add(lift);

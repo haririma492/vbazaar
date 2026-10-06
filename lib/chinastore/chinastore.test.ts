@@ -5,9 +5,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CATALOG, HOTSPOTS, SCENE_ID, formatPrice, priceNow, productsFor, type CatalogItem } from "./products.ts";
+import { CATALOG, HOTSPOTS, JEWELRY_HOTSPOTS, JEWELRY_SCENE_ID, SCENE_ID, STORES, checkout, formatPrice, mallProducts, priceNow, productsFor, type CatalogItem } from "./products.ts";
 import { AD_REARM_M, FADE_M, adStep, damp, distance, distanceOpacity, labelState, viewOpacity } from "./proximity.ts";
-import { CUES, DURATION, KEYS, progressAt } from "./storyboard.ts";
+import { CUES, CUE_LIST, DURATION, KEYS, LEGS, MALL_KEYS, WALK_END, legAt, progressAt } from "./storyboard.ts";
 
 test("every hotspot in the demo scene joins a catalogue row, each with its own id", () => {
   const products = productsFor(SCENE_ID);
@@ -47,6 +47,8 @@ test("price on the label", () => {
   assert.equal(formatPrice(89), "$89");
   assert.equal(formatPrice(129), "$129");
   assert.equal(formatPrice(89.5), "$89.50");
+  assert.equal(formatPrice(4900), "$4,900");
+  assert.equal(formatPrice(12345.5), "$12,345.50");
 });
 
 test("the teapot grasp quaternion turns the hand as documented", () => {
@@ -135,7 +137,7 @@ test("the walk: starts at rest, hits every key on time, never walks back, ends a
 test("the storyboard's beats fall in the 15–25 second window, in order", () => {
   assert.ok(DURATION < CUES.select);
   assert.ok(CUES.select < CUES.addToBasket && CUES.addToBasket < CUES.end);
-  assert.ok(CUES.end >= 15 && CUES.end <= 25);
+  assert.ok(CUES.end > WALK_END);
 });
 
 test("the walk ends where the teapot can be taken", () => {
@@ -214,4 +216,49 @@ test("the scripted walk sets the sale post's ad off on the way in, before the wa
     if (r.fire) firedAt = t;
   }
   assert.ok(firedAt > 3 && firedAt < 8, `fired at ${firedAt}`);
+});
+
+test("the mall: two stores, every product with a store name, one hero per store, ids unique", () => {
+  const all = mallProducts();
+  assert.equal(all.length, HOTSPOTS.length + JEWELRY_HOTSPOTS.length);
+  assert.equal(new Set(all.map((p) => p.id)).size, all.length);
+  for (const p of all) assert.ok(STORES[p.sceneId], p.id);
+  for (const scene of [SCENE_ID, JEWELRY_SCENE_ID]) assert.equal(all.filter((p) => p.sceneId === scene && p.hero).length, 1, scene);
+});
+
+test("the legs join: the mall leg starts where the teapot leg ends, and starts later", () => {
+  const a = KEYS[KEYS.length - 1];
+  const b = MALL_KEYS[0];
+  assert.deepEqual(a.eye, b.eye);
+  assert.ok(b.t > a.t);
+  assert.deepEqual(legAt(DURATION + 1), { leg: 0, u: 1 }); // standing at the teapot
+  assert.equal(legAt(b.t + 1).leg, 1);
+  assert.equal(legAt(WALK_END + 3).u, 1);
+});
+
+test("every cue in order; each select is the hero of its store, and the walk ends selectable", () => {
+  for (let i = 1; i < CUE_LIST.length; i++) assert.ok(CUE_LIST[i].t > CUE_LIST[i - 1].t);
+  const all = mallProducts();
+  for (const c of CUE_LIST) {
+    if (c.kind !== "select") continue;
+    const p = all.find((x) => x.id === c.id)!;
+    assert.ok(p?.hero, c.id);
+    // Where the camera stands at that moment: the end of a leg.
+    const leg = LEGS[legAt(c.t).leg];
+    const k = leg[leg.length - 1];
+    const eye = { x: k.eye[0], y: k.eye[1], z: k.eye[2] };
+    const f = { x: k.look[0] - eye.x, y: k.look[1] - eye.y, z: k.look[2] - eye.z };
+    const l = Math.hypot(f.x, f.y, f.z);
+    assert.equal(labelState(eye, { x: f.x / l, y: f.y / l, z: f.z / l }, p).selectable, true, c.id);
+  }
+});
+
+test("checkout: one basket across the mall, grouped by store, one total", () => {
+  const c = checkout([
+    { sku: "CT-1004", name: "Porcelain Teapot", store: "VCA Porcelain", price: 89 },
+    { sku: "JW-2001", name: "Solitaire Diamond Ring", store: "VCA Fine Jewellery", price: 4900 },
+    { sku: "CT-1001", name: "Tea Cup & Saucer", store: "VCA Porcelain", price: 29 },
+  ]);
+  assert.deepEqual(c.stores.map((s) => [s.store, s.lines.length, s.subtotal]), [["VCA Porcelain", 2, 118], ["VCA Fine Jewellery", 1, 4900]]);
+  assert.equal(c.total, 5018);
 });

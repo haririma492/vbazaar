@@ -164,6 +164,33 @@ export function marbleFloor(repeat: [number, number]): Painted {
   }, repeat, 2.5, true);
 }
 
+/** Nero Marquina: black marble with fine white veins, 60 cm tiles — the jewellery store's floor. */
+export function darkMarbleFloor(repeat: [number, number]): Painted {
+  const S = 1024;
+  return paint(S, S, (x, y) => {
+    const u = x / S;
+    const v = y / S;
+    const tx = Math.floor(u * 2);
+    const ty = Math.floor(v * 2);
+    const lu = u * 2 - tx;
+    const lv = v * 2 - ty;
+    const grout = Math.min(lu, 1 - lu, lv, 1 - lv) * 512;
+    const seed = tx * 5 + ty * 11 + 40;
+    const warp = pfbm(u * 5, v * 5, 5, 5, 5, seed);
+    const vein = Math.pow(1 - Math.abs(Math.sin((lu * 1.2 - lv * 1.7) * 6 + warp * 11 + seed)), 30);
+    const fine = Math.pow(1 - Math.abs(Math.sin((lu * 2.6 + lv * 0.9) * 10 + warp * 16)), 60);
+    const cloud = pfbm(u * 10, v * 10, 10, 10, 4, seed + 3);
+    let rgb = mix3([0.035, 0.035, 0.04], [0.06, 0.058, 0.062], cloud);
+    rgb = mix3(rgb, [0.78, 0.77, 0.75], vein * 0.7 + fine * 0.35);
+    let height = 0.5;
+    if (grout < 1.4) {
+      rgb = mix3(rgb, [0.015, 0.015, 0.017], 1 - grout / 1.4);
+      height -= 0.5 * (1 - grout / 1.4);
+    }
+    return { rgb, height, rough: 0.12 + cloud * 0.08 + (grout < 1.4 ? 0.5 : 0) };
+  }, repeat, 2, true);
+}
+
 /** Polished white marble for the counter top and the plinth. */
 export function marbleSlab(repeat: [number, number]): Painted {
   const S = 1024;

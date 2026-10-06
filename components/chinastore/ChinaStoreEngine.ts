@@ -7,10 +7,11 @@ import { GTAOPass } from "three/examples/jsm/postprocessing/GTAOPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { SCENE_ID, productsFor, type Product } from "@/lib/chinastore/products";
-import { CUES, KEYS, progressAt } from "@/lib/chinastore/storyboard";
+import { mallProducts, type Product } from "@/lib/chinastore/products";
+import { CUE_LIST, LEGS, legAt } from "@/lib/chinastore/storyboard";
 import { CommerceLayer, type HoldState } from "./commerce/CommerceLayer";
 import { buildStore, type Store } from "./store/buildStore";
+import { buildMall, type Mall } from "./store/buildMall";
 import { glowTexture } from "./store/textures";
 
 /**
@@ -34,8 +35,11 @@ export type EngineEvents = {
   onFocus?: (product: Product | null) => void;
   /** A product's audio ad is due (pan: −1 left … 1 right). */
   onAd?: (product: Product, pan: number) => void;
-  /** Scripted beats: the demo's tap on the teapot, its press of «Add to basket», its end. */
-  onCue?: (cue: "tap" | "press-add" | "end", at?: { x: number; y: number }) => void;
+  /**
+   * Scripted beats: the demo's tap on a product, its press of «Add to
+   * basket», the checkout opening, its press of «Pay», its end.
+   */
+  onCue?: (cue: "tap" | "press-add" | "checkout" | "pay" | "end", at?: { x: number; y: number }) => void;
   onDemoTime?: (t: number) => void;
   onWebgl?: (ok: boolean) => void;
 };
@@ -72,8 +76,12 @@ export class ChinaStoreEngine {
   private finish!: ShaderPass;
   private gtao: GTAOPass | null = null;
   private store!: Store;
+  private mall!: Mall;
   private commerce!: CommerceLayer;
-  private products = productsFor(SCENE_ID);
+  private products = mallProducts();
+  /** The china store's lights and the jewellery store's: each on only near its store. */
+  private zones: { china: THREE.Light[]; jewelry: THREE.Light[]; state: string } = { china: [], jewelry: [], state: "" };
+  private shadowLights: THREE.Light[] = [];
   private raf = 0;
   private clock = new THREE.Clock();
   private width = 1;
@@ -85,8 +93,10 @@ export class ChinaStoreEngine {
   private playing = false;
   private demoT = 0;
   private cuesFired = new Set<string>();
-  private eyeCurve = new THREE.CatmullRomCurve3(KEYS.map((k) => new THREE.Vector3(...k.eye)), false, "centripetal");
-  private lookCurve = new THREE.CatmullRomCurve3(KEYS.map((k) => new THREE.Vector3(...k.look)), false, "centripetal");
+  private legs = LEGS.map((keys) => ({
+    eye: new THREE.CatmullRomCurve3(keys.map((k) => new THREE.Vector3(...k.eye)), false, "centripetal"),
+    look: new THREE.CatmullRomCurve3(keys.map((k) => new THREE.Vector3(...k.look)), false, "centripetal"),
+  }));
   private lastEye = new THREE.Vector3();
   private stride = 0;
 
@@ -164,6 +174,16 @@ export class ChinaStoreEngine {
 
     this.store = buildStore(r);
     this.scene.add(this.store.root);
+    this.mall = buildMall(r);
+    this.scene.add(this.mall.root);
+    this.store.root.traverse((o) => {
+      if ((o as THREE.Light).isLight) this.zones.china.push(o as THREE.Light);
+    });
+    this.zones.jewelry = this.mall.jewelryLights;
+    this.scene.traverse((o) => {
+      const l = o as THREE.Light;
+      if (l.isLight && l.castShadow) this.shadowLights.push(l);
+    });
 
     const loader = new GLTFLoader();
     this.commerce = new CommerceLayer(this.scene, this.camera, this.overlay, this.products, {
@@ -184,6 +204,7 @@ export class ChinaStoreEngine {
         report();
       }),
       this.store.dress(loader),
+      this.mall.dress(loader),
     ]);
     if (this.disposed) return;
 
@@ -193,8 +214,14 @@ export class ChinaStoreEngine {
     this.ro.observe(this.container);
     this.resize();
     this.setDemoPose(0);
-    // Compile every shader before the first visible frame (no hitch on entry).
-    await r.compileAsync(this.scene, this.camera);
+    // Compile every shader before the first visible frame, for each set of
+    // lights the walk will see (the light count is part of a shader), so
+    // walking from one store into the next never hitches.
+    for (const state of ["both", "jewelry", "china"]) {
+      this.setZone(state);
+      await r.compileAsync(this.scene, this.camera);
+    }
+    this.updateZone();
     this.clock.start();
     this.loop();
   }
@@ -247,10 +274,14 @@ export class ChinaStoreEngine {
 
   // ── the scripted walk ────────────────────────────────────────────────
 
+  /** Where the walk puts the eye and what it looks at, at time t. */
+  private poseAt(t: number) {
+    const { leg, u } = legAt(t);
+    return { eye: this.legs[leg].eye.getPoint(u), look: this.legs[leg].look.getPoint(u) };
+  }
+
   private setDemoPose(t: number) {
-    const u = progressAt(t);
-    const eye = this.eyeCurve.getPoint(u);
-    const look = this.lookCurve.getPoint(u);
+    const { eye, look } = this.poseAt(t);
     this.camera.position.copy(eye);
     this.camera.lookAt(look);
     this.lastEye.copy(eye);
@@ -259,9 +290,7 @@ export class ChinaStoreEngine {
   private updateDemo(dt: number, now: number) {
     if (this.playing) this.demoT += dt;
     const t = this.demoT;
-    const u = progressAt(t);
-    const eye = this.eyeCurve.getPoint(u);
-    const look = this.lookCurve.getPoint(u);
+    const { eye, look } = this.poseAt(t);
     // A walker's rhythm: a little rise and fall with each step, in proportion
     // to the speed, and the slow drift of a hand-held camera.
     const speed = dt > 0 ? eye.distanceTo(this.lastEye) / dt : 0;
@@ -283,22 +312,21 @@ export class ChinaStoreEngine {
 
     if (!this.playing) return;
     this.events.onDemoTime?.(t);
-    const hero = this.products.find((p) => p.hero)!;
-    if (t >= CUES.select && !this.cuesFired.has("select")) {
-      this.cuesFired.add("select");
-      const at = this.commerce.screenOf(hero.id, this.width, this.height) ?? undefined;
-      this.events.onCue?.("tap", at);
-      this.commerce.select(hero.id);
-    }
-    if (t >= CUES.addToBasket && !this.cuesFired.has("add")) {
-      this.cuesFired.add("add");
-      this.events.onCue?.("press-add");
-    }
-    if (t >= CUES.end && !this.cuesFired.has("end")) {
-      this.cuesFired.add("end");
-      this.playing = false;
-      this.events.onCue?.("end");
-    }
+    CUE_LIST.forEach((c, i) => {
+      if (t < c.t || this.cuesFired.has(String(i))) return;
+      this.cuesFired.add(String(i));
+      if (c.kind === "select") {
+        const at = this.commerce.screenOf(c.id, this.width, this.height) ?? undefined;
+        this.events.onCue?.("tap", at);
+        this.commerce.select(c.id);
+      } else if (c.kind === "add") this.events.onCue?.("press-add");
+      else if (c.kind === "checkout") this.events.onCue?.("checkout");
+      else if (c.kind === "pay") this.events.onCue?.("pay");
+      else {
+        this.playing = false;
+        this.events.onCue?.("end");
+      }
+    });
   }
 
   // ── explore ──────────────────────────────────────────────────────────
@@ -362,7 +390,7 @@ export class ChinaStoreEngine {
     }
     const ray = new THREE.Raycaster();
     ray.setFromCamera(ndc, this.camera);
-    const hit = ray.intersectObject(this.store.floor)[0];
+    const hit = ray.intersectObjects([this.store.floor, ...this.mall.floors])[0];
     if (hit) this.walkTo = { pos: new THREE.Vector3(hit.point.x, EYE, hit.point.z) };
   };
 
@@ -405,9 +433,10 @@ export class ChinaStoreEngine {
 
   private collide(p: THREE.Vector3) {
     const w = this.store.walk;
-    p.x = THREE.MathUtils.clamp(p.x, w.minX, w.maxX);
-    p.z = THREE.MathUtils.clamp(p.z, w.minZ, w.maxZ);
-    for (const b of w.blocked) {
+    // The whole mall: both stores and the corridor in front of them.
+    p.x = THREE.MathUtils.clamp(p.x, w.minX, 10.6);
+    p.z = THREE.MathUtils.clamp(p.z, w.minZ, 11.8);
+    for (const b of [...w.blocked, ...this.mall.blocked]) {
       if (p.x > b.x0 && p.x < b.x1 && p.z > b.z0 && p.z < b.z1) {
         // Out by the nearest side.
         const out = [p.x - b.x0, b.x1 - p.x, p.z - b.z0, b.z1 - p.z];
@@ -447,10 +476,37 @@ export class ChinaStoreEngine {
     if (this.mode === "demo") this.updateDemo(dt, now);
     else this.updateExplore(dt);
     this.camera.updateMatrixWorld();
+    this.updateZone();
     this.commerce.update(dt, this.width, this.height, now);
     this.finish.uniforms.uTime.value = now;
     this.composer.render(dt);
   };
+
+  // ── light zones ──────────────────────────────────────────────────────
+  //
+  // Every light costs every pixel, so a store's lights are on only while the
+  // shopper is in it or in the corridor near its door; and a shadow is
+  // redrawn only for lights near the shopper.
+
+  private updateZone() {
+    const p = this.camera.position;
+    const inCorridor = p.z > 4.3;
+    const china = p.x < 4.0 || (inCorridor && p.x < 5.8);
+    const jewelry = p.x > 4.0 || (inCorridor && p.x > 1.8);
+    this.setZone(china && jewelry ? "both" : jewelry ? "jewelry" : "china");
+    for (const l of this.shadowLights) {
+      const s = (l as THREE.SpotLight).shadow;
+      if (!s) continue;
+      s.autoUpdate = l.visible && l.position.distanceTo(p) < 7;
+    }
+  }
+
+  private setZone(state: string) {
+    if (state === this.zones.state) return;
+    this.zones.state = state;
+    for (const l of this.zones.china) l.visible = state !== "jewelry";
+    for (const l of this.zones.jewelry) l.visible = state !== "china";
+  }
 
   /** Stops the frame loop (screenshots on a software renderer draw frames by hand). */
   pause() {
@@ -463,6 +519,7 @@ export class ChinaStoreEngine {
     if (this.mode === "demo") this.updateDemo(dt, this.demoT);
     else this.updateExplore(dt);
     this.camera.updateMatrixWorld();
+    this.updateZone();
     this.commerce.update(dt, this.width, this.height, this.demoT);
     this.composer.render(dt);
   }

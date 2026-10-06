@@ -31,7 +31,7 @@ const WARM = new THREE.Color().setRGB(1.0, 0.9, 0.8);
 const LED = new THREE.Color().setRGB(1.0, 0.83, 0.64);
 
 /** UVs in metres on each face's own plane — textures keep their scale on any box. */
-function metricUV(g: THREE.BufferGeometry, grainAlong: "x" | "y" | "z" = "x", scale = 1) {
+export function metricUV(g: THREE.BufferGeometry, grainAlong: "x" | "y" | "z" = "x", scale = 1) {
   const p = g.attributes.position;
   const n = g.attributes.normal;
   const uv = new Float32Array(p.count * 2);
@@ -126,9 +126,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   floor.receiveShadow = true;
   floor.name = "floor";
   root.add(floor);
-  const outside = new THREE.Mesh(metricUV(new THREE.PlaneGeometry(14, 8).rotateX(-Math.PI / 2).translate(0, -0.001, 8.6)), outsideFloorMat);
-  outside.receiveShadow = true;
-  root.add(outside);
+  void outsideFloorMat; // the mall's floor is the mall's (./buildMall)
 
   const H = 3.2;
   box(7.4, H, 0.1, plasterMat, 0, H / 2, -2.55, { shadow: false }); // back
@@ -157,7 +155,10 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   box(sideW, H, 0.2, plasterMat, DOOR_W / 2 + sideW / 2, H / 2, FRONT_Z, { shadow: false });
   box(DOOR_W, H - DOOR_H, 0.2, plasterMat, 0, DOOR_H + (H - DOOR_H) / 2, FRONT_Z, { shadow: false });
   // Facade outside: dark bronze cladding, a brass-lit sign above the door.
-  for (const sx of [-1, 1]) box(6, 4.2, 0.04, bronzeMat, sx * (DOOR_W / 2 + 3), 2.1, FRONT_Z + 0.12, { shadow: false });
+  // Left of the door to the corner of the mall; right of it to the party
+  // wall with the jewellery store next door (x 3.85).
+  box(6, 4.2, 0.04, bronzeMat, -(DOOR_W / 2 + 3), 2.1, FRONT_Z + 0.12, { shadow: false });
+  box(3.85 - DOOR_W / 2, 4.2, 0.04, bronzeMat, (3.85 + DOOR_W / 2) / 2, 2.1, FRONT_Z + 0.12, { shadow: false });
   box(DOOR_W, 4.2 - DOOR_H, 0.04, bronzeMat, 0, DOOR_H + (4.2 - DOOR_H) / 2, FRONT_Z + 0.12, { shadow: false });
   const sign = new THREE.Mesh(
     new THREE.PlaneGeometry(2.6, 0.325),
@@ -168,9 +169,6 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   // Door frame in brass.
   for (const sx of [-1, 1]) box(0.05, DOOR_H, 0.26, brassMat, sx * (DOOR_W / 2 + 0.025), DOOR_H / 2, FRONT_Z, { r: 0.006 });
   box(DOOR_W + 0.1, 0.05, 0.26, brassMat, 0, DOOR_H + 0.025, FRONT_Z, { r: 0.006 });
-  // The mall corridor outside: a ceiling and a far wall in shadow.
-  box(14, 0.1, 8, ceilingMat, 0, 3.9, 8.6, { shadow: false });
-  box(14, 4, 0.1, plasterMat, 0, 2, 12.6, { shadow: false });
 
   // ── the display wall ─────────────────────────────────────────────────
   const W = 2.7;
@@ -346,12 +344,6 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     spot([x, H, z], [x, 0, z + 0.01], 7, 0.7, false);
   // Wall washers on the hung plates either side of the unit.
   for (const sx of [-1, 1]) spot([sx * 2.2, H, -1.6], [sx * 2.2, 1.6, -2.5], 10, 0.5, false);
-  // The corridor outside, dimmer and cooler.
-  for (const x of [-3, 0, 3]) {
-    const p = new THREE.PointLight(new THREE.Color(0.95, 0.92, 0.88), 3.5, 0, 2);
-    p.position.set(x, 3.6, 7.5);
-    root.add(p);
-  }
 
   // ── stock, unlabelled: copies of the catalogue's models ──────────────
   const dress = async (loader: GLTFLoader) => {
@@ -425,7 +417,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
         { x0: SIDE.wallX - 0.75, x1: 9, z0: SIDE.z - SIDE.w / 2 - 0.2, z1: SIDE.z + SIDE.w / 2 + 0.2 },
         // The front wall either side of the doorway.
         { x0: -9, x1: -DOOR_W / 2 + 0.2, z0: FRONT_Z - 0.3, z1: FRONT_Z + 0.3 },
-        { x0: DOOR_W / 2 - 0.2, x1: 9, z0: FRONT_Z - 0.3, z1: FRONT_Z + 0.3 },
+        { x0: DOOR_W / 2 - 0.2, x1: 3.9, z0: FRONT_Z - 0.3, z1: FRONT_Z + 0.3 },
       ],
     },
     dress,

@@ -28,16 +28,66 @@ export const KEYS: Key[] = [
   { t: 13.4, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
 ];
 
+/**
+ * The second leg: back out of the china store with the teapot in the basket,
+ * along the mall to the jewellery store next door, in to the solitaire.
+ */
+export const MALL_KEYS: Key[] = [
+  { t: 20.6, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
+  // Turn round (by the right) toward the door.
+  { t: 21.9, eye: [0.2, 1.61, -0.25], look: [2.6, 1.45, -0.2] },
+  { t: 23.2, eye: [0.22, 1.62, 1.1], look: [0.1, 1.55, 6.0] },
+  // Out through the doorway, into the mall; look along it to the right.
+  { t: 25.4, eye: [0.05, 1.63, 4.7], look: [3.0, 1.65, 9.0] },
+  { t: 27.6, eye: [2.0, 1.64, 7.2], look: [7.6, 1.75, 7.0] },
+  // The jewellery store's front: its sign, its windows.
+  { t: 30.0, eye: [6.1, 1.64, 7.5], look: [7.5, 1.95, 4.6] },
+  // In through its door, to the vitrine at the back.
+  { t: 32.4, eye: [7.5, 1.63, 4.0], look: [7.5, 1.25, -1.2] },
+  { t: 35.0, eye: [7.46, 1.6, 0.7], look: [7.5, 1.05, -1.25] },
+  { t: 37.2, eye: [7.5, 1.42, -0.6], look: [7.5, 1.02, -1.22] },
+];
+
+/** The end of the first leg (the teapot). */
+export const DURATION = KEYS[KEYS.length - 1].t;
+/** The end of the whole walk. */
+export const WALK_END = MALL_KEYS[MALL_KEYS.length - 1].t;
+
+/** The walk in legs; between legs the shopper stands still. */
+export const LEGS: Key[][] = [KEYS, MALL_KEYS];
+
+export type Cue =
+  | { t: number; kind: "select"; id: string }
+  | { t: number; kind: "add" }
+  | { t: number; kind: "checkout" }
+  | { t: number; kind: "pay" }
+  | { t: number; kind: "end" };
+
+/** The demo's beats, in order: what a shopper does, done through the same calls a tap makes. */
+export const CUE_LIST: Cue[] = [
+  { t: 14.1, kind: "select", id: "teapot-01" },
+  { t: 18.6, kind: "add" },
+  { t: 37.8, kind: "select", id: "ring-01" },
+  { t: 41.6, kind: "add" },
+  { t: 43.4, kind: "checkout" },
+  { t: 46.4, kind: "pay" },
+  { t: 49.0, kind: "end" },
+];
+
+/** The first store's beats, kept by name (the tests and the captions read them). */
 export const CUES = {
-  /** The hero's highlight is up by now (it begins as it becomes selectable). */
   select: 14.1,
-  /** «Add to basket» pressed. */
   addToBasket: 18.6,
-  /** The demo has said what it came to say. */
-  end: 20.8,
+  end: 49.0,
 } as const;
 
-export const DURATION = KEYS[KEYS.length - 1].t;
+/** Which leg the camera is on at time t, and how far along it. */
+export function legAt(t: number, legs: Key[][] = LEGS): { leg: number; u: number } {
+  for (let i = legs.length - 1; i >= 0; i--) {
+    if (t >= legs[i][0].t) return { leg: i, u: progressAt(t, legs[i]) };
+  }
+  return { leg: 0, u: 0 };
+}
 
 /**
  * Progress u ∈ [0, 1] along the splines at time t: u passes key i at

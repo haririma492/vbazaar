@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HoldState } from "./commerce/CommerceLayer";
 import type { ChinaStoreEngine } from "./ChinaStoreEngine";
-import { formatPrice, priceNow, type Product } from "@/lib/chinastore/products";
+import { STORES, checkout, formatPrice, priceNow, type BasketLine } from "@/lib/chinastore/products";
 import { AdVoice } from "./adVoice";
 
 /**
- * `/chinastore` — the VCA investor preview: a short walk into a china
- * boutique where the products' details appear as you near them, and the
- * teapot is picked up and added to a basket.
+ * `/chinastore` — the VCA investor preview: a walk into a china boutique
+ * where the products' details appear as you near them, the teapot picked up
+ * and added to a basket; then out into the mall and next door to a
+ * jewellery store, where a diamond ring joins it — and one checkout pays
+ * both stores at the end of the trip.
  *
  * The page owns everything read as text (title, captions, the product card,
  * the basket); the engine owns the 3D and the labels that live in it.
@@ -27,7 +29,12 @@ const CAPTIONS: { from: number; to: number; text: string }[] = [
   { from: 3.6, to: 7.6, text: "Offers speak up as you pass." },
   { from: 8.2, to: 12.6, text: "Details appear when they matter — and only then." },
   { from: 14.8, to: 17.8, text: "Pick it up. Turn it in your hand." },
-  { from: 18.4, to: 21, text: "Buy it." },
+  { from: 18.4, to: 20.6, text: "Into the basket." },
+  { from: 21.4, to: 25.0, text: "The basket comes with you." },
+  { from: 26.0, to: 29.6, text: "Next door: fine jewellery." },
+  { from: 32.6, to: 36.6, text: "Another store — the same layer of commerce." },
+  { from: 38.6, to: 41.2, text: "Look closer." },
+  { from: 43.6, to: 46.2, text: "One basket. One checkout. The whole mall." },
 ];
 
 export default function ChinaStore({ serifClass }: { serifClass?: string }) {
@@ -40,7 +47,9 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   const [phase, setPhase] = useState<Phase>("loading");
   const [progress, setProgress] = useState(0);
   const [webgl, setWebgl] = useState(true);
-  const [basket, setBasket] = useState<{ count: number; total: number; last: Product | null }>({ count: 0, total: 0, last: null });
+  const [lines, setLines] = useState<BasketLine[]>([]);
+  const [till, setTill] = useState<"closed" | "open" | "paid">("closed");
+  const [payPressed, setPayPressed] = useState(false);
   const [hold, setHold] = useState<HoldState | null>(null);
   const [pressed, setPressed] = useState(false);
   const [ripple, setRipple] = useState<{ x: number; y: number; key: number } | null>(null);
@@ -68,8 +77,8 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
       engine = new ChinaStoreEngine(stageRef.current, overlayRef.current, {
         onProgress: setProgress,
         onWebgl: setWebgl,
-        onBasket: (count, product) => {
-          setBasket((b) => ({ count, total: b.total + priceNow(product), last: product }));
+        onBasket: (_count, product) => {
+          setLines((l) => [...l, { sku: product.sku, name: product.name, store: STORES[product.sceneId] ?? "", price: priceNow(product) }]);
           setToast(`${product.name} · ${formatPrice(priceNow(product))} — in your basket`);
         },
         onAd: (product, pan) => {
@@ -84,6 +93,14 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
               engineRef.current?.addToBasket();
               setPressed(false);
             }, 420);
+          }
+          if (cue === "checkout") setTill("open");
+          if (cue === "pay") {
+            setPayPressed(true);
+            window.setTimeout(() => {
+              setPayPressed(false);
+              setTill("paid");
+            }, 450);
           }
           if (cue === "end") setPhase("ended");
         },
@@ -125,7 +142,8 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   const play = useCallback(() => {
     voiceRef.current?.unlock();
     voiceRef.current?.stop();
-    setBasket({ count: 0, total: 0, last: null });
+    setLines([]);
+    setTill("closed");
     setHold(null);
     setToast(null);
     setDemoT(0);
@@ -150,6 +168,14 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
   }, []);
 
   const holding = hold?.phase === "holding" ? hold.product : null;
+  const bill = checkout(lines);
+  const pay = () => {
+    setPayPressed(true);
+    window.setTimeout(() => {
+      setPayPressed(false);
+      setTill("paid");
+    }, 250);
+  };
   const caption = phase === "demo" && captions ? CAPTIONS.find((c) => demoT >= c.from && demoT <= c.to) : undefined;
 
   return (
@@ -161,7 +187,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
       {/* Brand mark */}
       <div className="cs-brand">
         <span className="cs-brand-mark">VCA</span>
-        <span className="cs-brand-sub">Virtual China Store · preview</span>
+        <span className="cs-brand-sub">Virtual Mall · preview</span>
       </div>
 
       {/* Sound */}
@@ -189,14 +215,19 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
       </button>
 
       {/* Basket */}
-      <div className={`cs-basket ${basket.count ? "cs-basket-full" : ""}`} aria-live="polite">
+      <button
+        type="button"
+        className={`cs-basket ${lines.length ? "cs-basket-full" : ""}`}
+        aria-live="polite"
+        onClick={() => lines.length && phase !== "demo" && setTill((t) => (t === "closed" ? "open" : t === "paid" ? "paid" : "closed"))}
+      >
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
           <path d="M6 8h12l-1.2 11.2a1.5 1.5 0 0 1-1.5 1.3H8.7a1.5 1.5 0 0 1-1.5-1.3L6 8Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
           <path d="M9 10V7a3 3 0 0 1 6 0v3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
         <span className="cs-basket-label">Basket</span>
-        <span className="cs-basket-count" key={basket.count}>{basket.count}</span>
-      </div>
+        <span className="cs-basket-count" key={lines.length}>{lines.length}</span>
+      </button>
 
       {/* The demo's tap */}
       {ripple && <span key={ripple.key} className="cs-ripple" style={{ left: ripple.x, top: ripple.y }} />}
@@ -228,6 +259,54 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
         )}
       </div>
 
+      {/* The checkout: one basket across the mall, paid once */}
+      {till !== "closed" && (
+        <div className="cs-till" role="dialog" aria-label="Checkout">
+          {till === "paid" ? (
+            <div className="cs-paid">
+              <span className="cs-paid-tick" aria-hidden>✓</span>
+              <span className="cs-till-title">Paid — thank you</span>
+              <span className="cs-till-sub">
+                {formatPrice(bill.total)} CAD · {bill.stores.length} {bill.stores.length === 1 ? "store" : "stores"}, one payment
+              </span>
+              {phase !== "demo" && (
+                <button type="button" className="cs-btn cs-btn-quiet" onClick={() => { setTill("closed"); setLines([]); }}>
+                  Done
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              <span className="cs-panel-kicker">Your basket · VCA Mall</span>
+              <span className="cs-till-title">One checkout for the whole trip</span>
+              {bill.stores.map((st) => (
+                <div key={st.store} className="cs-till-store">
+                  <span className="cs-till-storename">{st.store}</span>
+                  {st.lines.map((l, i) => (
+                    <div key={`${l.sku}-${i}`} className="cs-till-line">
+                      <span>{l.name}<small>{l.sku}</small></span>
+                      <span>{formatPrice(l.price)}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div className="cs-till-total">
+                <span>Total</span>
+                <span>{formatPrice(bill.total)} <small>CAD</small></span>
+              </div>
+              <button type="button" className={`cs-btn cs-btn-primary ${payPressed ? "cs-pressed" : ""}`} onClick={pay} disabled={phase === "demo"}>
+                Pay {formatPrice(bill.total)}
+              </button>
+              {phase !== "demo" && (
+                <button type="button" className="cs-btn cs-btn-quiet" onClick={() => setTill("closed")}>
+                  Keep shopping
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Captions */}
       <div className={`cs-caption ${caption ? "cs-caption-on" : ""}`}>{caption?.text ?? ""}</div>
 
@@ -238,8 +317,8 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
         <div className="cs-title">
           <div className="cs-title-inner">
             <span className="cs-kicker">VCA · investor preview</span>
-            <h1 className="cs-h1">The Virtual China Store</h1>
-            <p className="cs-lede">Walk in. Products tell you what they are as you near them. Pick one up — and buy it.</p>
+            <h1 className="cs-h1">The Virtual Mall</h1>
+            <p className="cs-lede">Walk into a china store. Products tell you what they are as you near them. Pick one up, then carry your basket next door to the jeweller — and pay once, at the end of the trip.</p>
             {!webgl ? (
               <p className="cs-lede">This preview needs WebGL, which this browser has turned off.</p>
             ) : phase === "loading" ? (
@@ -250,7 +329,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
             ) : (
               <div className="cs-actions">
                 <button type="button" className="cs-btn cs-btn-primary cs-btn-lg" onClick={play}>
-                  ▶ Play the 20-second walk
+                  ▶ Play the walk · 50 s
                 </button>
                 <button type="button" className="cs-btn cs-btn-ghost cs-btn-lg" onClick={explore}>
                   Explore freely
