@@ -81,7 +81,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding: 7px 12px 8px 11px;
+  padding: 5px 10px 6px 9px;
   white-space: nowrap;
   border-left: 1px solid var(--cs-line);
   background: linear-gradient(90deg, rgba(14, 12, 10, 0.56), rgba(14, 12, 10, 0.34));
@@ -99,21 +99,21 @@
 }
 .cs-name {
   font-family: var(--cs-display);
-  font-size: 15px;
-  font-weight: 500;
-  letter-spacing: 0.1em;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   line-height: 1.15;
 }
 .cs-sku {
-  font-size: 9.5px;
-  letter-spacing: 0.16em;
+  font-size: 8.5px;
+  letter-spacing: 0.18em;
   color: var(--cs-dim);
 }
 .cs-price {
   margin-top: 2px;
   font-family: var(--cs-display);
-  font-size: 21px;
+  font-size: 17px;
   font-weight: 500;
   line-height: 1;
   color: #fffaf0;

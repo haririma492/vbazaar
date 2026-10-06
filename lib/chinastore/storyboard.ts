@@ -16,14 +16,14 @@ export type Key = { t: number; eye: [number, number, number]; look: [number, num
 
 export const KEYS: Key[] = [
   // 0–3 s: outside, then through the doorway (the threshold is at z 4.6).
-  { t: 0, eye: [0.32, 1.64, 7.6], look: [0.05, 1.5, 0] },
+  { t: 0, eye: [0.32, 1.64, 7.6], look: [0.05, 1.9, 0] },
   { t: 3, eye: [0.05, 1.63, 4.3], look: [-0.25, 1.38, 0] },
   // 3–7 s: past the plinth — its labels come and go — toward the wall.
   { t: 6.2, eye: [-0.12, 1.62, 2.1], look: [-0.45, 1.2, -1.2] },
   // 7–11 s: the wall fills the view; its labels appear.
   { t: 9.6, eye: [-0.06, 1.61, 0.15], look: [-0.05, 1.18, -2.25] },
   // 11–14 s: in to the teapot.
-  { t: 13.2, eye: [0.12, 1.585, -1.02], look: [0.04, 1.33, -2.25] },
+  { t: 13.2, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
 ];
 
 export const CUES = {

@@ -46,7 +46,7 @@ type Runtime = {
 
 type Pose = { pos: THREE.Vector3; quat: THREE.Quaternion };
 
-const HOLD_OFFSET = new THREE.Vector3(0.05, -0.115, -0.56);
+const HOLD_OFFSET = new THREE.Vector3(-0.06, -0.07, -0.66);
 const HAND_START = new THREE.Vector3(0.38, -0.55, -0.2);
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
@@ -199,7 +199,8 @@ export class CommerceLayer {
     for (const r of this.items) {
       const s = labelState(eye, fwd, r.p);
       const isHeld = this.held?.r === r;
-      const target = isHeld ? 0 : s.target;
+      // While a product is in hand, the other labels step back.
+      const target = this.held ? 0 : s.target;
       r.opacity = damp(r.opacity, target, FADE_RATE, dt);
       if (s.selectable && !isHeld && !this.held) {
         // The one a tap takes: nearest the centre of view, the hero first.
@@ -236,7 +237,7 @@ export class CommerceLayer {
     const x = (v.x * 0.5 + 0.5) * width;
     const y = (-v.y * 0.5 + 0.5) * height;
     // Nearer labels are a touch larger — they belong to the space, not the screen.
-    const scale = Math.min(1.12, Math.max(0.8, 1.9 / Math.max(distance, 0.5)));
+    const scale = Math.min(1.0, Math.max(0.78, 1.7 / Math.max(distance, 0.5)));
     r.el.style.visibility = "visible";
     r.el.style.opacity = o.toFixed(3);
     r.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(3)})`;

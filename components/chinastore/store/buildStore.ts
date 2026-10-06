@@ -27,7 +27,7 @@ export type Store = {
   dress: (loader: GLTFLoader) => Promise<void>;
 };
 
-const WARM = new THREE.Color().setRGB(1.0, 0.86, 0.72);
+const WARM = new THREE.Color().setRGB(1.0, 0.9, 0.8);
 const LED = new THREE.Color().setRGB(1.0, 0.83, 0.64);
 
 /** UVs in metres on each face's own plane — textures keep their scale on any box. */
@@ -97,12 +97,16 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   const plasterMat = new THREE.MeshStandardMaterial({
     map: plasterTex.color, normalMap: plasterTex.normal, normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.92,
   });
-  const ceilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.9, 0.88, 0.85), roughness: 0.95 });
+  const ceilingMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.55, 0.52, 0.48), roughness: 0.95 });
   const brassMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.8, 0.6, 0.34), metalness: 1, roughness: 0.28 });
   const blackMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(0.02, 0.02, 0.022), roughness: 0.6 });
-  const bronzeMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.11, 0.09, 0.075), metalness: 0.85, roughness: 0.38 });
-  const ledMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.9, 0.75).multiplyScalar(3) });
+  const bronzeMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.06, 0.055, 0.05), metalness: 0.8, roughness: 0.42 });
+  const ledMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.9, 0.75).multiplyScalar(1.6) });
   const trimMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.0, 0.93, 0.82).multiplyScalar(2.2) });
+
+  // The room takes less of the environment light than the china: the HDR is
+  // there for the glaze's reflections, the room is lit by its own fixtures.
+  for (const m of [floorMat, outsideFloorMat, slabMat, woodMat, clothMat, plasterMat, ceilingMat, blackMat]) m.envMapIntensity = 0.45;
 
   const box = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, opts: { r?: number; grain?: "x" | "y" | "z"; shadow?: boolean } = {}) => {
     const g = opts.r ? new RoundedBoxGeometry(w, h, d, 2, opts.r) : new THREE.BoxGeometry(w, h, d);
@@ -146,7 +150,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
 
   // Front wall with the doorway (2.2 m wide, 2.7 m high), seen from both sides.
   const DOOR_W = 2.2;
-  const DOOR_H = 2.7;
+  const DOOR_H = 2.55;
   const FRONT_Z = 4.6;
   const sideW = (7.4 - DOOR_W) / 2;
   box(sideW, H, 0.2, plasterMat, -(DOOR_W / 2 + sideW / 2), H / 2, FRONT_Z, { shadow: false });
@@ -159,7 +163,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     new THREE.PlaneGeometry(2.6, 0.325),
     new THREE.MeshStandardMaterial({ map: signTexture("VCA  PORCELAIN", "VIRTUAL  CHINA  STORE"), roughness: 0.4, metalness: 0.3, emissive: new THREE.Color(0.25, 0.2, 0.14), emissiveMap: null }),
   );
-  sign.position.set(0, 3.2, FRONT_Z + 0.15);
+  sign.position.set(0, 2.86, FRONT_Z + 0.15);
   root.add(sign);
   // Door frame in brass.
   for (const sx of [-1, 1]) box(0.05, DOOR_H, 0.26, brassMat, sx * (DOOR_W / 2 + 0.025), DOOR_H / 2, FRONT_Z, { r: 0.006 });
@@ -204,7 +208,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     const strip = new THREE.Mesh(new THREE.BoxGeometry(W - 0.14, 0.004, 0.012), ledMat);
     strip.position.set(0, y - (y === UP_TOP ? 0.002 : 0.037), BACK + 0.33);
     root.add(strip);
-    const area = new THREE.RectAreaLight(LED, y === SHELVES[0] ? 9 : 7, W - 0.16, 0.05);
+    const area = new THREE.RectAreaLight(LED, y === SHELVES[0] ? 6 : 4.5, W - 0.16, 0.05);
     area.position.set(0, y - 0.04, BACK + 0.3);
     area.lookAt(0, 0, BACK + 0.15);
     root.add(area);
@@ -237,7 +241,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   root.add(foot);
 
   // ── light ────────────────────────────────────────────────────────────
-  const hemi = new THREE.HemisphereLight(new THREE.Color(1, 0.96, 0.9), new THREE.Color(0.35, 0.28, 0.22), 0.35);
+  const hemi = new THREE.HemisphereLight(new THREE.Color(1, 0.96, 0.9), new THREE.Color(0.35, 0.28, 0.22), 0.12);
   root.add(hemi);
 
   const spot = (from: [number, number, number], to: [number, number, number], intensity: number, angle: number, shadow: boolean, mapSize = 2048) => {
@@ -263,15 +267,15 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     return s;
   };
   // Accent spots on the display wall (these cast the shadows that seat the china).
-  spot([-0.75, H, -0.55], [-0.6, 1.0, -2.3], 26, 0.42, true);
-  spot([0.75, H, -0.55], [0.6, 1.0, -2.3], 26, 0.42, true);
-  spot([0.0, H, -0.85], [0.03, 1.2, -2.3], 14, 0.3, true);
+  spot([-0.75, H, -0.55], [-0.6, 1.0, -2.3], 42, 0.42, true);
+  spot([0.75, H, -0.55], [0.6, 1.0, -2.3], 42, 0.42, true);
+  spot([0.0, H, -0.85], [0.03, 1.2, -2.3], 22, 0.3, true);
   // The plinth and the table.
   spot([PL.x + 0.1, H, PL.z - 0.4], [PL.x, PL.h, PL.z], 20, 0.36, true, 1024);
   spot([TB.x - 0.1, H, TB.z - 0.3], [TB.x, TB.h, TB.z], 14, 0.45, true, 1024);
   // General downlights over the floor, and two at the door.
   for (const [x, z] of [[-1.6, -0.6], [1.6, -0.6], [-2.4, 2.4], [2.4, 2.6], [0, 1.8], [0, 3.6]] as const)
-    spot([x, H, z], [x, 0, z + 0.01], 9, 0.75, false);
+    spot([x, H, z], [x, 0, z + 0.01], 7, 0.7, false);
   // Wall washers on the hung plates either side of the unit.
   for (const sx of [-1, 1]) spot([sx * 2.2, H, -1.6], [sx * 2.2, 1.6, -2.5], 10, 0.5, false);
   // The corridor outside, dimmer and cooler.

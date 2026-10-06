@@ -187,13 +187,13 @@ export function walnut(repeat: [number, number]): Painted {
   return paint(W, H, (x, y) => {
     const u = x / W;
     const v = y / H;
-    const warp = pfbm(u * 3, v * 2, 3, 2, 4, 21);
-    const rings = Math.sin((u * 22 + warp * 6) * Math.PI * 2);
-    const ring = Math.pow(rings * 0.5 + 0.5, 3);
-    const pores = pfbm(u * 160, v * 6, 160, 6, 2, 4);
-    const fig = pfbm(u * 8, v * 30, 8, 30, 3, 8);
-    let rgb = mix3([0.3, 0.19, 0.12], [0.2, 0.12, 0.075], ring * 0.7 + fig * 0.3);
-    rgb = mix3(rgb, [0.14, 0.085, 0.05], Math.pow(pores, 4) * 0.6);
+    const warp = pfbm(u * 4, v * 3, 4, 3, 4, 21);
+    const rings = Math.sin((u * 64 + warp * 2.2 + pfbm(u * 30, v * 2, 30, 2, 2, 5) * 0.8) * Math.PI * 2);
+    const ring = Math.pow(rings * 0.5 + 0.5, 4);
+    const pores = pfbm(u * 220, v * 8, 220, 8, 2, 4);
+    const fig = pfbm(u * 10, v * 40, 10, 40, 3, 8);
+    let rgb = mix3([0.25, 0.165, 0.11], [0.17, 0.105, 0.065], ring * 0.45 + fig * 0.35);
+    rgb = mix3(rgb, [0.13, 0.075, 0.045], Math.pow(pores, 4) * 0.5);
     return { rgb, height: 0.5 + ring * 0.08 - Math.pow(pores, 4) * 0.25, rough: 0.42 + ring * 0.1 };
   }, repeat, 1.5, true);
 }
@@ -223,7 +223,7 @@ export function plaster(repeat: [number, number]): Painted {
     const v = y / S;
     const m = pfbm(u * 5, v * 5, 5, 5, 5, 17);
     const fine = pfbm(u * 60, v * 60, 60, 60, 2, 3);
-    const rgb = mix3([0.84, 0.8, 0.74], [0.9, 0.87, 0.82], m);
+    const rgb = mix3([0.5, 0.455, 0.405], [0.57, 0.52, 0.465], m);
     return { rgb, height: m * 0.3 + fine * 0.15, rough: 0.9 };
   }, repeat, 1.2, false);
 }

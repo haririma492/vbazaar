@@ -70,7 +70,7 @@ export const SCENE_ID = "vca-china-sim-01";
 // ── the merchant's catalogue ──────────────────────────────────────────────
 
 export const CATALOG: CatalogItem[] = [
-  { sku: "CT-1001", name: "Porcelain Tea Cup & Saucer", price: 29, currency: "CAD", modelUrl: "/models/china/cup-saucer.glb", blurb: "Cobalt Royal · bone china" },
+  { sku: "CT-1001", name: "Tea Cup & Saucer", price: 29, currency: "CAD", modelUrl: "/models/china/cup-saucer.glb", blurb: "Cobalt Royal · bone china" },
   { sku: "CT-1002", name: "Dinner Plate", price: 39, currency: "CAD", modelUrl: "/models/china/dinner-plate.glb", blurb: "Cobalt Royal · 27 cm" },
   { sku: "CT-1003", name: "Serving Bowl", price: 59, currency: "CAD", modelUrl: "/models/china/bowl.glb", blurb: "Cobalt Royal · 21 cm" },
   { sku: "CT-1004", name: "Porcelain Teapot", price: 89, currency: "CAD", modelUrl: "/models/china/teapot.glb", blurb: "Cobalt Royal · 1.1 L · hand-gilded" },
@@ -95,8 +95,10 @@ const PLATE_TILT = (75 * Math.PI) / 180;
 /** The teapot held by its handle: fingers into the loop, palm on the bar. */
 const TEAPOT_GRASP: Grasp = {
   point: [0.13, 0.07, 0],
-  // Hand +y (fingers) → −z, hand +z (back of hand) → +x, hand +x → −y.
-  quaternion: [-0.5, 0.5, -0.5, 0.5],
+  // Fingers into the loop (−z), back of the hand to the right (+x), little
+  // finger down; then the wrist turned 34° and dropped 17° so the forearm
+  // comes from the shopper's lower right, not straight out of the shelf.
+  quaternion: [-0.5249, 0.7119, -0.2769, 0.3755],
 };
 
 export const HOTSPOTS: Hotspot[] = [
