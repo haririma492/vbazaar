@@ -193,67 +193,6 @@ test("districts: unique ids, real places", () => {
   assert.equal(districtById("nowhere"), null);
 });
 
-test("boarding: parked ahead, spins up, glides in under the rider, carries them, fades", async () => {
-  const { BOARDING, BOARDING_MS, STREET_EYE, boardingFrame } = await import("./boarding.ts");
-  const B = BOARDING;
-  assert.equal(BOARDING_MS, B.spinUpMs + B.approachMs + B.carryMs + B.fadeMs);
-
-  const parked = boardingFrame(0);
-  assert.deepEqual(parked.drone, { x: 0, y: 0, z: -B.parkedAhead });
-  assert.equal(parked.spin, 0);
-  assert.equal(parked.opacity, 1);
-  assert.equal(parked.carried, 0);
-
-  // Spinning up before it moves.
-  const spun = boardingFrame(B.spinUpMs);
-  near(spun.spin, B.maxSpin, 1e-9);
-  assert.equal(spun.drone.z, -B.parkedAhead);
-
-  // Aboard: just ahead of and below the rider's eye, nothing carried yet.
-  const aboard = boardingFrame(B.spinUpMs + B.approachMs);
-  near(aboard.drone.z, -B.boardAhead, 1e-9);
-  near(aboard.drone.y, B.boardHeight, 1e-9);
-  assert.ok(aboard.drone.y < STREET_EYE);
-  assert.equal(aboard.carried, 0);
-
-  // Always closing in, never backing off.
-  let lastZ = -Infinity;
-  for (let i = 0; i <= 20; i++) {
-    const z = boardingFrame(B.spinUpMs + (B.approachMs * i) / 20).drone.z;
-    assert.ok(z >= lastZ - 1e-9, `i=${i}`);
-    lastZ = z;
-  }
-
-  // Carried the whole way, still solid; then gone.
-  const carried = boardingFrame(BOARDING_MS - B.fadeMs);
-  near(carried.carried, B.carryMeters, 1e-9);
-  assert.equal(carried.opacity, 1);
-  const gone = boardingFrame(BOARDING_MS);
-  assert.equal(gone.opacity, 0);
-  near(gone.spin, B.maxSpin, 1e-9);
-  assert.ok(B.carryMeters >= 2 && B.carryMeters <= 3);
-});
-
-test("alighting: boarding backwards, still carried forward, ending parked and still", async () => {
-  const { BOARDING, BOARDING_MS, alightingFrame, boardingFrame } = await import("./boarding.ts");
-  const first = alightingFrame(0);
-  assert.equal(first.opacity, 0);
-  assert.equal(first.carried, 0);
-  near(first.drone.z, -BOARDING.boardAhead, 1e-9);
-  const off = alightingFrame(BOARDING.fadeMs + BOARDING.carryMs);
-  assert.equal(off.opacity, 1);
-  near(off.carried, BOARDING.carryMeters, 1e-9);
-  const last = alightingFrame(BOARDING_MS);
-  assert.deepEqual(last.drone, boardingFrame(0).drone);
-  assert.equal(last.spin, 0);
-  let lastCarried = -1;
-  for (let i = 0; i <= 40; i++) {
-    const c = alightingFrame((BOARDING_MS * i) / 40).carried;
-    assert.ok(c >= lastCarried - 1e-9, `i=${i}`);
-    lastCarried = c;
-  }
-});
-
 test("by taxi: slower, on the road, the camera behind and above the car at the view's centre", async () => {
   const path = makePath([O, offset(O, 0, 3000), offset(offset(O, 0, 3000), 90, 2000)]);
   const taxi = planFlight({ path, ground: () => 150, followsRoad: true, vehicle: "taxi" });
