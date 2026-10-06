@@ -126,6 +126,8 @@ type Engine = {
   setWorld: (members: Member[], show: boolean) => void;
   /** Walls on (`lib/splats/corridor.ts`); off while the operator records a route or aligns. */
   setWalls: (on: boolean) => void;
+  /** Loaded and decoded (a door's destination, preloaded): going there needs no wait. */
+  isReady: (id: string) => boolean;
   /** ↩ Turn the body round to face back along the blue line (exactly, near it), gliding. */
   turnAround: () => void;
   /** Follow the path (`guideStep`): «go» and «back» are all a visitor needs; the route steers. */
@@ -399,11 +401,36 @@ export default function SplatTour({
     let shownId = "";
     let fadeFrom = "";
     let fadeT = 1;
-    const FADE_S = 0.45;
+    // ⚠️ THE HANDOFF (operator's seamless-transition spec, 2026-10-06): the
+    // next scene, already loaded, is drawn whole at once — and the one being
+    // left fades out over it for a moment. Never both half see-through, never
+    // a frame with neither.
+    const HANDOFF_S = 0.18;
+    /**
+     * Where a transition spends its time — preload, network, decode, first
+     * frame, portal, handoff, release — in the developer console only
+     * (`[splat]`), never on the shopper's screen.
+     */
+    const t0Of = new Map<string, number>();
+    const trace = (stage: string, id: string, extra = "") => {
+      const t = t0Of.get(id);
+      console.info(`[splat] ${stage} «${id}»${t != null ? ` +${Math.round(performance.now() - t)} ms` : ""}${extra ? ` ${extra}` : ""}`);
+    };
+    // Shown, not yet drawn: the first frame drawn with it says «visible».
+    const awaitingFrame = new Set<string>();
     const NEAR_LOAD = 30, FAR_DROP = 80; // scene units from a scene's path
+    // ⚠️ PRELOAD BEFORE THE DOOR, not at it: a door's scene starts loading,
+    // unseen, this far before the shopper reaches the door.
+    const DOOR_PRELOAD = 15;
     const nearLoad = () => {
       const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       const x = camera.position.x, z = camera.position.z;
+      for (const e of markerExits) {
+        if (meshes.has(e.to) || pending.has(e.to) || world.some((m) => m.id === e.to)) continue;
+        if (Math.hypot(e.at[0] - x, e.at[2] - z) > DOOR_PRELOAD) continue;
+        const so = sourceOf(e.to);
+        if (so) void loadMesh(e.to, so.src, so.flip, true).catch((err) => trace("preload failed", e.to, (err as Error).message));
+      }
       for (const m of world) {
         if (m.id === currentId || m.route.length < 2) continue;
         const d = nearestOnRoute(m.route, x, z)?.dist ?? Infinity;
@@ -574,15 +601,23 @@ export default function SplatTour({
       }
       await sparkReady;
       if (!sparkMod) throw new Error("Spark did not load.");
-      Object.assign(rep, { scene: id, src, bytes: null, downloadMs: null, decodeMs: null, splats: null, error: null });
-      publish();
+      t0Of.set(id, performance.now());
+      trace(quiet ? "preload started" : "load started", id);
+      // A scene loading behind the view leaves the report (the scene shown) alone.
+      if (!quiet) {
+        Object.assign(rep, { scene: id, src, bytes: null, downloadMs: null, decodeMs: null, splats: null, error: null });
+        publish();
+      }
 
       const tFetch = performance.now();
       const bytes = await downloadSplat(src, (share) => { if (!quiet) setLoading(share); });
       const got = bytes.length;
-      rep.bytes = got;
-      rep.downloadMs = performance.now() - tFetch;
-      publish();
+      trace("network complete", id, `${(got / 1048576).toFixed(1)} MB`);
+      if (!quiet) {
+        rep.bytes = got;
+        rep.downloadMs = performance.now() - tFetch;
+        publish();
+      }
 
       const tDecode = performance.now();
       // ⚠️ FULL-PRECISION SPLATS (`extSplats`). Spark's default packing keeps
@@ -596,6 +631,8 @@ export default function SplatTour({
         extSplats: params.get("precision") !== "low",
       });
       if (flip) mesh.quaternion.set(1, 0, 0, 0); // y-down reconstruction → y-up world
+      // Loaded ahead: resident and ready, but not seen until handed over.
+      if (quiet) mesh.visible = false;
       scene.add(mesh);
       // Spark logs a decode failure in its worker and never settles: give up after a while.
       let timer = 0;
@@ -606,8 +643,11 @@ export default function SplatTour({
             "The file did not decode. If it is .spz, write it as SPZ v3 (splat-transform --spz-version 3).")), DECODE_TIMEOUT_MS);
         }),
       ]).finally(() => clearTimeout(timer));
-      rep.decodeMs = performance.now() - tDecode;
-      rep.splats = mesh.packedSplats?.numSplats ?? mesh.extSplats?.numSplats ?? null;
+      trace("decoding complete", id);
+      if (!quiet) {
+        rep.decodeMs = performance.now() - tDecode;
+        rep.splats = mesh.packedSplats?.numSplats ?? mesh.extSplats?.numSplats ?? null;
+      }
       if (firstFrameAt == null) firstFrameAt = performance.now();
       publish();
       meshes.set(id, mesh);
@@ -704,7 +744,10 @@ export default function SplatTour({
           flip = so?.flip ?? true;
         }
         if (!src) throw new Error("No such scene, or NEXT_PUBLIC_SPLAT_BASE_URL is not set.");
-        setLoading(0);
+        // Preloaded (the shopper neared its door): no «Getting ready», no wait.
+        const ready = meshes.has(id);
+        if (!ready) setLoading(0);
+        if (shownId) trace(ready ? "portal crossed, destination ready" : "portal crossed, destination NOT preloaded", id);
         try {
           const mesh = await loadMesh(id, src, flip);
           currentId = id;
@@ -720,15 +763,23 @@ export default function SplatTour({
           // ⚠️ ON A PHONE, LET GO OF SCENES LEFT BEHIND (not this one, not
           // those placed in its world): each holds tens of MB, and too many
           // make iOS reload the page. Going back loads it again.
+          // ⚠️ AFTER the handoff, not during it (a second later), and the
+          // scene just left stays — going back through its door is instant too.
           if (window.matchMedia?.("(pointer: coarse)").matches) {
-            const keep = new Set([id, ...(mine ? (tourRef.current?.scenes ?? []).filter((s) => s.place).map((s) => s.id) : [])]);
-            for (const [k, m] of [...meshes]) {
-              if (keep.has(k)) continue;
-              scene.remove(m);
-              m.dispose();
-              meshes.delete(k);
-            }
+            window.setTimeout(() => {
+              const back = trailRef.current[trailRef.current.length - 1]?.scene;
+              const keep = new Set([currentId, shownId, back, ...(mine ? (tourRef.current?.scenes ?? []).filter((s) => s.place).map((s) => s.id) : [])]);
+              for (const [k, m] of [...meshes]) {
+                if (keep.has(k)) continue;
+                scene.remove(m);
+                m.dispose();
+                meshes.delete(k);
+                points.delete(k);
+                trace("released", k);
+              }
+            }, 1000);
           }
+          awaitingFrame.add(id);
           applyPose(pose);
           // ⚠️ ONE WORLD: a scene placed in the tour's world brings the others
           // placed there along (after it is up), so the visitor walks from
@@ -741,9 +792,10 @@ export default function SplatTour({
           publish();
           throw e;
         } finally {
-          setLoading(null);
+          if (!ready) setLoading(null);
         }
       },
+      isReady: (id) => meshes.has(id),
       // Where the body is turning to, not mid-glide: a saved pose (start, back) faces the way chosen.
       pose: () => ({ position: camera.position.toArray() as Vec3, yaw: yaw + turnTarget, pitch }),
       pointAhead(m) {
@@ -1150,6 +1202,7 @@ export default function SplatTour({
       if (nearest && nearest.id !== currentId && nearestDist < 3 && world.length > 1) {
         currentId = nearest.id;
         pace = nearest.pace;
+        trace(meshes.has(nearest.id) ? "walked into, ready" : "walked into, NOT yet loaded (the last scene stays until it is)", nearest.id);
         onWalkedInto(nearest.id);
       }
       velFwd += (wantFwd * walkSpeed * pace * boost - velFwd) * ease;
@@ -1239,19 +1292,27 @@ export default function SplatTour({
         shownId = currentId;
         fadeT = 0;
       }
-      if (fadeT < 1) fadeT = Math.min(1, fadeT + dt / FADE_S);
+      if (fadeT < 1) fadeT = Math.min(1, fadeT + dt / HANDOFF_S);
       meshes.forEach((m, k) => {
         if (k === aligningId) return;
         if (k === shownId) {
+          if (!m.visible) awaitingFrame.add(k);
           m.visible = true;
-          m.opacity = fadeT;
+          m.opacity = 1;
         } else if (k === fadeFrom && fadeT < 1) {
           m.visible = true;
           m.opacity = 1 - fadeT;
-        } else m.visible = false;
+        } else {
+          if (k === fadeFrom && m.visible) trace("previous hidden", k);
+          m.visible = false;
+        }
       });
 
       renderer.render(scene, camera);
+      for (const id of awaitingFrame) {
+        if (meshes.get(id)?.visible) trace("destination visible (first frame drawn)", id);
+        awaitingFrame.delete(id);
+      }
 
       if (firstFrameAt != null && rep.firstFrameMs == null) {
         rep.firstFrameMs = performance.now() - t0;
@@ -1404,13 +1465,20 @@ export default function SplatTour({
   }, [speedIx, tour?.drive]);
 
   async function go(sceneId: string, pose: Pose) {
-    setFade(true);
-    await new Promise((r) => setTimeout(r, FADE_MS));
+    // ⚠️ NO BLACK SCREEN THROUGH A DOOR WHOSE SCENE IS READY: it was loaded
+    // as the shopper neared the door, and the handoff is one frame — this
+    // scene out, that one in, the camera at its entrance. Only a scene not
+    // yet loaded (a jump from the list, a door rushed) dips to black.
+    const ready = engine.current?.isReady(sceneId) ?? false;
+    if (!ready) {
+      setFade(true);
+      await new Promise((r) => setTimeout(r, FADE_MS));
+    }
     try {
       await engine.current?.show(sceneId, pose);
       setCurrent(sceneId);
     } finally {
-      setFade(false);
+      if (!ready) setFade(false);
     }
   }
 
