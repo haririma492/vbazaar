@@ -130,6 +130,8 @@ type Engine = {
   setWalls: (on: boolean) => void;
   /** Loaded and decoded (a door's destination, preloaded): going there needs no wait. */
   isReady: (id: string) => boolean;
+  /** Glance to a side (−1 left, 1 right) or look ahead (0), walking on as before. */
+  look: (side: -1 | 0 | 1) => void;
   /** ↩ Turn the body round to face back along the blue line (exactly, near it), gliding. */
   turnAround: () => void;
   /** Follow the path (`guideStep`): «go» and «back» are all a visitor needs; the route steers. */
@@ -313,6 +315,10 @@ export default function SplatTour({
   const currentRef = useRef<string | null>(null);
   const exitHandler = useRef<(exit: Exit) => void>(() => {});
   const onReach = useRef<(r: Reach) => void>(() => {});
+  // Which way the visitor is glancing (−1 left, 0 ahead, 1 right): the look buttons show it.
+  const onLook = useRef<(side: number) => void>(() => {});
+  const [lookSide, setLookSide] = useState(0);
+  onLook.current = setLookSide;
   const [reach, setReach] = useState<Reach>(null);
   onReach.current = setReach;
   tourRef.current = tour;
@@ -363,6 +369,11 @@ export default function SplatTour({
     let velFwd = 0; // m/s, eased toward what the stick asks
     let velTurn = 0; // rad/s, likewise
     let turnYaw = 0; // how far the steering has turned the view
+    // ⚠️ THE HEAD, APART FROM THE BODY (operator, 2026-10-07: "look sideways at
+    // store windows but keep walking straight", as in a bazaar): a glance to
+    // the side turns the view, not the way the visitor walks. + is right.
+    let headYaw = 0;
+    let headTarget = 0;
     const turnQ = new THREE.Quaternion();
     let gyroHave = false;
     // Walk by tilting: the hold, smoothed; a few readings to learn "standing still".
@@ -747,6 +758,9 @@ export default function SplatTour({
       pitch = p.pitch;
       turnYaw = 0;
       turnTarget = 0;
+      headYaw = 0;
+      headTarget = 0;
+      onLook.current(0);
       stickDrive = startTilt(0);
       velFwd = 0;
       velTurn = 0;
@@ -897,7 +911,13 @@ export default function SplatTour({
       setGuided(on) {
         guided = on;
       },
+      look(side) {
+        headTarget = side * (75 * Math.PI) / 180;
+        onLook.current(side);
+      },
       turnAround() {
+        headTarget = 0;
+        onLook.current(0);
         // ⚠️ BACK THE WAY THEY CAME (operator, 2026-10-05): a shopper who
         // turns round walks the same blue line the other way. Turning 180°
         // by twisting a phone takes several twists; this does it in one
@@ -1046,8 +1066,18 @@ export default function SplatTour({
       // phone, while tilt-walking, and with the phone's own motion on, where
       // a sideways drag turns the body and the phone does the rest.
       if (pointers.size === 1) {
-        userTurnAt = performance.now();
         const k = (camera.fov / el.clientHeight) * (Math.PI / 180);
+        // Following the path, a sideways drag is a glance: the head turns, the
+        // walk goes on along the path. (Free walking: it turns the body.)
+        if (guided && !(gyroOn && gyroHave)) {
+          headTarget = THREE.MathUtils.clamp(headTarget + (e.clientX - prev.x) * k, -2.4, 2.4);
+          headYaw = headTarget;
+          pitch = THREE.MathUtils.clamp(pitch + (e.clientY - prev.y) * k, -1.45, 1.45);
+          onLook.current(Math.abs(headTarget) < 0.2 ? 0 : Math.sign(headTarget));
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          return;
+        }
+        userTurnAt = performance.now();
         if (gyroOn && gyroHave) {
           turnTarget += (e.clientX - prev.x) * k;
           turnYaw = turnTarget;
@@ -1151,13 +1181,16 @@ export default function SplatTour({
       if (preloadRef.current) return;
       // Steering (stick left/right) turns the view. With phone motion on it is
       // added to the phone's own heading, so both turn you.
-      if (gyroOn && gyroHave && !tiltOn) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
-      else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
+      headYaw += (headTarget - headYaw) * (1 - Math.exp(-dt / 0.3));
+      if (gyroOn && gyroHave && !tiltOn) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -(turnYaw + headYaw))).multiply(gyroQ);
+      else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw + headYaw), 0));
 
       // ⚠️ WALK BY THE COMPASS HEADING, not by where the camera points. With the
       // phone tilted at the floor the pointing direction, flattened, swings
       // wildly and walking felt like spinning; the heading stays steady.
-      const heading = headingOf(camera.quaternion);
+      // The body's heading (the walk, the path, the walls) leaves the glance out.
+      const viewHeading = headingOf(camera.quaternion);
+      const heading = viewHeading + headYaw;
       forward.set(-Math.sin(heading), 0, -Math.cos(heading));
       right.set(Math.cos(heading), 0, -Math.sin(heading));
 
@@ -1286,7 +1319,7 @@ export default function SplatTour({
 
       // What Enter would go into: the nearest exit or shop door faced, near.
       {
-        const h = -heading;
+        const h = -viewHeading; // a door is gone into by looking at it
         let best: { d: number; r: Reach; t: typeof reachTarget } | null = null;
         for (const ex of markerExits) {
           const d = inReach(ex.at, camera.position.x, camera.position.z, h);
@@ -1545,6 +1578,9 @@ export default function SplatTour({
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (e.key === "h" || e.key === "H" || e.key === "Home") void goCentre();
       if (e.key === "u" || e.key === "U") engine.current?.turnAround();
+      if (e.key === "z" || e.key === "Z") engine.current?.look(lookSide === -1 ? 0 : -1);
+      if (e.key === "c" || e.key === "C") engine.current?.look(lookSide === 1 ? 0 : 1);
+      if (e.key === "x" || e.key === "X") engine.current?.look(0);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1880,6 +1916,29 @@ export default function SplatTour({
             </button>
           ))}
         </div>
+      )}
+
+      {/* ⚠️ GLANCE AT THE WINDOWS: one tap looks to that side while the walk
+          goes on straight; another tap (or the other side) looks ahead. */}
+      {tour && (
+        <>
+          <button
+            aria-label="Look left"
+            dir="ltr"
+            onClick={() => engine.current?.look(lookSide === -1 ? 0 : -1)}
+            className={`absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full border px-3 py-3 text-[13px] ${lookSide === -1 ? "border-amber-300/80 bg-amber-300/30 text-amber-50" : "border-white/30 bg-black/45 text-white/90"}`}
+          >
+            {lookSide === -1 ? "Ahead ▸" : "◂ Look"}
+          </button>
+          <button
+            aria-label="Look right"
+            dir="ltr"
+            onClick={() => engine.current?.look(lookSide === 1 ? 0 : 1)}
+            className={`absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full border px-3 py-3 text-[13px] ${lookSide === 1 ? "border-amber-300/80 bg-amber-300/30 text-amber-50" : "border-white/30 bg-black/45 text-white/90"}`}
+          >
+            {lookSide === 1 ? "◂ Ahead" : "Look ▸"}
+          </button>
+        </>
       )}
 
       {/* Enter / «Go in»: a shop door or exit near and faced */}
