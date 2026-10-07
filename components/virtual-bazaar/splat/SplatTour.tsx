@@ -71,6 +71,8 @@ type Report = {
   error: string | null;
   /** What the walk knows of the path here: the first thing to look at when the path is not followed. */
   path: string;
+  /** The share of the device's level-of-detail splat budget in use (lowered when frames are slow). */
+  lod: number | null;
 };
 
 declare global {
@@ -338,7 +340,7 @@ export default function SplatTour({
 
     const rep: Report = {
       scene: "", src: "", bytes: null, downloadMs: null, decodeMs: null, firstFrameMs: null, splats: null, fps: null,
-      gpu: gpuName(renderer.getContext()), dpr: renderer.getPixelRatio(), viewport: `${el.clientWidth}×${el.clientHeight}`, error: null, path: "—",
+      gpu: gpuName(renderer.getContext()), dpr: renderer.getPixelRatio(), viewport: `${el.clientWidth}×${el.clientHeight}`, error: null, path: "—", lod: null,
     };
     const publish = () => {
       window.__splatReport = { ...rep };
@@ -379,11 +381,24 @@ export default function SplatTour({
     const sparkReady = import("@sparkjsdev/spark").then((m) => {
       if (disposed) return;
       sparkMod = m;
-      spark = new m.SparkRenderer({ renderer });
+      // ⚠️ LEVEL OF DETAIL (operator, 2026-10-07: "rendering is slow … part
+      // of the screen updates late"). Every splat of a scene was drawn — and
+      // sorted — every frame: 2–5 million, on whatever graphics chip the
+      // visitor has; the sort fell behind the turning view, so parts of the
+      // picture caught up late. With LoD, Spark draws a budget of splats
+      // chosen for the view (about 2.5M on a computer, 1–1.5M on a phone),
+      // the far and the tiny merged, no smaller than ~2 pixels. `?lod=0`
+      // turns it off, to compare.
+      spark = new m.SparkRenderer({
+        renderer,
+        enableLod: lodOn,
+        lodRenderScale: 2,
+      });
       scene.add(spark);
     });
 
     const meshes = new Map<string, SplatMesh>();
+    const lodOn = params.get("lod") !== "0";
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
     // Where joined scenes meet (`seams`): each shows its side only, so the
@@ -629,6 +644,8 @@ export default function SplatTour({
         fileBytes: bytes,
         fileName: new URL(src).pathname.split("/").pop() || "scene.spz",
         extSplats: params.get("precision") !== "low",
+        // Its level-of-detail tree, built on load in Spark's worker.
+        lod: lodOn,
       });
       if (flip) mesh.quaternion.set(1, 0, 0, 0); // y-down reconstruction → y-up world
       // Loaded ahead: resident and ready, but not seen until handed over.
@@ -646,7 +663,7 @@ export default function SplatTour({
       trace("decoding complete", id);
       if (!quiet) {
         rep.decodeMs = performance.now() - tDecode;
-        rep.splats = mesh.packedSplats?.numSplats ?? mesh.extSplats?.numSplats ?? null;
+        rep.splats = (mesh.splats as { numSplats?: number } | undefined)?.numSplats || mesh.extSplats?.numSplats || mesh.packedSplats?.numSplats || null;
       }
       if (firstFrameAt == null) firstFrameAt = performance.now();
       publish();
@@ -693,7 +710,13 @@ export default function SplatTour({
     async function prepareAll() {
       if (!prepareJoins || preparing) return;
       preparing = true;
-      for (const s of tourRef.current?.scenes ?? []) {
+      // Only the scenes a join still needs (joined by the paths alone, and the
+      // scene each is joined to): loading every scene of the tour made the
+      // operator's computer as slow as a phone.
+      const t = tourRef.current;
+      const need = new Set<string>();
+      for (const s of t?.scenes ?? []) if (s.join?.by === "paths") need.add(s.id).add(s.join.to);
+      for (const s of (t?.scenes ?? []).filter((x) => need.has(x.id))) {
         if (disposed) return;
         const so = sourceOf(s.id);
         if (!so) continue;
@@ -1344,6 +1367,14 @@ export default function SplatTour({
           // Never below the screen's own pixels (1): halving them blurred the shop windows.
           const floor = Math.min(1, top);
           const next = rep.fps < 20 ? Math.max(floor, pr * 0.85) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
+          // Fewer splats too, when slow (LoD): down to 40% of the device's budget, back up when fast.
+          const sp = spark as unknown as { lodSplatScale?: number } | null;
+          if (lodOn && sp) {
+            const k = sp.lodSplatScale ?? 1;
+            const nk = rep.fps < 28 ? Math.max(0.4, k * 0.85) : rep.fps > 50 ? Math.min(1, k * 1.1) : k;
+            if (Math.abs(nk - k) > 0.01) sp.lodSplatScale = nk;
+            rep.lod = Math.round(nk * 100) / 100;
+          }
           if (Math.abs(next - pr) > 0.01) {
             renderer.setPixelRatio(next);
             renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1779,7 +1810,7 @@ export default function SplatTour({
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
