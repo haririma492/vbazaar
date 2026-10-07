@@ -199,3 +199,13 @@ test("how a scene was joined is kept and checked", () => {
   assert.equal(bad.scenes[0].join, null);
   assert.deepEqual(bad.scenes[1].join, { to: "a", by: "paths", share: 1 });
 });
+
+test("the streak filter's strength is kept and checked", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.clean, 0);
+  t = updateScene(t, "hallway", { clean: 2 });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v5.spz");
+  assert.equal(sceneById(t, "hallway")!.clean, 2);
+  assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", clean: 9 }] }).scenes[0].clean, 3);
+  assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", clean: "x" }] }).scenes[0].clean, 0);
+});

@@ -70,6 +70,14 @@ export type TourScene = {
    */
   join: Join | null;
   /**
+   * THE STREAK FILTER (operator, 2026-10-07): 0 off, 1 light, 2 medium,
+   * 3 strong. Where a scene was poorly filmed (one side seen briefly, cars
+   * and trees moving) its splats smear into streaks and fog; the viewer then
+   * skips the faintest splats and caps how large one may be drawn. Nothing
+   * in the file changes.
+   */
+  clean: number;
+  /**
    * WALLS: how far either side of the route a visitor may walk (the scene's
    * own units; `lib/splats/corridor.ts`). 0: no walls. Needs a route.
    */
@@ -231,7 +239,7 @@ export function parseTour(raw: unknown): Tour {
     scenes.push({
       id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route),
       place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null,
-      walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), exits,
+      walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), exits,
     });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
@@ -252,7 +260,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, walls: DEFAULT_WALLS, doors: [], join: null, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -261,7 +269,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "walls" | "join">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "walls" | "join" | "clean">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 

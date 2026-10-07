@@ -71,6 +71,8 @@ type Report = {
   error: string | null;
   /** What the walk knows of the path here: the first thing to look at when the path is not followed. */
   path: string;
+  /** The streak filter in use (0 off … 3 strong). */
+  clean?: number;
   /** The share of the device's level-of-detail splat budget in use (lowered when frames are slow). */
   lod: number | null;
 };
@@ -130,6 +132,8 @@ type Engine = {
   setWalls: (on: boolean) => void;
   /** Loaded and decoded (a door's destination, preloaded): going there needs no wait. */
   isReady: (id: string) => boolean;
+  /** The streak filter for the scene shown: 0 off … 3 strong (`TourScene.clean`). */
+  setClean: (level: number) => void;
   /** Glance to a side (−1 left, 1 right) or look ahead (0), walking on as before. */
   look: (side: -1 | 0 | 1) => void;
   /** ↩ Turn the body round to face back along the blue line (exactly, near it), gliding. */
@@ -926,6 +930,21 @@ export default function SplatTour({
       setGuided(on) {
         guided = on;
       },
+      setClean(level) {
+        // Faint splats skipped, and no splat drawn wider than this many pixels:
+        // the streaks of a poorly filmed side are a few huge, faint splats.
+        const LEVELS: Array<[number, number]> = [[0.5 / 255, 512], [0.02, 160], [0.05, 96], [0.1, 56]];
+        const q = Number(params.get("clean"));
+        const k = Number.isInteger(q) && q >= 0 && q <= 3 ? q : Math.min(3, Math.max(0, Math.round(level)));
+        const apply = () => {
+          if (!spark) return false;
+          const sp = spark as unknown as { minAlpha: number; maxPixelRadius: number };
+          [sp.minAlpha, sp.maxPixelRadius] = LEVELS[k];
+          rep.clean = k;
+          return true;
+        };
+        if (!apply()) void sparkReady.then(apply);
+      },
       look(side) {
         headTarget = side * (75 * Math.PI) / 180;
         onLook.current(side);
@@ -1515,6 +1534,11 @@ export default function SplatTour({
     engine.current?.setGuided(guided && !recordingRoute);
   }, [guided, recordingRoute]);
 
+  // The streak filter follows the scene the visitor is in.
+  useEffect(() => {
+    engine.current?.setClean(here?.clean ?? 0);
+  }, [here?.id, here?.clean]);
+
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
     engine.current?.setWalls(!(recordingRoute || (editing && wallsOff)));
@@ -1861,7 +1885,7 @@ export default function SplatTour({
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
@@ -2039,6 +2063,21 @@ export default function SplatTour({
                     </label>
                   </div>
                   {!here.route.length && <div className="text-amber-200/80">Walls and «Follow the path» need a route.</div>}
+                  <div className="space-y-1 border-t border-white/10 pt-1.5">
+                    <div className="text-white/60">Streak filter (smears from poorly filmed parts):</div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {["Off", "Light", "Medium", "Strong"].map((label, k) => (
+                        <button
+                          key={label}
+                          className={`rounded py-1 ${here.clean === k ? "bg-amber-300/40 font-bold text-white" : "bg-white/10"}`}
+                          onClick={() => changeTour(updateScene(tour, here.id, { clean: k }))}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-white/40">Shows at once; Save to keep it for visitors.</div>
+                  </div>
                 </>
               )}
 
