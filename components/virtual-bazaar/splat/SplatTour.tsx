@@ -409,7 +409,16 @@ export default function SplatTour({
     });
 
     const meshes = new Map<string, SplatMesh>();
-    const lodOn = params.get("lod") !== "0";
+    // ⚠️ A PHONE HAS A HARD MEMORY LIMIT (operator, 2026-10-07: iOS «A problem
+    // repeatedly occurred» on the Iranian plaza, on the phone only). Past it
+    // the system kills the page. So on a phone: the compact splat format
+    // (16 bytes a splat, not 32), and no level-of-detail tree (it is built as
+    // a second copy while loading). `?lod=1` / `?precision=high` to try them.
+    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    const lodOn = phone ? params.get("lod") === "1" : params.get("lod") !== "0";
+    const extOn = phone ? params.get("precision") === "high" : params.get("precision") !== "low";
+    /** A web copy larger than this is not opened on a phone (≈ 3M splats): a message instead of a crash. */
+    const PHONE_MAX_MB = 48;
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
     // Where joined scenes meet (`seams`): each shows its side only, so the
@@ -637,6 +646,12 @@ export default function SplatTour({
 
       const tFetch = performance.now();
       const bytes = await downloadSplat(src, (share) => { if (!quiet) setLoading(share); });
+      if (phone && bytes.length > PHONE_MAX_MB * 1048576 && params.get("big") !== "1") {
+        throw new Error(
+          `This scene's file is ${Math.round(bytes.length / 1048576)} MB — too big for a phone (it would close the page). ` +
+          "Upload a phone copy made with -d 1500000 (about 25 MB); computers use the sharper «-hq» copy.",
+        );
+      }
       const got = bytes.length;
       trace("network complete", id, `${(got / 1048576).toFixed(1)} MB`);
       if (!quiet) {
@@ -654,7 +669,7 @@ export default function SplatTour({
       const mesh = new sparkMod.SplatMesh({
         fileBytes: bytes,
         fileName: new URL(src).pathname.split("/").pop() || "scene.spz",
-        extSplats: params.get("precision") !== "low",
+        extSplats: extOn,
         // Its level-of-detail tree, built on load in Spark's worker.
         lod: lodOn,
       });
