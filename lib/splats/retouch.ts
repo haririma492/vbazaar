@@ -229,8 +229,10 @@ export const PRESETS: Record<"gentle" | "full" | "deep", RetouchParams> = {
     asphaltStain: 1,
     grime: 1,
     blemish: 1,
-    floaterAlpha: 0.7,
-    floaterNeighbours: 6,
+    // Floaters as in «full» (was 0.7 / 6): on iranianplaza1 that dropped 17% of
+    // the scene — Splatica's soft, half-transparent surface splats among them.
+    floaterAlpha: 0.5,
+    floaterNeighbours: 3,
   },
   gentle: {
     ...BASE,

@@ -402,9 +402,12 @@ export default function SplatUploads() {
 
   // Restored copies being made on the server (`lib/splats/retouch-job.ts`), by scene.
   const [retouches, setRetouches] = useState<Record<string, StreamJob | null>>({});
+  // The scene's scale for the restore: metres one file unit stands for (Splatica's is arbitrary).
+  const [unitM, setUnitM] = useState<Record<string, string>>({});
   async function makeRestored(scene: string, preset: "gentle" | "full" | "deep") {
     try {
-      const { job } = await api<{ job: StreamJob }>({ action: "retouch", scene, preset });
+      const metresPerUnit = Number(unitM[scene] || "1") || 1;
+      const { job } = await api<{ job: StreamJob }>({ action: "retouch", scene, preset, metresPerUnit });
       setRetouches((x) => ({ ...x, [scene]: job }));
       for (;;) {
         await new Promise((r) => setTimeout(r, 3000));
@@ -806,6 +809,20 @@ export default function SplatUploads() {
                       const working = job?.state === "working";
                       return (
                         <>
+                          {/* ⚠️ THE SCENE'S SCALE (founder's iranianplaza1, 2026-10-08: «removed nothing»
+                              — the whole plaza measured ~8 × 15 units: one unit is metres, not one). */}
+                          {!working && (
+                            <label className="flex items-center gap-1 text-white/70" title="How many metres one unit of this scene's file stands for. Cars, people, walls and doors are found by their size in metres.">
+                              1 unit =
+                              <input
+                                className="w-14 rounded border border-white/20 bg-black/40 px-1 py-0.5 text-white"
+                                inputMode="decimal"
+                                value={unitM[s.id] ?? "1"}
+                                onChange={(e) => setUnitM((x) => ({ ...x, [s.id]: e.target.value }))}
+                              />
+                              m
+                            </label>
+                          )}
                           {!working && (["gentle", "full", "deep"] as const).map((preset) => (
                             <button
                               key={preset}

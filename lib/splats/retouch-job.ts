@@ -81,7 +81,9 @@ function run(cmd: string, args: string[], cwd: string, what: string, onLine: (li
  * Start making `scene`'s restored copy (if it is not already being made).
  * Returns at once; the job reports through `retouchJob`.
  */
-export function startRetouchJob(scene: string, preset: RetouchPreset = "full"): RetouchJob {
+export function startRetouchJob(scene: string, preset: RetouchPreset = "full", metresPerUnit = 1): RetouchJob {
+  // The file's scale (founder's iranianplaza1: 1 unit ≈ 3–5 m — the car, wall and door sizes are in metres).
+  const unitsPerMetre = 1 / metresPerUnit;
   const running = jobs.get(scene);
   if (running?.state === "working") return running;
   const job: RetouchJob = { scene, preset, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null, report: null };
@@ -105,7 +107,7 @@ export function startRetouchJob(scene: string, preset: RetouchPreset = "full"): 
       await downloadToFile(source, input);
       job.step = `retouching ${Math.round(statSync(input).size / 1048576)} MB (a minute or two)`;
       if (canStrip() && existsSync(CLI)) {
-        await run(process.execPath, ["--experimental-strip-types", "--no-warnings", CLI, input, restored, `--preset=${preset}`, `--up=${up.join(",")}`, "--max-sh=1", `--report=${reportFile}`],
+        await run(process.execPath, ["--experimental-strip-types", "--no-warnings", CLI, input, restored, `--preset=${preset}`, `--up=${up.join(",")}`, "--max-sh=1", `--report=${reportFile}`, "--set", `metres=${unitsPerMetre}`],
           process.cwd(), "the retouch", (line) => {
             if (/^(·|read |retouched|wrote |removed )/.test(line)) job.step = `retouch: ${line.replace(/^·\s*/, "").slice(0, 140)}`;
           });
@@ -113,7 +115,7 @@ export function startRetouchJob(scene: string, preset: RetouchPreset = "full"): 
       } else {
         const splats = await readSplats(input, 1);
         const pause = () => new Promise<void>((r) => setImmediate(r));
-        const { keep, added, report } = await retouch(splats, { preset, up }, { pause, step: (w) => (job.step = `retouch: ${w}`) });
+        const { keep, added, report } = await retouch(splats, { preset, up, metres: unitsPerMetre }, { pause, step: (w) => (job.step = `retouch: ${w}`) });
         job.report = report;
         job.step = "retouch: writing";
         writePly(restored, splats, keep, added);

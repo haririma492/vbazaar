@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
       if (!isSceneId(scene)) return fail(400, "A scene id.");
       const preset = body.preset ?? "full";
       if (!isRetouchPreset(preset)) return fail(400, "Preset «full», «gentle» or «deep».");
-      return ok({ job: action === "retouch" ? startRetouchJob(scene, preset) : retouchJob(scene) });
+      return ok({ job: action === "retouch" ? startRetouchJob(scene, preset, Number.isFinite(Number(body.metresPerUnit)) && Number(body.metresPerUnit) > 0.01 && Number(body.metresPerUnit) < 100 ? Number(body.metresPerUnit) : 1) : retouchJob(scene) });
     }
 
     // A replaced sign's image (`signImageKey`): a key in the scene's signs/
