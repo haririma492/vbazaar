@@ -75,6 +75,8 @@ type Report = {
   clean?: number;
   /** The share of the device's level-of-detail splat budget in use (lowered when frames are slow). */
   lod: number | null;
+  /** The smallest splat LoD draws, in pixels (2 coarse … 1 finest). */
+  lodPx?: number;
 };
 
 declare global {
@@ -410,9 +412,14 @@ export default function SplatTour({
         // streamed scene IS its level of detail. Per scene, `lod` below
         // decides for the whole-file copies.
         enableLod: params.get("lod") !== "0",
-        lodRenderScale: 2,
+        lodRenderScale: fixedPx ?? 2,
         pagedExtSplats: extOn,
+        // A computer keeps the pages of a scene it is not showing for a
+        // minute (Spark's default: 3 s): the joined scene preloaded at the
+        // door, and the one just left, come back sharp, not coarse first.
+        ...(phone ? {} : { lodCleanupTimeoutMs: 60_000 }),
       });
+      if (fixedDetail != null) spark.lodSplatScale = fixedDetail;
       scene.add(spark);
     });
 
@@ -427,6 +434,21 @@ export default function SplatTour({
     const extOn = phone ? params.get("precision") === "high" : params.get("precision") !== "low";
     /** A web copy larger than this is not opened on a phone (≈ 3M splats): a message instead of a crash. */
     const PHONE_MAX_MB = 48;
+    // DETAIL, TUNED TO THE MACHINE (operator, 2026-10-08: "much much better on
+    // desktop … continue tuning even further"). Level of detail draws a
+    // budget of splats no smaller than some pixels. On a computer with frames
+    // to spare the budget climbs (to 1.6× Spark's 2.5M) and then the smallest
+    // splat drawn shrinks from 2 pixels to 1 — finer shop windows; when frames
+    // run short the same steps go back, coarsest first. `?detail=` fixes the
+    // budget share, `?lodpx=` the pixel size, to compare.
+    const num = (k: string, lo: number, hi: number) => {
+      const v = Number(params.get(k));
+      return params.has(k) && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null;
+    };
+    const fixedDetail = num("detail", 0.2, 4);
+    const fixedPx = num("lodpx", 0.5, 5);
+    const DETAIL_MAX = phone ? 1 : 1.6;
+    const PX_MIN = phone ? 2 : 1;
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
     // Where joined scenes meet (`seams`): each shows its side only, so the
@@ -1495,12 +1517,22 @@ export default function SplatTour({
           const floor = Math.min(1, top);
           const next = rep.fps < 20 ? Math.max(floor, pr * 0.85) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
           // Fewer splats too, when slow (LoD): down to 40% of the device's budget, back up when fast.
-          const sp = spark as unknown as { lodSplatScale?: number } | null;
-          if (sp && (spark as unknown as { enableLod?: boolean }).enableLod) {
-            const k = sp.lodSplatScale ?? 1;
-            const nk = rep.fps < 28 ? Math.max(0.4, k * 0.85) : rep.fps > 50 ? Math.min(1, k * 1.1) : k;
-            if (Math.abs(nk - k) > 0.01) sp.lodSplatScale = nk;
-            rep.lod = Math.round(nk * 100) / 100;
+          if (spark?.enableLod) {
+            let k = spark.lodSplatScale, px = spark.lodRenderScale;
+            const canK = fixedDetail == null, canPx = fixedPx == null;
+            if (rep.fps < 28) {
+              // Slow: bigger splats first (cheap to give back), then fewer.
+              if (canPx && px < 2) px = Math.min(2, px + 0.25);
+              else if (canK) k = Math.max(0.4, k * 0.85);
+            } else if (rep.fps > 50) {
+              // Frames to spare: more splats, then finer ones.
+              if (canK && k < DETAIL_MAX) k = Math.min(DETAIL_MAX, k * 1.1);
+              else if (canPx && px > PX_MIN) px = Math.max(PX_MIN, px - 0.25);
+            }
+            spark.lodSplatScale = k;
+            spark.lodRenderScale = px;
+            rep.lod = Math.round(k * 100) / 100;
+            rep.lodPx = px;
           }
           if (Math.abs(next - pr) > 0.01) {
             renderer.setPixelRatio(next);
@@ -1945,7 +1977,7 @@ export default function SplatTour({
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}

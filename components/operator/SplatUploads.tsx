@@ -374,9 +374,9 @@ export default function SplatUploads() {
   // Streamed copies being made on the server (`lib/splats/stream-job.ts`), by scene.
   type StreamJob = { state: "working" | "done" | "failed"; step: string; startedAt: number; finishedAt: number | null; error: string | null };
   const [streams, setStreams] = useState<Record<string, StreamJob | null>>({});
-  async function makeStream(scene: string) {
+  async function makeStream(scene: string, sharp = false) {
     try {
-      const { job } = await api<{ job: StreamJob }>({ action: "stream", scene });
+      const { job } = await api<{ job: StreamJob }>({ action: "stream", scene, sharp });
       setStreams((x) => ({ ...x, [scene]: job }));
       // Ask how it goes every few seconds until it is done.
       for (;;) {
@@ -740,9 +740,22 @@ export default function SplatUploads() {
                             disabled={working}
                             onClick={() => void makeStream(s.id)}
                           >
-                            {working ? "Making the streamed copy…" : s.fileRad ? "Remake the streamed copy" : "Make the streamed copy (phone-safe, fast)"}
+                            {working ? "Making the streamed copy…" : s.fileRad ? "Remake the streamed copy (fast)" : "Make the streamed copy (phone-safe, fast)"}
                           </button>
-                          {s.fileRad && !working && <span className="text-emerald-300">✓ streamed copy — phones and computers stream it</span>}
+                          {!working && (
+                            <button
+                              className="rounded-full border border-violet-300/60 bg-violet-400/15 px-3 py-1 text-violet-50"
+                              title="Spark's careful method: finer detail on computers. Several minutes; the file is about twice the size."
+                              onClick={() => void makeStream(s.id, true)}
+                            >
+                              Make a sharp streamed copy (slow)
+                            </button>
+                          )}
+                          {s.fileRad && !working && (
+                            <span className="text-emerald-300">
+                              ✓ {s.fileRad.endsWith("-sharp-lod.rad") ? "sharp" : "fast"} streamed copy — phones and computers stream it
+                            </span>
+                          )}
                           {working && <span className="text-white/60">{job.step}</span>}
                           {job?.state === "failed" && <span className="text-rose-300">not made: {job.error}</span>}
                           {job?.state === "done" && <span className="text-emerald-300">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}

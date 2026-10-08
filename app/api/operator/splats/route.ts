@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
     if (action === "stream" || action === "streamStatus") {
       const scene = String(body.scene ?? "");
       if (!isSceneId(scene)) return fail(400, "A scene id.");
-      return ok({ job: action === "stream" ? startStreamJob(scene) : streamJob(scene) });
+      return ok({ job: action === "stream" ? startStreamJob(scene, body.sharp === true) : streamJob(scene) });
     }
 
     if (action === "tour") {

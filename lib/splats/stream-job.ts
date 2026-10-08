@@ -12,6 +12,12 @@
  * here for the operator's screen to ask after. Measured: 3M splats in ~10 s
  * and ~0.5 GB of memory (`--quick`), so a 6–7M-splat scene in under a minute.
  *
+ * SHARP (operator, 2026-10-08: "continue tuning [desktop] even further"):
+ * Spark's own default method (`--quality`) merges splats far more carefully,
+ * so each level looks closer to the full scene — finer detail for the same
+ * budget. It is slow: 3M splats in ~2.5 min on 4 cores, the file twice the
+ * size (more detail kept per level). Its key ends `-sharp-lod.rad`.
+ *
  * Server only.
  */
 
@@ -59,7 +65,7 @@ function run(args: string[], cwd: string, onLine: (line: string) => void): Promi
  * Start making `scene`'s streamed copy (if it is not already being made).
  * Returns at once; the job reports through `streamJob`.
  */
-export function startStreamJob(scene: string): StreamJob {
+export function startStreamJob(scene: string, sharp = false): StreamJob {
   const running = jobs.get(scene);
   if (running?.state === "working") return running;
   const job: StreamJob = { scene, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null };
@@ -78,15 +84,16 @@ export function startStreamJob(scene: string): StreamJob {
       const input = join(dir, `${scene}.${ext}`);
       job.step = `downloading ${source}`;
       await downloadToFile(source, input);
-      job.step = `converting ${Math.round(statSync(input).size / 1048576)} MB`;
-      // --quick: the fast level-of-detail method; SH kept to degree 1 (as the web copies).
-      await run(["--quick", "--max-sh=1", input], dir, (line) => {
+      job.step = `converting ${Math.round(statSync(input).size / 1048576)} MB${sharp ? " (sharp: several minutes)" : ""}`;
+      // --quick: the fast level-of-detail method, --quality the careful one;
+      // SH kept to degree 1 (as the web copies).
+      await run([sharp ? "--quality" : "--quick", "--max-sh=1", input], dir, (line) => {
         if (/^(Read:|Removed|Wrote|Encoding)/.test(line)) job.step = line.slice(0, 160);
       });
       const out = readdirSync(dir).find((f) => f.endsWith("-lod.rad"));
       if (!out) throw new Error("the converter wrote no .rad file");
       const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-      const key = `scenes/${scene}/${scene}-${stamp}-lod.rad`;
+      const key = `scenes/${scene}/${scene}-${stamp}${sharp ? "-sharp" : ""}-lod.rad`;
       job.step = `uploading ${Math.round(statSync(join(dir, out)).size / 1048576)} MB`;
       await uploadFile(key, join(dir, out));
       job.step = "saving the tour";
