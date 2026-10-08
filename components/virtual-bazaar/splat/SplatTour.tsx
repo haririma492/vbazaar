@@ -41,12 +41,13 @@ import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
-  DEFAULT_DRIVE, DRIVE_LIMITS, hubOf, setDrive, setHub, setStartScene,
-  type Door, type Drive, type Exit, type TourScene, type Pose, type Tour, type Trail, type Vec3,
+  DEFAULT_DRIVE, DRIVE_LIMITS, LOOKS, hubOf, lookOf, setDrive, setHub, setStartScene,
+  type Door, type Look, type Drive, type Exit, type TourScene, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
 import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { downloadSplat, makeMarker, splatBase } from "./load";
+import { applyLook, followEye, type LookHandle } from "./look";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, joinAtEnd, toLocal, toWorld, type Place } from "@/lib/splats/place";
@@ -54,6 +55,7 @@ import { type Fit } from "@/lib/splats/register";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 const FADE_MS = 250;
+const LOOK_LABEL: Record<Look, string> = { original: "Original", fresh: "Fresh", showroom: "Showroom" };
 const DECODE_TIMEOUT_MS = 120_000;
 
 type Report = {
@@ -73,6 +75,8 @@ type Report = {
   path: string;
   /** The streak filter in use (0 off … 3 strong). */
   clean?: number;
+  /** The restored look of the scene shown ("original": as filmed). */
+  look?: Look;
   /** The share of the device's level-of-detail splat budget in use (lowered when frames are slow). */
   lod: number | null;
   /** The smallest splat LoD draws, in pixels (2 coarse … 1 finest). */
@@ -140,6 +144,11 @@ type Engine = {
   isReady: (id: string) => boolean;
   /** The streak filter for the scene shown: 0 off … 3 strong (`TourScene.clean`). */
   setClean: (level: number) => void;
+  /**
+   * Each scene's restored look (`TourScene.look`), by scene id; `here` is the
+   * scene shown (for the report). A scene not listed is "original".
+   */
+  setLooks: (looks: Record<string, Look>, here: string) => void;
   /** Glance to a side (−1 left, 1 right) or look ahead (0), walking on as before. */
   look: (side: -1 | 0 | 1) => void;
   /** ↩ Turn the body round to face back along the blue line (exactly, near it), gliding. */
@@ -535,6 +544,22 @@ export default function SplatTour({
         }
       }
     };
+    // ⚠️ THE RESTORED LOOK (founder, 2026-10-08: "restore ONLY
+    // iranianplaza1"): per scene, never for the whole tour — each mesh gets
+    // its own scene's look (`./look.ts`), so a joined neighbour walked into
+    // keeps its own colours. `?look=original|fresh|showroom` forces one on
+    // every scene, to compare (testing only; nothing is saved).
+    let looks: Record<string, Look> = {};
+    const lookForced = lookOf(params.get("look"));
+    const lookFor = (id: string): Look => lookForced ?? looks[id] ?? "original";
+    // By mesh, not id: a scene dropped and loaded again is a new mesh, with no look yet.
+    const lookHandles = new WeakMap<SplatMesh, LookHandle>();
+    const applyLookTo = (id: string, mesh: SplatMesh) => {
+      if (!sparkMod || id.endsWith(WHOLE)) return;
+      const h = applyLook(sparkMod.dyno, mesh, lookFor(id), lookHandles.get(mesh) ?? null, camera.position.y);
+      if (h) lookHandles.set(mesh, h);
+      else lookHandles.delete(mesh);
+    };
     const applySeams = (id: string, mesh: SplatMesh) => {
       if (!sparkMod) return;
       // Aligning: every scene shows whole — the overlap is what is being lined up.
@@ -731,6 +756,7 @@ export default function SplatTour({
         }
         if (firstFrameAt == null) firstFrameAt = performance.now();
         publish();
+        applyLookTo(id, mesh);
         meshes.set(id, mesh);
         return mesh;
       }
@@ -784,6 +810,7 @@ export default function SplatTour({
       }
       if (firstFrameAt == null) firstFrameAt = performance.now();
       publish();
+      applyLookTo(id, mesh);
       meshes.set(id, mesh);
       if (prepareJoins && !id.endsWith(WHOLE)) void pointsOf(id, mesh, flip);
       return mesh;
@@ -1051,6 +1078,17 @@ export default function SplatTour({
           return true;
         };
         if (!apply()) void sparkReady.then(apply);
+      },
+      setLooks(next, hereId) {
+        looks = next;
+        rep.look = lookFor(hereId);
+        const apply = () => {
+          if (!sparkMod) return false;
+          meshes.forEach((m, id) => applyLookTo(id, m));
+          return true;
+        };
+        if (!apply()) void sparkReady.then(apply);
+        publish();
       },
       look(side) {
         headTarget = side * (75 * Math.PI) / 180;
@@ -1505,6 +1543,11 @@ export default function SplatTour({
         }
       });
 
+      // The restored look's "below the eye" (fresh asphalt) follows the eye.
+      meshes.forEach((m) => {
+        const h = m.visible ? lookHandles.get(m) : undefined;
+        if (h) followEye(m, h, camera.position.y);
+      });
       renderer.render(scene, camera);
       // How long Spark's background sort takes (it runs between frames).
       if (spark?.sorting) sortSince ??= performance.now();
@@ -1670,6 +1713,14 @@ export default function SplatTour({
   useEffect(() => {
     engine.current?.setClean(here?.clean ?? 0);
   }, [here?.id, here?.clean]);
+
+  // The restored look: each scene its own (only where the tour sets one).
+  const lookKey = tour ? tour.scenes.map((s) => `${s.id}:${s.look}`).join(",") : "";
+  useEffect(() => {
+    if (!tour) return;
+    engine.current?.setLooks(Object.fromEntries(tour.scenes.map((s) => [s.id, s.look])), here?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookKey, here?.id]);
 
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
@@ -2017,7 +2068,7 @@ export default function SplatTour({
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""}{r?.sortMs ? ` · sort ${r.sortMs} ms` : ""}{r?.pool ? ` · pool ${r.pool}` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""}{r?.sortMs ? ` · sort ${r.sortMs} ms` : ""}{r?.pool ? ` · pool ${r.pool}` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · look {r?.look ?? "original"} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
@@ -2209,6 +2260,21 @@ export default function SplatTour({
                       ))}
                     </div>
                     <div className="text-white/40">Shows at once; Save to keep it for visitors.</div>
+                  </div>
+                  <div className="space-y-1 border-t border-white/10 pt-1.5">
+                    <div className="text-white/60">Restored look (new asphalt, shining bricks, grime faded) — this scene only:</div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {LOOKS.map((k) => (
+                        <button
+                          key={k}
+                          className={`rounded py-1 ${here.look === k ? "bg-amber-300/40 font-bold text-white" : "bg-white/10"}`}
+                          onClick={() => changeTour(updateScene(tour, here.id, { look: k }))}
+                        >
+                          {LOOK_LABEL[k]}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-white/40">Shows at once; Save to keep it for visitors. A <code>?look=</code> in the address overrides every scene while testing.</div>
                   </div>
                 </>
               )}
