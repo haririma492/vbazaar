@@ -220,3 +220,17 @@ test("the streamed copy (.rad) is kept, checked, and survives a new upload", () 
     assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", fileRad: bad }] }).scenes[0].fileRad, null);
   }
 });
+
+test("the restored copy (.rad) is per scene: kept, checked, and survives a new upload", () => {
+  let t = upsertScene(built(), "bazaar", "scenes/bazaar/bazaar.spz");
+  assert.equal(sceneById(t, "hallway")!.fileRestored, null);
+  t = updateScene(t, "hallway", { fileRestored: "scenes/hallway/hallway-20261008-restored-lod.rad" });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v7.spz");
+  assert.equal(sceneById(t, "hallway")!.fileRestored, "scenes/hallway/hallway-20261008-restored-lod.rad");
+  // Only the scene it was made for has one, and it is not the plain streamed copy.
+  assert.equal(sceneById(t, "bazaar")!.fileRestored, null);
+  assert.equal(sceneById(t, "hallway")!.fileRad, null);
+  for (const bad of ["https://x/y.rad", "scenes/hallway/hallway.spz", "../x.rad", 7]) {
+    assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", fileRestored: bad }] }).scenes[0].fileRestored, null);
+  }
+});
