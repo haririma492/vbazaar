@@ -484,7 +484,13 @@ export default function SplatUploads() {
       patch(it.id, { step: "done", note: `Set as «${it.scene}»'s sharper copy for computers.` });
       return;
     }
-    await saveTour(upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined));
+    let next = upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined);
+    // ⚠️ A NEW MASTER RETIRES THE SCENE'S SHARPER COPY: that «…-hq» file was
+    // made from the old master (e.g. before a restoration, `public/gpu/`), and
+    // computers — and «Make the streamed copy», which prefers it — would keep
+    // showing the old scene.
+    if (kind === "master" && sceneById(next, it.scene)?.fileHQ) next = updateScene(next, it.scene, { fileHQ: null });
+    await saveTour(next);
     patch(it.id, { step: "done" });
   }
 
