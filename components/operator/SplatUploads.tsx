@@ -375,7 +375,12 @@ export default function SplatUploads() {
   type StreamJob = {
     state: "working" | "done" | "failed"; step: string; startedAt: number; finishedAt: number | null; error: string | null;
     /** The restore's report (`lib/splats/retouch.ts` RetouchReport), in part. */
-    report?: { deep: { objects: { kind: "vehicle" | "small" | "person" }[]; rejected: unknown[] } | null } | null;
+    report?: {
+      deep: {
+        objects: { kind: "vehicle" | "small" | "person"; size?: [number, number, number] }[];
+        rejected: { reason: string; splats: number; size: [number, number, number] }[];
+      } | null;
+    } | null;
   };
   const [streams, setStreams] = useState<Record<string, StreamJob | null>>({});
   async function makeStream(scene: string, sharp = false) {
@@ -835,6 +840,29 @@ export default function SplatUploads() {
                                 .join(", ") || "nothing"}
                               ; kept {job.report.deep.rejected.length} other things standing
                             </span>
+                          )}
+                          {/* What it saw (founder, 2026-10-08: "removed nothing; kept 166 other things"): the
+                              sizes tell whether the scene is in metres — the car rules assume it is. */}
+                          {job?.state === "done" && job.report?.deep && job.report.deep.rejected.length > 0 && (
+                            <details className="w-full text-white/60">
+                              <summary className="cursor-pointer underline">what it kept, and why</summary>
+                              <button
+                                className="my-1 rounded-full border border-white/20 px-2 py-0.5"
+                                onClick={() => void navigator.clipboard.writeText(JSON.stringify(job.report, null, 1))}
+                              >
+                                Copy the full report
+                              </button>
+                              <ul className="max-h-60 overflow-auto font-mono text-[11px]">
+                                {[...job.report.deep.rejected]
+                                  .sort((a, b) => b.splats - a.splats)
+                                  .slice(0, 60)
+                                  .map((r, i) => (
+                                    <li key={i}>
+                                      {r.size.map((v) => v.toFixed(2)).join(" × ")} · {r.splats.toLocaleString()} splats · {r.reason}
+                                    </li>
+                                  ))}
+                              </ul>
+                            </details>
                           )}
                         </>
                       );
