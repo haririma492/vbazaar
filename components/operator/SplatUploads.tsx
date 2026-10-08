@@ -488,8 +488,9 @@ export default function SplatUploads() {
     // ⚠️ A NEW MASTER RETIRES THE SCENE'S SHARPER COPY: that «…-hq» file was
     // made from the old master (e.g. before a restoration, `public/gpu/`), and
     // computers — and «Make the streamed copy», which prefers it — would keep
-    // showing the old scene.
-    if (kind === "master" && sceneById(next, it.scene)?.fileHQ) next = updateScene(next, it.scene, { fileHQ: null });
+    // showing the old scene. Its streamed and restored copies were made from
+    // the old one too: retired with it (press «Make the streamed copy» again).
+    if (kind === "master") next = updateScene(next, it.scene, { fileHQ: null, fileRad: null, fileRestored: null });
     await saveTour(next);
     patch(it.id, { step: "done" });
   }
