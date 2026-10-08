@@ -196,7 +196,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   darkWood.color = new THREE.Color(0.5, 0.42, 0.38);
   const backWood = new THREE.MeshStandardMaterial({
     map: woodTex.color, normalMap: woodTex.normal, normalScale: new THREE.Vector2(0.3, 0.3),
-    color: new THREE.Color(2.3, 1.75, 1.3), roughness: 0.5, envMapIntensity: 0.4,
+    color: new THREE.Color(1.45, 1.1, 0.8), roughness: 0.55, envMapIntensity: 0.3,
   });
   const shelfGlass = new THREE.MeshPhysicalMaterial({
     color: new THREE.Color(0.8, 0.9, 0.86), roughness: 0.04, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 0.5,
@@ -240,7 +240,7 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     root.add(puck);
   }
   for (const y of [0.9, 1.28, 1.66]) {
-    const glow = new THREE.RectAreaLight(new THREE.Color(1, 0.78, 0.5), 3.2, W - 0.2, 0.3);
+    const glow = new THREE.RectAreaLight(new THREE.Color(1, 0.78, 0.5), 1.8, W - 0.2, 0.3);
     glow.position.set(0, y + 0.2, BACK + 0.12);
     glow.lookAt(0, y + 0.2, BACK - 1);
     root.add(glow);
@@ -376,8 +376,8 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
   // ── stock, unlabelled: copies of the catalogue's models ──────────────
   const dress = async (loader: GLTFLoader) => {
     const load = async (url: string) => (await loader.loadAsync(url)).scene;
-    const [plate, bowl, cup, sugar, jar, vase, pPlate, pBowl, pCup, celPlate, celBowl] = await Promise.all(
-      ["dinner-plate", "bowl", "cup-saucer", "sugar-bowl", "ginger-jar", "celadon-vase", "prunus-plate", "prunus-bowl", "prunus-cup-saucer", "celadon-plate", "celadon-bowl"].map((n) =>
+    const [plate, bowl, cup, jar, vase, pPlate, pBowl, pCup, celPlate, celBowl] = await Promise.all(
+      ["dinner-plate", "bowl", "cup-saucer", "ginger-jar", "celadon-vase", "prunus-plate", "prunus-bowl", "prunus-cup-saucer", "celadon-plate", "celadon-bowl"].map((n) =>
         load(`/models/china/${n}.glb`),
       ),
     );

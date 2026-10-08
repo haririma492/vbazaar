@@ -142,7 +142,7 @@ const TEAPOT_GRASP: Grasp = {
 
 export const HOTSPOTS: Hotspot[] = [
   // The glass shelf: Turquoise Imperial, the teapot among its set.
-  { sceneId: SCENE_ID, sku: "CT-1001", id: "cup-01", anchor: { x: -1.1, y: SHELF_Y + 0.045, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.1, y: SHELF_Y, z: -2.19 }, yaw: 0.3 } },
+  { sceneId: SCENE_ID, sku: "CT-1001", id: "cup-01", labelSide: "below", anchor: { x: -1.1, y: SHELF_Y + 0.045, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.1, y: SHELF_Y, z: -2.19 }, yaw: 0.3 } },
   { sceneId: SCENE_ID, sku: "CT-1004", id: "teapot-01", hero: true, anchor: { x: -0.72, y: SHELF_Y + 0.12, z: -2.21 }, labelDistance: 3.5, selectionDistance: 1.6, display: { position: { x: -0.72, y: SHELF_Y, z: -2.21 }, yaw: 0.1 }, grasp: TEAPOT_GRASP },
   { sceneId: SCENE_ID, sku: "CT-1006", id: "sugar-01", labelSide: "below", anchor: { x: -0.38, y: SHELF_Y + 0.05, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.38, y: SHELF_Y, z: -2.19 }, yaw: -0.2 } },
   { sceneId: SCENE_ID, sku: "CT-1002", id: "plate-01", anchor: { x: 0.12, y: SHELF_Y + 0.143, z: -2.36 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.12, y: SHELF_Y + 0.143, z: -2.36 }, tilt: PLATE_TILT } },
