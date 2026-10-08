@@ -846,7 +846,12 @@ export default function SplatUploads() {
                             </>
                           )}
                           {job?.state === "failed" && <span className="text-rose-300">not restored: {job.error}</span>}
-                          {job?.state === "done" && <span className="text-amber-200">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
+                          {job?.state === "done" && (
+                            <span className="text-amber-200">
+                              done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s
+                              {(job as { metresPerUnit?: number }).metresPerUnit != null && ` · at 1 unit = ${(job as { metresPerUnit?: number }).metresPerUnit} m`}
+                            </span>
+                          )}
                           {job?.state === "done" && job.report?.deep && (
                             <span className="text-white/60">
                               removed{" "}

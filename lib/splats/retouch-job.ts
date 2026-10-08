@@ -39,6 +39,8 @@ export type RetouchJob = {
   step: string;
   startedAt: number;
   finishedAt: number | null;
+  /** Metres one file unit stood for in this run. */
+  metresPerUnit: number;
   /** The restored streamed copy's key, when done. */
   key: string | null;
   error: string | null;
@@ -86,7 +88,7 @@ export function startRetouchJob(scene: string, preset: RetouchPreset = "full", m
   const unitsPerMetre = 1 / metresPerUnit;
   const running = jobs.get(scene);
   if (running?.state === "working") return running;
-  const job: RetouchJob = { scene, preset, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null, report: null };
+  const job: RetouchJob = { scene, preset, metresPerUnit, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null, report: null };
   jobs.set(scene, job);
   void (async () => {
     const dir = mkdtempSync(join(tmpdir(), `sk-restore-${scene}-`));
