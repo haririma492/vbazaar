@@ -70,6 +70,14 @@ export type TourScene = {
    */
   fileRad: string | null;
   /**
+   * THE RESTORED COPY (founder, 2026-10-08): this scene retouched in 3D on
+   * our server — new asphalt, clean bricks, stains and grime gone, the same
+   * geometry (`lib/splats/retouch.ts`) — as a streamed `.rad` like
+   * `fileRad`. Per scene, made only when the operator asks for it; null:
+   * none, the scene is shown as filmed.
+   */
+  fileRestored: string | null;
+  /**
    * How this scene was joined on (`place`), and to which scene: by the two
    * paths alone (a guess — where the films overlap, the view jumps) or by
    * fitting the pictures both films took of the shared ground (seamless).
@@ -220,6 +228,11 @@ function paceOf(v: unknown): number {
 }
 
 const SCENE_FILE_RE = /^scenes\/[a-z0-9-]+\/[A-Za-z0-9][A-Za-z0-9._-]*\.(spz|sog|ksplat|splat|rad)$/;
+/** A streamed copy's key (`.rad` in the web bucket), or null. */
+const radKey = (v: unknown) => {
+  const k = str(v, 200);
+  return /\.rad$/.test(k) && SCENE_FILE_RE.test(k) ? k : null;
+};
 
 /** A tour as read from JSON; scenes and exits that do not make sense are dropped. */
 export function parseTour(raw: unknown): Tour {
@@ -246,7 +259,8 @@ export function parseTour(raw: unknown): Tour {
     scenes.push({
       id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route),
       place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null,
-      fileRad: /\.rad$/.test(str(r.fileRad, 200)) && SCENE_FILE_RE.test(str(r.fileRad, 200)) ? str(r.fileRad, 200) : null,
+      fileRad: radKey(r.fileRad),
+      fileRestored: radKey(r.fileRestored),
       walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), exits,
     });
   }
@@ -268,7 +282,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, fileRestored: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -277,7 +291,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "walls" | "join" | "clean">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "fileRestored" | "walls" | "join" | "clean">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 

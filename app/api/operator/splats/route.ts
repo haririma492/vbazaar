@@ -11,6 +11,9 @@
  *   POST { action: "link", key }                       → { url }      (24 h download link)
  *   POST { action: "cors" }                            (lets this site's browser PUT to the bucket)
  *   POST { action: "tour", tour, base? }               → { tour }     (merges into scenes/tour.json)
+ *   POST { action: "stream" | "streamStatus", scene, sharp? }       → { job }  (the streamed copy)
+ *   POST { action: "retouch" | "retouchStatus", scene, preset? }    → { job }  (the restored copy of ONE scene;
+ *                                                       preset "full" (default) or "gentle"; sets that scene's fileRestored)
  *
  * The bytes go from the browser straight to R2; nothing here touches them.
  */
@@ -23,6 +26,7 @@ import {
 } from "@/lib/splats/r2";
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
+import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -118,6 +122,15 @@ export async function POST(req: NextRequest) {
       const scene = String(body.scene ?? "");
       if (!isSceneId(scene)) return fail(400, "A scene id.");
       return ok({ job: action === "stream" ? startStreamJob(scene, body.sharp === true) : streamJob(scene) });
+    }
+
+    // The restored copy (`lib/splats/retouch-job.ts`), for the one scene named.
+    if (action === "retouch" || action === "retouchStatus") {
+      const scene = String(body.scene ?? "");
+      if (!isSceneId(scene)) return fail(400, "A scene id.");
+      const preset = body.preset ?? "full";
+      if (!isRetouchPreset(preset)) return fail(400, "Preset «full» or «gentle».");
+      return ok({ job: action === "retouch" ? startRetouchJob(scene, preset) : retouchJob(scene) });
     }
 
     if (action === "tour") {
