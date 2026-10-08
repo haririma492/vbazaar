@@ -814,7 +814,22 @@ export default function SplatUploads() {
               {o.lastModified && <span className="text-white/40">{new Date(o.lastModified).toLocaleString()}</span>}
               <span className="ms-auto flex gap-2">
                 {o.kind === "web" && o.url && isWalkVideo(o.key) && <a className={SMALL} href={`/vca/walk?v=${encodeURIComponent(o.key)}`}>Walk</a>}
-                {o.kind === "web" && o.url && !isWalkVideo(o.key) && <a className={SMALL} href={`/vca/splat?src=${encodeURIComponent(o.url)}`}>View alone</a>}
+                {/* A scene's file: walk the scene — its streamed copy when it has one. «View alone»
+                    opens this very file whole: a 100 MB one never finished on a laptop (operator, 2026-10-08). */}
+                {(() => {
+                  const sc = o.kind === "web" ? tour.scenes.find((x) => [x.file, x.fileHQ, x.fileRad].includes(o.key)) : undefined;
+                  return sc ? (
+                    <a className={SMALL} href={`/vca/splat?scene=${encodeURIComponent(sc.id)}`}>
+                      Walk «{sc.id}»{sc.fileRad ? " (streamed)" : ""}
+                    </a>
+                  ) : null;
+                })()}
+                {o.key.endsWith(".rad") && <span className="text-[11px] text-violet-200">streamed copy</span>}
+                {o.kind === "web" && o.url && !isWalkVideo(o.key) && (
+                  <a className={SMALL} href={`/vca/splat?src=${encodeURIComponent(o.url)}`} title={o.key.endsWith(".rad") ? "" : "This file whole, not streamed: a big one may not open on a laptop or phone."}>
+                    View this file alone{!o.key.endsWith(".rad") && o.size > 60 * 1048576 ? " (whole — heavy)" : ""}
+                  </a>
+                )}
                 {o.kind === "web" && o.url && <button className={SMALL} onClick={() => void copy(o.url!, o.key)}>{copied === o.key ? "Copied" : "Copy URL"}</button>}
                 {o.kind === "master" && <button className={SMALL} onClick={() => void copyLink(o)}>{copied === o.key ? "Copied" : "Copy 24 h download link"}</button>}
               </span>
