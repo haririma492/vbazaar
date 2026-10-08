@@ -391,6 +391,24 @@ export default function SplatUploads() {
     }
   }
 
+  // Restored copies being made on the server (`lib/splats/retouch-job.ts`), by scene.
+  const [retouches, setRetouches] = useState<Record<string, StreamJob | null>>({});
+  async function makeRestored(scene: string, preset: "gentle" | "full") {
+    try {
+      const { job } = await api<{ job: StreamJob }>({ action: "retouch", scene, preset });
+      setRetouches((x) => ({ ...x, [scene]: job }));
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { job: now } = await api<{ job: StreamJob | null }>({ action: "retouchStatus", scene });
+        setRetouches((x) => ({ ...x, [scene]: now }));
+        if (!now || now.state !== "working") break;
+      }
+      await refresh();
+    } catch (e) {
+      setRetouches((x) => ({ ...x, [scene]: { state: "failed", step: "", startedAt: Date.now(), finishedAt: Date.now(), error: (e as Error).message } }));
+    }
+  }
+
   async function saveTour(next: Tour) {
     // `base`: the tour as last read — the server merges, so a route recorded
     // in the viewer meanwhile is never overwritten by this page's older copy.
@@ -759,6 +777,39 @@ export default function SplatUploads() {
                           {working && <span className="text-white/60">{job.step}</span>}
                           {job?.state === "failed" && <span className="text-rose-300">not made: {job.error}</span>}
                           {job?.state === "done" && <span className="text-emerald-300">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
+                        </>
+                      );
+                    })()}
+                  </div>
+                  {/* ⚠️ THE RESTORED COPY (founder: "restore ONLY iranianplaza1"): one scene at a
+                      time, on our server — same geometry, cleaner colour. Visitors see it once made;
+                      «Show as filmed» puts the scene back (the restored file stays in R2). */}
+                  <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                    {(() => {
+                      const job = retouches[s.id];
+                      const working = job?.state === "working";
+                      return (
+                        <>
+                          {!working && (["gentle", "full"] as const).map((preset) => (
+                            <button
+                              key={preset}
+                              className="rounded-full border border-amber-300/60 bg-amber-400/15 px-3 py-1 text-amber-50"
+                              title={preset === "full" ? "Stronger: new-looking asphalt, grime and stains removed, no glare." : "Lighter: stains and grime faded, character kept."}
+                              onClick={() => void makeRestored(s.id, preset)}
+                            >
+                              {s.fileRestored ? "Restore again" : "Restore this scene"} ({preset})
+                            </button>
+                          ))}
+                          {working && <span className="text-white/60">Restoring… {job.step}</span>}
+                          {s.fileRestored && !working && (
+                            <>
+                              <span className="text-amber-200">✓ visitors see the restored scene</span>
+                              <a className="underline" href={`/vca/splat?scene=${encodeURIComponent(s.id)}&restored=0`} target="_blank" rel="noreferrer">compare as filmed</a>
+                              <button className="underline" onClick={() => editTour(updateScene(tour, s.id, { fileRestored: null }))}>Show as filmed</button>
+                            </>
+                          )}
+                          {job?.state === "failed" && <span className="text-rose-300">not restored: {job.error}</span>}
+                          {job?.state === "done" && <span className="text-amber-200">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
                         </>
                       );
                     })()}

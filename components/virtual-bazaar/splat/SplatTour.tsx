@@ -659,13 +659,17 @@ export default function SplatTour({
      * read by byte range, only what the view needs; `?rad=0` opens the whole
      * file instead, to compare. Without one, computers get the sharper copy.
      * `whole`: a whole-file copy only (reading a scene's points needs one).
+     * RESTORED (founder, 2026-10-08: "restore ONLY iranianplaza1"): a scene
+     * the operator restored (`fileRestored`, a streamed copy retouched on our
+     * server) shows that; `?restored=0` shows the scene as filmed, to compare.
      */
     const sourceOf = (id: string, whole = false) => {
       const s = tourRef.current ? sceneById(tourRef.current, id) : null;
       if (!s || !baseRef.current) return null;
       const desktop = !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
       const file =
-        !whole && s.fileRad && params.get("rad") !== "0" ? s.fileRad
+        !whole && s.fileRestored && params.get("restored") !== "0" && params.get("rad") !== "0" ? s.fileRestored
+        : !whole && s.fileRad && params.get("rad") !== "0" ? s.fileRad
         : desktop && s.fileHQ && params.get("hq") !== "0" ? s.fileHQ : s.file;
       return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null, paged: /\.rad$/.test(file) };
     };
