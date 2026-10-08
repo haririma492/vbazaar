@@ -63,6 +63,13 @@ export type TourScene = {
   /** A sharper copy for computers (`…-hq.spz`); phones keep `file`. */
   fileHQ: string | null;
   /**
+   * THE STREAMED COPY (operator, 2026-10-08, architecture «C»): the scene as
+   * a level-of-detail `.rad` (Spark's `build-lod`, made on our server from
+   * the web copy). The viewer reads only the parts the view needs, within a
+   * fixed memory budget, on a phone and a computer alike. Null: not made yet.
+   */
+  fileRad: string | null;
+  /**
    * How this scene was joined on (`place`), and to which scene: by the two
    * paths alone (a guess — where the films overlap, the view jumps) or by
    * fitting the pictures both films took of the shared ground (seamless).
@@ -239,6 +246,7 @@ export function parseTour(raw: unknown): Tour {
     scenes.push({
       id, title: label(r.title, id), file, flip: r.flip !== false, start: pose(r.start), route: routeOf(r.route),
       place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null,
+      fileRad: /\.rad$/.test(str(r.fileRad, 200)) && SCENE_FILE_RE.test(str(r.fileRad, 200)) ? str(r.fileRad, 200) : null,
       walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), exits,
     });
   }
@@ -260,7 +268,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -269,7 +277,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "walls" | "join" | "clean">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "walls" | "join" | "clean">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 

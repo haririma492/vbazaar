@@ -16,12 +16,13 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminTokenValid } from "@/lib/adminAuth";
-import { isSplatKey, partPlan, splatKey } from "@/lib/splats/keys";
+import { isSceneId, isSplatKey, partPlan, splatKey } from "@/lib/splats/keys";
 import {
   abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signPart, startUpload,
   writeTour,
 } from "@/lib/splats/r2";
 import { TOUR_KEY } from "@/lib/splats/tour";
+import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,6 +111,13 @@ export async function POST(req: NextRequest) {
       const origins = [...new Set([origin, process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "")].filter(Boolean) as string[])];
       await installCors(origins);
       return ok({ origins });
+    }
+
+    // The streamed copy (`lib/splats/stream-job.ts`): start it, or ask how it goes.
+    if (action === "stream" || action === "streamStatus") {
+      const scene = String(body.scene ?? "");
+      if (!isSceneId(scene)) return fail(400, "A scene id.");
+      return ok({ job: action === "stream" ? startStreamJob(scene) : streamJob(scene) });
     }
 
     if (action === "tour") {

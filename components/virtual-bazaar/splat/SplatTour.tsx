@@ -406,8 +406,12 @@ export default function SplatTour({
       // turns it off, to compare.
       spark = new m.SparkRenderer({
         renderer,
-        enableLod: lodOn,
+        // On whenever a streamed copy (.rad) may be shown — phones too: a
+        // streamed scene IS its level of detail. Per scene, `lod` below
+        // decides for the whole-file copies.
+        enableLod: params.get("lod") !== "0",
         lodRenderScale: 2,
+        pagedExtSplats: extOn,
       });
       scene.add(spark);
     });
@@ -602,13 +606,21 @@ export default function SplatTour({
       g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
       pathBand.geometry = g;
     };
-    /** Where a scene's file sits, and which way up, from the tour (computers get the sharper copy). */
-    const sourceOf = (id: string) => {
+    /**
+     * Where a scene's file sits, and which way up, from the tour. Its STREAMED
+     * COPY (.rad, architecture «C») first, on phones and computers alike —
+     * read by byte range, only what the view needs; `?rad=0` opens the whole
+     * file instead, to compare. Without one, computers get the sharper copy.
+     * `whole`: a whole-file copy only (reading a scene's points needs one).
+     */
+    const sourceOf = (id: string, whole = false) => {
       const s = tourRef.current ? sceneById(tourRef.current, id) : null;
       if (!s || !baseRef.current) return null;
       const desktop = !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
-      const file = desktop && s.fileHQ && params.get("hq") !== "0" ? s.fileHQ : s.file;
-      return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null };
+      const file =
+        !whole && s.fileRad && params.get("rad") !== "0" ? s.fileRad
+        : desktop && s.fileHQ && params.get("hq") !== "0" ? s.fileHQ : s.file;
+      return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null, paged: /\.rad$/.test(file) };
     };
     const FLIP_Q = new THREE.Quaternion(1, 0, 0, 0);
     /** Put a scene where its place says: scale, turn about up, move — after turning it upright. */
@@ -646,6 +658,34 @@ export default function SplatTour({
       if (!quiet) {
         Object.assign(rep, { scene: id, src, bytes: null, downloadMs: null, decodeMs: null, splats: null, error: null });
         publish();
+      }
+
+      // ⚠️ THE STREAMED COPY: nothing downloaded here. Spark reads the .rad's
+      // header and then, frame by frame, the pages the view needs (HTTP Range
+      // requests to R2), within a fixed budget of resident splats — so no
+      // file is too big for a phone, and the first picture comes from the
+      // coarse levels in a moment.
+      if (/\.rad$/.test(new URL(src).pathname)) {
+        const tOpen = performance.now();
+        const mesh = new sparkMod.SplatMesh({ url: src, paged: true });
+        if (flip) mesh.quaternion.set(1, 0, 0, 0);
+        if (quiet) mesh.visible = false;
+        scene.add(mesh);
+        let timer = 0;
+        await Promise.race([
+          mesh.initialized,
+          new Promise((_, reject) => {
+            timer = window.setTimeout(() => reject(new Error("The streamed copy (.rad) did not open.")), DECODE_TIMEOUT_MS);
+          }),
+        ]).finally(() => clearTimeout(timer));
+        trace("streamed copy opened", id, `${Math.round(performance.now() - tOpen)} ms`);
+        if (!quiet) {
+          Object.assign(rep, { bytes: null, downloadMs: null, decodeMs: performance.now() - tOpen, splats: null });
+        }
+        if (firstFrameAt == null) firstFrameAt = performance.now();
+        publish();
+        meshes.set(id, mesh);
+        return mesh;
       }
 
       const tFetch = performance.now();
@@ -698,7 +738,7 @@ export default function SplatTour({
       if (firstFrameAt == null) firstFrameAt = performance.now();
       publish();
       meshes.set(id, mesh);
-      if (prepareJoins) void pointsOf(id, mesh, flip);
+      if (prepareJoins && !id.endsWith(WHOLE)) void pointsOf(id, mesh, flip);
       return mesh;
     }
 
@@ -710,11 +750,33 @@ export default function SplatTour({
     const prepareJoins = params.get("edit") === "1" && !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
     const points = new Map<string, Promise<Float32Array>>();
     const between = () => new Promise<void>((r) => setTimeout(r, 0));
+    /** The key a streamed scene's whole-file copy is loaded under, only to read its points. */
+    const WHOLE = "#whole";
     /** A scene's points in its own coordinates (after its upright turn), the faint ones left out: at most 400 000. */
-    function pointsOf(id: string, mesh: SplatMesh, flip: boolean): Promise<Float32Array> {
+    function pointsOf(id: string, shown: SplatMesh, flip: boolean): Promise<Float32Array> {
       const have = points.get(id);
       if (have) return have;
       const p = (async () => {
+        // A streamed copy holds no points to read: its whole-file copy is
+        // loaded out of sight, read, and let go.
+        let mesh = shown;
+        const so = sourceOf(id, true);
+        const paged = !(shown.extSplats ?? shown.packedSplats);
+        if (paged && so) mesh = await loadMesh(id + WHOLE, so.src, so.flip, true);
+        try {
+          return await read(mesh);
+        } finally {
+          if (mesh !== shown) {
+            meshes.delete(id + WHOLE);
+            scene.remove(mesh);
+            mesh.dispose();
+          }
+        }
+      })();
+      points.set(id, p);
+      p.catch(() => points.delete(id));
+      return p;
+      async function read(mesh: SplatMesh): Promise<Float32Array> {
         const src = (mesh.extSplats ?? mesh.packedSplats) as { numSplats: number; getSplat: (i: number) => { center: THREE.Vector3; opacity: number } } | undefined;
         if (!src) return new Float32Array(0);
         const n = src.numSplats;
@@ -731,9 +793,7 @@ export default function SplatTour({
           if ((i / stride) % 20_000 === 0) await between(); // a frame's worth at a time
         }
         return out.slice(0, k);
-      })();
-      points.set(id, p);
-      return p;
+      }
     }
     /** In edit mode on a computer: the tour's other scenes, one after another, loaded quietly and read. */
     let preparing = false;
@@ -1436,7 +1496,7 @@ export default function SplatTour({
           const next = rep.fps < 20 ? Math.max(floor, pr * 0.85) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
           // Fewer splats too, when slow (LoD): down to 40% of the device's budget, back up when fast.
           const sp = spark as unknown as { lodSplatScale?: number } | null;
-          if (lodOn && sp) {
+          if (sp && (spark as unknown as { enableLod?: boolean }).enableLod) {
             const k = sp.lodSplatScale ?? 1;
             const nk = rep.fps < 28 ? Math.max(0.4, k * 0.85) : rep.fps > 50 ? Math.min(1, k * 1.1) : k;
             if (Math.abs(nk - k) > 0.01) sp.lodSplatScale = nk;

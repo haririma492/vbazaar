@@ -371,6 +371,26 @@ export default function SplatUploads() {
     setItems((all) => [...all.filter((i) => i.step !== "done"), ...added]);
   }
 
+  // Streamed copies being made on the server (`lib/splats/stream-job.ts`), by scene.
+  type StreamJob = { state: "working" | "done" | "failed"; step: string; startedAt: number; finishedAt: number | null; error: string | null };
+  const [streams, setStreams] = useState<Record<string, StreamJob | null>>({});
+  async function makeStream(scene: string) {
+    try {
+      const { job } = await api<{ job: StreamJob }>({ action: "stream", scene });
+      setStreams((x) => ({ ...x, [scene]: job }));
+      // Ask how it goes every few seconds until it is done.
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { job: now } = await api<{ job: StreamJob | null }>({ action: "streamStatus", scene });
+        setStreams((x) => ({ ...x, [scene]: now }));
+        if (!now || now.state !== "working") break;
+      }
+      await refresh();
+    } catch (e) {
+      setStreams((x) => ({ ...x, [scene]: { state: "failed", step: "", startedAt: Date.now(), finishedAt: Date.now(), error: (e as Error).message } }));
+    }
+  }
+
   async function saveTour(next: Tour) {
     // `base`: the tour as last read — the server merges, so a route recorded
     // in the viewer meanwhile is never overwritten by this page's older copy.
@@ -706,6 +726,29 @@ export default function SplatUploads() {
                     </label>
                     <span>{s.place ? "Joined to the tour's world" : "A scene of its own (reached by exits)"}</span>
                     {s.fileHQ && <span>· sharper copy for computers ✓</span>}
+                  </div>
+                  {/* ⚠️ THE STREAMED COPY (architecture «C»): made on our server from
+                      the web copy — the viewer then streams only what each view needs. */}
+                  <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                    {(() => {
+                      const job = streams[s.id];
+                      const working = job?.state === "working";
+                      return (
+                        <>
+                          <button
+                            className="rounded-full border border-sky-300/60 bg-sky-400/15 px-3 py-1 text-sky-50 disabled:opacity-50"
+                            disabled={working}
+                            onClick={() => void makeStream(s.id)}
+                          >
+                            {working ? "Making the streamed copy…" : s.fileRad ? "Remake the streamed copy" : "Make the streamed copy (phone-safe, fast)"}
+                          </button>
+                          {s.fileRad && !working && <span className="text-emerald-300">✓ streamed copy — phones and computers stream it</span>}
+                          {working && <span className="text-white/60">{job.step}</span>}
+                          {job?.state === "failed" && <span className="text-rose-300">not made: {job.error}</span>}
+                          {job?.state === "done" && <span className="text-emerald-300">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
+                        </>
+                      );
+                    })()}
                   </div>
                   <p className="text-[12px] text-white/55">
                     {s.route.length

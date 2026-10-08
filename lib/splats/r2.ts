@@ -196,6 +196,30 @@ export async function installCors(origins: string[]) {
   }
 }
 
+/** A web-bucket object saved to a local file (the streamed-copy job's input). */
+export async function downloadToFile(key: string, path: string): Promise<number> {
+  const { createWriteStream } = await import("node:fs");
+  const { pipeline } = await import("node:stream/promises");
+  const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: key }));
+  if (!out.Body) throw new Error(`«${key}» is empty`);
+  await pipeline(out.Body as NodeJS.ReadableStream, createWriteStream(path));
+  return out.ContentLength ?? 0;
+}
+
+/** A local file put into the web bucket at `key` (one request: R2 takes up to ~5 GB that way). */
+export async function uploadFile(key: string, path: string): Promise<void> {
+  const { createReadStream, statSync } = await import("node:fs");
+  await s3().send(new PutObjectCommand({
+    Bucket: r2Config().webBucket,
+    Key: key,
+    Body: createReadStream(path),
+    ContentLength: statSync(path).size,
+    ContentType: "application/octet-stream",
+    // A new copy gets a new name: this one never changes.
+    CacheControl: "public, max-age=31536000, immutable",
+  }));
+}
+
 /** The tour (`lib/splats/tour.ts`) as the bucket holds it; an empty one before the first save. */
 export async function readTour(): Promise<Tour> {
   try {
