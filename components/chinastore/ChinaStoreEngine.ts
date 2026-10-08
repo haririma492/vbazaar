@@ -203,8 +203,9 @@ export class ChinaStoreEngine {
         progress.done = done;
         report();
       }),
-      this.store.dress(loader),
-      this.mall.dress(loader),
+      // Decoration only: a piece that fails to load must not stop the store opening.
+      this.store.dress(loader).catch((e) => console.warn("chinastore: stock not dressed", e)),
+      this.mall.dress(loader).catch((e) => console.warn("chinastore: mall not dressed", e)),
     ]);
     if (this.disposed) return;
 
@@ -214,16 +215,31 @@ export class ChinaStoreEngine {
     this.ro.observe(this.container);
     this.resize();
     this.setDemoPose(0);
-    // Compile every shader before the first visible frame, for each set of
-    // lights the walk will see (the light count is part of a shader), so
-    // walking from one store into the next never hitches.
-    for (const state of ["both", "jewelry", "china"]) {
-      this.setZone(state);
-      await r.compileAsync(this.scene, this.camera);
-    }
+    // Compile the shaders for the lights at the door before the first frame
+    // (bounded: a slow GPU must not hold the title card at 100%), then the
+    // other zones' sets in the background, so walking from one store into
+    // the next does not hitch.
     this.updateZone();
+    await Promise.race([r.compileAsync(this.scene, this.camera), new Promise((ok) => setTimeout(ok, 6000))]);
     this.clock.start();
     this.loop();
+    void this.warmZones();
+  }
+
+  /** Compiles the shader sets for the other light zones, one per idle moment. */
+  private async warmZones() {
+    for (const state of ["both", "jewelry"]) {
+      if (this.disposed) return;
+      await new Promise((ok) => setTimeout(ok, 1500));
+      const keep = this.zones.state;
+      this.setZone(state);
+      try {
+        this.renderer.compile(this.scene, this.camera);
+      } catch {
+        /* a failed warm-up only costs a hitch later */
+      }
+      this.setZone(keep);
+    }
   }
 
   // ── modes ────────────────────────────────────────────────────────────
