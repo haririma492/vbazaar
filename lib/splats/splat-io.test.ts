@@ -100,3 +100,19 @@ test(".spz: a level-of-detail file is refused", async () => {
   writeFileSync(path, gzipSync(raw));
   await assert.rejects(readSpz(path), /level-of-detail/);
 });
+
+test(".ply: new splats (the deep retouch's ground) are written after the kept ones", () => {
+  const s = emptySplats(2, 0);
+  s.pos.set([1, 1, 1, 2, 2, 2]);
+  s.alpha.set([0.5, 0.5]);
+  const extra = emptySplats(1, 0);
+  extra.pos.set([9, 9, 9]);
+  extra.alpha.set([0.9]);
+  extra.rot.set([1, 0, 0, 0]);
+  const path = join(dir, "extra.ply");
+  assert.equal(writePly(path, s, new Uint8Array([0, 1]), extra), 2);
+  const r = readPly(path);
+  assert.deepEqual([...r.pos], [2, 2, 2, 9, 9, 9]);
+  assert.ok(close(r.alpha[1], 0.9, 1e-6));
+  assert.throws(() => writePly(path, s, null, emptySplats(1, 1)), /SH degree/);
+});

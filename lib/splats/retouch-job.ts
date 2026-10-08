@@ -12,18 +12,23 @@
  * so the site stays responsive and its memory is given back when it ends;
  * on an older Node it runs here, pausing between blocks of work.
  *
- * Measured (4 cores, synthetic 9M-splat street): retouch ~70 s and 1.5 GB,
- * build-lod --quick ~65 s and 1.7 GB, one after the other.
+ * Measured (4 cores shared with other work, synthetic 9M-splat street):
+ * "full" ~45 s, "deep" ~55 s and 2 GB on 4 worker threads; build-lod --quick
+ * ~65 s and 1.7 GB, one after the other.
+ *
+ * "deep" also deletes parked cars, vans, scooters and people and fills the
+ * ground where they stood; what it removed (and what it kept, and why) is
+ * in the job's `report`.
  *
  * Server only.
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, readTour, uploadFile, writeTour } from "./r2";
-import { retouch, type RetouchPreset, type Vec3 } from "./retouch";
+import { retouch, type RetouchReport, type RetouchPreset, type Vec3 } from "./retouch";
 import { readSplats, writePly } from "./splat-io";
 import { sceneById, updateScene } from "./tour";
 
@@ -37,13 +42,15 @@ export type RetouchJob = {
   /** The restored streamed copy's key, when done. */
   key: string | null;
   error: string | null;
+  /** What the retouch did, stage by stage (deep: every object removed or kept, and why), when done. */
+  report: RetouchReport | null;
 };
 
 const jobs = new Map<string, RetouchJob>();
 
 export const retouchJob = (scene: string): RetouchJob | null => jobs.get(scene) ?? null;
 
-export const isRetouchPreset = (v: unknown): v is RetouchPreset => v === "full" || v === "gentle";
+export const isRetouchPreset = (v: unknown): v is RetouchPreset => v === "full" || v === "gentle" || v === "deep";
 
 const BIN = join(process.cwd(), "bin", "build-lod");
 const CLI = join(process.cwd(), "scripts", "retouch.mts");
@@ -77,7 +84,7 @@ function run(cmd: string, args: string[], cwd: string, what: string, onLine: (li
 export function startRetouchJob(scene: string, preset: RetouchPreset = "full"): RetouchJob {
   const running = jobs.get(scene);
   if (running?.state === "working") return running;
-  const job: RetouchJob = { scene, preset, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null };
+  const job: RetouchJob = { scene, preset, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null, report: null };
   jobs.set(scene, job);
   void (async () => {
     const dir = mkdtempSync(join(tmpdir(), `sk-restore-${scene}-`));
@@ -91,22 +98,25 @@ export function startRetouchJob(scene: string, preset: RetouchPreset = "full"): 
       if (!/\.spz$/i.test(source)) throw new Error(`the scene's file is ${source.split(".").pop()}: the retouch reads an .spz web copy`);
       const input = join(dir, `${scene}.spz`);
       const restored = join(dir, `${scene}-restored.ply`);
+      const reportFile = join(dir, "report.json");
       // The tour's `flip`: the file is y-down (a capture's own axes).
       const up: Vec3 = s.flip ? [0, -1, 0] : [0, 1, 0];
       job.step = `downloading ${source}`;
       await downloadToFile(source, input);
       job.step = `retouching ${Math.round(statSync(input).size / 1048576)} MB (a minute or two)`;
       if (canStrip() && existsSync(CLI)) {
-        await run(process.execPath, ["--experimental-strip-types", "--no-warnings", CLI, input, restored, `--preset=${preset}`, `--up=${up.join(",")}`, "--max-sh=1"],
+        await run(process.execPath, ["--experimental-strip-types", "--no-warnings", CLI, input, restored, `--preset=${preset}`, `--up=${up.join(",")}`, "--max-sh=1", `--report=${reportFile}`],
           process.cwd(), "the retouch", (line) => {
-            if (/^(·|read |retouched|wrote )/.test(line)) job.step = `retouch: ${line.replace(/^·\s*/, "").slice(0, 140)}`;
+            if (/^(·|read |retouched|wrote |removed )/.test(line)) job.step = `retouch: ${line.replace(/^·\s*/, "").slice(0, 140)}`;
           });
+        if (existsSync(reportFile)) job.report = JSON.parse(readFileSync(reportFile, "utf8")) as RetouchReport;
       } else {
         const splats = await readSplats(input, 1);
         const pause = () => new Promise<void>((r) => setImmediate(r));
-        const { keep } = await retouch(splats, { preset, up }, { pause, step: (w) => (job.step = `retouch: ${w}`) });
+        const { keep, added, report } = await retouch(splats, { preset, up }, { pause, step: (w) => (job.step = `retouch: ${w}`) });
+        job.report = report;
         job.step = "retouch: writing";
-        writePly(restored, splats, keep);
+        writePly(restored, splats, keep, added);
       }
       rmSync(input, { force: true });
       job.step = `streaming ${Math.round(statSync(restored).size / 1048576)} MB`;

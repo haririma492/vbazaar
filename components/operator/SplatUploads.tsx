@@ -372,7 +372,11 @@ export default function SplatUploads() {
   }
 
   // Streamed copies being made on the server (`lib/splats/stream-job.ts`), by scene.
-  type StreamJob = { state: "working" | "done" | "failed"; step: string; startedAt: number; finishedAt: number | null; error: string | null };
+  type StreamJob = {
+    state: "working" | "done" | "failed"; step: string; startedAt: number; finishedAt: number | null; error: string | null;
+    /** The restore's report (`lib/splats/retouch.ts` RetouchReport), in part. */
+    report?: { deep: { objects: { kind: "vehicle" | "small" | "person" }[]; rejected: unknown[] } | null } | null;
+  };
   const [streams, setStreams] = useState<Record<string, StreamJob | null>>({});
   async function makeStream(scene: string, sharp = false) {
     try {
@@ -393,7 +397,7 @@ export default function SplatUploads() {
 
   // Restored copies being made on the server (`lib/splats/retouch-job.ts`), by scene.
   const [retouches, setRetouches] = useState<Record<string, StreamJob | null>>({});
-  async function makeRestored(scene: string, preset: "gentle" | "full") {
+  async function makeRestored(scene: string, preset: "gentle" | "full" | "deep") {
     try {
       const { job } = await api<{ job: StreamJob }>({ action: "retouch", scene, preset });
       setRetouches((x) => ({ ...x, [scene]: job }));
@@ -797,11 +801,15 @@ export default function SplatUploads() {
                       const working = job?.state === "working";
                       return (
                         <>
-                          {!working && (["gentle", "full"] as const).map((preset) => (
+                          {!working && (["gentle", "full", "deep"] as const).map((preset) => (
                             <button
                               key={preset}
                               className="rounded-full border border-amber-300/60 bg-amber-400/15 px-3 py-1 text-amber-50"
-                              title={preset === "full" ? "Stronger: new-looking asphalt, grime and stains removed, no glare." : "Lighter: stains and grime faded, character kept."}
+                              title={
+                                preset === "deep" ? "Strongest: removes cars and people, new asphalt and walls, repainted doors"
+                                : preset === "full" ? "Stronger: new-looking asphalt, grime and stains removed, no glare."
+                                : "Lighter: stains and grime faded, character kept."
+                              }
                               onClick={() => void makeRestored(s.id, preset)}
                             >
                               {s.fileRestored ? "Restore again" : "Restore this scene"} ({preset})
@@ -817,6 +825,17 @@ export default function SplatUploads() {
                           )}
                           {job?.state === "failed" && <span className="text-rose-300">not restored: {job.error}</span>}
                           {job?.state === "done" && <span className="text-amber-200">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
+                          {job?.state === "done" && job.report?.deep && (
+                            <span className="text-white/60">
+                              removed{" "}
+                              {(["vehicle", "small", "person"] as const)
+                                .map((k) => [k, job.report!.deep!.objects.filter((o) => o.kind === k).length] as const)
+                                .filter(([, c]) => c)
+                                .map(([k, c]) => `${c} ${k === "vehicle" ? "car/van" : k === "small" ? "scooter/cart" : "person"}`)
+                                .join(", ") || "nothing"}
+                              ; kept {job.report.deep.rejected.length} other things standing
+                            </span>
+                          )}
                         </>
                       );
                     })()}
