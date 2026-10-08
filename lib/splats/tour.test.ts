@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_DRIVE, DEFAULT_WALLS, ORIGIN_POSE, addDoor, addExit, emptyTour, hubOf, mergeTour, setHub, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
+  DEFAULT_COVER, DEFAULT_DRIVE, DEFAULT_WALLS, MAX_SIGNS, ORIGIN_POSE, addDoor, addExit, addSign, emptyTour, isSignImageOf, nextSignId, removeSign, updateSign, type Sign, hubOf, mergeTour, setHub, enter, leave, parseTour, removeDoor, removeExit, removeScene, sceneById, setDrive, setStartScene, updateScene, upsertScene,
   type Pose,
 } from "./tour.ts";
 
@@ -143,6 +143,73 @@ test("walls and shop doors are kept and checked", () => {
   assert.deepEqual(bad.doors.map((d) => [d.id, d.depth]), [["x", 30]]);
 });
 
+const BOARD: Sign["corners"] = [[-1, 3, -5], [1, 3, -5], [1, 2.4, -5], [-1, 2.4, -5]];
+
+test("replaced signs are kept, checked, edited and removed; a re-upload keeps them", () => {
+  let t = built();
+  assert.deepEqual(sceneById(t, "hallway")!.signs, []);
+  assert.equal(nextSignId(t, "hallway"), "sign-1");
+  t = addSign(t, "hallway", { corners: BOARD, image: "scenes/hallway/signs/sign-1-20261008-120000.png" });
+  t = addSign(t, "hallway", { corners: BOARD, image: "scenes/hallway/signs/sign-2-20261008-120100.webp", glow: 0.4, cover: 0.1 });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v2.spz");
+  let h = sceneById(t, "hallway")!;
+  assert.deepEqual(h.signs.map((s) => [s.id, s.glow, s.cover]), [["sign-1", 0, DEFAULT_COVER], ["sign-2", 0.4, 0.1]]);
+  assert.deepEqual(h.signs[0].corners, BOARD);
+  // Re-uploading its image and turning up its glow; clamped like the rest.
+  t = updateSign(t, "hallway", "sign-1", { image: "scenes/hallway/signs/sign-1-20261009-080000.jpg", glow: 7 });
+  h = sceneById(t, "hallway")!;
+  assert.equal(h.signs[0].image, "scenes/hallway/signs/sign-1-20261009-080000.jpg");
+  assert.equal(h.signs[0].glow, 1);
+  // An image of another scene, or from elsewhere, is refused: the sign stays as it was.
+  assert.equal(updateSign(t, "hallway", "sign-1", { image: "scenes/store-01/signs/x.png" }), t);
+  assert.equal(addSign(t, "hallway", { corners: BOARD, image: "https://evil.example/x.png" }), t);
+  assert.equal(addSign(t, "nowhere", { corners: BOARD, image: "scenes/nowhere/signs/x.png" }), t);
+  assert.equal(nextSignId(t, "hallway"), "sign-3");
+  t = removeSign(t, "hallway", "sign-1");
+  assert.deepEqual(sceneById(t, "hallway")!.signs.map((s) => s.id), ["sign-2"]);
+  assert.equal(nextSignId(t, "hallway"), "sign-3");
+  t = updateScene(t, "hallway", { signs: [] });
+  assert.deepEqual(sceneById(t, "hallway")!.signs, []);
+});
+
+test("signs from the bucket are checked strictly: corners, ids, image keys, and how many", () => {
+  const img = (n: number) => `scenes/a/signs/s-${n}.png`;
+  const raw = [
+    { id: "ok", corners: BOARD, image: img(1), glow: -2, cover: 9 },
+    { id: "ok", corners: BOARD, image: img(2) }, // the same id twice
+    { id: "Bad Id", corners: BOARD, image: img(3) },
+    { id: "three", corners: BOARD.slice(0, 3), image: img(4) },
+    { id: "nan", corners: [[0, 0, NaN], ...BOARD.slice(1)], image: img(5) },
+    { id: "text", corners: [["0", 0, 0], ...BOARD.slice(1)], image: img(6) },
+    { id: "flat", corners: [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]], image: img(7) },
+    { id: "other-scene", corners: BOARD, image: "scenes/b/signs/x.png" },
+    { id: "not-image", corners: BOARD, image: "scenes/a/signs/x.svg" },
+    { id: "escape", corners: BOARD, image: "scenes/a/signs/../../b/signs/x.png" },
+    { id: "far", corners: BOARD, image: "https://x/y.png" },
+    "junk",
+    null,
+  ];
+  const s = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", signs: raw }, { id: "b", file: "scenes/b/b.spz", signs: "many" }] });
+  assert.deepEqual(s.scenes[0].signs, [{ id: "ok", corners: BOARD, image: img(1), glow: 0, cover: 0.5 }]);
+  assert.deepEqual(s.scenes[1].signs, []);
+  // At most MAX_SIGNS a scene; addSign refuses one more.
+  const lots = Array.from({ length: MAX_SIGNS + 5 }, (_, i) => ({ id: `s-${i}`, corners: BOARD, image: img(i) }));
+  const full = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", signs: lots }] });
+  assert.equal(full.scenes[0].signs.length, MAX_SIGNS);
+  assert.equal(addSign(full, "a", { corners: BOARD, image: img(99) }), full);
+  assert.equal(isSignImageOf("a", img(1)), true);
+  assert.equal(isSignImageOf("b", img(1)), false);
+});
+
+test("signs survive a merge: added here while an upload changed the file there", () => {
+  const base = built();
+  const mine = addSign(base, "hallway", { corners: BOARD, image: "scenes/hallway/signs/sign-1-a.png" });
+  const theirs = upsertScene(base, "hallway", "scenes/hallway/hallway-v9.spz");
+  const m = mergeTour(base, mine, theirs);
+  assert.equal(sceneById(m, "hallway")!.signs.length, 1);
+  assert.equal(sceneById(m, "hallway")!.file, "scenes/hallway/hallway-v9.spz");
+});
+
 test("the starting scene and how walking feels are kept and checked", () => {
   let t = built();
   assert.deepEqual(t.drive, DEFAULT_DRIVE);
@@ -198,4 +265,52 @@ test("how a scene was joined is kept and checked", () => {
   const bad = parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", join: { to: "Nope!", by: "x" } }, { id: "b", file: "scenes/b/b.spz", join: { to: "a", by: "x", share: 7 } }] });
   assert.equal(bad.scenes[0].join, null);
   assert.deepEqual(bad.scenes[1].join, { to: "a", by: "paths", share: 1 });
+});
+
+test("the streak filter's strength is kept and checked", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.clean, 0);
+  t = updateScene(t, "hallway", { clean: 2 });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v5.spz");
+  assert.equal(sceneById(t, "hallway")!.clean, 2);
+  assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", clean: 9 }] }).scenes[0].clean, 3);
+  assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", clean: "x" }] }).scenes[0].clean, 0);
+});
+
+test("the restored look is kept and checked", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.look, "original");
+  t = updateScene(t, "hallway", { look: "fresh" });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v5.spz");
+  assert.equal(sceneById(t, "hallway")!.look, "fresh");
+  t = updateScene(t, "hallway", { look: "showroom" });
+  assert.equal(sceneById(t, "hallway")!.look, "showroom");
+  for (const bad of ["glam", "Fresh", 2, null]) {
+    assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", look: bad }] }).scenes[0].look, "original");
+  }
+});
+
+test("the streamed copy (.rad) is kept, checked, and survives a new upload", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.fileRad, null);
+  t = updateScene(t, "hallway", { fileRad: "scenes/hallway/hallway-20261008-lod.rad" });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v6.spz");
+  assert.equal(sceneById(t, "hallway")!.fileRad, "scenes/hallway/hallway-20261008-lod.rad");
+  for (const bad of ["https://x/y.rad", "scenes/hallway/hallway.spz", "../x.rad"]) {
+    assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", fileRad: bad }] }).scenes[0].fileRad, null);
+  }
+});
+
+test("the restored copy (.rad) is per scene: kept, checked, and survives a new upload", () => {
+  let t = upsertScene(built(), "bazaar", "scenes/bazaar/bazaar.spz");
+  assert.equal(sceneById(t, "hallway")!.fileRestored, null);
+  t = updateScene(t, "hallway", { fileRestored: "scenes/hallway/hallway-20261008-restored-lod.rad" });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v7.spz");
+  assert.equal(sceneById(t, "hallway")!.fileRestored, "scenes/hallway/hallway-20261008-restored-lod.rad");
+  // Only the scene it was made for has one, and it is not the plain streamed copy.
+  assert.equal(sceneById(t, "bazaar")!.fileRestored, null);
+  assert.equal(sceneById(t, "hallway")!.fileRad, null);
+  for (const bad of ["https://x/y.rad", "scenes/hallway/hallway.spz", "../x.rad", 7]) {
+    assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", fileRestored: bad }] }).scenes[0].fileRestored, null);
+  }
 });

@@ -27,7 +27,7 @@
  *
  *   /vca/splat                  the tour, from its start scene
  *   /vca/splat?scene=store-01   the tour, from that scene
- *   /vca/splat?edit=1           place exits and start poses (operator token)
+ *   /vca/splat?edit=1           place exits, start poses and new shop signs (operator token)
  *   /vca/splat?src=<url>        one file alone, no tour (?flip=0 if it is y-up)
  *
  * Controls: drag to look; wheel or pinch to zoom; W A S D / arrows or the
@@ -37,16 +37,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import type { SparkRenderer, SplatEdit, SplatEditSdf, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
-  DEFAULT_DRIVE, DRIVE_LIMITS, hubOf, setDrive, setHub, setStartScene,
-  type Door, type Drive, type Exit, type TourScene, type Pose, type Tour, type Trail, type Vec3,
+  DEFAULT_DRIVE, DRIVE_LIMITS, LOOKS, MAX_SIGNS, hubOf, lookOf, setDrive, setHub, setStartScene,
+  addSign, nextSignId, removeSign, updateSign,
+  type Door, type Look, type Drive, type Exit, type Sign, type TourScene, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
+import { BACKING_LIFT, IMAGE_LIFT, glowGain, grow, hideBox, lift, orderCorners, planeOf, rayPlane, type Corners } from "@/lib/splats/signs";
+import { MAX_SIGN_IMAGE_BYTES, imageTypeOf } from "@/lib/splats/keys";
 import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { downloadSplat, makeMarker, splatBase } from "./load";
+import { applyLook, followEye, type LookHandle } from "./look";
 import { LEVEL_SPEED, holdAngles, startTilt, stepTilt, stickHold, type TiltState } from "@/lib/splats/tilt";
 import { angleDiff, guideStep, nearestOnRoute, recordStep, routePull } from "@/lib/splats/path";
 import { IDENTITY, joinAtEnd, toLocal, toWorld, type Place } from "@/lib/splats/place";
@@ -54,6 +58,7 @@ import { type Fit } from "@/lib/splats/register";
 import { deviceQuaternion, hasDeviceOrientation, headingOf, needsPermission, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 
 const FADE_MS = 250;
+const LOOK_LABEL: Record<Look, string> = { original: "Original", fresh: "Fresh", showroom: "Showroom" };
 const DECODE_TIMEOUT_MS = 120_000;
 
 type Report = {
@@ -71,7 +76,24 @@ type Report = {
   error: string | null;
   /** What the walk knows of the path here: the first thing to look at when the path is not followed. */
   path: string;
+  /** The streak filter in use (0 off … 3 strong). */
+  clean?: number;
+  /** The restored look of the scene shown ("original": as filmed). */
+  look?: Look;
+  /** The share of the device's level-of-detail splat budget in use (lowered when frames are slow). */
+  lod: number | null;
+  /** The smallest splat LoD draws, in pixels (2 coarse … 1 finest). */
+  lodPx?: number;
+  /** The longest background sort of the last second (ms). */
+  sortMs?: number;
+  /** Streamed pieces held / the pool's room (pages of 65 536 splats). */
+  pool?: string;
+  /** Replaced signs: drawn with their image / placed / images that did not load. */
+  signs?: string;
 };
+
+/** A point the operator tapped while marking a sign's corners, in the scene here's own coordinates. */
+type SignPick = { at: Vec3; eye: Vec3; how: "splat" | "plane" | "depth" };
 
 declare global {
   interface Window {
@@ -128,6 +150,15 @@ type Engine = {
   setWalls: (on: boolean) => void;
   /** Loaded and decoded (a door's destination, preloaded): going there needs no wait. */
   isReady: (id: string) => boolean;
+  /** The streak filter for the scene shown: 0 off … 3 strong (`TourScene.clean`). */
+  setClean: (level: number) => void;
+  /**
+   * Each scene's restored look (`TourScene.look`), by scene id; `here` is the
+   * scene shown (for the report). A scene not listed is "original".
+   */
+  setLooks: (looks: Record<string, Look>, here: string) => void;
+  /** Glance to a side (−1 left, 1 right) or look ahead (0), walking on as before. */
+  look: (side: -1 | 0 | 1) => void;
   /** ↩ Turn the body round to face back along the blue line (exactly, near it), gliding. */
   turnAround: () => void;
   /** Follow the path (`guideStep`): «go» and «back» are all a visitor needs; the route steers. */
@@ -151,14 +182,26 @@ type Engine = {
    * other from the guess. Loads both. Null when there is too little to fit.
    */
   matchJoin: (a: string, b: string, guess: Place, seam: Vec3, bStart: Vec3, radius: number) => Promise<Fit | null>;
+  /**
+   * The replaced signs (`TourScene.signs`), by scene id: drawn over the old
+   * boards for every visitor, the old splats there hidden. `selected` is
+   * outlined (edit mode).
+   */
+  setSigns: (byScene: Record<string, Sign[]>, selected: string | null) => void;
+  /**
+   * «Replace a sign» (edit mode): `on`, a tap marks a corner (`onSignPick`)
+   * instead of taking an exit; `draft` (the scene here's own coordinates) is
+   * outlined, with a line on to wherever the mouse points.
+   */
+  setSignPicking: (on: boolean, draft: Vec3[]) => void;
 };
 
 /** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
 /** «Slow / Normal / Fast»: shares of the tour's Normal speed (`tour.drive.speed`, set by the operator). */
 const SPEEDS = [
-  { label: "آهسته · Slow", k: 0.45 },
-  { label: "معمولی · Normal", k: 1 },
-  { label: "تند · Fast", k: 2 },
+  { label: "Slow", k: 0.45 },
+  { label: "Normal", k: 1 },
+  { label: "Fast", k: 2 },
 ];
 const SPEED_KEY = "sk-splat-speed";
 /** On a phone: "tilt" (the default) or "stick", the visitor's last choice. */
@@ -225,7 +268,13 @@ export default function SplatTour({
   const [doorName, setDoorName] = useState("");
   // How the last «go on to» join was made: by the pictures, or the paths only (and why).
   const [joinNote, setJoinNote] = useState("");
-  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "scenes" | "info">("route");
+  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "signs" | "scenes" | "info">("route");
+  // «Replace a sign»: the corners being marked (and where from), or four marked waiting for the image; the sign selected.
+  const [signPick, setSignPick] = useState<{ corners: Vec3[]; eyes: Vec3[]; missed: number; target: string | null } | null>(null);
+  const [signCorners, setSignCorners] = useState<Corners | null>(null);
+  const [signSel, setSignSel] = useState<string | null>(null);
+  const [signNote, setSignNote] = useState("");
+  const [signBusy, setSignBusy] = useState(false);
   // How far the dashboard is pushed left (0: open; −(PANEL_W − GRIP_W): only the grip shows).
   const [panelX, setPanelX] = useState(0);
   // Where the operator left the dashboard (and its tab) survives a reload.
@@ -233,7 +282,7 @@ export default function SplatTour({
     try {
       const saved = JSON.parse(window.localStorage.getItem(PANEL_KEY) || "{}") as { x?: number; tab?: string };
       if (typeof saved.x === "number") setPanelX(saved.x < -10 ? -(PANEL_W - GRIP_W) : 0);
-      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "scenes" || saved.tab === "info") setPanelTab(saved.tab);
+      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "signs" || saved.tab === "scenes" || saved.tab === "info") setPanelTab(saved.tab);
     } catch { /* fine */ }
   }, []);
   useEffect(() => {
@@ -311,6 +360,13 @@ export default function SplatTour({
   const currentRef = useRef<string | null>(null);
   const exitHandler = useRef<(exit: Exit) => void>(() => {});
   const onReach = useRef<(r: Reach) => void>(() => {});
+  // «Replace a sign»: a corner tapped in the view, and a sign tapped (to select it), edit mode only.
+  const onSignPick = useRef<(p: SignPick) => void>(() => {});
+  const onSignTap = useRef<(id: string) => void>(() => {});
+  // Which way the visitor is glancing (−1 left, 0 ahead, 1 right): the look buttons show it.
+  const onLook = useRef<(side: number) => void>(() => {});
+  const [lookSide, setLookSide] = useState(0);
+  onLook.current = setLookSide;
   const [reach, setReach] = useState<Reach>(null);
   onReach.current = setReach;
   tourRef.current = tour;
@@ -338,7 +394,7 @@ export default function SplatTour({
 
     const rep: Report = {
       scene: "", src: "", bytes: null, downloadMs: null, decodeMs: null, firstFrameMs: null, splats: null, fps: null,
-      gpu: gpuName(renderer.getContext()), dpr: renderer.getPixelRatio(), viewport: `${el.clientWidth}×${el.clientHeight}`, error: null, path: "—",
+      gpu: gpuName(renderer.getContext()), dpr: renderer.getPixelRatio(), viewport: `${el.clientWidth}×${el.clientHeight}`, error: null, path: "—", lod: null,
     };
     const publish = () => {
       window.__splatReport = { ...rep };
@@ -361,6 +417,11 @@ export default function SplatTour({
     let velFwd = 0; // m/s, eased toward what the stick asks
     let velTurn = 0; // rad/s, likewise
     let turnYaw = 0; // how far the steering has turned the view
+    // ⚠️ THE HEAD, APART FROM THE BODY (operator, 2026-10-07: "look sideways at
+    // store windows but keep walking straight", as in a bazaar): a glance to
+    // the side turns the view, not the way the visitor walks. + is right.
+    let headYaw = 0;
+    let headTarget = 0;
     const turnQ = new THREE.Quaternion();
     let gyroHave = false;
     // Walk by tilting: the hold, smoothed; a few readings to learn "standing still".
@@ -379,11 +440,78 @@ export default function SplatTour({
     const sparkReady = import("@sparkjsdev/spark").then((m) => {
       if (disposed) return;
       sparkMod = m;
-      spark = new m.SparkRenderer({ renderer });
+      // ⚠️ LEVEL OF DETAIL (operator, 2026-10-07: "rendering is slow … part
+      // of the screen updates late"). Every splat of a scene was drawn — and
+      // sorted — every frame: 2–5 million, on whatever graphics chip the
+      // visitor has; the sort fell behind the turning view, so parts of the
+      // picture caught up late. With LoD, Spark draws a budget of splats
+      // chosen for the view (about 2.5M on a computer, 1–1.5M on a phone),
+      // the far and the tiny merged, no smaller than ~2 pixels. `?lod=0`
+      // turns it off, to compare.
+      spark = new m.SparkRenderer({
+        renderer,
+        // On whenever a streamed copy (.rad) may be shown — phones too: a
+        // streamed scene IS its level of detail. Per scene, `lod` below
+        // decides for the whole-file copies.
+        enableLod: params.get("lod") !== "0",
+        lodRenderScale: fixedPx ?? 2,
+        pagedExtSplats: extOn,
+        // A computer keeps the pages of a scene it is not showing for a
+        // minute (Spark's default: 3 s): the joined scene preloaded at the
+        // door, and the one just left, come back sharp, not coarse first.
+        ...(phone ? {} : { lodCleanupTimeoutMs: 60_000 }),
+        // ⚠️ A PHONE'S POOL FOR STREAMED PIECES, A THIRD OF SPARK'S (operator,
+        // 2026-10-08: the iOS «A problem repeatedly occurred» again, on the
+        // streamed copy). Spark reserves the whole pool up front — twice, in
+        // graphics memory and as a plain array it copies pieces through — plus
+        // the colour tables alike: 48 bytes a splat, ~300 MB for its iPhone
+        // default of 6.3M splats, before a thing is drawn. 32 pages (2.1M
+        // splats, ~100 MB) hold a phone's budget, cut to match below.
+        // `?pool=` (pages of 65 536) to try others.
+        ...(phone ? { maxPagedSplats: POOL_PAGES * 65536, numLodFetchers: 2 } : {}),
+      });
+      spark.lodSplatScale = fixedDetail ?? DETAIL_MAX;
       scene.add(spark);
     });
 
     const meshes = new Map<string, SplatMesh>();
+    // ⚠️ A PHONE HAS A HARD MEMORY LIMIT (operator, 2026-10-07: iOS «A problem
+    // repeatedly occurred» on the Iranian plaza, on the phone only). Past it
+    // the system kills the page. So on a phone: the compact splat format
+    // (16 bytes a splat, not 32), and no level-of-detail tree (it is built as
+    // a second copy while loading). `?lod=1` / `?precision=high` to try them.
+    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    const lodOn = phone ? params.get("lod") === "1" : params.get("lod") !== "0";
+    const extOn = phone ? params.get("precision") === "high" : params.get("precision") !== "low";
+    /** A web copy larger than this is not opened on a phone (≈ 3M splats): a message instead of a crash. */
+    const PHONE_MAX_MB = 48;
+    // DETAIL, TUNED TO THE MACHINE (operator, 2026-10-08: "much much better on
+    // desktop … continue tuning even further"). Level of detail draws a
+    // budget of splats no smaller than some pixels. On a computer with frames
+    // to spare the smallest splat drawn shrinks from 2 pixels to 1 — finer
+    // shop windows, the same number of splats; when frames run short the
+    // steps go back, and then the budget shrinks. `?detail=` fixes the budget
+    // share, `?lodpx=` the pixel size, to compare.
+    // ⚠️ NOT MORE SPLATS THAN SPARK'S BUDGET, AND NO CHANGE WHILE TURNING
+    // (operator, same day: "after couple of turns the picture becomes
+    // distorted"). The budget climbing to 1.6× and nudged every second made
+    // the background sort fall behind the turning view: the picture was drawn
+    // in a stale order. Frames per second never showed it — so the sort's own
+    // time is watched too, and detail changes only while the view is still.
+    const num = (k: string, lo: number, hi: number) => {
+      const v = Number(params.get(k));
+      return params.has(k) && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null;
+    };
+    const fixedDetail = num("detail", 0.2, 4);
+    const fixedPx = num("lodpx", 0.5, 5);
+    /** A phone's level-of-detail budget, as a share of Spark's (1–1.5M on a phone): ~0.6–0.9M splats. */
+    const DETAIL_MAX = phone ? 0.6 : 1;
+    const POOL_PAGES = Math.round(num("pool", 8, 256) ?? 32);
+    /** The background sort taking longer than this (ms) counts as slow, whatever the frame rate. */
+    const SORT_SLOW_MS = 90;
+    let sortSince: number | null = null, sortWorst = 0;
+    const lastAdaptPos = new THREE.Vector3(), lastAdaptQuat = new THREE.Quaternion();
+    const PX_MIN = phone ? 2 : 1;
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
     // Where joined scenes meet (`seams`): each shows its side only, so the
@@ -445,12 +573,30 @@ export default function SplatTour({
         }
       }
     };
+    // ⚠️ THE RESTORED LOOK (founder, 2026-10-08: "restore ONLY
+    // iranianplaza1"): per scene, never for the whole tour — each mesh gets
+    // its own scene's look (`./look.ts`), so a joined neighbour walked into
+    // keeps its own colours. `?look=original|fresh|showroom` forces one on
+    // every scene, to compare (testing only; nothing is saved).
+    let looks: Record<string, Look> = {};
+    const lookForced = lookOf(params.get("look"));
+    const lookFor = (id: string): Look => lookForced ?? looks[id] ?? "original";
+    // By mesh, not id: a scene dropped and loaded again is a new mesh, with no look yet.
+    const lookHandles = new WeakMap<SplatMesh, LookHandle>();
+    const applyLookTo = (id: string, mesh: SplatMesh) => {
+      if (!sparkMod || id.endsWith(WHOLE)) return;
+      const h = applyLook(sparkMod.dyno, mesh, lookFor(id), lookHandles.get(mesh) ?? null, camera.position.y);
+      if (h) lookHandles.set(mesh, h);
+      else lookHandles.delete(mesh);
+    };
     const applySeams = (id: string, mesh: SplatMesh) => {
       if (!sparkMod) return;
       // Aligning: every scene shows whole — the overlap is what is being lined up.
       const mine = aligningId ? [] : seamList.filter((s) => s.from === id || s.to === id);
+      // The old splats under this scene's new signs stay hidden, joined or not.
+      const signEdit = signEdits.get(mesh);
       if (!mine.length) {
-        mesh.edits = [];
+        mesh.edits = signEdit ? [signEdit] : [];
         return;
       }
       const edit = new sparkMod.SplatEdit({ rgbaBlendMode: sparkMod.SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0.4 });
@@ -464,8 +610,269 @@ export default function SplatTour({
         sdf.updateMatrixWorld();
         edit.addSdf(sdf);
       }
-      mesh.edits = [edit];
+      mesh.edits = signEdit ? [edit, signEdit] : [edit];
     };
+
+    // ⚠️ THE REPLACED SIGNS (founder, 2026-10-08: store signs must look BRAND
+    // NEW — "really big for commercialization"). Generative AI garbles Persian
+    // lettering, so the filmed board is not repainted: the shop's own image is
+    // drawn over it as an ordinary three.js quad, crisp at any distance
+    // (mipmaps, anisotropy), for every visitor.
+    //   • IT FOLLOWS THE SCENE. The signs hang under their scene's mesh, in a
+    //     group that undoes the mesh's upright turn: they are in the scene's
+    //     own coordinates (like its route), so `place` and `flip` move them
+    //     with it, and they show exactly when the scene does.
+    //   • DEPTH, NOT PAINT ORDER. The quad and its backing are opaque and
+    //     write depth; Spark draws its splats afterwards (transparent, depth
+    //     tested, no depth write) — so the splats behind the sign are hidden
+    //     by it, and the ones in front of it (a pole, an awning, a passer-by)
+    //     still cover it.
+    //   • NO GHOSTS. The image sits a little in front of the old board, on an
+    //     opaque backing a little larger (`cover`) so the old sign never peeks
+    //     out at its edges; and the old board's splats — those just in front
+    //     of it too, its fuzz, which would show through — are removed by a
+    //     SplatEdit box like the seams' (`hideBox`). Whole files and streamed
+    //     (.rad) scenes alike: the edit works on whatever splats are drawn.
+    let signsBy: Record<string, Sign[]> = {};
+    let signSelected: string | null = null;
+    const signHolders = new WeakMap<SplatMesh, THREE.Group>();
+    const signEdits = new WeakMap<SplatMesh, SplatEdit>();
+    const signImages = new Map<string, Promise<{ tex: THREE.Texture; edge: THREE.Color }>>();
+    const signFailed = new Set<string>();
+    const SIGN_EDGE = new THREE.Color(0x202326);
+    /** The image, onto its own edge colour (a logo's see-through parts become its board), as a crisp texture. */
+    const signImage = (key: string) => {
+      const have = signImages.get(key);
+      if (have) return have;
+      const p = (async () => {
+        const res = await fetch(`${baseRef.current}/${key}`, { mode: "cors" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const bmp = await createImageBitmap(await res.blob());
+        // The edge colour: the border of a small copy, as opaque as it is.
+        const S = 24;
+        const small = document.createElement("canvas");
+        small.width = small.height = S;
+        const sx = small.getContext("2d", { willReadFrequently: true })!;
+        sx.drawImage(bmp, 0, 0, S, S);
+        const d = sx.getImageData(0, 0, S, S).data;
+        let r = 0, g = 0, b = 0, a = 0;
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          if (x > 1 && x < S - 2 && y > 1 && y < S - 2) continue;
+          const i = (y * S + x) * 4, al = d[i + 3] / 255;
+          r += d[i] * al; g += d[i + 1] * al; b += d[i + 2] * al; a += al;
+        }
+        const edge = a > 8 ? new THREE.Color().setRGB(r / a / 255, g / a / 255, b / a / 255, THREE.SRGBColorSpace) : SIGN_EDGE.clone();
+        const max = Math.min(renderer.capabilities.maxTextureSize, phone ? 2048 : 4096);
+        const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(bmp.width * k));
+        cv.height = Math.max(1, Math.round(bmp.height * k));
+        const cx = cv.getContext("2d")!;
+        cx.fillStyle = `#${edge.getHexString(THREE.SRGBColorSpace)}`;
+        cx.fillRect(0, 0, cv.width, cv.height);
+        cx.imageSmoothingQuality = "high";
+        cx.drawImage(bmp, 0, 0, cv.width, cv.height);
+        bmp.close();
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return { tex, edge };
+      })();
+      signImages.set(key, p);
+      p.catch(() => signImages.delete(key));
+      return p;
+    };
+    /** Two triangles over four corners (top-left, top-right, bottom-right, bottom-left), facing the street. */
+    const quadGeometry = (c: Corners) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(c.flat(), 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
+      g.setIndex([0, 3, 1, 1, 3, 2]);
+      g.computeBoundingSphere();
+      return g;
+    };
+    const disposeTree = (o: THREE.Object3D) => o.traverse((n) => {
+      const m = n as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      mat?.dispose(); // textures are shared (by image), kept
+    });
+    const signCount = () => {
+      let placed = 0, drawn = 0;
+      meshes.forEach((m) => signHolders.get(m)?.children.forEach((g) => {
+        if (!g.userData.signId) return;
+        placed++;
+        if (g.userData.drawn) drawn++;
+      }));
+      rep.signs = placed ? `${drawn} drawn of ${placed}${signFailed.size ? ` · ${signFailed.size} image(s) did not load` : ""}` : undefined;
+    };
+    const applySigns = (id: string, mesh: SplatMesh) => {
+      if (!sparkMod || id.endsWith(WHOLE) || id === "__single") return;
+      const m = sparkMod;
+      let holder = signHolders.get(mesh);
+      if (!holder) {
+        holder = new THREE.Group();
+        holder.name = "signs";
+        mesh.add(holder);
+        signHolders.set(mesh, holder);
+      }
+      // Undo the mesh's upright turn: the group is the scene's own coordinates.
+      holder.quaternion.copy((sourceOf(id)?.flip ?? true) ? FLIP_Q : new THREE.Quaternion());
+      for (const c of [...holder.children]) {
+        holder.remove(c);
+        disposeTree(c);
+      }
+      const list = signsBy[id] ?? [];
+      const sdfs: SplatEditSdf[] = [];
+      for (const s of list) {
+        const g = new THREE.Group();
+        g.userData.signId = s.id;
+        const gain = glowGain(s.glow);
+        const backing = new THREE.Mesh(
+          quadGeometry(lift(grow(s.corners, s.cover), BACKING_LIFT)),
+          new THREE.MeshBasicMaterial({ color: SIGN_EDGE.clone().multiplyScalar(gain), side: THREE.DoubleSide }),
+        );
+        const image = new THREE.Mesh(
+          quadGeometry(lift(s.corners, IMAGE_LIFT)),
+          // Nudged forward in depth too: never mixed with its own backing, however far.
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(gain, gain, gain), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }),
+        );
+        image.visible = false;
+        backing.userData.signId = image.userData.signId = s.id;
+        g.add(backing, image);
+        if (s.id === signSelected) {
+          const ring = lift(grow(s.corners, s.cover + 0.02), IMAGE_LIFT);
+          const line = new THREE.LineLoop(
+            new THREE.BufferGeometry().setFromPoints(ring.map((p) => new THREE.Vector3(...p))),
+            new THREE.LineBasicMaterial({ color: 0xfbbf24, depthTest: false, transparent: true }),
+          );
+          line.renderOrder = 10;
+          g.add(line);
+        }
+        holder.add(g);
+        void signImage(s.image).then(({ tex, edge }) => {
+          if (!g.parent) return; // rebuilt meanwhile
+          (image.material as THREE.MeshBasicMaterial).map = tex;
+          (image.material as THREE.MeshBasicMaterial).needsUpdate = true;
+          (backing.material as THREE.MeshBasicMaterial).color.copy(edge).multiplyScalar(gain);
+          image.visible = true;
+          g.userData.drawn = true;
+          signFailed.delete(s.image);
+          signCount();
+          publish();
+        }).catch((e) => {
+          signFailed.add(s.image);
+          trace("sign image did not load", id, `${s.image}: ${(e as Error).message}`);
+          signCount();
+          publish();
+        });
+        // The old board's splats: a box just in front of it to behind it.
+        const box = hideBox(s.corners, s.cover);
+        if (box) {
+          const sdf = new m.SplatEditSdf({ type: m.SplatEditSdfType.BOX, opacity: 0 });
+          sdf.position.set(...box.center);
+          sdf.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+            new THREE.Vector3(...box.right), new THREE.Vector3(...box.up), new THREE.Vector3(...box.out)));
+          sdf.scale.set(...box.half);
+          // In the group: Spark reads its world place each frame, so it moves with the scene.
+          holder.add(sdf);
+          sdfs.push(sdf);
+        }
+      }
+      if (sdfs.length) signEdits.set(mesh, new m.SplatEdit({ rgbaBlendMode: m.SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0.02, sdfs }));
+      else signEdits.delete(mesh);
+      applySeams(id, mesh);
+      signCount();
+    };
+    // «Replace a sign»: the corners marked so far (the scene here's own coordinates) and where the mouse points.
+    let signPicking = false;
+    let signDraft: Vec3[] = [];
+    let signHover: THREE.Vector3 | null = null;
+    const draftLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xfbbf24, depthTest: false, transparent: true }));
+    const draftDots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0xfbbf24, size: 9, sizeAttenuation: false, depthTest: false, transparent: true }));
+    draftLine.renderOrder = draftDots.renderOrder = 11;
+    draftLine.frustumCulled = draftDots.frustumCulled = false;
+    scene.add(draftLine, draftDots);
+    const hereHolder = () => {
+      const mesh = meshes.get(currentId);
+      const h = mesh ? signHolders.get(mesh) : undefined;
+      h?.updateMatrixWorld(true);
+      return h;
+    };
+    const drawDraft = () => {
+      const h = hereHolder();
+      const pts = h ? signDraft.map((p) => h.localToWorld(new THREE.Vector3(...p))) : [];
+      const dots = [...pts];
+      if (signPicking && signHover) pts.push(signHover);
+      // Closed once four are marked; while marking, back to the first too (the board as it will be).
+      if (pts.length >= 3) pts.push(pts[0]);
+      draftLine.geometry.dispose();
+      draftLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+      draftDots.geometry.dispose();
+      draftDots.geometry = new THREE.BufferGeometry().setFromPoints(dots);
+      draftLine.visible = pts.length > 1;
+      draftDots.visible = dots.length > 0;
+    };
+    /**
+     * The point under the screen position, in the scene here's own
+     * coordinates: the nearest splat the ray meets (precise: every splat
+     * drawn, not Spark's coarse picking set); else, missed, the plane of the
+     * corners so far; else as far as the corners so far, or the walls.
+     */
+    const pickSurface = (cx: number, cy: number, precise: boolean): SignPick | null => {
+      const h = hereHolder();
+      if (!h) return null;
+      const r = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+      let best: THREE.Vector3 | null = null;
+      let bestD = Infinity;
+      meshes.forEach((m, k) => {
+        if (!m.visible || k.endsWith(WHOLE)) return;
+        const mm = m as unknown as { raycastIndices?: unknown };
+        const coarse = mm.raycastIndices;
+        if (precise) mm.raycastIndices = undefined;
+        try {
+          for (const hit of raycaster.intersectObject(m, false)) {
+            if (hit.distance > 0.3 && hit.distance < bestD) {
+              bestD = hit.distance;
+              best = hit.point.clone();
+            }
+          }
+        } catch {
+          /* not ready to be picked: the fallbacks below */
+        } finally {
+          if (precise) mm.raycastIndices = coarse;
+        }
+      });
+      const local = (v: THREE.Vector3) => h.worldToLocal(v.clone()).toArray() as Vec3;
+      const eye = local(camera.position);
+      if (best) return { at: local(best), eye, how: "splat" };
+      const o = local(raycaster.ray.origin);
+      const tip = local(raycaster.ray.origin.clone().add(raycaster.ray.direction));
+      const dir = new THREE.Vector3(tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]).normalize();
+      const plane = planeOf(signDraft);
+      const onPlane = plane ? rayPlane(o, dir.toArray() as Vec3, plane) : null;
+      if (onPlane) return { at: onPlane, eye, how: "plane" };
+      const far = signDraft.length
+        ? signDraft.reduce((s, p) => s + Math.hypot(p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]), 0) / signDraft.length
+        : Math.max(1.5, world.find((m) => m.id === currentId)?.half ?? 1.5);
+      return { at: [o[0] + dir.x * far, o[1] + dir.y * far, o[2] + dir.z * far], eye, how: "depth" };
+    };
+    /** A sign tapped in the view (edit mode): its id, or null. */
+    const tappedSign = (cx: number, cy: number): string | null => {
+      const targets: THREE.Object3D[] = [];
+      meshes.forEach((m) => {
+        if (m.visible) signHolders.get(m)?.children.forEach((g) => g.children.forEach((o) => { if (o.userData.signId && (o as THREE.Mesh).isMesh) targets.push(o); }));
+      });
+      if (!targets.length) return null;
+      const r = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+      return (raycaster.intersectObjects(targets, false)[0]?.object.userData.signId as string | undefined) ?? null;
+    };
+    const editMode = params.get("edit") === "1";
     // Straight lanes across the gaps between joined scenes' routes (`bridges`).
     let links: Lane[] = [];
     // When the end of a route last carried the visitor on through its exit.
@@ -563,13 +970,25 @@ export default function SplatTour({
       g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
       pathBand.geometry = g;
     };
-    /** Where a scene's file sits, and which way up, from the tour (computers get the sharper copy). */
-    const sourceOf = (id: string) => {
+    /**
+     * Where a scene's file sits, and which way up, from the tour. Its STREAMED
+     * COPY (.rad, architecture «C») first, on phones and computers alike —
+     * read by byte range, only what the view needs; `?rad=0` opens the whole
+     * file instead, to compare. Without one, computers get the sharper copy.
+     * `whole`: a whole-file copy only (reading a scene's points needs one).
+     * RESTORED (founder, 2026-10-08: "restore ONLY iranianplaza1"): a scene
+     * the operator restored (`fileRestored`, a streamed copy retouched on our
+     * server) shows that; `?restored=0` shows the scene as filmed, to compare.
+     */
+    const sourceOf = (id: string, whole = false) => {
       const s = tourRef.current ? sceneById(tourRef.current, id) : null;
       if (!s || !baseRef.current) return null;
       const desktop = !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
-      const file = desktop && s.fileHQ && params.get("hq") !== "0" ? s.fileHQ : s.file;
-      return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null };
+      const file =
+        !whole && s.fileRestored && params.get("restored") !== "0" && params.get("rad") !== "0" ? s.fileRestored
+        : !whole && s.fileRad && params.get("rad") !== "0" ? s.fileRad
+        : desktop && s.fileHQ && params.get("hq") !== "0" ? s.fileHQ : s.file;
+      return { src: `${baseRef.current}/${file}`, flip: s.flip, place: s.place as Place | null, paged: /\.rad$/.test(file) };
     };
     const FLIP_Q = new THREE.Quaternion(1, 0, 0, 0);
     /** Put a scene where its place says: scale, turn about up, move — after turning it upright. */
@@ -609,8 +1028,44 @@ export default function SplatTour({
         publish();
       }
 
+      // ⚠️ THE STREAMED COPY: nothing downloaded here. Spark reads the .rad's
+      // header and then, frame by frame, the pages the view needs (HTTP Range
+      // requests to R2), within a fixed budget of resident splats — so no
+      // file is too big for a phone, and the first picture comes from the
+      // coarse levels in a moment.
+      if (/\.rad$/.test(new URL(src).pathname)) {
+        const tOpen = performance.now();
+        const mesh = new sparkMod.SplatMesh({ url: src, paged: true });
+        if (flip) mesh.quaternion.set(1, 0, 0, 0);
+        if (quiet) mesh.visible = false;
+        scene.add(mesh);
+        let timer = 0;
+        await Promise.race([
+          mesh.initialized,
+          new Promise((_, reject) => {
+            timer = window.setTimeout(() => reject(new Error("The streamed copy (.rad) did not open.")), DECODE_TIMEOUT_MS);
+          }),
+        ]).finally(() => clearTimeout(timer));
+        trace("streamed copy opened", id, `${Math.round(performance.now() - tOpen)} ms`);
+        if (!quiet) {
+          Object.assign(rep, { bytes: null, downloadMs: null, decodeMs: performance.now() - tOpen, splats: null });
+        }
+        if (firstFrameAt == null) firstFrameAt = performance.now();
+        publish();
+        applyLookTo(id, mesh);
+        meshes.set(id, mesh);
+        applySigns(id, mesh);
+        return mesh;
+      }
+
       const tFetch = performance.now();
       const bytes = await downloadSplat(src, (share) => { if (!quiet) setLoading(share); });
+      if (phone && bytes.length > PHONE_MAX_MB * 1048576 && params.get("big") !== "1") {
+        throw new Error(
+          `This scene's file is ${Math.round(bytes.length / 1048576)} MB — too big for a phone (it would close the page). ` +
+          "Upload a phone copy made with -d 1500000 (about 25 MB); computers use the sharper «-hq» copy.",
+        );
+      }
       const got = bytes.length;
       trace("network complete", id, `${(got / 1048576).toFixed(1)} MB`);
       if (!quiet) {
@@ -628,7 +1083,9 @@ export default function SplatTour({
       const mesh = new sparkMod.SplatMesh({
         fileBytes: bytes,
         fileName: new URL(src).pathname.split("/").pop() || "scene.spz",
-        extSplats: params.get("precision") !== "low",
+        extSplats: extOn,
+        // Its level-of-detail tree, built on load in Spark's worker.
+        lod: lodOn,
       });
       if (flip) mesh.quaternion.set(1, 0, 0, 0); // y-down reconstruction → y-up world
       // Loaded ahead: resident and ready, but not seen until handed over.
@@ -646,12 +1103,14 @@ export default function SplatTour({
       trace("decoding complete", id);
       if (!quiet) {
         rep.decodeMs = performance.now() - tDecode;
-        rep.splats = mesh.packedSplats?.numSplats ?? mesh.extSplats?.numSplats ?? null;
+        rep.splats = (mesh.splats as { numSplats?: number } | undefined)?.numSplats || mesh.extSplats?.numSplats || mesh.packedSplats?.numSplats || null;
       }
       if (firstFrameAt == null) firstFrameAt = performance.now();
       publish();
+      applyLookTo(id, mesh);
       meshes.set(id, mesh);
-      if (prepareJoins) void pointsOf(id, mesh, flip);
+      applySigns(id, mesh);
+      if (prepareJoins && !id.endsWith(WHOLE)) void pointsOf(id, mesh, flip);
       return mesh;
     }
 
@@ -663,11 +1122,33 @@ export default function SplatTour({
     const prepareJoins = params.get("edit") === "1" && !(window.matchMedia?.("(pointer: coarse)").matches ?? false);
     const points = new Map<string, Promise<Float32Array>>();
     const between = () => new Promise<void>((r) => setTimeout(r, 0));
+    /** The key a streamed scene's whole-file copy is loaded under, only to read its points. */
+    const WHOLE = "#whole";
     /** A scene's points in its own coordinates (after its upright turn), the faint ones left out: at most 400 000. */
-    function pointsOf(id: string, mesh: SplatMesh, flip: boolean): Promise<Float32Array> {
+    function pointsOf(id: string, shown: SplatMesh, flip: boolean): Promise<Float32Array> {
       const have = points.get(id);
       if (have) return have;
       const p = (async () => {
+        // A streamed copy holds no points to read: its whole-file copy is
+        // loaded out of sight, read, and let go.
+        let mesh = shown;
+        const so = sourceOf(id, true);
+        const paged = !(shown.extSplats ?? shown.packedSplats);
+        if (paged && so) mesh = await loadMesh(id + WHOLE, so.src, so.flip, true);
+        try {
+          return await read(mesh);
+        } finally {
+          if (mesh !== shown) {
+            meshes.delete(id + WHOLE);
+            scene.remove(mesh);
+            mesh.dispose();
+          }
+        }
+      })();
+      points.set(id, p);
+      p.catch(() => points.delete(id));
+      return p;
+      async function read(mesh: SplatMesh): Promise<Float32Array> {
         const src = (mesh.extSplats ?? mesh.packedSplats) as { numSplats: number; getSplat: (i: number) => { center: THREE.Vector3; opacity: number } } | undefined;
         if (!src) return new Float32Array(0);
         const n = src.numSplats;
@@ -684,16 +1165,20 @@ export default function SplatTour({
           if ((i / stride) % 20_000 === 0) await between(); // a frame's worth at a time
         }
         return out.slice(0, k);
-      })();
-      points.set(id, p);
-      return p;
+      }
     }
     /** In edit mode on a computer: the tour's other scenes, one after another, loaded quietly and read. */
     let preparing = false;
     async function prepareAll() {
       if (!prepareJoins || preparing) return;
       preparing = true;
-      for (const s of tourRef.current?.scenes ?? []) {
+      // Only the scenes a join still needs (joined by the paths alone, and the
+      // scene each is joined to): loading every scene of the tour made the
+      // operator's computer as slow as a phone.
+      const t = tourRef.current;
+      const need = new Set<string>();
+      for (const s of t?.scenes ?? []) if (s.join?.by === "paths") need.add(s.id).add(s.join.to);
+      for (const s of (t?.scenes ?? []).filter((x) => need.has(x.id))) {
         if (disposed) return;
         const so = sourceOf(s.id);
         if (!so) continue;
@@ -724,6 +1209,9 @@ export default function SplatTour({
       pitch = p.pitch;
       turnYaw = 0;
       turnTarget = 0;
+      headYaw = 0;
+      headTarget = 0;
+      onLook.current(0);
       stickDrive = startTilt(0);
       velFwd = 0;
       velTurn = 0;
@@ -874,7 +1362,39 @@ export default function SplatTour({
       setGuided(on) {
         guided = on;
       },
+      setClean(level) {
+        // Faint splats skipped, and no splat drawn wider than this many pixels:
+        // the streaks of a poorly filmed side are a few huge, faint splats.
+        const LEVELS: Array<[number, number]> = [[0.5 / 255, 512], [0.02, 160], [0.05, 96], [0.1, 56]];
+        const q = Number(params.get("clean"));
+        const k = Number.isInteger(q) && q >= 0 && q <= 3 ? q : Math.min(3, Math.max(0, Math.round(level)));
+        const apply = () => {
+          if (!spark) return false;
+          const sp = spark as unknown as { minAlpha: number; maxPixelRadius: number };
+          [sp.minAlpha, sp.maxPixelRadius] = LEVELS[k];
+          rep.clean = k;
+          return true;
+        };
+        if (!apply()) void sparkReady.then(apply);
+      },
+      setLooks(next, hereId) {
+        looks = next;
+        rep.look = lookFor(hereId);
+        const apply = () => {
+          if (!sparkMod) return false;
+          meshes.forEach((m, id) => applyLookTo(id, m));
+          return true;
+        };
+        if (!apply()) void sparkReady.then(apply);
+        publish();
+      },
+      look(side) {
+        headTarget = side * (75 * Math.PI) / 180;
+        onLook.current(side);
+      },
       turnAround() {
+        headTarget = 0;
+        onLook.current(0);
         // ⚠️ BACK THE WAY THEY CAME (operator, 2026-10-05): a shopper who
         // turns round walks the same blue line the other way. Turning 180°
         // by twisting a phone takes several twists; this does it in one
@@ -986,6 +1506,25 @@ export default function SplatTour({
       setDrive(d) {
         drive = d;
       },
+      setSigns(byScene, selected) {
+        signsBy = byScene;
+        signSelected = selected;
+        const apply = () => {
+          if (!sparkMod) return false;
+          meshes.forEach((m, id) => applySigns(id, m));
+          drawDraft();
+          publish();
+          return true;
+        };
+        if (!apply()) void sparkReady.then(apply);
+      },
+      setSignPicking(on, draft) {
+        signPicking = on;
+        signDraft = draft;
+        if (!on) signHover = null;
+        renderer.domElement.style.cursor = on ? "crosshair" : "";
+        drawDraft();
+      },
     };
 
     window.__splatPose = () => engine.current?.pose();
@@ -1023,8 +1562,18 @@ export default function SplatTour({
       // phone, while tilt-walking, and with the phone's own motion on, where
       // a sideways drag turns the body and the phone does the rest.
       if (pointers.size === 1) {
-        userTurnAt = performance.now();
         const k = (camera.fov / el.clientHeight) * (Math.PI / 180);
+        // Following the path, a sideways drag is a glance: the head turns, the
+        // walk goes on along the path. (Free walking: it turns the body.)
+        if (guided && !(gyroOn && gyroHave)) {
+          headTarget = THREE.MathUtils.clamp(headTarget + (e.clientX - prev.x) * k, -2.4, 2.4);
+          headYaw = headTarget;
+          pitch = THREE.MathUtils.clamp(pitch + (e.clientY - prev.y) * k, -1.45, 1.45);
+          onLook.current(Math.abs(headTarget) < 0.2 ? 0 : Math.sign(headTarget));
+          pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          return;
+        }
+        userTurnAt = performance.now();
         if (gyroOn && gyroHave) {
           turnTarget += (e.clientX - prev.x) * k;
           turnYaw = turnTarget;
@@ -1046,13 +1595,35 @@ export default function SplatTour({
       pinch = 0;
       // A tap (not a drag) on a marker takes its exit.
       if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 8 && performance.now() - downAt.t < 500) {
+        // Marking a sign's corners: the tap is a corner, nothing else.
+        if (signPicking) {
+          const p = pickSurface(e.clientX, e.clientY, true);
+          if (p) onSignPick.current(p);
+          downAt = null;
+          return;
+        }
         const r = renderer.domElement.getBoundingClientRect();
         raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
         const hit = raycaster.intersectObjects(markers.children, false)[0];
         const exit = hit && markerExits.find((x) => x.id === hit.object.userData.exitId);
         if (exit) exitHandler.current(exit);
+        else if (editMode) {
+          const sign = tappedSign(e.clientX, e.clientY);
+          if (sign) onSignTap.current(sign);
+        }
       }
       downAt = null;
+    };
+    // Marking a sign with the mouse: the outline runs on to where it points
+    // (the coarse picking set, a few times a second — cheap).
+    let hoverAt = 0;
+    const onHover = (e: PointerEvent) => {
+      if (!signPicking || pointers.size || e.pointerType !== "mouse" || performance.now() - hoverAt < 120) return;
+      hoverAt = performance.now();
+      const p = pickSurface(e.clientX, e.clientY, false);
+      const h = hereHolder();
+      signHover = p && h ? h.localToWorld(new THREE.Vector3(...p.at)) : null;
+      drawDraft();
     };
     // ⚠️ GENTLE ZOOM. A laptop touchpad's two-finger scroll fires dozens of
     // wheel events a second; each one is capped so the view cannot fly to
@@ -1109,6 +1680,7 @@ export default function SplatTour({
     const canvas = renderer.domElement;
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointermove", onHover);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointercancel", onUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
@@ -1128,13 +1700,16 @@ export default function SplatTour({
       if (preloadRef.current) return;
       // Steering (stick left/right) turns the view. With phone motion on it is
       // added to the phone's own heading, so both turn you.
-      if (gyroOn && gyroHave && !tiltOn) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
-      else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
+      headYaw += (headTarget - headYaw) * (1 - Math.exp(-dt / 0.3));
+      if (gyroOn && gyroHave && !tiltOn) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -(turnYaw + headYaw))).multiply(gyroQ);
+      else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw + headYaw), 0));
 
       // ⚠️ WALK BY THE COMPASS HEADING, not by where the camera points. With the
       // phone tilted at the floor the pointing direction, flattened, swings
       // wildly and walking felt like spinning; the heading stays steady.
-      const heading = headingOf(camera.quaternion);
+      // The body's heading (the walk, the path, the walls) leaves the glance out.
+      const viewHeading = headingOf(camera.quaternion);
+      const heading = viewHeading + headYaw;
       forward.set(-Math.sin(heading), 0, -Math.cos(heading));
       right.set(Math.cos(heading), 0, -Math.sin(heading));
 
@@ -1263,7 +1838,7 @@ export default function SplatTour({
 
       // What Enter would go into: the nearest exit or shop door faced, near.
       {
-        const h = -heading;
+        const h = -viewHeading; // a door is gone into by looking at it
         let best: { d: number; r: Reach; t: typeof reachTarget } | null = null;
         for (const ex of markerExits) {
           const d = inReach(ex.at, camera.position.x, camera.position.z, h);
@@ -1308,7 +1883,18 @@ export default function SplatTour({
         }
       });
 
+      // The restored look's "below the eye" (fresh asphalt) follows the eye.
+      meshes.forEach((m) => {
+        const h = m.visible ? lookHandles.get(m) : undefined;
+        if (h) followEye(m, h, camera.position.y);
+      });
       renderer.render(scene, camera);
+      // How long Spark's background sort takes (it runs between frames).
+      if (spark?.sorting) sortSince ??= performance.now();
+      else if (sortSince != null) {
+        sortWorst = Math.max(sortWorst, performance.now() - sortSince);
+        sortSince = null;
+      }
       for (const id of awaitingFrame) {
         if (meshes.get(id)?.visible) trace("destination visible (first frame drawn)", id);
         awaitingFrame.delete(id);
@@ -1344,6 +1930,33 @@ export default function SplatTour({
           // Never below the screen's own pixels (1): halving them blurred the shop windows.
           const floor = Math.min(1, top);
           const next = rep.fps < 20 ? Math.max(floor, pr * 0.85) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
+          // Fewer splats too, when slow (LoD): down to 40% of the device's budget, back up when fast.
+          const still = camera.position.distanceTo(lastAdaptPos) < 0.05 && camera.quaternion.angleTo(lastAdaptQuat) < 0.02;
+          lastAdaptPos.copy(camera.position);
+          lastAdaptQuat.copy(camera.quaternion);
+          const sorted = sortWorst;
+          const sortSlow = sorted > SORT_SLOW_MS;
+          rep.sortMs = Math.round(sorted);
+          sortWorst = 0;
+          if (spark?.enableLod && (still || sortSlow || rep.fps < 28)) {
+            let k = spark.lodSplatScale, px = spark.lodRenderScale;
+            const canK = fixedDetail == null, canPx = fixedPx == null;
+            if (rep.fps < 28 || sortSlow) {
+              // Slow: bigger splats first (cheap to give back), then fewer.
+              if (canPx && px < 2) px = Math.min(2, px + 0.25);
+              else if (canK) k = Math.max(0.4, k * 0.85);
+            } else if (rep.fps > 50 && sorted < SORT_SLOW_MS / 2) {
+              // Frames to spare: more splats, then finer ones.
+              if (canK && k < DETAIL_MAX) k = Math.min(DETAIL_MAX, k * 1.1);
+              else if (canPx && px > PX_MIN) px = Math.max(PX_MIN, px - 0.25);
+            }
+            if (k !== spark.lodSplatScale) spark.lodSplatScale = k;
+            if (px !== spark.lodRenderScale) spark.lodRenderScale = px;
+            rep.lod = Math.round(k * 100) / 100;
+            rep.lodPx = px;
+            const pager = (spark as unknown as { pager?: { maxPages: number; pageFreelist: number[] } }).pager;
+            if (pager) rep.pool = `${pager.maxPages - pager.pageFreelist.length}/${pager.maxPages}`;
+          }
           if (Math.abs(next - pr) > 0.01) {
             renderer.setPixelRatio(next);
             renderer.setSize(el.clientWidth, el.clientHeight);
@@ -1436,6 +2049,37 @@ export default function SplatTour({
     engine.current?.setGuided(guided && !recordingRoute);
   }, [guided, recordingRoute]);
 
+  // The streak filter follows the scene the visitor is in.
+  useEffect(() => {
+    engine.current?.setClean(here?.clean ?? 0);
+  }, [here?.id, here?.clean]);
+
+  // The restored look: each scene its own (only where the tour sets one).
+  const lookKey = tour ? tour.scenes.map((s) => `${s.id}:${s.look}`).join(",") : "";
+  useEffect(() => {
+    if (!tour) return;
+    engine.current?.setLooks(Object.fromEntries(tour.scenes.map((s) => [s.id, s.look])), here?.id ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lookKey, here?.id]);
+
+  // The replaced signs: every scene's own, for every visitor; the one selected outlined in edit mode.
+  const signsKey = tour ? JSON.stringify(tour.scenes.map((s) => [s.id, s.flip, s.signs])) : "";
+  useEffect(() => {
+    if (!tour) return;
+    engine.current?.setSigns(Object.fromEntries(tour.scenes.map((s) => [s.id, s.signs])), editing ? signSel : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signsKey, signSel, editing]);
+  // The corners being marked, or the four waiting for their image, outlined in the view.
+  useEffect(() => {
+    engine.current?.setSignPicking(signPick != null, signPick?.corners ?? signCorners ?? []);
+  }, [signPick, signCorners]);
+  // Another scene: whatever was being marked there is let go.
+  useEffect(() => {
+    setSignPick(null);
+    setSignCorners(null);
+    setSignSel(null);
+  }, [current]);
+
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
     engine.current?.setWalls(!(recordingRoute || (editing && wallsOff)));
@@ -1514,6 +2158,10 @@ export default function SplatTour({
       if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
       if (e.key === "h" || e.key === "H" || e.key === "Home") void goCentre();
       if (e.key === "u" || e.key === "U") engine.current?.turnAround();
+      if (e.key === "z" || e.key === "Z") engine.current?.look(lookSide === -1 ? 0 : -1);
+      if (e.key === "c" || e.key === "C") engine.current?.look(lookSide === 1 ? 0 : 1);
+      if (e.key === "x" || e.key === "X") engine.current?.look(0);
+      if (e.key === "Escape" && signPick) setSignPick(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1631,6 +2279,96 @@ export default function SplatTour({
     // Recorded in the world; kept in the scene's own coordinates.
     const local = here.place ? pts.map((p) => toLocal(here.place as Place, p)) : pts;
     if (pts.length > 1) changeTour(updateScene(tour, here.id, { route: local }));
+  }
+
+  /**
+   * ⚠️ «REPLACE A SIGN» (founder, 2026-10-08: "really big for
+   * commercialization"). The operator taps the four corners of the old
+   * signboard (any order: they are sorted as seen from where they stood), then
+   * gives the shop's image; it is uploaded to the scene's `signs/` folder and
+   * the sign saved at once — an image without its sign would be lost.
+   */
+  onSignPick.current = (p) => {
+    const cur = signPick;
+    if (!cur || !tour || !here) return;
+    const corners = [...cur.corners, p.at];
+    const eyes = [...cur.eyes, p.eye];
+    const missed = cur.missed + (p.how === "splat" ? 0 : 1);
+    if (corners.length < 4) {
+      setSignPick({ ...cur, corners, eyes, missed });
+      setSignNote(p.how === "splat" ? "" : p.how === "plane"
+        ? "That click missed the splats: put on the plane of the corners so far."
+        : "That click missed the splats: put at the distance of the corners so far — check the outline from the side.");
+      return;
+    }
+    setSignPick(null);
+    const eye = eyes.reduce<Vec3>((s, e) => [s[0] + e[0] / 4, s[1] + e[1] / 4, s[2] + e[2] / 4], [0, 0, 0]);
+    const ordered = orderCorners(corners, eye);
+    if (!ordered) return setSignNote("Those four points make no board. «Replace a sign» again, and tap its four corners.");
+    const note = missed ? ` ${missed} corner${missed > 1 ? "s" : ""} missed the splats — check the outline.` : "";
+    if (cur.target) {
+      changeTour(updateSign(tour, here.id, cur.target, { corners: ordered }));
+      setSignNote(`Corners moved.${note} Save to keep them.`);
+      return;
+    }
+    setSignCorners(ordered);
+    setSignNote(`Four corners marked.${note} Now choose the new sign's image.`);
+  };
+  onSignTap.current = (id) => {
+    if (signPick || signCorners) return;
+    setSignSel(id);
+    setPanelTab("signs");
+    setPanelX(0);
+  };
+
+  /** An image to R2 (`scenes/<scene>/signs/…`): straight from the browser, or through our server if R2 refuses it. The key. */
+  async function uploadSignImage(sceneId: string, signId: string, file: File): Promise<string> {
+    const type = imageTypeOf(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+    if (!type) throw new Error("choose a PNG, JPEG or WebP image");
+    if (file.size > MAX_SIGN_IMAGE_BYTES) throw new Error(`the image is ${(file.size / 1048576).toFixed(1)} MB — at most ${MAX_SIGN_IMAGE_BYTES / 1048576} MB`);
+    const res = await fetch("/api/operator/splats", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
+      body: JSON.stringify({ action: "signImage", scene: sceneId, sign: signId, type, size: file.size }),
+    });
+    const s = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; key?: string; url?: string; headers?: Record<string, string> };
+    if (!res.ok || !s.ok || !s.key || !s.url) throw new Error(s.error || `HTTP ${res.status}`);
+    const direct = await fetch(s.url, { method: "PUT", headers: s.headers, body: file }).then((r) => r.ok).catch(() => false);
+    if (!direct) {
+      const r = await fetch(`/api/operator/splats/sign-image?key=${encodeURIComponent(s.key)}`, {
+        method: "PUT", headers: { "x-admin-token": readAdminToken(), "content-type": type }, body: file,
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    }
+    return s.key;
+  }
+
+  /** The image for the four corners just marked (a new sign), or a new image for the sign selected. */
+  async function signImageChosen(file: File | undefined) {
+    if (!file || !tour || !here || signBusy) return;
+    const replacing = signCorners ? null : signSel;
+    if (!signCorners && !replacing) return;
+    const id = replacing ?? nextSignId(tour, here.id);
+    setSignBusy(true);
+    setSignNote("Uploading the image…");
+    try {
+      const key = await uploadSignImage(here.id, id, file);
+      const latest = tourRef.current ?? tour;
+      const next = replacing
+        ? updateSign(latest, here.id, id, { image: key })
+        : addSign(latest, here.id, { id, corners: signCorners!, image: key });
+      if (next === latest) throw new Error(`the sign could not be ${replacing ? "changed" : `added (at most ${MAX_SIGNS} a scene)`}`);
+      setTour(next);
+      setSignCorners(null);
+      setSignSel(id);
+      await saveTour(next);
+      setSignNote(replacing ? "✓ New image up and saved." : "✓ The new sign is up and saved.");
+    } catch (e) {
+      setSignNote(`Not done: ${(e as Error).message}`);
+    } finally {
+      setSignBusy(false);
+    }
   }
 
   /** Edit another scene: go there (its start), keeping the unsaved changes. */
@@ -1774,12 +2512,12 @@ export default function SplatTour({
           for us: ?debug=1 (or the operator's ?edit=1) shows them. */}
       {debug ? (
         <div dir="ltr" className="pointer-events-none absolute left-3 top-3 max-w-[calc(100vw-24px)] space-y-1 rounded-xl bg-black/60 p-3 text-left font-mono text-[11px] leading-snug text-white/85">
-          <div className="text-[12px] font-bold text-amber-200">{here ? `${here.title.en} · ${here.title.fa}` : "Splat test"}</div>
+          <div className="text-[12px] font-bold text-amber-200">{here ? here.title.en : "Splat test"}</div>
           <div className="break-all text-white/50">{r?.src}</div>
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""}{r?.sortMs ? ` · sort ${r.sortMs} ms` : ""}{r?.pool ? ` · pool ${r.pool}` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · look {r?.look ?? "original"} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
@@ -1788,7 +2526,7 @@ export default function SplatTour({
         <>
           {here && (
             <div className="pointer-events-none absolute left-1/2 top-4 max-w-[70vw] -translate-x-1/2 truncate rounded-full bg-black/45 px-4 py-1.5 text-center text-[15px] text-white/90">
-              {here.title.fa !== here.title.en ? `${here.title.fa} · ${here.title.en}` : here.title.en}
+              {here.title.en}
             </div>
           )}
           {loading != null && (
@@ -1796,7 +2534,7 @@ export default function SplatTour({
               <div className="h-1.5 w-48 overflow-hidden rounded-full bg-white/15">
                 <div className="h-full bg-amber-300/80 transition-[width]" style={{ width: `${Math.round((loading || 0.02) * 100)}%` }} />
               </div>
-              <div className="text-[15px]">در حال آماده‌سازی… · Getting ready…</div>
+              <div className="text-[15px]">Getting ready…</div>
             </div>
           )}
           {(r?.error || error) && (
@@ -1810,18 +2548,16 @@ export default function SplatTour({
       {needStart && !tiltOn && (
         <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/45 px-6 text-center">
           <button onClick={() => void toggleTilt()} className="rounded-full border border-amber-300/70 bg-amber-300/25 px-8 py-4 text-[18px] font-bold text-amber-50">
-            شروع · Start
+            Start
           </button>
           <p className="max-w-xs text-[14px] leading-relaxed text-white/85">
-            گوشی را راحت در دست بگیرید. کمی به عقب کج کنید تا راه بروید؛ مثل فرمان بچرخانید تا بپیچید.
-            <br />
-            <span dir="ltr">Hold the phone comfortably. Tilt it back a little to walk; turn it like a steering wheel to turn.</span>
+            Hold the phone comfortably. Tilt it back a little to walk; turn it like a steering wheel to turn.
           </p>
           <button
             onClick={() => { setNeedStart(false); rememberMode("stick"); }}
             className="text-[13px] text-white/60 underline"
           >
-            جوی‌استیک · Use the joystick instead
+            Use the joystick instead
           </button>
         </div>
       )}
@@ -1853,6 +2589,29 @@ export default function SplatTour({
         </div>
       )}
 
+      {/* ⚠️ GLANCE AT THE WINDOWS: one tap looks to that side while the walk
+          goes on straight; another tap (or the other side) looks ahead. */}
+      {tour && (
+        <>
+          <button
+            aria-label="Look left"
+            dir="ltr"
+            onClick={() => engine.current?.look(lookSide === -1 ? 0 : -1)}
+            className={`absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full border px-3 py-3 text-[13px] ${lookSide === -1 ? "border-amber-300/80 bg-amber-300/30 text-amber-50" : "border-white/30 bg-black/45 text-white/90"}`}
+          >
+            {lookSide === -1 ? "Ahead ▸" : "◂ Look"}
+          </button>
+          <button
+            aria-label="Look right"
+            dir="ltr"
+            onClick={() => engine.current?.look(lookSide === 1 ? 0 : 1)}
+            className={`absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full border px-3 py-3 text-[13px] ${lookSide === 1 ? "border-amber-300/80 bg-amber-300/30 text-amber-50" : "border-white/30 bg-black/45 text-white/90"}`}
+          >
+            {lookSide === 1 ? "◂ Ahead" : "Look ▸"}
+          </button>
+        </>
+      )}
+
       {/* Enter / «Go in»: a shop door or exit near and faced */}
       {reach && (
         <button
@@ -1860,7 +2619,7 @@ export default function SplatTour({
           onClick={() => engine.current?.goIn()}
           className="absolute bottom-[19rem] left-1/2 -translate-x-1/2 rounded-full border border-amber-300/70 bg-black/75 px-5 py-2.5 text-[15px] text-amber-50"
         >
-          {touch ? "" : "↵ Enter · "}برو داخل · Go in: {reach.label}
+          {touch ? "" : "↵ Enter · "}Go in: {reach.label}
         </button>
       )}
 
@@ -1890,7 +2649,7 @@ export default function SplatTour({
               </button>
             </div>
             <div className="flex border-b border-white/10">
-              {(["route", "drive", "shops", "scenes", "info"] as const).map((t) => (
+              {(["route", "drive", "shops", "signs", "scenes", "info"] as const).map((t) => (
                 <button key={t} onClick={() => setPanelTab(t)} className={`flex-1 py-1 capitalize ${panelTab === t ? "bg-white/15 text-amber-200" : "text-white/55"}`}>{t}</button>
               ))}
             </div>
@@ -1936,6 +2695,36 @@ export default function SplatTour({
                     </label>
                   </div>
                   {!here.route.length && <div className="text-amber-200/80">Walls and «Follow the path» need a route.</div>}
+                  <div className="space-y-1 border-t border-white/10 pt-1.5">
+                    <div className="text-white/60">Streak filter (smears from poorly filmed parts):</div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {["Off", "Light", "Medium", "Strong"].map((label, k) => (
+                        <button
+                          key={label}
+                          className={`rounded py-1 ${here.clean === k ? "bg-amber-300/40 font-bold text-white" : "bg-white/10"}`}
+                          onClick={() => changeTour(updateScene(tour, here.id, { clean: k }))}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-white/40">Shows at once; Save to keep it for visitors.</div>
+                  </div>
+                  <div className="space-y-1 border-t border-white/10 pt-1.5">
+                    <div className="text-white/60">Restored look (new asphalt, shining bricks, grime faded) — this scene only:</div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {LOOKS.map((k) => (
+                        <button
+                          key={k}
+                          className={`rounded py-1 ${here.look === k ? "bg-amber-300/40 font-bold text-white" : "bg-white/10"}`}
+                          onClick={() => changeTour(updateScene(tour, here.id, { look: k }))}
+                        >
+                          {LOOK_LABEL[k]}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-white/40">Shows at once; Save to keep it for visitors. A <code>?look=</code> in the address overrides every scene while testing.</div>
+                  </div>
                 </>
               )}
 
@@ -1994,6 +2783,89 @@ export default function SplatTour({
                   ))}
                 </>
               )}
+
+              {panelTab === "signs" && (() => {
+                const sel = here.signs.find((s) => s.id === signSel) ?? null;
+                const marking = signPick != null;
+                return (
+                  <>
+                    {/* ⚠️ A NEW SIGN OVER THE OLD ONE (founder, 2026-10-08): the
+                        shop's own image, not a generated one — AI garbles Persian. */}
+                    {!marking && !signCorners && (
+                      <button
+                        disabled={here.signs.length >= MAX_SIGNS || signBusy}
+                        className="w-full rounded-lg border border-amber-300/70 bg-amber-300/15 py-1.5 font-bold text-amber-50 disabled:opacity-40"
+                        onClick={() => { setSignSel(null); setSignNote(""); setSignPick({ corners: [], eyes: [], missed: 0, target: null }); }}
+                      >
+                        Replace a sign
+                      </button>
+                    )}
+                    {marking && (
+                      <>
+                        <div className="font-bold text-amber-200">Tap the {["first", "second", "third", "fourth"][signPick.corners.length]} corner of the old signboard ({signPick.corners.length}/4)</div>
+                        <div className="text-white/45">Any order. Drag to look round as usual; a tap marks a corner. Stand square on to it if you can.</div>
+                        <div className="flex gap-1">
+                          {signPick.corners.length > 0 && (
+                            <button className="rounded bg-white/10 px-2 py-1" onClick={() => setSignPick({ ...signPick, corners: signPick.corners.slice(0, -1), eyes: signPick.eyes.slice(0, -1) })}>Undo corner</button>
+                          )}
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => { setSignPick(null); setSignNote(""); }}>Cancel</button>
+                        </div>
+                      </>
+                    )}
+                    {signCorners && !marking && (
+                      <>
+                        <div className="font-bold text-amber-200">The new sign&apos;s image</div>
+                        <div className="text-white/45">PNG, JPEG or WebP: the shop&apos;s sign or logo, or a photo of the sign taken straight on. It fills the outline.</div>
+                        <label className={`block cursor-pointer rounded-lg border border-amber-300/70 py-1.5 text-center font-bold text-amber-50 ${signBusy ? "opacity-40" : ""}`}>
+                          {signBusy ? "Uploading…" : "Choose image…"}
+                          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={signBusy}
+                            onChange={(e) => { void signImageChosen(e.target.files?.[0]); e.target.value = ""; }} />
+                        </label>
+                        <div className="flex gap-1">
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => setSignPick({ corners: [], eyes: [], missed: 0, target: null })}>Mark again</button>
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => { setSignCorners(null); setSignNote(""); }}>Cancel</button>
+                        </div>
+                      </>
+                    )}
+                    {signNote && <div className={signNote.startsWith("✓") ? "text-emerald-300" : signNote.startsWith("Not done") ? "text-rose-300" : "text-amber-200"}>{signNote}</div>}
+                    {sel && !marking && !signCorners && (
+                      <div className="space-y-1 rounded bg-white/5 p-1.5">
+                        <div className="font-bold text-amber-200">{sel.id}</div>
+                        <label className="block">
+                          <span className="flex justify-between"><span>Glow (lit, new)</span><span className="text-white/50">{Math.round(sel.glow * 100)}%</span></span>
+                          <input type="range" className="w-full" min={0} max={1} step={0.05} value={sel.glow}
+                            onChange={(e) => changeTour(updateSign(tour, here.id, sel.id, { glow: Number(e.target.value) }))} />
+                        </label>
+                        <label className="block">
+                          <span className="flex justify-between"><span>Backing round it</span><span className="text-white/50">{(sel.cover * 100).toFixed(0)} cm</span></span>
+                          <input type="range" className="w-full" min={0} max={0.3} step={0.01} value={sel.cover}
+                            onChange={(e) => changeTour(updateSign(tour, here.id, sel.id, { cover: Number(e.target.value) }))} />
+                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          <label className={`cursor-pointer rounded bg-white/10 px-2 py-1 ${signBusy ? "opacity-40" : ""}`}>
+                            {signBusy ? "Uploading…" : "New image…"}
+                            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={signBusy}
+                              onChange={(e) => { void signImageChosen(e.target.files?.[0]); e.target.value = ""; }} />
+                          </label>
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => { setSignNote(""); setSignPick({ corners: [], eyes: [], missed: 0, target: sel.id }); }}>Move corners</button>
+                          <button className="ms-auto rounded px-2 py-1 text-rose-300" onClick={() => { changeTour(removeSign(tour, here.id, sel.id)); setSignSel(null); }}>Delete</button>
+                        </div>
+                      </div>
+                    )}
+                    {here.signs.length > 0 && (
+                      <div className="space-y-0.5 border-t border-white/10 pt-1.5">
+                        {here.signs.map((s) => (
+                          <button key={s.id} className={`flex w-full justify-between rounded px-1 ${s.id === signSel ? "bg-amber-300/25 text-white" : "text-white/70"}`} onClick={() => setSignSel(s.id === signSel ? null : s.id)}>
+                            <span>▭ {s.id}</span>
+                            <span className="text-white/40">{s.glow ? `glow ${Math.round(s.glow * 100)}%` : ""}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-white/40">{here.signs.length}/{MAX_SIGNS} in this scene. Tap a sign in the view to select it. Glow, backing, delete: Save to keep.</div>
+                  </>
+                );
+              })()}
 
               {panelTab === "scenes" && (
                 <>
@@ -2082,22 +2954,22 @@ export default function SplatTour({
       <div dir="ltr" className="absolute bottom-4 left-3 flex max-w-[calc(100vw-210px)] flex-col items-start gap-1.5 [&>button]:px-3 [&>button]:py-1.5 [&>button]:text-[12px] [&>button]:leading-tight">
         {tour && (
           <button onClick={() => void goCentre()} className="rounded-full border border-emerald-300/70 bg-emerald-400/20 text-emerald-50" title="H">
-            ⌂ مرکز · Centre
+            ⌂ Centre
           </button>
         )}
         {tour && (
           <button onClick={() => engine.current?.turnAround()} className="rounded-full border border-sky-300/60 bg-black/60 text-sky-50" title="U">
-            ↩ برگشت · Turn around
+            ↩ Turn around
           </button>
         )}
         {touch && (
           <button onClick={() => void toggleTilt()} className={`rounded-full border px-4 py-2 text-[13px] ${tiltOn ? "border-amber-300/70 bg-amber-300/25 text-amber-50" : "border-white/25 bg-black/60 text-white/90"}`}>
-            {tiltOn ? "جوی‌استیک · Use joystick" : "راه رفتن با کج کردن · Walk by tilting"}
+            {tiltOn ? "Use joystick" : "Walk by tilting"}
           </button>
         )}
         {tiltOn && (
           <button onClick={() => engine.current?.recentre()} className="rounded-full border border-white/25 bg-black/60 px-3 py-2 text-[13px] text-white/90" title="Hold the phone comfortably, then tap">
-            ⟲ حالت راحت · Reset hold
+            ⟲ Reset hold
           </button>
         )}
         <button
@@ -2107,10 +2979,10 @@ export default function SplatTour({
           }}
           className={`rounded-full border px-4 py-2 text-[13px] ${guided ? "border-sky-300/70 bg-sky-300/20 text-sky-50" : "border-white/25 bg-black/60 text-white/90"}`}
         >
-          {guided ? "دنبال مسیر ✓ · Follow the path" : "راه رفتن آزاد · Free walking"}
+          {guided ? "Follow the path ✓" : "Free walking"}
         </button>
         {!tiltOn && <button onClick={() => void toggleGyro()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">
-          {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد · Phone motion refused" : "نگاه با گوشی · Look by phone"}
+          {gyro === "on" ? "Look by finger" : gyro === "refused" ? "Phone motion refused" : "Look by phone"}
         </button>}
         {debug && (
           <button onClick={() => void copyReport()} className="rounded-full border border-white/25 bg-black/60 px-4 py-2 text-[13px] text-white/90">

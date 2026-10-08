@@ -6,8 +6,37 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   contentTypeFor, isSceneId, isSplatKey, isWalkVideo, kindOfFile, partPlan, partRange, safeFileName, sceneIdFromFileName,
-  splatKey, webFileName,
+  splatKey, webFileName, signImageKey, isSignImageKey, imageTypeOf, isSignImageType,
 } from "./keys.ts";
+import { isSignImageOf } from "./tour.ts";
+
+test("a sign's image: its own folder, a stamped name, only PNG, JPEG or WebP", () => {
+  const at = new Date("2026-10-08T12:34:56.789Z");
+  const key = signImageKey("store-01", "sign-3", "image/jpeg", at);
+  assert.equal(key, "scenes/store-01/signs/sign-3-20261008-123456.jpg");
+  assert.equal(isSignImageKey(key!), "image/jpeg");
+  assert.ok(isSignImageOf("store-01", key), "the tour accepts what the upload makes");
+  assert.equal(signImageKey("store-01", "sign-3", "image/png", at), "scenes/store-01/signs/sign-3-20261008-123456.png");
+  for (const [scene, sign, type] of [["Store", "s", "image/png"], ["a", "../x", "image/png"], ["a", "s", "image/svg+xml"], ["a", "s", "text/html"], ["a", "s", "toString"]]) {
+    assert.equal(signImageKey(scene, sign, type, at), null, `${scene} ${sign} ${type}`);
+  }
+  assert.equal(isSignImageType("__proto__"), false);
+  for (const bad of ["scenes/a/signs/x.png", "scenes/a/x-20261008-123456.png", "scenes/a/signs/s-20261008-123456.svg", "scenes/A/signs/s-20261008-123456.png",
+    "scenes/a/signs/../s-20261008-123456.png", "masters/a/signs/s-20261008-123456.png", "scenes/a/signs/s-20261008-123456.png/x"]) {
+    assert.equal(isSignImageKey(bad), null, bad);
+  }
+  // The splat rule still refuses images: nothing else can be sent as one.
+  assert.equal(isSplatKey("scenes/a/signs/s-20261008-123456.png"), null);
+  assert.equal(isSplatKey("scenes/a/s.png"), null);
+});
+
+test("an image is what its first bytes say, not what its name says", () => {
+  assert.equal(imageTypeOf(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0])), "image/png");
+  assert.equal(imageTypeOf(Uint8Array.from([0xff, 0xd8, 0xff, 0xe0])), "image/jpeg");
+  assert.equal(imageTypeOf(Uint8Array.from([0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50])), "image/webp");
+  assert.equal(imageTypeOf(new TextEncoder().encode("<svg xmlns=…>")), null);
+  assert.equal(imageTypeOf(new Uint8Array(0)), null);
+});
 
 const MiB = 1024 * 1024;
 

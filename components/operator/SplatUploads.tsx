@@ -371,6 +371,56 @@ export default function SplatUploads() {
     setItems((all) => [...all.filter((i) => i.step !== "done"), ...added]);
   }
 
+  // Streamed copies being made on the server (`lib/splats/stream-job.ts`), by scene.
+  type StreamJob = {
+    state: "working" | "done" | "failed"; step: string; startedAt: number; finishedAt: number | null; error: string | null;
+    /** The restore's report (`lib/splats/retouch.ts` RetouchReport), in part. */
+    report?: {
+      deep: {
+        objects: { kind: "vehicle" | "small" | "person"; size?: [number, number, number] }[];
+        rejected: { reason: string; splats: number; size: [number, number, number] }[];
+      } | null;
+    } | null;
+  };
+  const [streams, setStreams] = useState<Record<string, StreamJob | null>>({});
+  async function makeStream(scene: string, sharp = false) {
+    try {
+      const { job } = await api<{ job: StreamJob }>({ action: "stream", scene, sharp });
+      setStreams((x) => ({ ...x, [scene]: job }));
+      // Ask how it goes every few seconds until it is done.
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { job: now } = await api<{ job: StreamJob | null }>({ action: "streamStatus", scene });
+        setStreams((x) => ({ ...x, [scene]: now }));
+        if (!now || now.state !== "working") break;
+      }
+      await refresh();
+    } catch (e) {
+      setStreams((x) => ({ ...x, [scene]: { state: "failed", step: "", startedAt: Date.now(), finishedAt: Date.now(), error: (e as Error).message } }));
+    }
+  }
+
+  // Restored copies being made on the server (`lib/splats/retouch-job.ts`), by scene.
+  const [retouches, setRetouches] = useState<Record<string, StreamJob | null>>({});
+  // The scene's scale for the restore: metres one file unit stands for (Splatica's is arbitrary).
+  const [unitM, setUnitM] = useState<Record<string, string>>({});
+  async function makeRestored(scene: string, preset: "gentle" | "full" | "deep") {
+    try {
+      const metresPerUnit = Number(unitM[scene] || "1") || 1;
+      const { job } = await api<{ job: StreamJob }>({ action: "retouch", scene, preset, metresPerUnit });
+      setRetouches((x) => ({ ...x, [scene]: job }));
+      for (;;) {
+        await new Promise((r) => setTimeout(r, 3000));
+        const { job: now } = await api<{ job: StreamJob | null }>({ action: "retouchStatus", scene });
+        setRetouches((x) => ({ ...x, [scene]: now }));
+        if (!now || now.state !== "working") break;
+      }
+      await refresh();
+    } catch (e) {
+      setRetouches((x) => ({ ...x, [scene]: { state: "failed", step: "", startedAt: Date.now(), finishedAt: Date.now(), error: (e as Error).message } }));
+    }
+  }
+
   async function saveTour(next: Tour) {
     // `base`: the tour as last read — the server merges, so a route recorded
     // in the viewer meanwhile is never overwritten by this page's older copy.
@@ -446,7 +496,14 @@ export default function SplatUploads() {
       patch(it.id, { step: "done", note: `Set as «${it.scene}»'s sharper copy for computers.` });
       return;
     }
-    await saveTour(upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined));
+    let next = upsertScene(tourRef.current, it.scene, webKey, title ? { en: title, fa: title } : undefined);
+    // ⚠️ A NEW MASTER RETIRES THE SCENE'S SHARPER COPY: that «…-hq» file was
+    // made from the old master (e.g. before a restoration, `public/gpu/`), and
+    // computers — and «Make the streamed copy», which prefers it — would keep
+    // showing the old scene. Its streamed and restored copies were made from
+    // the old one too: retired with it (press «Make the streamed copy» again).
+    if (kind === "master") next = updateScene(next, it.scene, { fileHQ: null, fileRad: null, fileRestored: null });
+    await saveTour(next);
     patch(it.id, { step: "done" });
   }
 
@@ -707,6 +764,127 @@ export default function SplatUploads() {
                     <span>{s.place ? "Joined to the tour's world" : "A scene of its own (reached by exits)"}</span>
                     {s.fileHQ && <span>· sharper copy for computers ✓</span>}
                   </div>
+                  {/* ⚠️ THE STREAMED COPY (architecture «C»): made on our server from
+                      the web copy — the viewer then streams only what each view needs. */}
+                  <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                    {(() => {
+                      const job = streams[s.id];
+                      const working = job?.state === "working";
+                      return (
+                        <>
+                          <button
+                            className="rounded-full border border-sky-300/60 bg-sky-400/15 px-3 py-1 text-sky-50 disabled:opacity-50"
+                            disabled={working}
+                            onClick={() => void makeStream(s.id)}
+                          >
+                            {working ? "Making the streamed copy…" : s.fileRad ? "Remake the streamed copy (fast)" : "Make the streamed copy (phone-safe, fast)"}
+                          </button>
+                          {!working && (
+                            <button
+                              className="rounded-full border border-violet-300/60 bg-violet-400/15 px-3 py-1 text-violet-50"
+                              title="Spark's careful method: finer detail on computers. Several minutes; the file is about twice the size."
+                              onClick={() => void makeStream(s.id, true)}
+                            >
+                              Make a sharp streamed copy (slow)
+                            </button>
+                          )}
+                          {s.fileRad && !working && (
+                            <span className="text-emerald-300">
+                              ✓ {s.fileRad.endsWith("-sharp-lod.rad") ? "sharp" : "fast"} streamed copy — phones and computers stream it
+                            </span>
+                          )}
+                          {working && <span className="text-white/60">{job.step}</span>}
+                          {job?.state === "failed" && <span className="text-rose-300">not made: {job.error}</span>}
+                          {job?.state === "done" && <span className="text-emerald-300">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
+                        </>
+                      );
+                    })()}
+                  </div>
+                  {/* ⚠️ THE RESTORED COPY (founder: "restore ONLY iranianplaza1"): one scene at a
+                      time, on our server — same geometry, cleaner colour. Visitors see it once made;
+                      «Show as filmed» puts the scene back (the restored file stays in R2). */}
+                  <div className="flex flex-wrap items-center gap-2 text-[12px]">
+                    {(() => {
+                      const job = retouches[s.id];
+                      const working = job?.state === "working";
+                      return (
+                        <>
+                          {/* ⚠️ THE SCENE'S SCALE (founder's iranianplaza1, 2026-10-08: «removed nothing»
+                              — the whole plaza measured ~8 × 15 units: one unit is metres, not one). */}
+                          {!working && (
+                            <label className="flex items-center gap-1 text-white/70" title="How many metres one unit of this scene's file stands for. Cars, people, walls and doors are found by their size in metres.">
+                              1 unit =
+                              <input
+                                className="w-14 rounded border border-white/20 bg-black/40 px-1 py-0.5 text-white"
+                                inputMode="decimal"
+                                value={unitM[s.id] ?? "1"}
+                                onChange={(e) => setUnitM((x) => ({ ...x, [s.id]: e.target.value }))}
+                              />
+                              m
+                            </label>
+                          )}
+                          {!working && (["gentle", "full", "deep"] as const).map((preset) => (
+                            <button
+                              key={preset}
+                              className="rounded-full border border-amber-300/60 bg-amber-400/15 px-3 py-1 text-amber-50"
+                              title={
+                                preset === "deep" ? "Strongest: removes cars and people, new asphalt and walls, repainted doors"
+                                : preset === "full" ? "Stronger: new-looking asphalt, grime and stains removed, no glare."
+                                : "Lighter: stains and grime faded, character kept."
+                              }
+                              onClick={() => void makeRestored(s.id, preset)}
+                            >
+                              {s.fileRestored ? "Restore again" : "Restore this scene"} ({preset})
+                            </button>
+                          ))}
+                          {working && <span className="text-white/60">Restoring… {job.step}</span>}
+                          {s.fileRestored && !working && (
+                            <>
+                              <span className="text-amber-200">✓ visitors see the restored scene</span>
+                              <a className="underline" href={`/vca/splat?scene=${encodeURIComponent(s.id)}&restored=0`} target="_blank" rel="noreferrer">compare as filmed</a>
+                              <button className="underline" onClick={() => editTour(updateScene(tour, s.id, { fileRestored: null }))}>Show as filmed</button>
+                            </>
+                          )}
+                          {job?.state === "failed" && <span className="text-rose-300">not restored: {job.error}</span>}
+                          {job?.state === "done" && <span className="text-amber-200">done in {Math.round(((job.finishedAt ?? 0) - job.startedAt) / 1000)} s</span>}
+                          {job?.state === "done" && job.report?.deep && (
+                            <span className="text-white/60">
+                              removed{" "}
+                              {(["vehicle", "small", "person"] as const)
+                                .map((k) => [k, job.report!.deep!.objects.filter((o) => o.kind === k).length] as const)
+                                .filter(([, c]) => c)
+                                .map(([k, c]) => `${c} ${k === "vehicle" ? "car/van" : k === "small" ? "scooter/cart" : "person"}`)
+                                .join(", ") || "nothing"}
+                              ; kept {job.report.deep.rejected.length} other things standing
+                            </span>
+                          )}
+                          {/* What it saw (founder, 2026-10-08: "removed nothing; kept 166 other things"): the
+                              sizes tell whether the scene is in metres — the car rules assume it is. */}
+                          {job?.state === "done" && job.report?.deep && job.report.deep.rejected.length > 0 && (
+                            <details className="w-full text-white/60">
+                              <summary className="cursor-pointer underline">what it kept, and why</summary>
+                              <button
+                                className="my-1 rounded-full border border-white/20 px-2 py-0.5"
+                                onClick={() => void navigator.clipboard.writeText(JSON.stringify(job.report, null, 1))}
+                              >
+                                Copy the full report
+                              </button>
+                              <ul className="max-h-60 overflow-auto font-mono text-[11px]">
+                                {[...job.report.deep.rejected]
+                                  .sort((a, b) => b.splats - a.splats)
+                                  .slice(0, 60)
+                                  .map((r, i) => (
+                                    <li key={i}>
+                                      {r.size.map((v) => v.toFixed(2)).join(" × ")} · {r.splats.toLocaleString()} splats · {r.reason}
+                                    </li>
+                                  ))}
+                              </ul>
+                            </details>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
                   <p className="text-[12px] text-white/55">
                     {s.route.length
                       ? `Route: ${s.route.length} points — visitors are drawn along it.`
@@ -758,7 +936,22 @@ export default function SplatUploads() {
               {o.lastModified && <span className="text-white/40">{new Date(o.lastModified).toLocaleString()}</span>}
               <span className="ms-auto flex gap-2">
                 {o.kind === "web" && o.url && isWalkVideo(o.key) && <a className={SMALL} href={`/vca/walk?v=${encodeURIComponent(o.key)}`}>Walk</a>}
-                {o.kind === "web" && o.url && !isWalkVideo(o.key) && <a className={SMALL} href={`/vca/splat?src=${encodeURIComponent(o.url)}`}>View alone</a>}
+                {/* A scene's file: walk the scene — its streamed copy when it has one. «View alone»
+                    opens this very file whole: a 100 MB one never finished on a laptop (operator, 2026-10-08). */}
+                {(() => {
+                  const sc = o.kind === "web" ? tour.scenes.find((x) => [x.file, x.fileHQ, x.fileRad].includes(o.key)) : undefined;
+                  return sc ? (
+                    <a className={SMALL} href={`/vca/splat?scene=${encodeURIComponent(sc.id)}`}>
+                      Walk «{sc.id}»{sc.fileRad ? " (streamed)" : ""}
+                    </a>
+                  ) : null;
+                })()}
+                {o.key.endsWith(".rad") && <span className="text-[11px] text-violet-200">streamed copy</span>}
+                {o.kind === "web" && o.url && !isWalkVideo(o.key) && (
+                  <a className={SMALL} href={`/vca/splat?src=${encodeURIComponent(o.url)}`} title={o.key.endsWith(".rad") ? "" : "This file whole, not streamed: a big one may not open on a laptop or phone."}>
+                    View this file alone{!o.key.endsWith(".rad") && o.size > 60 * 1048576 ? " (whole — heavy)" : ""}
+                  </a>
+                )}
                 {o.kind === "web" && o.url && <button className={SMALL} onClick={() => void copy(o.url!, o.key)}>{copied === o.key ? "Copied" : "Copy URL"}</button>}
                 {o.kind === "master" && <button className={SMALL} onClick={() => void copyLink(o)}>{copied === o.key ? "Copied" : "Copy 24 h download link"}</button>}
               </span>
