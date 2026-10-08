@@ -77,6 +77,8 @@ type Report = {
   lod: number | null;
   /** The smallest splat LoD draws, in pixels (2 coarse … 1 finest). */
   lodPx?: number;
+  /** The longest background sort of the last second (ms). */
+  sortMs?: number;
 };
 
 declare global {
@@ -437,17 +439,27 @@ export default function SplatTour({
     // DETAIL, TUNED TO THE MACHINE (operator, 2026-10-08: "much much better on
     // desktop … continue tuning even further"). Level of detail draws a
     // budget of splats no smaller than some pixels. On a computer with frames
-    // to spare the budget climbs (to 1.6× Spark's 2.5M) and then the smallest
-    // splat drawn shrinks from 2 pixels to 1 — finer shop windows; when frames
-    // run short the same steps go back, coarsest first. `?detail=` fixes the
-    // budget share, `?lodpx=` the pixel size, to compare.
+    // to spare the smallest splat drawn shrinks from 2 pixels to 1 — finer
+    // shop windows, the same number of splats; when frames run short the
+    // steps go back, and then the budget shrinks. `?detail=` fixes the budget
+    // share, `?lodpx=` the pixel size, to compare.
+    // ⚠️ NOT MORE SPLATS THAN SPARK'S BUDGET, AND NO CHANGE WHILE TURNING
+    // (operator, same day: "after couple of turns the picture becomes
+    // distorted"). The budget climbing to 1.6× and nudged every second made
+    // the background sort fall behind the turning view: the picture was drawn
+    // in a stale order. Frames per second never showed it — so the sort's own
+    // time is watched too, and detail changes only while the view is still.
     const num = (k: string, lo: number, hi: number) => {
       const v = Number(params.get(k));
       return params.has(k) && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : null;
     };
     const fixedDetail = num("detail", 0.2, 4);
     const fixedPx = num("lodpx", 0.5, 5);
-    const DETAIL_MAX = phone ? 1 : 1.6;
+    const DETAIL_MAX = 1;
+    /** The background sort taking longer than this (ms) counts as slow, whatever the frame rate. */
+    const SORT_SLOW_MS = 90;
+    let sortSince: number | null = null, sortWorst = 0;
+    const lastAdaptPos = new THREE.Vector3(), lastAdaptQuat = new THREE.Quaternion();
     const PX_MIN = phone ? 2 : 1;
     // The routes walked among now (`lib/splats/path.ts`), each in world coordinates, and their line in edit mode.
     let world: Member[] = [];
@@ -1481,6 +1493,12 @@ export default function SplatTour({
       });
 
       renderer.render(scene, camera);
+      // How long Spark's background sort takes (it runs between frames).
+      if (spark?.sorting) sortSince ??= performance.now();
+      else if (sortSince != null) {
+        sortWorst = Math.max(sortWorst, performance.now() - sortSince);
+        sortSince = null;
+      }
       for (const id of awaitingFrame) {
         if (meshes.get(id)?.visible) trace("destination visible (first frame drawn)", id);
         awaitingFrame.delete(id);
@@ -1517,20 +1535,27 @@ export default function SplatTour({
           const floor = Math.min(1, top);
           const next = rep.fps < 20 ? Math.max(floor, pr * 0.85) : rep.fps > 50 ? Math.min(top, pr * 1.15) : pr;
           // Fewer splats too, when slow (LoD): down to 40% of the device's budget, back up when fast.
-          if (spark?.enableLod) {
+          const still = camera.position.distanceTo(lastAdaptPos) < 0.05 && camera.quaternion.angleTo(lastAdaptQuat) < 0.02;
+          lastAdaptPos.copy(camera.position);
+          lastAdaptQuat.copy(camera.quaternion);
+          const sorted = sortWorst;
+          const sortSlow = sorted > SORT_SLOW_MS;
+          rep.sortMs = Math.round(sorted);
+          sortWorst = 0;
+          if (spark?.enableLod && (still || sortSlow || rep.fps < 28)) {
             let k = spark.lodSplatScale, px = spark.lodRenderScale;
             const canK = fixedDetail == null, canPx = fixedPx == null;
-            if (rep.fps < 28) {
+            if (rep.fps < 28 || sortSlow) {
               // Slow: bigger splats first (cheap to give back), then fewer.
               if (canPx && px < 2) px = Math.min(2, px + 0.25);
               else if (canK) k = Math.max(0.4, k * 0.85);
-            } else if (rep.fps > 50) {
+            } else if (rep.fps > 50 && sorted < SORT_SLOW_MS / 2) {
               // Frames to spare: more splats, then finer ones.
               if (canK && k < DETAIL_MAX) k = Math.min(DETAIL_MAX, k * 1.1);
               else if (canPx && px > PX_MIN) px = Math.max(PX_MIN, px - 0.25);
             }
-            spark.lodSplatScale = k;
-            spark.lodRenderScale = px;
+            if (k !== spark.lodSplatScale) spark.lodSplatScale = k;
+            if (px !== spark.lodRenderScale) spark.lodRenderScale = px;
             rep.lod = Math.round(k * 100) / 100;
             rep.lodPx = px;
           }
@@ -1977,7 +2002,7 @@ export default function SplatTour({
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""}{r?.sortMs ? ` · sort ${r.sortMs} ms` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
