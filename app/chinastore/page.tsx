@@ -15,6 +15,11 @@ export const metadata: Metadata = {
   robots: { index: false },
 };
 
+// Rendered per request, not prerendered: a prerendered page goes out with a
+// year-long s-maxage, and the CDN in front of the site then keeps showing the
+// previous walk after every deploy.
+export const dynamic = "force-dynamic";
+
 const serif = Cormorant_Garamond({
   subsets: ["latin"],
   weight: ["400", "500", "600"],

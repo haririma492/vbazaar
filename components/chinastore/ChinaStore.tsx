@@ -316,7 +316,7 @@ export default function ChinaStore({ serifClass }: { serifClass?: string }) {
       {(phase === "loading" || phase === "title") && (
         <div className="cs-title">
           <div className="cs-title-inner">
-            <span className="cs-kicker">VCA · investor preview</span>
+            <span className="cs-kicker">VCA · investor preview <span className="cs-build">build {process.env.NEXT_PUBLIC_BUILD}</span></span>
             <h1 className="cs-h1">The Virtual Mall</h1>
             <p className="cs-lede">Walk into a china store. Products tell you what they are as you near them. Pick one up, then carry your basket next door to the jeweller — and pay once, at the end of the trip.</p>
             {!webgl ? (

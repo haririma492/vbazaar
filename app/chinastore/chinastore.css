@@ -619,6 +619,11 @@
   text-transform: uppercase;
   color: var(--cs-gold);
 }
+.cs-build {
+  margin-left: 10px;
+  letter-spacing: 0.12em;
+  color: var(--cs-dim);
+}
 .cs-h1 {
   margin: 0;
   font-family: var(--cs-display);
