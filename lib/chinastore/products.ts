@@ -84,12 +84,15 @@ export const STORES: Record<string, string> = {
 // ── the merchant's catalogue ──────────────────────────────────────────────
 
 export const CATALOG: CatalogItem[] = [
-  { sku: "CT-1001", name: "Tea Cup & Saucer", price: 29, currency: "CAD", modelUrl: "/models/china/cup-saucer.glb", blurb: "Cobalt Royal · bone china" },
-  { sku: "CT-1002", name: "Dinner Plate", price: 39, currency: "CAD", modelUrl: "/models/china/dinner-plate.glb", blurb: "Cobalt Royal · 27 cm" },
-  { sku: "CT-1003", name: "Serving Bowl", price: 59, currency: "CAD", modelUrl: "/models/china/bowl.glb", blurb: "Cobalt Royal · 21 cm" },
-  { sku: "CT-1004", name: "Porcelain Teapot", price: 89, currency: "CAD", modelUrl: "/models/china/teapot.glb", blurb: "Cobalt Royal · 1.1 L · hand-gilded" },
-  { sku: "CT-1005", name: "Serving Platter", price: 64, currency: "CAD", modelUrl: "/models/china/platter.glb", blurb: "Cobalt Royal · 34 cm" },
-  { sku: "CT-1006", name: "Sugar Bowl", price: 34, currency: "CAD", modelUrl: "/models/china/sugar-bowl.glb", blurb: "Cobalt Royal · gilded handles" },
+  // The cabinet facing the door, after the store's photograph.
+  { sku: "CT-1001", name: "Imperial Cup & Saucer", price: 48, currency: "CAD", modelUrl: "/models/china/imperial-cup-saucer.glb", blurb: "Turquoise Imperial · gilded handle" },
+  { sku: "CT-1002", name: "Imperial Dinner Plate", price: 62, currency: "CAD", modelUrl: "/models/china/imperial-plate.glb", blurb: "Turquoise Imperial · 27 cm" },
+  { sku: "CT-1003", name: "Gold Coral Bowl", price: 85, currency: "CAD", modelUrl: "/models/china/coral-bowl.glb", blurb: "Gold Coral · 21 cm · 24k gilding" },
+  { sku: "CT-1004", name: "Imperial Teapot", price: 189, currency: "CAD", modelUrl: "/models/china/imperial-teapot.glb", blurb: "Turquoise Imperial · 1.2 L · gilded spout" },
+  { sku: "CT-1005", name: "Gold Coral Platter", price: 139, currency: "CAD", modelUrl: "/models/china/coral-platter.glb", blurb: "Gold Coral · 40 cm oval" },
+  { sku: "CT-1006", name: "Imperial Sugar Bowl", price: 74, currency: "CAD", modelUrl: "/models/china/imperial-sugar.glb", blurb: "Turquoise Imperial · gilded handles" },
+  { sku: "CT-1007", name: "Imperial Soup Tureen", price: 289, currency: "CAD", modelUrl: "/models/china/imperial-tureen.glb", blurb: "Turquoise Imperial · 3 L" },
+  { sku: "CT-1008", name: "Blue Baroque Plate", price: 58, currency: "CAD", modelUrl: "/models/china/baroque-plate.glb", blurb: "Blue Baroque · 27 cm" },
   // On the sale post by the door.
   {
     sku: "CT-1042", name: "Prunus Ginger Jar", price: 129, salePrice: 99, currency: "CAD", modelUrl: "/models/china/ginger-jar.glb", blurb: "Cobalt ground · cracked ice & blossom",
@@ -128,9 +131,9 @@ const PLINTH_Y = 0.92;
 // A plate stands on its stand face-on, leaning back 15°: turned 75° about x.
 const PLATE_TILT = (75 * Math.PI) / 180;
 
-/** The teapot held by its handle: fingers into the loop, palm on the bar. */
+/** The teapot held by its gilded handle: fingers into the loop, palm on the bar. */
 const TEAPOT_GRASP: Grasp = {
-  point: [0.13, 0.07, 0],
+  point: [0.115, 0.12, 0],
   // Fingers into the loop (−z), back of the hand to the right (+x), little
   // finger down; then the wrist turned 34° and dropped 17° so the forearm
   // comes from the shopper's lower right, not straight out of the shelf.
@@ -138,14 +141,17 @@ const TEAPOT_GRASP: Grasp = {
 };
 
 export const HOTSPOTS: Hotspot[] = [
-  // The shelf.
-  { sceneId: SCENE_ID, sku: "CT-1001", id: "cup-01", anchor: { x: -0.72, y: SHELF_Y + 0.05, z: -2.24 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.72, y: SHELF_Y, z: -2.24 }, yaw: 0.2 } },
-  { sceneId: SCENE_ID, sku: "CT-1004", id: "teapot-01", hero: true, anchor: { x: 0.04, y: SHELF_Y + 0.085, z: -2.25 }, labelDistance: 3.5, selectionDistance: 1.6, display: { position: { x: 0.04, y: SHELF_Y, z: -2.25 }, yaw: 0.12 }, grasp: TEAPOT_GRASP },
-  { sceneId: SCENE_ID, sku: "CT-1006", id: "sugar-01", anchor: { x: 0.72, y: SHELF_Y + 0.055, z: -2.24 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.72, y: SHELF_Y, z: -2.24 }, yaw: -0.1 } },
-  // The counter.
-  { sceneId: SCENE_ID, sku: "CT-1005", id: "platter-01", labelSide: "below", anchor: { x: -0.72, y: COUNTER_Y + 0.182, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.72, y: COUNTER_Y + 0.182, z: -2.2 }, tilt: PLATE_TILT } },
-  { sceneId: SCENE_ID, sku: "CT-1003", id: "bowl-01", labelSide: "below", anchor: { x: 0.0, y: COUNTER_Y + 0.04, z: -2.12 }, labelDistance: 3.2, selectionDistance: 1.6, display: { position: { x: 0.0, y: COUNTER_Y, z: -2.12 } } },
-  { sceneId: SCENE_ID, sku: "CT-1002", id: "plate-01", labelSide: "below", anchor: { x: 0.72, y: COUNTER_Y + 0.15, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.72, y: COUNTER_Y + 0.15, z: -2.2 }, tilt: PLATE_TILT } },
+  // The glass shelf: Turquoise Imperial, the teapot among its set.
+  { sceneId: SCENE_ID, sku: "CT-1001", id: "cup-01", labelSide: "below", anchor: { x: -1.1, y: SHELF_Y + 0.045, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.1, y: SHELF_Y, z: -2.19 }, yaw: 0.3 } },
+  { sceneId: SCENE_ID, sku: "CT-1004", id: "teapot-01", hero: true, anchor: { x: -0.72, y: SHELF_Y + 0.12, z: -2.21 }, labelDistance: 3.5, selectionDistance: 1.6, display: { position: { x: -0.72, y: SHELF_Y, z: -2.21 }, yaw: 0.1 }, grasp: TEAPOT_GRASP },
+  { sceneId: SCENE_ID, sku: "CT-1006", id: "sugar-01", labelSide: "below", anchor: { x: -0.38, y: SHELF_Y + 0.05, z: -2.19 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.38, y: SHELF_Y, z: -2.19 }, yaw: -0.2 } },
+  { sceneId: SCENE_ID, sku: "CT-1002", id: "plate-01", anchor: { x: 0.12, y: SHELF_Y + 0.143, z: -2.36 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.12, y: SHELF_Y + 0.143, z: -2.36 }, tilt: PLATE_TILT } },
+  { sceneId: SCENE_ID, sku: "CT-1007", id: "tureen-01", anchor: { x: 1.02, y: SHELF_Y + 0.1, z: -2.27 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 1.02, y: SHELF_Y, z: -2.27 }, yaw: 0.15 } },
+  // The glass shelf above: Blue Baroque.
+  { sceneId: SCENE_ID, sku: "CT-1008", id: "baroque-plate-01", anchor: { x: 0.25, y: 1.66 + 0.143, z: -2.36 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.25, y: 1.66 + 0.143, z: -2.36 }, tilt: PLATE_TILT } },
+  // The counter: Gold Coral.
+  { sceneId: SCENE_ID, sku: "CT-1005", id: "platter-01", labelSide: "below", anchor: { x: -0.35, y: COUNTER_Y + 0.157, z: -2.36 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.35, y: COUNTER_Y + 0.157, z: -2.36 }, tilt: PLATE_TILT } },
+  { sceneId: SCENE_ID, sku: "CT-1003", id: "bowl-01", labelSide: "below", anchor: { x: 0.08, y: COUNTER_Y + 0.04, z: -2.14 }, labelDistance: 3.2, selectionDistance: 1.6, display: { position: { x: 0.08, y: COUNTER_Y, z: -2.14 } } },
   // The plinth by the entrance.
   { sceneId: SCENE_ID, sku: "CT-1042", id: "jar-01", adDistance: 2.6, anchor: { x: -1.3, y: PLINTH_Y + 0.13, z: 2.0 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -1.3, y: PLINTH_Y, z: 2.0 }, yaw: 0.4 } },
   { sceneId: SCENE_ID, sku: "CT-1043", id: "vase-01", anchor: { x: -1.08, y: PLINTH_Y + 0.16, z: 1.82 }, labelDistance: 3.0, selectionDistance: 1.6, labelSide: "below", display: { position: { x: -1.08, y: PLINTH_Y, z: 1.82 } } },

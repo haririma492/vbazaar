@@ -23,9 +23,9 @@ export const KEYS: Key[] = [
   { t: 5.6, eye: [-0.15, 1.62, 3.0], look: [-1.15, 1.0, 1.85] },
   { t: 7.6, eye: [-0.12, 1.62, 1.55], look: [-0.5, 1.2, -1.4] },
   // 7.5–11 s: the wall fills the view; its labels appear.
-  { t: 10.0, eye: [-0.06, 1.61, 0.15], look: [-0.05, 1.18, -2.25] },
+  { t: 10.0, eye: [-0.1, 1.61, 0.2], look: [-0.15, 1.3, -2.25] },
   // 11–14 s: in to the teapot.
-  { t: 13.4, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
+  { t: 13.4, eye: [-0.6, 1.6, -0.8], look: [-0.72, 1.32, -2.22] },
 ];
 
 /**
@@ -33,9 +33,9 @@ export const KEYS: Key[] = [
  * along the mall to the jewellery store next door, in to the solitaire.
  */
 export const MALL_KEYS: Key[] = [
-  { t: 20.6, eye: [0.14, 1.6, -0.78], look: [0.05, 1.28, -2.25] },
+  { t: 20.6, eye: [-0.6, 1.6, -0.8], look: [-0.72, 1.32, -2.22] },
   // Turn round (by the right) toward the door.
-  { t: 21.9, eye: [0.2, 1.61, -0.25], look: [2.6, 1.45, -0.2] },
+  { t: 21.9, eye: [-0.3, 1.61, -0.3], look: [2.2, 1.45, -0.2] },
   { t: 23.2, eye: [0.22, 1.62, 1.1], look: [0.1, 1.55, 6.0] },
   // Out through the doorway, into the mall; look along it to the right.
   { t: 25.4, eye: [0.05, 1.63, 4.7], look: [3.0, 1.65, 9.0] },
