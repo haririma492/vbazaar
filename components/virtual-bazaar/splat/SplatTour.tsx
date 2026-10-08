@@ -27,7 +27,7 @@
  *
  *   /vca/splat                  the tour, from its start scene
  *   /vca/splat?scene=store-01   the tour, from that scene
- *   /vca/splat?edit=1           place exits and start poses (operator token)
+ *   /vca/splat?edit=1           place exits, start poses and new shop signs (operator token)
  *   /vca/splat?src=<url>        one file alone, no tour (?flip=0 if it is y-up)
  *
  * Controls: drag to look; wheel or pinch to zoom; W A S D / arrows or the
@@ -37,13 +37,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import type { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
+import type { SparkRenderer, SplatEdit, SplatEditSdf, SplatMesh } from "@sparkjsdev/spark";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   addDoor, addExit, emptyTour, enter, leave, parseTour, removeDoor, removeExit, sceneById, updateScene,
-  DEFAULT_DRIVE, DRIVE_LIMITS, LOOKS, hubOf, lookOf, setDrive, setHub, setStartScene,
-  type Door, type Look, type Drive, type Exit, type TourScene, type Pose, type Tour, type Trail, type Vec3,
+  DEFAULT_DRIVE, DRIVE_LIMITS, LOOKS, MAX_SIGNS, hubOf, lookOf, setDrive, setHub, setStartScene,
+  addSign, nextSignId, removeSign, updateSign,
+  type Door, type Look, type Drive, type Exit, type Sign, type TourScene, type Pose, type Tour, type Trail, type Vec3,
 } from "@/lib/splats/tour";
+import { BACKING_LIFT, IMAGE_LIFT, glowGain, grow, hideBox, lift, orderCorners, planeOf, rayPlane, type Corners } from "@/lib/splats/signs";
+import { MAX_SIGN_IMAGE_BYTES, imageTypeOf } from "@/lib/splats/keys";
 import { bridges, doorLane, inReach, keepInside, seams, untangle, type Lane } from "@/lib/splats/corridor";
 import WalkStick from "./WalkStick";
 import { downloadSplat, makeMarker, splatBase } from "./load";
@@ -85,7 +88,12 @@ type Report = {
   sortMs?: number;
   /** Streamed pieces held / the pool's room (pages of 65 536 splats). */
   pool?: string;
+  /** Replaced signs: drawn with their image / placed / images that did not load. */
+  signs?: string;
 };
+
+/** A point the operator tapped while marking a sign's corners, in the scene here's own coordinates. */
+type SignPick = { at: Vec3; eye: Vec3; how: "splat" | "plane" | "depth" };
 
 declare global {
   interface Window {
@@ -174,6 +182,18 @@ type Engine = {
    * other from the guess. Loads both. Null when there is too little to fit.
    */
   matchJoin: (a: string, b: string, guess: Place, seam: Vec3, bStart: Vec3, radius: number) => Promise<Fit | null>;
+  /**
+   * The replaced signs (`TourScene.signs`), by scene id: drawn over the old
+   * boards for every visitor, the old splats there hidden. `selected` is
+   * outlined (edit mode).
+   */
+  setSigns: (byScene: Record<string, Sign[]>, selected: string | null) => void;
+  /**
+   * «Replace a sign» (edit mode): `on`, a tap marks a corner (`onSignPick`)
+   * instead of taking an exit; `draft` (the scene here's own coordinates) is
+   * outlined, with a line on to wherever the mouse points.
+   */
+  setSignPicking: (on: boolean, draft: Vec3[]) => void;
 };
 
 /** «Slow / Normal / Fast»: metres per second at full stick, remembered on this device. */
@@ -248,7 +268,13 @@ export default function SplatTour({
   const [doorName, setDoorName] = useState("");
   // How the last «go on to» join was made: by the pictures, or the paths only (and why).
   const [joinNote, setJoinNote] = useState("");
-  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "scenes" | "info">("route");
+  const [panelTab, setPanelTab] = useState<"route" | "drive" | "shops" | "signs" | "scenes" | "info">("route");
+  // «Replace a sign»: the corners being marked (and where from), or four marked waiting for the image; the sign selected.
+  const [signPick, setSignPick] = useState<{ corners: Vec3[]; eyes: Vec3[]; missed: number; target: string | null } | null>(null);
+  const [signCorners, setSignCorners] = useState<Corners | null>(null);
+  const [signSel, setSignSel] = useState<string | null>(null);
+  const [signNote, setSignNote] = useState("");
+  const [signBusy, setSignBusy] = useState(false);
   // How far the dashboard is pushed left (0: open; −(PANEL_W − GRIP_W): only the grip shows).
   const [panelX, setPanelX] = useState(0);
   // Where the operator left the dashboard (and its tab) survives a reload.
@@ -256,7 +282,7 @@ export default function SplatTour({
     try {
       const saved = JSON.parse(window.localStorage.getItem(PANEL_KEY) || "{}") as { x?: number; tab?: string };
       if (typeof saved.x === "number") setPanelX(saved.x < -10 ? -(PANEL_W - GRIP_W) : 0);
-      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "scenes" || saved.tab === "info") setPanelTab(saved.tab);
+      if (saved.tab === "route" || saved.tab === "drive" || saved.tab === "shops" || saved.tab === "signs" || saved.tab === "scenes" || saved.tab === "info") setPanelTab(saved.tab);
     } catch { /* fine */ }
   }, []);
   useEffect(() => {
@@ -334,6 +360,9 @@ export default function SplatTour({
   const currentRef = useRef<string | null>(null);
   const exitHandler = useRef<(exit: Exit) => void>(() => {});
   const onReach = useRef<(r: Reach) => void>(() => {});
+  // «Replace a sign»: a corner tapped in the view, and a sign tapped (to select it), edit mode only.
+  const onSignPick = useRef<(p: SignPick) => void>(() => {});
+  const onSignTap = useRef<(id: string) => void>(() => {});
   // Which way the visitor is glancing (−1 left, 0 ahead, 1 right): the look buttons show it.
   const onLook = useRef<(side: number) => void>(() => {});
   const [lookSide, setLookSide] = useState(0);
@@ -564,8 +593,10 @@ export default function SplatTour({
       if (!sparkMod) return;
       // Aligning: every scene shows whole — the overlap is what is being lined up.
       const mine = aligningId ? [] : seamList.filter((s) => s.from === id || s.to === id);
+      // The old splats under this scene's new signs stay hidden, joined or not.
+      const signEdit = signEdits.get(mesh);
       if (!mine.length) {
-        mesh.edits = [];
+        mesh.edits = signEdit ? [signEdit] : [];
         return;
       }
       const edit = new sparkMod.SplatEdit({ rgbaBlendMode: sparkMod.SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0.4 });
@@ -579,8 +610,269 @@ export default function SplatTour({
         sdf.updateMatrixWorld();
         edit.addSdf(sdf);
       }
-      mesh.edits = [edit];
+      mesh.edits = signEdit ? [edit, signEdit] : [edit];
     };
+
+    // ⚠️ THE REPLACED SIGNS (founder, 2026-10-08: store signs must look BRAND
+    // NEW — "really big for commercialization"). Generative AI garbles Persian
+    // lettering, so the filmed board is not repainted: the shop's own image is
+    // drawn over it as an ordinary three.js quad, crisp at any distance
+    // (mipmaps, anisotropy), for every visitor.
+    //   • IT FOLLOWS THE SCENE. The signs hang under their scene's mesh, in a
+    //     group that undoes the mesh's upright turn: they are in the scene's
+    //     own coordinates (like its route), so `place` and `flip` move them
+    //     with it, and they show exactly when the scene does.
+    //   • DEPTH, NOT PAINT ORDER. The quad and its backing are opaque and
+    //     write depth; Spark draws its splats afterwards (transparent, depth
+    //     tested, no depth write) — so the splats behind the sign are hidden
+    //     by it, and the ones in front of it (a pole, an awning, a passer-by)
+    //     still cover it.
+    //   • NO GHOSTS. The image sits a little in front of the old board, on an
+    //     opaque backing a little larger (`cover`) so the old sign never peeks
+    //     out at its edges; and the old board's splats — those just in front
+    //     of it too, its fuzz, which would show through — are removed by a
+    //     SplatEdit box like the seams' (`hideBox`). Whole files and streamed
+    //     (.rad) scenes alike: the edit works on whatever splats are drawn.
+    let signsBy: Record<string, Sign[]> = {};
+    let signSelected: string | null = null;
+    const signHolders = new WeakMap<SplatMesh, THREE.Group>();
+    const signEdits = new WeakMap<SplatMesh, SplatEdit>();
+    const signImages = new Map<string, Promise<{ tex: THREE.Texture; edge: THREE.Color }>>();
+    const signFailed = new Set<string>();
+    const SIGN_EDGE = new THREE.Color(0x202326);
+    /** The image, onto its own edge colour (a logo's see-through parts become its board), as a crisp texture. */
+    const signImage = (key: string) => {
+      const have = signImages.get(key);
+      if (have) return have;
+      const p = (async () => {
+        const res = await fetch(`${baseRef.current}/${key}`, { mode: "cors" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const bmp = await createImageBitmap(await res.blob());
+        // The edge colour: the border of a small copy, as opaque as it is.
+        const S = 24;
+        const small = document.createElement("canvas");
+        small.width = small.height = S;
+        const sx = small.getContext("2d", { willReadFrequently: true })!;
+        sx.drawImage(bmp, 0, 0, S, S);
+        const d = sx.getImageData(0, 0, S, S).data;
+        let r = 0, g = 0, b = 0, a = 0;
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          if (x > 1 && x < S - 2 && y > 1 && y < S - 2) continue;
+          const i = (y * S + x) * 4, al = d[i + 3] / 255;
+          r += d[i] * al; g += d[i + 1] * al; b += d[i + 2] * al; a += al;
+        }
+        const edge = a > 8 ? new THREE.Color().setRGB(r / a / 255, g / a / 255, b / a / 255, THREE.SRGBColorSpace) : SIGN_EDGE.clone();
+        const max = Math.min(renderer.capabilities.maxTextureSize, phone ? 2048 : 4096);
+        const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.max(1, Math.round(bmp.width * k));
+        cv.height = Math.max(1, Math.round(bmp.height * k));
+        const cx = cv.getContext("2d")!;
+        cx.fillStyle = `#${edge.getHexString(THREE.SRGBColorSpace)}`;
+        cx.fillRect(0, 0, cv.width, cv.height);
+        cx.imageSmoothingQuality = "high";
+        cx.drawImage(bmp, 0, 0, cv.width, cv.height);
+        bmp.close();
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.generateMipmaps = true;
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        return { tex, edge };
+      })();
+      signImages.set(key, p);
+      p.catch(() => signImages.delete(key));
+      return p;
+    };
+    /** Two triangles over four corners (top-left, top-right, bottom-right, bottom-left), facing the street. */
+    const quadGeometry = (c: Corners) => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(c.flat(), 3));
+      g.setAttribute("uv", new THREE.Float32BufferAttribute([0, 1, 1, 1, 1, 0, 0, 0], 2));
+      g.setIndex([0, 3, 1, 1, 3, 2]);
+      g.computeBoundingSphere();
+      return g;
+    };
+    const disposeTree = (o: THREE.Object3D) => o.traverse((n) => {
+      const m = n as THREE.Mesh;
+      m.geometry?.dispose();
+      const mat = m.material as THREE.Material | undefined;
+      mat?.dispose(); // textures are shared (by image), kept
+    });
+    const signCount = () => {
+      let placed = 0, drawn = 0;
+      meshes.forEach((m) => signHolders.get(m)?.children.forEach((g) => {
+        if (!g.userData.signId) return;
+        placed++;
+        if (g.userData.drawn) drawn++;
+      }));
+      rep.signs = placed ? `${drawn} drawn of ${placed}${signFailed.size ? ` · ${signFailed.size} image(s) did not load` : ""}` : undefined;
+    };
+    const applySigns = (id: string, mesh: SplatMesh) => {
+      if (!sparkMod || id.endsWith(WHOLE) || id === "__single") return;
+      const m = sparkMod;
+      let holder = signHolders.get(mesh);
+      if (!holder) {
+        holder = new THREE.Group();
+        holder.name = "signs";
+        mesh.add(holder);
+        signHolders.set(mesh, holder);
+      }
+      // Undo the mesh's upright turn: the group is the scene's own coordinates.
+      holder.quaternion.copy((sourceOf(id)?.flip ?? true) ? FLIP_Q : new THREE.Quaternion());
+      for (const c of [...holder.children]) {
+        holder.remove(c);
+        disposeTree(c);
+      }
+      const list = signsBy[id] ?? [];
+      const sdfs: SplatEditSdf[] = [];
+      for (const s of list) {
+        const g = new THREE.Group();
+        g.userData.signId = s.id;
+        const gain = glowGain(s.glow);
+        const backing = new THREE.Mesh(
+          quadGeometry(lift(grow(s.corners, s.cover), BACKING_LIFT)),
+          new THREE.MeshBasicMaterial({ color: SIGN_EDGE.clone().multiplyScalar(gain), side: THREE.DoubleSide }),
+        );
+        const image = new THREE.Mesh(
+          quadGeometry(lift(s.corners, IMAGE_LIFT)),
+          // Nudged forward in depth too: never mixed with its own backing, however far.
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(gain, gain, gain), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }),
+        );
+        image.visible = false;
+        backing.userData.signId = image.userData.signId = s.id;
+        g.add(backing, image);
+        if (s.id === signSelected) {
+          const ring = lift(grow(s.corners, s.cover + 0.02), IMAGE_LIFT);
+          const line = new THREE.LineLoop(
+            new THREE.BufferGeometry().setFromPoints(ring.map((p) => new THREE.Vector3(...p))),
+            new THREE.LineBasicMaterial({ color: 0xfbbf24, depthTest: false, transparent: true }),
+          );
+          line.renderOrder = 10;
+          g.add(line);
+        }
+        holder.add(g);
+        void signImage(s.image).then(({ tex, edge }) => {
+          if (!g.parent) return; // rebuilt meanwhile
+          (image.material as THREE.MeshBasicMaterial).map = tex;
+          (image.material as THREE.MeshBasicMaterial).needsUpdate = true;
+          (backing.material as THREE.MeshBasicMaterial).color.copy(edge).multiplyScalar(gain);
+          image.visible = true;
+          g.userData.drawn = true;
+          signFailed.delete(s.image);
+          signCount();
+          publish();
+        }).catch((e) => {
+          signFailed.add(s.image);
+          trace("sign image did not load", id, `${s.image}: ${(e as Error).message}`);
+          signCount();
+          publish();
+        });
+        // The old board's splats: a box just in front of it to behind it.
+        const box = hideBox(s.corners, s.cover);
+        if (box) {
+          const sdf = new m.SplatEditSdf({ type: m.SplatEditSdfType.BOX, opacity: 0 });
+          sdf.position.set(...box.center);
+          sdf.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+            new THREE.Vector3(...box.right), new THREE.Vector3(...box.up), new THREE.Vector3(...box.out)));
+          sdf.scale.set(...box.half);
+          // In the group: Spark reads its world place each frame, so it moves with the scene.
+          holder.add(sdf);
+          sdfs.push(sdf);
+        }
+      }
+      if (sdfs.length) signEdits.set(mesh, new m.SplatEdit({ rgbaBlendMode: m.SplatEditRgbaBlendMode.MULTIPLY, softEdge: 0.02, sdfs }));
+      else signEdits.delete(mesh);
+      applySeams(id, mesh);
+      signCount();
+    };
+    // «Replace a sign»: the corners marked so far (the scene here's own coordinates) and where the mouse points.
+    let signPicking = false;
+    let signDraft: Vec3[] = [];
+    let signHover: THREE.Vector3 | null = null;
+    const draftLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xfbbf24, depthTest: false, transparent: true }));
+    const draftDots = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: 0xfbbf24, size: 9, sizeAttenuation: false, depthTest: false, transparent: true }));
+    draftLine.renderOrder = draftDots.renderOrder = 11;
+    draftLine.frustumCulled = draftDots.frustumCulled = false;
+    scene.add(draftLine, draftDots);
+    const hereHolder = () => {
+      const mesh = meshes.get(currentId);
+      const h = mesh ? signHolders.get(mesh) : undefined;
+      h?.updateMatrixWorld(true);
+      return h;
+    };
+    const drawDraft = () => {
+      const h = hereHolder();
+      const pts = h ? signDraft.map((p) => h.localToWorld(new THREE.Vector3(...p))) : [];
+      const dots = [...pts];
+      if (signPicking && signHover) pts.push(signHover);
+      // Closed once four are marked; while marking, back to the first too (the board as it will be).
+      if (pts.length >= 3) pts.push(pts[0]);
+      draftLine.geometry.dispose();
+      draftLine.geometry = new THREE.BufferGeometry().setFromPoints(pts);
+      draftDots.geometry.dispose();
+      draftDots.geometry = new THREE.BufferGeometry().setFromPoints(dots);
+      draftLine.visible = pts.length > 1;
+      draftDots.visible = dots.length > 0;
+    };
+    /**
+     * The point under the screen position, in the scene here's own
+     * coordinates: the nearest splat the ray meets (precise: every splat
+     * drawn, not Spark's coarse picking set); else, missed, the plane of the
+     * corners so far; else as far as the corners so far, or the walls.
+     */
+    const pickSurface = (cx: number, cy: number, precise: boolean): SignPick | null => {
+      const h = hereHolder();
+      if (!h) return null;
+      const r = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+      let best: THREE.Vector3 | null = null;
+      let bestD = Infinity;
+      meshes.forEach((m, k) => {
+        if (!m.visible || k.endsWith(WHOLE)) return;
+        const mm = m as unknown as { raycastIndices?: unknown };
+        const coarse = mm.raycastIndices;
+        if (precise) mm.raycastIndices = undefined;
+        try {
+          for (const hit of raycaster.intersectObject(m, false)) {
+            if (hit.distance > 0.3 && hit.distance < bestD) {
+              bestD = hit.distance;
+              best = hit.point.clone();
+            }
+          }
+        } catch {
+          /* not ready to be picked: the fallbacks below */
+        } finally {
+          if (precise) mm.raycastIndices = coarse;
+        }
+      });
+      const local = (v: THREE.Vector3) => h.worldToLocal(v.clone()).toArray() as Vec3;
+      const eye = local(camera.position);
+      if (best) return { at: local(best), eye, how: "splat" };
+      const o = local(raycaster.ray.origin);
+      const tip = local(raycaster.ray.origin.clone().add(raycaster.ray.direction));
+      const dir = new THREE.Vector3(tip[0] - o[0], tip[1] - o[1], tip[2] - o[2]).normalize();
+      const plane = planeOf(signDraft);
+      const onPlane = plane ? rayPlane(o, dir.toArray() as Vec3, plane) : null;
+      if (onPlane) return { at: onPlane, eye, how: "plane" };
+      const far = signDraft.length
+        ? signDraft.reduce((s, p) => s + Math.hypot(p[0] - eye[0], p[1] - eye[1], p[2] - eye[2]), 0) / signDraft.length
+        : Math.max(1.5, world.find((m) => m.id === currentId)?.half ?? 1.5);
+      return { at: [o[0] + dir.x * far, o[1] + dir.y * far, o[2] + dir.z * far], eye, how: "depth" };
+    };
+    /** A sign tapped in the view (edit mode): its id, or null. */
+    const tappedSign = (cx: number, cy: number): string | null => {
+      const targets: THREE.Object3D[] = [];
+      meshes.forEach((m) => {
+        if (m.visible) signHolders.get(m)?.children.forEach((g) => g.children.forEach((o) => { if (o.userData.signId && (o as THREE.Mesh).isMesh) targets.push(o); }));
+      });
+      if (!targets.length) return null;
+      const r = renderer.domElement.getBoundingClientRect();
+      raycaster.setFromCamera(new THREE.Vector2(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1), camera);
+      return (raycaster.intersectObjects(targets, false)[0]?.object.userData.signId as string | undefined) ?? null;
+    };
+    const editMode = params.get("edit") === "1";
     // Straight lanes across the gaps between joined scenes' routes (`bridges`).
     let links: Lane[] = [];
     // When the end of a route last carried the visitor on through its exit.
@@ -762,6 +1054,7 @@ export default function SplatTour({
         publish();
         applyLookTo(id, mesh);
         meshes.set(id, mesh);
+        applySigns(id, mesh);
         return mesh;
       }
 
@@ -816,6 +1109,7 @@ export default function SplatTour({
       publish();
       applyLookTo(id, mesh);
       meshes.set(id, mesh);
+      applySigns(id, mesh);
       if (prepareJoins && !id.endsWith(WHOLE)) void pointsOf(id, mesh, flip);
       return mesh;
     }
@@ -1212,6 +1506,25 @@ export default function SplatTour({
       setDrive(d) {
         drive = d;
       },
+      setSigns(byScene, selected) {
+        signsBy = byScene;
+        signSelected = selected;
+        const apply = () => {
+          if (!sparkMod) return false;
+          meshes.forEach((m, id) => applySigns(id, m));
+          drawDraft();
+          publish();
+          return true;
+        };
+        if (!apply()) void sparkReady.then(apply);
+      },
+      setSignPicking(on, draft) {
+        signPicking = on;
+        signDraft = draft;
+        if (!on) signHover = null;
+        renderer.domElement.style.cursor = on ? "crosshair" : "";
+        drawDraft();
+      },
     };
 
     window.__splatPose = () => engine.current?.pose();
@@ -1282,13 +1595,35 @@ export default function SplatTour({
       pinch = 0;
       // A tap (not a drag) on a marker takes its exit.
       if (downAt && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) < 8 && performance.now() - downAt.t < 500) {
+        // Marking a sign's corners: the tap is a corner, nothing else.
+        if (signPicking) {
+          const p = pickSurface(e.clientX, e.clientY, true);
+          if (p) onSignPick.current(p);
+          downAt = null;
+          return;
+        }
         const r = renderer.domElement.getBoundingClientRect();
         raycaster.setFromCamera(new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1), camera);
         const hit = raycaster.intersectObjects(markers.children, false)[0];
         const exit = hit && markerExits.find((x) => x.id === hit.object.userData.exitId);
         if (exit) exitHandler.current(exit);
+        else if (editMode) {
+          const sign = tappedSign(e.clientX, e.clientY);
+          if (sign) onSignTap.current(sign);
+        }
       }
       downAt = null;
+    };
+    // Marking a sign with the mouse: the outline runs on to where it points
+    // (the coarse picking set, a few times a second — cheap).
+    let hoverAt = 0;
+    const onHover = (e: PointerEvent) => {
+      if (!signPicking || pointers.size || e.pointerType !== "mouse" || performance.now() - hoverAt < 120) return;
+      hoverAt = performance.now();
+      const p = pickSurface(e.clientX, e.clientY, false);
+      const h = hereHolder();
+      signHover = p && h ? h.localToWorld(new THREE.Vector3(...p.at)) : null;
+      drawDraft();
     };
     // ⚠️ GENTLE ZOOM. A laptop touchpad's two-finger scroll fires dozens of
     // wheel events a second; each one is capped so the view cannot fly to
@@ -1345,6 +1680,7 @@ export default function SplatTour({
     const canvas = renderer.domElement;
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointermove", onHover);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointercancel", onUp);
     canvas.addEventListener("wheel", onWheel, { passive: false });
@@ -1726,6 +2062,24 @@ export default function SplatTour({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lookKey, here?.id]);
 
+  // The replaced signs: every scene's own, for every visitor; the one selected outlined in edit mode.
+  const signsKey = tour ? JSON.stringify(tour.scenes.map((s) => [s.id, s.flip, s.signs])) : "";
+  useEffect(() => {
+    if (!tour) return;
+    engine.current?.setSigns(Object.fromEntries(tour.scenes.map((s) => [s.id, s.signs])), editing ? signSel : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signsKey, signSel, editing]);
+  // The corners being marked, or the four waiting for their image, outlined in the view.
+  useEffect(() => {
+    engine.current?.setSignPicking(signPick != null, signPick?.corners ?? signCorners ?? []);
+  }, [signPick, signCorners]);
+  // Another scene: whatever was being marked there is let go.
+  useEffect(() => {
+    setSignPick(null);
+    setSignCorners(null);
+    setSignSel(null);
+  }, [current]);
+
   // Walls stay up except while the operator records a route or aligns a scene (or lowers them to look round).
   useEffect(() => {
     engine.current?.setWalls(!(recordingRoute || (editing && wallsOff)));
@@ -1807,6 +2161,7 @@ export default function SplatTour({
       if (e.key === "z" || e.key === "Z") engine.current?.look(lookSide === -1 ? 0 : -1);
       if (e.key === "c" || e.key === "C") engine.current?.look(lookSide === 1 ? 0 : 1);
       if (e.key === "x" || e.key === "X") engine.current?.look(0);
+      if (e.key === "Escape" && signPick) setSignPick(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1924,6 +2279,96 @@ export default function SplatTour({
     // Recorded in the world; kept in the scene's own coordinates.
     const local = here.place ? pts.map((p) => toLocal(here.place as Place, p)) : pts;
     if (pts.length > 1) changeTour(updateScene(tour, here.id, { route: local }));
+  }
+
+  /**
+   * ⚠️ «REPLACE A SIGN» (founder, 2026-10-08: "really big for
+   * commercialization"). The operator taps the four corners of the old
+   * signboard (any order: they are sorted as seen from where they stood), then
+   * gives the shop's image; it is uploaded to the scene's `signs/` folder and
+   * the sign saved at once — an image without its sign would be lost.
+   */
+  onSignPick.current = (p) => {
+    const cur = signPick;
+    if (!cur || !tour || !here) return;
+    const corners = [...cur.corners, p.at];
+    const eyes = [...cur.eyes, p.eye];
+    const missed = cur.missed + (p.how === "splat" ? 0 : 1);
+    if (corners.length < 4) {
+      setSignPick({ ...cur, corners, eyes, missed });
+      setSignNote(p.how === "splat" ? "" : p.how === "plane"
+        ? "That click missed the splats: put on the plane of the corners so far."
+        : "That click missed the splats: put at the distance of the corners so far — check the outline from the side.");
+      return;
+    }
+    setSignPick(null);
+    const eye = eyes.reduce<Vec3>((s, e) => [s[0] + e[0] / 4, s[1] + e[1] / 4, s[2] + e[2] / 4], [0, 0, 0]);
+    const ordered = orderCorners(corners, eye);
+    if (!ordered) return setSignNote("Those four points make no board. «Replace a sign» again, and tap its four corners.");
+    const note = missed ? ` ${missed} corner${missed > 1 ? "s" : ""} missed the splats — check the outline.` : "";
+    if (cur.target) {
+      changeTour(updateSign(tour, here.id, cur.target, { corners: ordered }));
+      setSignNote(`Corners moved.${note} Save to keep them.`);
+      return;
+    }
+    setSignCorners(ordered);
+    setSignNote(`Four corners marked.${note} Now choose the new sign's image.`);
+  };
+  onSignTap.current = (id) => {
+    if (signPick || signCorners) return;
+    setSignSel(id);
+    setPanelTab("signs");
+    setPanelX(0);
+  };
+
+  /** An image to R2 (`scenes/<scene>/signs/…`): straight from the browser, or through our server if R2 refuses it. The key. */
+  async function uploadSignImage(sceneId: string, signId: string, file: File): Promise<string> {
+    const type = imageTypeOf(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
+    if (!type) throw new Error("choose a PNG, JPEG or WebP image");
+    if (file.size > MAX_SIGN_IMAGE_BYTES) throw new Error(`the image is ${(file.size / 1048576).toFixed(1)} MB — at most ${MAX_SIGN_IMAGE_BYTES / 1048576} MB`);
+    const res = await fetch("/api/operator/splats", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
+      body: JSON.stringify({ action: "signImage", scene: sceneId, sign: signId, type, size: file.size }),
+    });
+    const s = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; key?: string; url?: string; headers?: Record<string, string> };
+    if (!res.ok || !s.ok || !s.key || !s.url) throw new Error(s.error || `HTTP ${res.status}`);
+    const direct = await fetch(s.url, { method: "PUT", headers: s.headers, body: file }).then((r) => r.ok).catch(() => false);
+    if (!direct) {
+      const r = await fetch(`/api/operator/splats/sign-image?key=${encodeURIComponent(s.key)}`, {
+        method: "PUT", headers: { "x-admin-token": readAdminToken(), "content-type": type }, body: file,
+      });
+      const j = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    }
+    return s.key;
+  }
+
+  /** The image for the four corners just marked (a new sign), or a new image for the sign selected. */
+  async function signImageChosen(file: File | undefined) {
+    if (!file || !tour || !here || signBusy) return;
+    const replacing = signCorners ? null : signSel;
+    if (!signCorners && !replacing) return;
+    const id = replacing ?? nextSignId(tour, here.id);
+    setSignBusy(true);
+    setSignNote("Uploading the image…");
+    try {
+      const key = await uploadSignImage(here.id, id, file);
+      const latest = tourRef.current ?? tour;
+      const next = replacing
+        ? updateSign(latest, here.id, id, { image: key })
+        : addSign(latest, here.id, { id, corners: signCorners!, image: key });
+      if (next === latest) throw new Error(`the sign could not be ${replacing ? "changed" : `added (at most ${MAX_SIGNS} a scene)`}`);
+      setTour(next);
+      setSignCorners(null);
+      setSignSel(id);
+      await saveTour(next);
+      setSignNote(replacing ? "✓ New image up and saved." : "✓ The new sign is up and saved.");
+    } catch (e) {
+      setSignNote(`Not done: ${(e as Error).message}`);
+    } finally {
+      setSignBusy(false);
+    }
   }
 
   /** Edit another scene: go there (its start), keeping the unsaved changes. */
@@ -2204,7 +2649,7 @@ export default function SplatTour({
               </button>
             </div>
             <div className="flex border-b border-white/10">
-              {(["route", "drive", "shops", "scenes", "info"] as const).map((t) => (
+              {(["route", "drive", "shops", "signs", "scenes", "info"] as const).map((t) => (
                 <button key={t} onClick={() => setPanelTab(t)} className={`flex-1 py-1 capitalize ${panelTab === t ? "bg-white/15 text-amber-200" : "text-white/55"}`}>{t}</button>
               ))}
             </div>
@@ -2338,6 +2783,89 @@ export default function SplatTour({
                   ))}
                 </>
               )}
+
+              {panelTab === "signs" && (() => {
+                const sel = here.signs.find((s) => s.id === signSel) ?? null;
+                const marking = signPick != null;
+                return (
+                  <>
+                    {/* ⚠️ A NEW SIGN OVER THE OLD ONE (founder, 2026-10-08): the
+                        shop's own image, not a generated one — AI garbles Persian. */}
+                    {!marking && !signCorners && (
+                      <button
+                        disabled={here.signs.length >= MAX_SIGNS || signBusy}
+                        className="w-full rounded-lg border border-amber-300/70 bg-amber-300/15 py-1.5 font-bold text-amber-50 disabled:opacity-40"
+                        onClick={() => { setSignSel(null); setSignNote(""); setSignPick({ corners: [], eyes: [], missed: 0, target: null }); }}
+                      >
+                        Replace a sign
+                      </button>
+                    )}
+                    {marking && (
+                      <>
+                        <div className="font-bold text-amber-200">Tap the {["first", "second", "third", "fourth"][signPick.corners.length]} corner of the old signboard ({signPick.corners.length}/4)</div>
+                        <div className="text-white/45">Any order. Drag to look round as usual; a tap marks a corner. Stand square on to it if you can.</div>
+                        <div className="flex gap-1">
+                          {signPick.corners.length > 0 && (
+                            <button className="rounded bg-white/10 px-2 py-1" onClick={() => setSignPick({ ...signPick, corners: signPick.corners.slice(0, -1), eyes: signPick.eyes.slice(0, -1) })}>Undo corner</button>
+                          )}
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => { setSignPick(null); setSignNote(""); }}>Cancel</button>
+                        </div>
+                      </>
+                    )}
+                    {signCorners && !marking && (
+                      <>
+                        <div className="font-bold text-amber-200">The new sign&apos;s image</div>
+                        <div className="text-white/45">PNG, JPEG or WebP: the shop&apos;s sign or logo, or a photo of the sign taken straight on. It fills the outline.</div>
+                        <label className={`block cursor-pointer rounded-lg border border-amber-300/70 py-1.5 text-center font-bold text-amber-50 ${signBusy ? "opacity-40" : ""}`}>
+                          {signBusy ? "Uploading…" : "Choose image…"}
+                          <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={signBusy}
+                            onChange={(e) => { void signImageChosen(e.target.files?.[0]); e.target.value = ""; }} />
+                        </label>
+                        <div className="flex gap-1">
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => setSignPick({ corners: [], eyes: [], missed: 0, target: null })}>Mark again</button>
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => { setSignCorners(null); setSignNote(""); }}>Cancel</button>
+                        </div>
+                      </>
+                    )}
+                    {signNote && <div className={signNote.startsWith("✓") ? "text-emerald-300" : signNote.startsWith("Not done") ? "text-rose-300" : "text-amber-200"}>{signNote}</div>}
+                    {sel && !marking && !signCorners && (
+                      <div className="space-y-1 rounded bg-white/5 p-1.5">
+                        <div className="font-bold text-amber-200">{sel.id}</div>
+                        <label className="block">
+                          <span className="flex justify-between"><span>Glow (lit, new)</span><span className="text-white/50">{Math.round(sel.glow * 100)}%</span></span>
+                          <input type="range" className="w-full" min={0} max={1} step={0.05} value={sel.glow}
+                            onChange={(e) => changeTour(updateSign(tour, here.id, sel.id, { glow: Number(e.target.value) }))} />
+                        </label>
+                        <label className="block">
+                          <span className="flex justify-between"><span>Backing round it</span><span className="text-white/50">{(sel.cover * 100).toFixed(0)} cm</span></span>
+                          <input type="range" className="w-full" min={0} max={0.3} step={0.01} value={sel.cover}
+                            onChange={(e) => changeTour(updateSign(tour, here.id, sel.id, { cover: Number(e.target.value) }))} />
+                        </label>
+                        <div className="flex flex-wrap gap-1">
+                          <label className={`cursor-pointer rounded bg-white/10 px-2 py-1 ${signBusy ? "opacity-40" : ""}`}>
+                            {signBusy ? "Uploading…" : "New image…"}
+                            <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={signBusy}
+                              onChange={(e) => { void signImageChosen(e.target.files?.[0]); e.target.value = ""; }} />
+                          </label>
+                          <button className="rounded bg-white/10 px-2 py-1" onClick={() => { setSignNote(""); setSignPick({ corners: [], eyes: [], missed: 0, target: sel.id }); }}>Move corners</button>
+                          <button className="ms-auto rounded px-2 py-1 text-rose-300" onClick={() => { changeTour(removeSign(tour, here.id, sel.id)); setSignSel(null); }}>Delete</button>
+                        </div>
+                      </div>
+                    )}
+                    {here.signs.length > 0 && (
+                      <div className="space-y-0.5 border-t border-white/10 pt-1.5">
+                        {here.signs.map((s) => (
+                          <button key={s.id} className={`flex w-full justify-between rounded px-1 ${s.id === signSel ? "bg-amber-300/25 text-white" : "text-white/70"}`} onClick={() => setSignSel(s.id === signSel ? null : s.id)}>
+                            <span>▭ {s.id}</span>
+                            <span className="text-white/40">{s.glow ? `glow ${Math.round(s.glow * 100)}%` : ""}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="text-white/40">{here.signs.length}/{MAX_SIGNS} in this scene. Tap a sign in the view to select it. Glow, backing, delete: Save to keep.</div>
+                  </>
+                );
+              })()}
 
               {panelTab === "scenes" && (
                 <>

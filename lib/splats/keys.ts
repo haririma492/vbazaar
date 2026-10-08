@@ -136,3 +136,46 @@ export function webFileName(scene: string, at: Date, ext = "spz"): string {
 export function isWalkVideo(name: string): boolean {
   return extensionOf(name) === "mp4";
 }
+
+// ── A replaced sign's image (founder, 2026-10-08) ─────────────────────────
+
+/**
+ * A NEW SIGN'S IMAGE, NOT A SPLAT. The shop's sign or logo (PNG, JPEG or
+ * WebP), uploaded from the viewer's edit mode («Replace a sign») to
+ * `scenes/<scene>/signs/<sign>-<stamp>.<ext>` — its own folder, its own
+ * rule: `isSplatKey` still refuses it, so nothing else can be sent there.
+ * A new image is a new name (the stamp): every file is cached forever.
+ */
+export const SIGN_IMAGE_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" } as const;
+export type SignImageType = keyof typeof SIGN_IMAGE_TYPES;
+/** Plenty for a sharp sign (a 4000-pixel PNG); a photo straight from a phone is bigger only rarely. */
+export const MAX_SIGN_IMAGE_BYTES = 12 * MiB;
+
+const SIGN_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+const SIGN_KEY_RE = /^scenes\/([^/]+)\/signs\/([a-z0-9][a-z0-9-]{0,39})-(\d{8}-\d{6})\.(png|jpg|webp)$/;
+
+export const isSignImageType = (t: unknown): t is SignImageType =>
+  typeof t === "string" && Object.prototype.hasOwnProperty.call(SIGN_IMAGE_TYPES, t);
+
+/** The key a sign's image is uploaded under, or null when the scene, sign or type is not acceptable. */
+export function signImageKey(scene: string, sign: string, type: string, at: Date): string | null {
+  if (!isSceneId(scene) || !SIGN_ID_RE.test(sign) || !isSignImageType(type)) return null;
+  const stamp = at.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  return `scenes/${scene}/signs/${sign}-${stamp}.${SIGN_IMAGE_TYPES[type]}`;
+}
+
+/** Whether a key a browser sent back is a sign image this tool could have made — and its type. */
+export function isSignImageKey(key: string): SignImageType | null {
+  const m = SIGN_KEY_RE.exec(key);
+  if (!m || !isSceneId(m[1]) || !SIGN_ID_RE.test(m[2])) return null;
+  return (Object.keys(SIGN_IMAGE_TYPES) as SignImageType[]).find((t) => SIGN_IMAGE_TYPES[t] === m[4]) ?? null;
+}
+
+/** What the bytes really are (their first bytes), whatever the name or the browser says. */
+export function imageTypeOf(b: Uint8Array): SignImageType | null {
+  const at = (i: number, ...v: number[]) => v.every((x, k) => b[i + k] === x);
+  if (b.length >= 8 && at(0, 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)) return "image/png";
+  if (b.length >= 3 && at(0, 0xff, 0xd8, 0xff)) return "image/jpeg";
+  if (b.length >= 12 && at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
+  return null;
+}
