@@ -210,6 +210,19 @@ test("the streak filter's strength is kept and checked", () => {
   assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", clean: "x" }] }).scenes[0].clean, 0);
 });
 
+test("the restored look is kept and checked", () => {
+  let t = built();
+  assert.equal(sceneById(t, "hallway")!.look, "original");
+  t = updateScene(t, "hallway", { look: "fresh" });
+  t = upsertScene(t, "hallway", "scenes/hallway/hallway-v5.spz");
+  assert.equal(sceneById(t, "hallway")!.look, "fresh");
+  t = updateScene(t, "hallway", { look: "showroom" });
+  assert.equal(sceneById(t, "hallway")!.look, "showroom");
+  for (const bad of ["glam", "Fresh", 2, null]) {
+    assert.equal(parseTour({ scenes: [{ id: "a", file: "scenes/a/a.spz", look: bad }] }).scenes[0].look, "original");
+  }
+});
+
 test("the streamed copy (.rad) is kept, checked, and survives a new upload", () => {
   let t = built();
   assert.equal(sceneById(t, "hallway")!.fileRad, null);

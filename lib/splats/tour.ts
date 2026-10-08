@@ -93,6 +93,14 @@ export type TourScene = {
    */
   clean: number;
   /**
+   * THE RESTORED LOOK (founder, 2026-10-08: "really big for
+   * commercialization" — an Instagram beauty filter, but for a filmed bazaar
+   * street): "original" as filmed, "fresh" (asphalt looks new, bricks shine,
+   * grime fades, pleasant colours), "showroom" (the same, stronger). Done
+   * live on the GPU per splat; nothing in the file changes.
+   */
+  look: Look;
+  /**
    * WALLS: how far either side of the route a visitor may walk (the scene's
    * own units; `lib/splats/corridor.ts`). 0: no walls. Needs a route.
    */
@@ -101,6 +109,11 @@ export type TourScene = {
   doors: Door[];
   exits: Exit[];
 };
+
+export const LOOKS = ["original", "fresh", "showroom"] as const;
+export type Look = (typeof LOOKS)[number];
+/** A known look, or null (the tour and `?look=` both go through this). */
+export const lookOf = (v: unknown): Look | null => ((LOOKS as readonly unknown[]).includes(v) ? (v as Look) : null);
 
 export type Door = { id: string; label: Label; at: Vec3; depth: number };
 export type Join = { to: string; by: "paths" | "pictures"; share: number | null };
@@ -261,7 +274,7 @@ export function parseTour(raw: unknown): Tour {
       place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null,
       fileRad: radKey(r.fileRad),
       fileRestored: radKey(r.fileRestored),
-      walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), exits,
+      walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), look: lookOf(r.look) ?? "original", exits,
     });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
@@ -282,7 +295,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, fileRestored: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, fileRestored: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, look: "original", exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -291,7 +304,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "fileRestored" | "walls" | "join" | "clean">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "fileRestored" | "walls" | "join" | "clean" | "look">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 
