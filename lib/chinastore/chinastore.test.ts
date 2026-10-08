@@ -13,7 +13,7 @@ test("every hotspot in the demo scene joins a catalogue row, each with its own i
   const products = productsFor(SCENE_ID);
   assert.equal(products.length, HOTSPOTS.length);
   assert.equal(new Set(products.map((p) => p.id)).size, products.length);
-  assert.equal(products.length, 15);
+  assert.equal(products.length, 17);
   for (const p of products) {
     assert.ok(p.modelUrl.endsWith(".glb"), p.id);
     assert.ok(p.labelDistance > p.selectionDistance, p.id);
@@ -28,11 +28,11 @@ test("exactly one hero, and it is the teapot, and the hand can take it", () => {
 });
 
 test("a price change is a catalogue edit: same hotspot, new price", () => {
-  const repriced: CatalogItem[] = CATALOG.map((c) => (c.sku === "CT-1004" ? { ...c, price: 79 } : c));
+  const repriced: CatalogItem[] = CATALOG.map((c) => (c.sku === "CT-1004" ? { ...c, price: 169 } : c));
   const before = productsFor(SCENE_ID).find((p) => p.sku === "CT-1004")!;
   const after = productsFor(SCENE_ID, repriced).find((p) => p.sku === "CT-1004")!;
-  assert.equal(before.price, 89);
-  assert.equal(after.price, 79);
+  assert.equal(before.price, 189);
+  assert.equal(after.price, 169);
   assert.deepEqual(after.anchor, before.anchor);
 });
 
