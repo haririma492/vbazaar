@@ -246,7 +246,48 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     root.add(glow);
   }
 
-  // Plates hung on the wall either side of the unit are added by dress().
+  // Plates hung on the wall to the right of the unit are added by dress().
+
+  // ── the second cabinet, after the store's second photograph ──────────
+  // Tall, charcoal, doors standing open; shelves alternately glass and grey,
+  // stocked with everyday whites, colours and glass.
+  const TC = { x: -2.42, w: 1.1, d: 0.44, h: 2.42 };
+  const greyMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.075, 0.08, 0.085), roughness: 0.55, clearcoat: 0.25, clearcoatRoughness: 0.4 });
+  const steelMat = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.7, 0.7, 0.72), metalness: 1, roughness: 0.3 });
+  const tGlass = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.8, 0.9, 0.86), roughness: 0.04, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 0.5 });
+  const tEdge = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(0.35, 0.55, 0.48), roughness: 0.1, transparent: true, opacity: 0.75 });
+  box(TC.w, TC.h, 0.02, greyMat, TC.x, TC.h / 2, BACK + 0.01, { shadow: false });
+  for (const sx of [-1, 1]) box(0.025, TC.h, TC.d, greyMat, TC.x + sx * (TC.w / 2 - 0.0125), TC.h / 2, BACK + TC.d / 2);
+  box(TC.w, 0.03, TC.d, greyMat, TC.x, TC.h - 0.015, BACK + TC.d / 2);
+  box(TC.w - 0.05, 0.1, TC.d - 0.03, greyMat, TC.x, 0.05, BACK + TC.d / 2 - 0.015);
+  const TALL = [0.42, 0.72, 1.0, 1.28, 1.56, 1.84, 2.12];
+  TALL.forEach((y, i) => {
+    if (i % 2 === 0) {
+      box(TC.w - 0.05, 0.01, TC.d - 0.04, tGlass, TC.x, y - 0.005, BACK + TC.d / 2 - 0.01, { shadow: false });
+      box(TC.w - 0.05, 0.01, 0.004, tEdge, TC.x, y - 0.005, BACK + TC.d - 0.03, { shadow: false });
+    } else {
+      box(TC.w - 0.05, 0.022, TC.d - 0.04, greyMat, TC.x, y - 0.011, BACK + TC.d / 2 - 0.01);
+    }
+  });
+  // The doors, open wide on their hinges.
+  for (const sx of [-1, 1]) {
+    const hinge = new THREE.Group();
+    hinge.position.set(TC.x + sx * TC.w / 2, 0, BACK + TC.d);
+    hinge.rotation.y = sx < 0 ? -1.95 : 1.95;
+    root.add(hinge);
+    box(TC.w / 2, TC.h - 0.02, 0.022, greyMat, -sx * TC.w / 4, TC.h / 2, 0.011, { parent: hinge });
+    for (const y of [0.25, 1.2, 2.15]) {
+      const h = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.07, 0.02), steelMat);
+      h.position.set(TC.x + sx * (TC.w / 2 - 0.03), y, BACK + TC.d - 0.02);
+      root.add(h);
+    }
+  }
+  {
+    const area = new THREE.RectAreaLight(new THREE.Color(1, 0.94, 0.86), 5, TC.w - 0.1, 0.05);
+    area.position.set(TC.x, TC.h - 0.04, BACK + TC.d - 0.06);
+    area.lookAt(TC.x, 0, BACK + 0.15);
+    root.add(area);
+  }
 
   // ── the side walls: a smaller unit on each, the same heights ─────────
   // Built facing +z with its back at z 0, then turned to face the room:
@@ -429,8 +470,59 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
     put(cCup, 0.68, 0.9, BACK + 0.33, { yaw: -0.2 });
     put(cBowl, 1.1, 0.9, BACK + 0.33, { scale: 0.75 });
     // Plates hung on the wall either side, three high.
-    for (const sx of [-1, 1])
-      for (let i = 0; i < 3; i++) put(plate, sx * 2.2, 1.15 + i * 0.36, -2.49, { tilt: Math.PI / 2, yaw: 0 });
+    for (let i = 0; i < 3; i++) put(plate, 2.2, 1.15 + i * 0.36, -2.49, { tilt: Math.PI / 2, yaw: 0 });
+
+    // The second cabinet, shelf by shelf, top to bottom as photographed.
+    const [wPlate, wSoup, wBowl, wCup, mPlate, mCup, rPlate, rBowl, sPlate, wine, tumb, gBowl, roBowl, iCup2, baPlate] = await Promise.all(
+      [
+        "white-plate", "white-soup-plate", "white-bowl", "white-cup-saucer", "mustard-plate", "mustard-cup-saucer", "rose-plate",
+        "rose-bowl", "sage-plate", "wine-glass", "tumbler", "glass-bowl", "bowl", "imperial-cup-saucer", "baroque-plate",
+      ].map((n) => load(`/models/china/${n}.glb`)),
+    );
+    const X = (dx: number) => TC.x + dx;
+    const F = BACK + 0.29; // front row
+    const B = BACK + 0.15; // back row
+    const stack = (src: THREE.Object3D, x: number, y: number, z: number, n: number, step: number, yaw = 0) => {
+      for (let i = 0; i < n; i++) put(src, x, y + i * step, z, { yaw: yaw + i * 0.9 });
+    };
+    // 2.12 glass: crystal — wine glasses at the back, tumblers, a cut-glass bowl.
+    for (let i = 0; i < 5; i++) put(wine, X(-0.4 + i * 0.2), 2.12, B, {});
+    for (let i = 0; i < 3; i++) put(tumb, X(-0.12 + i * 0.12), 2.12, F, {});
+    put(gBowl, X(0.36), 2.12, F + 0.02, {});
+    // 1.84 grey: white serving bowls, smaller bowls, little cups.
+    put(wBowl, X(-0.3), 1.84, B + 0.05, {});
+    put(wBowl, X(-0.3), 1.84 + 0.045, B + 0.05, { scale: 0.85 });
+    put(wBowl, X(0.12), 1.84, F, { scale: 0.75 });
+    put(wBowl, X(0.12), 1.84 + 0.034, F, { scale: 0.62 });
+    put(wCup, X(0.38), 1.84, F, { yaw: 0.4, scale: 0.85 });
+    // 1.56 glass: stacks of white dinner plates and soup plates.
+    stack(wPlate, X(-0.3), 1.56, B + 0.06, 6, 0.018);
+    stack(wSoup, X(0.12), 1.56, B + 0.06, 4, 0.03);
+    stack(wPlate, X(0.4), 1.56, F, 3, 0.018);
+    // 1.28 grey: white cups on saucers, more plates.
+    put(wCup, X(-0.38), 1.28, F, { yaw: 0.3 });
+    put(wCup, X(-0.2), 1.28, B + 0.04, { yaw: 0.1 });
+    put(wCup, X(-0.02), 1.28, F, { yaw: -0.2 });
+    stack(wPlate, X(0.3), 1.28, B + 0.06, 5, 0.018);
+    // 1.00 glass: floral cups, patterned plates, blue-and-white.
+    put(iCup2, X(-0.38), 1.0, F, { yaw: 0.2 });
+    put(iCup2, X(-0.2), 1.0, B + 0.03, { yaw: -0.3 });
+    stack(baPlate, X(0.08), 1.0, B + 0.06, 4, 0.018);
+    stack(wPlate, X(0.36), 1.0, B + 0.06, 3, 0.018);
+    // 0.72 grey: blue-and-white bowls, stacked saucers.
+    put(roBowl, X(-0.3), 0.72, B + 0.06, { scale: 0.82 });
+    put(roBowl, X(0.06), 0.72, F, { scale: 0.7 });
+    stack(rPlate, X(0.36), 0.72, B + 0.06, 4, 0.016);
+    // 0.42 glass: mustard cups and plates, a stack of rose plates.
+    // (the mustard cup front left is the catalogue's — the commerce layer places it)
+    stack(mPlate, X(-0.3), 0.42, B + 0.03, 4, 0.016);
+    stack(rPlate, X(0.12), 0.42, B + 0.05, 5, 0.016);
+    put(mCup, X(0.38), 0.42, F, { yaw: 0.5 });
+    // 0.10 the base: rose bowls, sage leaf dishes.
+    put(rBowl, X(-0.32), 0.1, F - 0.04, { scale: 0.8 });
+    put(rBowl, X(-0.32), 0.1 + 0.042, F - 0.04, { scale: 0.65 });
+    stack(sPlate, X(0.06), 0.1, B + 0.08, 3, 0.022);
+    put(rBowl, X(0.36), 0.1, F - 0.03, { scale: 0.7 });
     // The side units' stock: the Prunus wall left, the Celadon wall right.
     const onSide = (src: THREE.Object3D, side: -1 | 1, lx: number, y: number, opts: { yaw?: number; scale?: number; lz?: number } = {}) => {
       const p = sideToWorld(side, lx, y, opts.lz ?? 0.2);
@@ -464,6 +556,8 @@ export function buildStore(renderer: THREE.WebGLRenderer): Store {
       blocked: [
         { x0: PL.x - PL.w / 2 - 0.25, x1: PL.x + PL.w / 2 + 0.25, z0: PL.z - PL.d / 2 - 0.25, z1: PL.z + PL.d / 2 + 0.25 },
         { x0: TB.x - TB.r - 0.25, x1: TB.x + TB.r + 0.25, z0: TB.z - TB.r - 0.25, z1: TB.z + TB.r + 0.25 },
+        // The second cabinet.
+        { x0: TC.x - TC.w / 2 - 0.45, x1: TC.x + TC.w / 2 + 0.45, z0: -9, z1: BACK + TC.d + 0.35 },
         // The side units.
         { x0: -9, x1: -SIDE.wallX + 0.75, z0: SIDE.z - SIDE.w / 2 - 0.2, z1: SIDE.z + SIDE.w / 2 + 0.2 },
         { x0: SIDE.wallX - 0.75, x1: 9, z0: SIDE.z - SIDE.w / 2 - 0.2, z1: SIDE.z + SIDE.w / 2 + 0.2 },

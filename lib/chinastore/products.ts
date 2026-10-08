@@ -93,6 +93,10 @@ export const CATALOG: CatalogItem[] = [
   { sku: "CT-1006", name: "Imperial Sugar Bowl", price: 74, currency: "CAD", modelUrl: "/models/china/imperial-sugar.glb", blurb: "Turquoise Imperial · gilded handles" },
   { sku: "CT-1007", name: "Imperial Soup Tureen", price: 289, currency: "CAD", modelUrl: "/models/china/imperial-tureen.glb", blurb: "Turquoise Imperial · 3 L" },
   { sku: "CT-1008", name: "Blue Baroque Plate", price: 58, currency: "CAD", modelUrl: "/models/china/baroque-plate.glb", blurb: "Blue Baroque · 27 cm" },
+  // The second cabinet: everyday whites, colours and glass.
+  { sku: "CT-1101", name: "Crystal Wine Glass", price: 24, currency: "CAD", modelUrl: "/models/china/wine-glass.glb", blurb: "Lead-free crystal · 350 ml" },
+  { sku: "CT-1102", name: "White Dinner Plate", price: 18, currency: "CAD", modelUrl: "/models/china/white-plate.glb", blurb: "Everyday porcelain · 27 cm" },
+  { sku: "CT-1103", name: "Mustard Cup & Saucer", price: 26, currency: "CAD", modelUrl: "/models/china/mustard-cup-saucer.glb", blurb: "Stoneware glaze · 220 ml" },
   // On the sale post by the door.
   {
     sku: "CT-1042", name: "Prunus Ginger Jar", price: 129, salePrice: 99, currency: "CAD", modelUrl: "/models/china/ginger-jar.glb", blurb: "Cobalt ground · cracked ice & blossom",
@@ -149,6 +153,10 @@ export const HOTSPOTS: Hotspot[] = [
   { sceneId: SCENE_ID, sku: "CT-1007", id: "tureen-01", anchor: { x: 1.02, y: SHELF_Y + 0.1, z: -2.27 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 1.02, y: SHELF_Y, z: -2.27 }, yaw: 0.15 } },
   // The glass shelf above: Blue Baroque.
   { sceneId: SCENE_ID, sku: "CT-1008", id: "baroque-plate-01", anchor: { x: 0.25, y: 1.66 + 0.143, z: -2.36 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: 0.25, y: 1.66 + 0.143, z: -2.36 }, tilt: PLATE_TILT } },
+  // The second cabinet, left of the first (x −2.42, its back on the wall).
+  { sceneId: SCENE_ID, sku: "CT-1101", id: "wine-01", labelSide: "below", anchor: { x: -2.8, y: 2.12 + 0.12, z: -2.16 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -2.8, y: 2.12, z: -2.16 } } },
+  { sceneId: SCENE_ID, sku: "CT-1102", id: "white-plate-01", anchor: { x: -2.72, y: 1.56 + 0.13, z: -2.24 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -2.72, y: 1.56 + 6 * 0.018, z: -2.24 }, yaw: 0.3 } },
+  { sceneId: SCENE_ID, sku: "CT-1103", id: "mustard-cup-01", anchor: { x: -2.62, y: 0.42 + 0.05, z: -2.16 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -2.62, y: 0.42, z: -2.16 }, yaw: -0.3 } },
   // The counter: Gold Coral.
   { sceneId: SCENE_ID, sku: "CT-1005", id: "platter-01", labelSide: "below", anchor: { x: -0.35, y: COUNTER_Y + 0.157, z: -2.36 }, labelDistance: 3.0, selectionDistance: 1.6, display: { position: { x: -0.35, y: COUNTER_Y + 0.157, z: -2.36 }, tilt: PLATE_TILT } },
   { sceneId: SCENE_ID, sku: "CT-1003", id: "bowl-01", labelSide: "below", anchor: { x: 0.08, y: COUNTER_Y + 0.04, z: -2.14 }, labelDistance: 3.2, selectionDistance: 1.6, display: { position: { x: 0.08, y: COUNTER_Y, z: -2.14 } } },
