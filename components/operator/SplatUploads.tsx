@@ -29,7 +29,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import { isSceneId, isWalkVideo, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
-import { routeFromCameras } from "@/lib/splats/cameras";
+import { routeFromCameras, routeFromColmapBinary, routeFromColmapText } from "@/lib/splats/cameras";
 import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene, type Tour } from "@/lib/splats/tour";
 
 const API = "/api/operator/splats";
@@ -311,8 +311,12 @@ async function convertToSpz(file: File): Promise<Uint8Array<ArrayBuffer>> {
 
 let nextId = 1;
 
-/** A reconstruction's camera export: read for the route, not uploaded. */
-const isCameraJson = (name: string) => /\.json$/i.test(name);
+/**
+ * A reconstruction's camera export: read for the route, not uploaded. A .json
+ * (cameras.json / transforms.json), or COLMAP's images.txt / images.bin from
+ * sparse/0 (what Brush trains from).
+ */
+const isCameraFile = (name: string) => /\.(json|txt|bin)$/i.test(name);
 
 export default function SplatUploads() {
   const [r2, setR2] = useState<R2Summary | null>(null);
@@ -359,10 +363,10 @@ export default function SplatUploads() {
     const added: Item[] = [];
     for (const file of Array.from(list)) {
       const kind = kindOfFile(file.name);
-      const json = isCameraJson(file.name);
-      if (!kind && !json) continue;
-      // A camera JSON belongs to a scene already in the tour: the first one, until chosen.
-      const scene = json ? tourRef.current.start || tourRef.current.scenes[0]?.id || "" : sceneIdFromFileName(file.name);
+      const cameraFile = isCameraFile(file.name);
+      if (!kind && !cameraFile) continue;
+      // A camera file belongs to a scene already in the tour: the first one, until chosen.
+      const scene = cameraFile ? tourRef.current.start || tourRef.current.scenes[0]?.id || "" : sceneIdFromFileName(file.name);
       added.push({
         id: nextId++, file, scene, title: "", convert: kind === "master",
         step: "waiting", sent: 0, total: file.size, note: "",
@@ -433,20 +437,29 @@ export default function SplatUploads() {
   }
 
   async function runOne(it: Item) {
-    // ⚠️ A CAMERA JSON IS NOT UPLOADED: it is read here, in the browser, and
+    // ⚠️ A CAMERA FILE IS NOT UPLOADED: it is read here, in the browser, and
     // becomes the scene's route — the banked road visitors are drawn along
     // (`lib/splats/cameras.ts`, `lib/splats/path.ts`).
-    if (isCameraJson(it.file.name)) {
+    if (isCameraFile(it.file.name)) {
       const scene = sceneById(tourRef.current, it.scene);
       if (!scene) throw new Error(`«${it.scene}» is not in the tour: upload its splat first, or pick the scene this camera file belongs to.`);
-      let json: unknown;
-      try {
-        json = JSON.parse(await it.file.text());
-      } catch {
-        throw new Error("This file is not JSON.");
+      let got: ReturnType<typeof routeFromCameras>;
+      if (/\.bin$/i.test(it.file.name)) {
+        got = routeFromColmapBinary(await it.file.arrayBuffer(), scene.flip);
+        if (!got) throw new Error("No camera positions found in this file (expected COLMAP images.bin from sparse/0 — not cameras.bin or points3D.bin).");
+      } else if (/\.txt$/i.test(it.file.name)) {
+        got = routeFromColmapText(await it.file.text(), scene.flip);
+        if (!got) throw new Error("No camera positions found in this file (expected COLMAP images.txt from sparse/0 — not cameras.txt or points3D.txt).");
+      } else {
+        let json: unknown;
+        try {
+          json = JSON.parse(await it.file.text());
+        } catch {
+          throw new Error("This file is not JSON.");
+        }
+        got = routeFromCameras(json, scene.flip);
+        if (!got) throw new Error("No camera positions found in this file (expected cameras.json with «position», or transforms.json with «frames»).");
       }
-      const got = routeFromCameras(json, scene.flip);
-      if (!got) throw new Error("No camera positions found in this file (expected cameras.json with «position», or transforms.json with «frames»).");
       await saveTour(updateScene(tourRef.current, scene.id, { route: got.route }));
       patch(it.id, {
         step: "done",
@@ -619,13 +632,13 @@ export default function SplatUploads() {
         <p className="text-[12px] text-white/50">
           One or many Splatica <b>.ply</b> files (or ready <b>.spz / .sog</b>). Each becomes a scene: the .ply is kept as
           its master, converted here to .spz for the viewer, and added to the tour. A 360° <b>.mp4</b> becomes a walk
-          video. A camera <b>.json</b> (cameras.json / transforms.json) becomes the chosen scene&apos;s route — the
-          way visitors are drawn along.
+          video. A camera <b>.json</b> (cameras.json / transforms.json) or COLMAP <b>images.txt / images.bin</b> (from
+          sparse/0, as used by Brush) becomes the chosen scene&apos;s route — the way visitors are drawn along.
         </p>
         <input
           type="file"
           multiple
-          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4,.json"
+          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4,.json,.txt,.bin"
           disabled={running}
           onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
           className="block w-full text-[14px] text-white/80 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white/90"
@@ -893,7 +906,7 @@ export default function SplatUploads() {
                   <p className="text-[12px] text-white/55">
                     {s.route.length
                       ? `Route: ${s.route.length} points — visitors are drawn along it.`
-                      : "No route yet: add the camera .json above, or record it in «Place exits»."}
+                      : "No route yet: add the camera .json (or COLMAP images.txt / .bin) above, or record it in «Place exits»."}
                     {s.route.length > 0 && (
                       <button className="ms-2 underline" onClick={() => editTour(updateScene(tour, s.id, { route: [] }))}>clear</button>
                     )}
