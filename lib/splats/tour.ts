@@ -107,6 +107,15 @@ export type TourScene = {
   walls: number;
   /** Shops entered on purpose (Enter / «Go in»): a door at the entrance, a short lane inside. In the world's coordinates, like exits. */
   doors: Door[];
+  /**
+   * THE REPLACED SIGNS (founder, 2026-10-08: "really big for
+   * commercialization" — every shop's sign brand new). Generative AI garbles
+   * Persian lettering, so a filmed signboard is not repainted: the operator
+   * marks its four corners in edit mode and gives the shop's own image, and
+   * the viewer draws that image crisply over it, the old splats behind it
+   * hidden. In the scene's OWN coordinates, like the route.
+   */
+  signs: Sign[];
   exits: Exit[];
 };
 
@@ -116,6 +125,23 @@ export type Look = (typeof LOOKS)[number];
 export const lookOf = (v: unknown): Look | null => ((LOOKS as readonly unknown[]).includes(v) ? (v as Look) : null);
 
 export type Door = { id: string; label: Label; at: Vec3; depth: number };
+/**
+ * A new sign over a filmed one. `corners`: top-left, top-right, bottom-right,
+ * bottom-left as seen from the street. `image`: its key in the public bucket
+ * (`scenes/<scene>/signs/…`). `glow` 0–1: a little light of its own, for the
+ * "new, lit" look. `cover`: how far an opaque backing reaches round the image
+ * (scene units, ~metres), so the old sign never peeks out at the edges.
+ */
+export type Sign = { id: string; corners: [Vec3, Vec3, Vec3, Vec3]; image: string; glow: number; cover: number };
+/** At most this many signs in one scene. */
+export const MAX_SIGNS = 40;
+export const DEFAULT_COVER = 0.03;
+const SIGN_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+/** `keys.ts`'s signImageKey shape, repeated: an image in the scene's own `signs/` folder. */
+const SIGN_IMAGE_RE = /^scenes\/([a-z0-9-]+)\/signs\/[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.(png|jpg|jpeg|webp)$/;
+/** Whether `key` is a sign image of scene `scene`. */
+export const isSignImageOf = (scene: string, key: unknown): key is string =>
+  typeof key === "string" && SIGN_IMAGE_RE.exec(key)?.[1] === scene;
 export type Join = { to: string; by: "paths" | "pictures"; share: number | null };
 
 /** `corridor.ts`'s DEFAULT_HALF, repeated (this file imports nothing). */
@@ -225,6 +251,38 @@ function doorsOf(v: unknown): Door[] {
   return out;
 }
 
+/** Four corners of finite numbers that span an area, or null. */
+function cornersOf(v: unknown): Sign["corners"] | null {
+  if (!Array.isArray(v) || v.length !== 4) return null;
+  const out: Vec3[] = [];
+  for (const p of v) {
+    if (!Array.isArray(p) || p.length !== 3 || !p.every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 1e5)) return null;
+    out.push([p[0], p[1], p[2]]);
+  }
+  // Twice the area (the cross product of the diagonals): a point or a line is no sign.
+  const [a, b, c, d] = out;
+  const p = [c[0] - a[0], c[1] - a[1], c[2] - a[2]], q = [d[0] - b[0], d[1] - b[1], d[2] - b[2]];
+  const area = Math.hypot(p[1] * q[2] - p[2] * q[1], p[2] * q[0] - p[0] * q[2], p[0] * q[1] - p[1] * q[0]);
+  return area > 1e-4 ? (out as Sign["corners"]) : null;
+}
+
+/** A scene's signs: each with a sane id, four real corners and an image of THIS scene; at most MAX_SIGNS. */
+function signsOf(v: unknown, scene: string): Sign[] {
+  const out: Sign[] = [];
+  const ids = new Set<string>();
+  for (const x of Array.isArray(v) ? v : []) {
+    if (out.length >= MAX_SIGNS) break;
+    const o = (x ?? {}) as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : "";
+    const corners = cornersOf(o.corners);
+    if (!SIGN_ID_RE.test(id) || ids.has(id) || !corners || !isSignImageOf(scene, o.image)) continue;
+    ids.add(id);
+    const glow = num(o.glow, 0), cover = num(o.cover, DEFAULT_COVER);
+    out.push({ id, corners, image: o.image, glow: Math.min(1, Math.max(0, glow)), cover: Math.min(0.5, Math.max(0, cover)) });
+  }
+  return out;
+}
+
 function driveOf(v: unknown): Drive {
   const o = (v ?? {}) as Record<string, unknown>;
   const out = { ...DEFAULT_DRIVE };
@@ -274,7 +332,7 @@ export function parseTour(raw: unknown): Tour {
       place: placeOf(r.place), pace: paceOf(r.pace), fileHQ: SCENE_FILE_RE.test(hq) ? hq : null,
       fileRad: radKey(r.fileRad),
       fileRestored: radKey(r.fileRestored),
-      walls: wallsOf(r.walls), doors: doorsOf(r.doors), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), look: lookOf(r.look) ?? "original", exits,
+      walls: wallsOf(r.walls), doors: doorsOf(r.doors), signs: signsOf(r.signs, id), join: joinOf(r.join), clean: Math.min(3, Math.max(0, Math.round(num(r.clean, 0)))), look: lookOf(r.look) ?? "original", exits,
     });
   }
   // Exits to scenes that are not (or no longer) in the tour lead nowhere.
@@ -295,7 +353,7 @@ export function upsertScene(t: Tour, id: string, file: string, title?: Partial<L
   const existing = sceneById(t, id);
   const scene: TourScene = existing
     ? { ...existing, file, title: title ? label({ ...existing.title, ...title }, id) : existing.title }
-    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, fileRestored: null, walls: DEFAULT_WALLS, doors: [], join: null, clean: 0, look: "original", exits: [] };
+    : { id, file, title: label(title, id), flip: true, start: ORIGIN_POSE, route: [], place: null, pace: 1, fileHQ: null, fileRad: null, fileRestored: null, walls: DEFAULT_WALLS, doors: [], signs: [], join: null, clean: 0, look: "original", exits: [] };
   const scenes = existing ? t.scenes.map((s) => (s.id === id ? scene : s)) : [...t.scenes, scene];
   return parseTour({ ...t, scenes, start: t.scenes.length ? t.start : id });
 }
@@ -304,7 +362,7 @@ export function removeScene(t: Tour, id: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.filter((s) => s.id !== id) });
 }
 
-export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "fileRestored" | "walls" | "join" | "clean" | "look">>): Tour {
+export function updateScene(t: Tour, id: string, patch: Partial<Pick<TourScene, "title" | "flip" | "start" | "route" | "place" | "pace" | "fileHQ" | "fileRad" | "fileRestored" | "walls" | "join" | "clean" | "look" | "signs">>): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, ...patch } : s)) });
 }
 
@@ -365,6 +423,36 @@ export function addDoor(t: Tour, id: string, at: Vec3, name: string, depth = 3):
 
 export function removeDoor(t: Tour, id: string, doorId: string): Tour {
   return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, doors: s.doors.filter((d) => d.id !== doorId) } : s)) });
+}
+
+/** The id the next sign of scene `id` gets: `sign-1`, `sign-2`, … */
+export function nextSignId(t: Tour, id: string): string {
+  const scene = sceneById(t, id);
+  let n = (scene?.signs.length ?? 0) + 1;
+  while (scene?.signs.some((s) => s.id === `sign-${n}`)) n++;
+  return `sign-${n}`;
+}
+
+/** A new sign in scene `id` (its own coordinates). The tour unchanged when the scene is unknown or full, or the sign not valid. */
+export function addSign(t: Tour, id: string, sign: { id?: string; corners: Sign["corners"]; image: string; glow?: number; cover?: number }): Tour {
+  const scene = sceneById(t, id);
+  if (!scene || scene.signs.length >= MAX_SIGNS) return t;
+  const s = { glow: 0, cover: DEFAULT_COVER, ...sign, id: sign.id ?? nextSignId(t, id) };
+  const next = parseTour({ ...t, scenes: t.scenes.map((x) => (x.id === id ? { ...x, signs: [...x.signs, s] } : x)) });
+  return sceneById(next, id)!.signs.length > scene.signs.length ? next : t;
+}
+
+/** A sign's image, corners, glow or cover changed — checked like the rest (an invalid change drops nothing but itself). */
+export function updateSign(t: Tour, id: string, signId: string, patch: Partial<Omit<Sign, "id">>): Tour {
+  const scene = sceneById(t, id);
+  const old = scene?.signs.find((g) => g.id === signId);
+  if (!scene || !old) return t;
+  const next = parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, signs: s.signs.map((g) => (g.id === signId ? { ...g, ...patch } : g)) } : s)) });
+  return sceneById(next, id)!.signs.some((g) => g.id === signId) ? next : t;
+}
+
+export function removeSign(t: Tour, id: string, signId: string): Tour {
+  return parseTour({ ...t, scenes: t.scenes.map((s) => (s.id === id ? { ...s, signs: s.signs.filter((g) => g.id !== signId) } : s)) });
 }
 
 // ── The visitor's trail ────────────────────────────────────────────────────

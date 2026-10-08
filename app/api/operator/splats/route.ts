@@ -11,6 +11,8 @@
  *   POST { action: "link", key }                       → { url }      (24 h download link)
  *   POST { action: "cors" }                            (lets this site's browser PUT to the bucket)
  *   POST { action: "tour", tour, base? }               → { tour }     (merges into scenes/tour.json)
+ *   POST { action: "signImage", scene, sign, type, size } → { key, url, headers }  (a replaced sign's image:
+ *                                                       PUT it to `url` with `headers`; scenes/<scene>/signs/…)
  *   POST { action: "stream" | "streamStatus", scene, sharp? }       → { job }  (the streamed copy)
  *   POST { action: "retouch" | "retouchStatus", scene, preset? }    → { job }  (the restored copy of ONE scene;
  *                                                       preset "full" (default), "gentle" or "deep" — deep also removes
@@ -20,10 +22,10 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminTokenValid } from "@/lib/adminAuth";
-import { isSceneId, isSplatKey, partPlan, splatKey } from "@/lib/splats/keys";
+import { MAX_SIGN_IMAGE_BYTES, isSceneId, isSignImageType, isSplatKey, partPlan, signImageKey, splatKey } from "@/lib/splats/keys";
 import {
-  abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signPart, startUpload,
-  writeTour,
+  abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signImageHeaders, signImagePutUrl,
+  signPart, startUpload, writeTour,
 } from "@/lib/splats/r2";
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
@@ -132,6 +134,21 @@ export async function POST(req: NextRequest) {
       const preset = body.preset ?? "full";
       if (!isRetouchPreset(preset)) return fail(400, "Preset «full», «gentle» or «deep».");
       return ok({ job: action === "retouch" ? startRetouchJob(scene, preset) : retouchJob(scene) });
+    }
+
+    // A replaced sign's image (`signImageKey`): a key in the scene's signs/
+    // folder and one signed PUT for it. Only PNG, JPEG or WebP, and small.
+    if (action === "signImage") {
+      const scene = String(body.scene ?? "");
+      const type = String(body.type ?? "");
+      const size = Number(body.size);
+      if (!isSignImageType(type)) return fail(400, "A PNG, JPEG or WebP image.");
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_SIGN_IMAGE_BYTES) {
+        return fail(400, `An image of at most ${MAX_SIGN_IMAGE_BYTES / 1048576} MB.`);
+      }
+      const key = signImageKey(scene, String(body.sign ?? ""), type, new Date());
+      if (!key) return fail(400, "A scene id and a sign id like «sign-1».");
+      return ok({ key, url: await signImagePutUrl(key, type), headers: signImageHeaders(type), publicUrl: publicUrl(key) });
     }
 
     if (action === "tour") {

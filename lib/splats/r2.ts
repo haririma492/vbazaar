@@ -27,7 +27,7 @@ import {
   S3Client, UploadPartCommand, type CORSRule,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { contentTypeFor, type SplatKind } from "./keys";
+import { contentTypeFor, type SignImageType, type SplatKind } from "./keys";
 import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
 
 const env = (k: string) => (process.env[k] || "").trim();
@@ -94,6 +94,31 @@ export async function uploadPartBytes(
   }));
   if (!out.ETag) throw new Error("R2 gave no ETag for the part");
   return out.ETag;
+}
+
+/** A sign's image (`signImageKey`): the headers its one PUT carries — signed, so the browser must send exactly these. */
+export const signImageHeaders = (type: SignImageType) => ({ "content-type": type, "cache-control": "public, max-age=31536000, immutable" });
+
+/**
+ * A REPLACED SIGN'S IMAGE (founder, 2026-10-08): a few MB at most, so one
+ * signed PUT, not a multipart upload — straight from the browser to the web
+ * bucket, like the scene files' parts.
+ */
+export function signImagePutUrl(key: string, type: SignImageType): Promise<string> {
+  const h = signImageHeaders(type);
+  return getSignedUrl(
+    s3(),
+    new PutObjectCommand({ Bucket: r2Config().webBucket, Key: key, ContentType: h["content-type"], CacheControl: h["cache-control"] }),
+    { expiresIn: PART_URL_SECONDS },
+  );
+}
+
+/** The same image sent BY THIS SERVER, when the browser's direct PUT is refused (`/api/operator/splats/sign-image`). */
+export async function putSignImage(key: string, type: SignImageType, body: Uint8Array): Promise<void> {
+  const h = signImageHeaders(type);
+  await s3().send(new PutObjectCommand({
+    Bucket: r2Config().webBucket, Key: key, Body: body, ContentLength: body.length, ContentType: h["content-type"], CacheControl: h["cache-control"],
+  }));
 }
 
 /** The parts R2 already holds — how an interrupted upload resumes. */
