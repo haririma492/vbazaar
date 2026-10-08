@@ -79,6 +79,8 @@ type Report = {
   lodPx?: number;
   /** The longest background sort of the last second (ms). */
   sortMs?: number;
+  /** Streamed pieces held / the pool's room (pages of 65 536 splats). */
+  pool?: string;
 };
 
 declare global {
@@ -420,8 +422,17 @@ export default function SplatTour({
         // minute (Spark's default: 3 s): the joined scene preloaded at the
         // door, and the one just left, come back sharp, not coarse first.
         ...(phone ? {} : { lodCleanupTimeoutMs: 60_000 }),
+        // ⚠️ A PHONE'S POOL FOR STREAMED PIECES, A THIRD OF SPARK'S (operator,
+        // 2026-10-08: the iOS «A problem repeatedly occurred» again, on the
+        // streamed copy). Spark reserves the whole pool up front — twice, in
+        // graphics memory and as a plain array it copies pieces through — plus
+        // the colour tables alike: 48 bytes a splat, ~300 MB for its iPhone
+        // default of 6.3M splats, before a thing is drawn. 32 pages (2.1M
+        // splats, ~100 MB) hold a phone's budget, cut to match below.
+        // `?pool=` (pages of 65 536) to try others.
+        ...(phone ? { maxPagedSplats: POOL_PAGES * 65536, numLodFetchers: 2 } : {}),
       });
-      if (fixedDetail != null) spark.lodSplatScale = fixedDetail;
+      spark.lodSplatScale = fixedDetail ?? DETAIL_MAX;
       scene.add(spark);
     });
 
@@ -455,7 +466,9 @@ export default function SplatTour({
     };
     const fixedDetail = num("detail", 0.2, 4);
     const fixedPx = num("lodpx", 0.5, 5);
-    const DETAIL_MAX = 1;
+    /** A phone's level-of-detail budget, as a share of Spark's (1–1.5M on a phone): ~0.6–0.9M splats. */
+    const DETAIL_MAX = phone ? 0.6 : 1;
+    const POOL_PAGES = Math.round(num("pool", 8, 256) ?? 32);
     /** The background sort taking longer than this (ms) counts as slow, whatever the frame rate. */
     const SORT_SLOW_MS = 90;
     let sortSince: number | null = null, sortWorst = 0;
@@ -1558,6 +1571,8 @@ export default function SplatTour({
             if (px !== spark.lodRenderScale) spark.lodRenderScale = px;
             rep.lod = Math.round(k * 100) / 100;
             rep.lodPx = px;
+            const pager = (spark as unknown as { pager?: { maxPages: number; pageFreelist: number[] } }).pager;
+            if (pager) rep.pool = `${pager.maxPages - pager.pageFreelist.length}/${pager.maxPages}`;
           }
           if (Math.abs(next - pr) > 0.01) {
             renderer.setPixelRatio(next);
@@ -2002,7 +2017,7 @@ export default function SplatTour({
           {loading != null && <div>loading… {loading ? `${Math.round(loading * 100)}%` : ""}</div>}
           <div>size {fmtMB(r?.bytes ?? null)} · download {fmtMs(r?.downloadMs ?? null)} · decode {fmtMs(r?.decodeMs ?? null)}</div>
           <div>splats {r?.splats?.toLocaleString() ?? "—"} · first frame {fmtMs(r?.firstFrameMs ?? null)} · {r?.fps ?? "—"} fps</div>
-          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""}{r?.sortMs ? ` · sort ${r.sortMs} ms` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
+          <div className="text-white/50">{r?.gpu} · dpr {r?.dpr} · lod {r?.lod ?? "off"}{r?.lodPx != null ? ` @${r.lodPx}px` : ""}{r?.sortMs ? ` · sort ${r.sortMs} ms` : ""}{r?.pool ? ` · pool ${r.pool}` : ""} · streaks {["off", "light", "medium", "strong"][r?.clean ?? 0]} · {r?.viewport}</div>
           <div className="text-sky-200">path: {r?.path}</div>
           <div className="text-white/45">version {process.env.NEXT_PUBLIC_BUILD}</div>
           {(r?.error || error) && <div className="text-rose-300">{r?.error || error}</div>}
