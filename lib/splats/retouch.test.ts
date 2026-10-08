@@ -7,7 +7,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildGrid, findGround, neighbourCells, planeOf, PRESETS, retouch, SH_C0, type Splats,
+  buildGrid, findGround, neighbourCells, planeOf, PRESETS, retouch, SH_C0, valueNoise, type Splats,
 } from "./retouch.ts";
 
 // ── The scene (y up, metres) ────────────────────────────────────────────────
@@ -237,4 +237,124 @@ test("full drops the view-dependent glare (SH), gentle keeps it; gentle does les
   const stain = (x: Splats) => stats(x, kind, K.Asphalt).mean - stats(x, kind, K.Stain).mean;
   assert.ok(stain(full) < stain(gentle) && stain(gentle) < stain(s));
   assert.equal(PRESETS.gentle.shKeep, 1);
+});
+
+// ── Deep: cars and people out, the ground filled, the rest kept ─────────────
+
+/** A plain street 8 × 8 m (y up): asphalt, a wall at x = 4 with a kiosk against it, a pillar, a parked car, a person. */
+function parked(): { s: Splats; what: Uint8Array } {
+  const r = rng(7);
+  const W = { ground: 0, wall: 1, car: 2, person: 3, kiosk: 4, pillar: 5 };
+  const pts: { p: number[]; c: number[]; n: "h" | "x" | "z" | "r"; w: number }[] = [];
+  const step = 0.04;
+  const car = { x0: -1, x1: 0.8, z0: 1.5, z1: 5.9, h0: 0.18, h1: 1.45 };
+  const under = (x: number, z: number) => (x > car.x0 && x < car.x1 && z > car.z0 && z < car.z1) || Math.hypot(x - 2, z - 1.5) < 0.25;
+  for (let x = -4; x < 4; x += step) for (let z = 0; z < 8; z += step) {
+    const px = x + (r() - 0.5) * step, pz = z + (r() - 0.5) * step;
+    if (under(px, pz) || (px > 3 && pz > 3 && pz < 4.5)) continue;
+    const v = 0.27 + (r() - 0.5) * 0.06;
+    pts.push({ p: [px, 0, pz], c: [v, v, v * 1.04], n: "h", w: W.ground });
+  }
+  for (let y = 0.02; y < 3; y += step) for (let z = 0; z < 8; z += step) {
+    if (z > 3 && z < 4.5 && y < 2) continue; // behind the kiosk
+    pts.push({ p: [4, y + (r() - 0.5) * step, z + (r() - 0.5) * step], c: [0.62, 0.3, 0.21], n: "x", w: W.wall });
+  }
+  const box = (b: { x0: number; x1: number; z0: number; z1: number; h0: number; h1: number }, col: number[], w: number) => {
+    for (let x = b.x0; x <= b.x1; x += step) for (let z = b.z0; z <= b.z1; z += step) pts.push({ p: [x, b.h1, z], c: col, n: "h", w });
+    for (let h = b.h0; h <= b.h1; h += step) {
+      for (let x = b.x0; x <= b.x1; x += step) { pts.push({ p: [x, h, b.z0], c: col, n: "z", w }); pts.push({ p: [x, h, b.z1], c: col, n: "z", w }); }
+      for (let z = b.z0; z <= b.z1; z += step) { pts.push({ p: [b.x0, h, z], c: col, n: "x", w }); pts.push({ p: [b.x1, h, z], c: col, n: "x", w }); }
+    }
+  };
+  box(car, [0.7, 0.1, 0.1], W.car);
+  box({ x0: 3, x1: 3.98, z0: 3, z1: 4.5, h0: 0.02, h1: 2 }, [0.2, 0.5, 0.3], W.kiosk); // against the wall
+  box({ x0: -3, x1: -2.7, z0: 6, z1: 6.3, h0: 0.02, h1: 4 }, [0.6, 0.6, 0.58], W.pillar); // 4 m: too tall
+  for (let h = 0; h < 1.75; h += step) for (let t = 0; t < 2 * Math.PI; t += step / 0.25) {
+    pts.push({ p: [2 + 0.25 * Math.cos(t), h, 1.5 + 0.25 * Math.sin(t)], c: [0.2, 0.25, 0.4], n: "r", w: W.person });
+  }
+  const n = pts.length;
+  const s: Splats = {
+    count: n, shDegree: 1, pos: new Float32Array(n * 3), dc: new Float32Array(n * 3), alpha: new Float32Array(n).fill(0.95),
+    logScale: new Float32Array(n * 3), rot: new Float32Array(n * 4), sh: new Float32Array(n * 9).fill(0.01),
+  };
+  const what = new Uint8Array(n);
+  const big = Math.log(0.02), thin = Math.log(0.002);
+  pts.forEach((q, i) => {
+    s.pos.set(q.p, i * 3);
+    s.dc.set(q.c.map((v) => (v - 0.5) / SH_C0), i * 3);
+    s.logScale.set(q.n === "h" ? [big, thin, big] : q.n === "x" ? [thin, big, big] : q.n === "z" ? [big, big, thin] : [big, big, big], i * 3);
+    s.rot.set([1, 0, 0, 0], i * 4);
+    what[i] = q.w;
+  });
+  return { s, what };
+}
+
+const deepScene = parked();
+const deepIn = clone(deepScene.s);
+const deepRun = retouch(deepScene.s, { preset: "deep", up: [0, 1, 0] });
+
+test("deep: the parked car and the person are removed; wall, kiosk against it and a tall pillar stay", async () => {
+  const { keep, report } = await deepRun;
+  const { what } = deepScene;
+  const gone = [0, 0, 0, 0, 0, 0], all = [0, 0, 0, 0, 0, 0];
+  for (let i = 0; i < keep.length; i++) { all[what[i]]++; if (!keep[i]) gone[what[i]]++; }
+  assert.ok(gone[2] / all[2] > 0.98, `car ${gone[2]}/${all[2]}`);
+  // Its feet (the lowest few cm) are within the ground's thickness and stay.
+  assert.ok(gone[3] / all[3] > 0.95, `person ${gone[3]}/${all[3]}`);
+  for (const k of [1, 4, 5]) assert.equal(gone[k], 0, `kind ${k}: ${gone[k]} removed`);
+  assert.ok(gone[0] < 0.002 * all[0], `ground ${gone[0]} removed`);
+  const kinds = report.deep!.objects.map((o) => o.kind).sort();
+  assert.deepEqual(kinds, ["person", "vehicle"]);
+  const car = report.deep!.objects.find((o) => o.kind === "vehicle")!;
+  assert.ok(Math.abs(car.size[0] - 4.4) < 0.3 && Math.abs(car.size[1] - 1.8) < 0.3 && Math.abs(car.size[2] - 1.45) < 0.2, `car ${car.size}`);
+  assert.ok(report.deep!.rejected.some((o) => /tall|over it/.test(o.reason)), "the pillar is kept for its height");
+  assert.ok(report.roofColumns > 0, "the car's roof was not taken for ground");
+});
+
+test("deep: the car's footprint is new ground — flat, on the street, as dense, asphalt-coloured", async () => {
+  const { added, report } = await deepRun;
+  assert.ok(added && added.count === report.deep!.filledSplats);
+  let inside = 0;
+  for (let i = 0; i < added!.count; i++) {
+    const x = added!.pos[i * 3], y = added!.pos[i * 3 + 1], z = added!.pos[i * 3 + 2];
+    assert.ok(Math.abs(y) < 0.02, `height ${y}`);
+    if (x > -1 && x < 0.8 && z > 1.5 && z < 5.9) inside++;
+    // Lying flat: the splat's +z turned onto up (+y), its thinnest axis.
+    const [w, qx] = [added!.rot[i * 4], added!.rot[i * 4 + 1]];
+    assert.ok(Math.abs(Math.abs(w) - Math.SQRT1_2) < 1e-3 && Math.abs(Math.abs(qx) - Math.SQRT1_2) < 1e-3);
+    assert.ok(added!.logScale[i * 3 + 2] < added!.logScale[i * 3]);
+    const l = 0.299 * (0.5 + SH_C0 * added!.dc[i * 3]) + 0.587 * (0.5 + SH_C0 * added!.dc[i * 3 + 1]) + 0.114 * (0.5 + SH_C0 * added!.dc[i * 3 + 2]);
+    assert.ok(l > 0.08 && l < 0.3, `fill luma ${l}`);
+  }
+  const density = inside / (1.8 * 4.4), street = 1 / 0.04 ** 2;
+  assert.ok(density > 0.8 * street && density < 1.25 * street, `${density.toFixed(0)}/m² vs ${street}/m²`);
+  assert.ok(added!.sh.every((v) => v === 0));
+});
+
+test("deep: kept splats keep their exact geometry, and the result is the same every time", async () => {
+  const { keep, added } = await deepRun;
+  const s = deepScene.s;
+  for (let i = 0; i < s.count; i++) {
+    if (!keep[i]) continue;
+    for (let d = 0; d < 3; d++) assert.equal(s.pos[i * 3 + d], deepIn.pos[i * 3 + d]);
+    for (let d = 0; d < 4; d++) assert.equal(s.rot[i * 4 + d], deepIn.rot[i * 4 + d]);
+  }
+  assert.ok(s.sh.every((v) => v === 0), "deep: no glare");
+  const again = clone(deepIn);
+  const second = await retouch(again, { preset: "deep", up: [0, 1, 0] });
+  assert.deepEqual(again.dc, s.dc);
+  assert.deepEqual(second.added!.pos, added!.pos);
+  assert.deepEqual(second.added!.dc, added!.dc);
+});
+
+test("the fresh asphalt's grain is fixed in space and small", () => {
+  let lo = Infinity, hi = -Infinity;
+  for (let k = 0; k < 2000; k++) {
+    const v = valueNoise(k * 0.37, k * 0.11, -k * 0.23);
+    lo = Math.min(lo, v); hi = Math.max(hi, v);
+    assert.equal(v, valueNoise(k * 0.37, k * 0.11, -k * 0.23));
+  }
+  assert.ok(lo >= -1 && hi <= 1 && hi - lo > 1);
+  assert.equal(PRESETS.deep.shKeep, 0);
+  assert.equal(PRESETS.full.deep, false);
 });

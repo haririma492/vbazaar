@@ -13,7 +13,8 @@
  *   POST { action: "tour", tour, base? }               → { tour }     (merges into scenes/tour.json)
  *   POST { action: "stream" | "streamStatus", scene, sharp? }       → { job }  (the streamed copy)
  *   POST { action: "retouch" | "retouchStatus", scene, preset? }    → { job }  (the restored copy of ONE scene;
- *                                                       preset "full" (default) or "gentle"; sets that scene's fileRestored)
+ *                                                       preset "full" (default), "gentle" or "deep" — deep also removes
+ *                                                       cars and people; sets that scene's fileRestored; job.report says what was done)
  *
  * The bytes go from the browser straight to R2; nothing here touches them.
  */
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
       const scene = String(body.scene ?? "");
       if (!isSceneId(scene)) return fail(400, "A scene id.");
       const preset = body.preset ?? "full";
-      if (!isRetouchPreset(preset)) return fail(400, "Preset «full» or «gentle».");
+      if (!isRetouchPreset(preset)) return fail(400, "Preset «full», «gentle» or «deep».");
       return ok({ job: action === "retouch" ? startRetouchJob(scene, preset) : retouchJob(scene) });
     }
 

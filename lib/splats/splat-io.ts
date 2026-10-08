@@ -30,16 +30,22 @@ import type { Splats } from "./retouch";
 export const shCoeffs = (degree: number) => [0, 3, 8, 15][degree] ?? 0;
 const degreeOf = (coeffs: number) => (coeffs >= 15 ? 3 : coeffs >= 8 ? 2 : coeffs >= 3 ? 1 : 0);
 
+/** Float32 arrays on shared memory, so the retouch's worker threads read them without copies. */
+const f32 = (n: number) => {
+  const B = (typeof SharedArrayBuffer === "function" ? SharedArrayBuffer : ArrayBuffer) as unknown as { new (n: number): ArrayBuffer };
+  return new Float32Array(new B(n * 4));
+};
+
 export function emptySplats(count: number, shDegree: number): Splats {
   return {
     count,
     shDegree,
-    pos: new Float32Array(count * 3),
-    dc: new Float32Array(count * 3),
-    alpha: new Float32Array(count),
-    logScale: new Float32Array(count * 3),
-    rot: new Float32Array(count * 4),
-    sh: new Float32Array(count * 3 * shCoeffs(shDegree)),
+    pos: f32(count * 3),
+    dc: f32(count * 3),
+    alpha: f32(count),
+    logScale: f32(count * 3),
+    rot: f32(count * 4),
+    sh: f32(count * 3 * shCoeffs(shDegree)),
   };
 }
 
@@ -161,15 +167,18 @@ export function readPly(path: string, maxSh = 3): Splats {
 }
 
 /**
- * Write `s` as a 3DGS binary .ply, leaving out the splats whose `keep` is 0.
+ * Write `s` as a 3DGS binary .ply, leaving out the splats whose `keep` is 0,
+ * then the splats of `extra` (same SH degree; the retouch's new ground).
  * Returns how many were written.
  */
-export function writePly(path: string, s: Splats, keep?: Uint8Array | null): number {
+export function writePly(path: string, s: Splats, keep?: Uint8Array | null, extra?: Splats | null): number {
+  if (extra && extra.shDegree !== s.shDegree) throw new Error("extra splats with another SH degree");
   const K = shCoeffs(s.shDegree);
   const names = ["x", "y", "z", "f_dc_0", "f_dc_1", "f_dc_2", ...Array.from({ length: 3 * K }, (_, i) => `f_rest_${i}`),
     "opacity", "scale_0", "scale_1", "scale_2", "rot_0", "rot_1", "rot_2", "rot_3"];
   let kept = 0;
   for (let i = 0; i < s.count; i++) if (!keep || keep[i]) kept++;
+  kept += extra?.count ?? 0;
   const header = `ply\nformat binary_little_endian 1.0\nelement vertex ${kept}\n${names.map((n) => `property float ${n}`).join("\n")}\nend_header\n`;
   const fd = openSync(path, "w");
   try {
@@ -182,8 +191,7 @@ export function writePly(path: string, s: Splats, keep?: Uint8Array | null): num
       if (rows) writeSync(fd, new Uint8Array(buf.buffer, 0, rows * w * 4));
       rows = 0;
     };
-    for (let i = 0; i < s.count; i++) {
-      if (keep && !keep[i]) continue;
+    const row = (s: Splats, i: number) => {
       let o = rows * w;
       buf[o++] = s.pos[i * 3]; buf[o++] = s.pos[i * 3 + 1]; buf[o++] = s.pos[i * 3 + 2];
       buf[o++] = s.dc[i * 3]; buf[o++] = s.dc[i * 3 + 1]; buf[o++] = s.dc[i * 3 + 2];
@@ -192,7 +200,9 @@ export function writePly(path: string, s: Splats, keep?: Uint8Array | null): num
       buf[o++] = s.logScale[i * 3]; buf[o++] = s.logScale[i * 3 + 1]; buf[o++] = s.logScale[i * 3 + 2];
       buf[o++] = s.rot[i * 4]; buf[o++] = s.rot[i * 4 + 1]; buf[o++] = s.rot[i * 4 + 2]; buf[o++] = s.rot[i * 4 + 3];
       if (++rows === rowsPer) flush();
-    }
+    };
+    for (let i = 0; i < s.count; i++) if (!keep || keep[i]) row(s, i);
+    if (extra) for (let i = 0; i < extra.count; i++) row(extra, i);
     flush();
   } finally {
     closeSync(fd);
