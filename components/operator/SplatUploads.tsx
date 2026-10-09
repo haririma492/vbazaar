@@ -15,6 +15,11 @@
  * 2. TOUR. Which scene a visitor starts in, and each scene's exits — the
  *    branches a visitor chooses between. Exits are PLACED in the viewer
  *    (`/vca/splat?edit=1`), standing where the marker should be.
+ * 3. TRAIN (operator, 2026-10-09: a store owner with only an iPhone). A phone
+ *    video (.mov kept private as a master, or .mp4) uploaded here becomes a
+ *    splat on a rented GPU: «Train» next to it in «Files in R2». Our server
+ *    starts the machine on Modal, it trains for a few tens of minutes, and
+ *    the scene arrives in the tour with its route (`lib/splats/train.ts`).
  *
  * ⚠️ THE BROWSER SENDS FILES STRAIGHT TO R2, in 64 MiB parts, four at a time,
  * on URLs the server signs. A 2 GB master never passes through our host, and
@@ -28,7 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
-import { isSceneId, isWalkVideo, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
+import { isSceneId, isTrainVideo, isWalkVideo, kindOfFile, partRange, sceneIdFromFileName, splatKey, webFileName } from "@/lib/splats/keys";
 import { routeFromCameras, routeFromColmapBinary, routeFromColmapText } from "@/lib/splats/cameras";
 import { emptyTour, removeExit, removeScene, sceneById, updateScene, upsertScene, type Tour } from "@/lib/splats/tour";
 
@@ -53,6 +58,21 @@ const CARD = "space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4";
 type R2Summary = { webBucket: string; mastersBucket: string; mastersArePrivate: boolean; publicBase: string | null };
 type Obj = { key: string; kind: "master" | "web"; size: number; lastModified: string | null; url: string | null };
 type Resume = { scene: string; key: string; kind: "master" | "web"; uploadId: string; partSize: number; partCount: number };
+/** The GPU training (`lib/splats/train.ts` TrainJob), as much as this screen shows. */
+type TrainJob = {
+  id: string; scene: string; video: string; gpu: string; timeoutMs: number;
+  state: "starting" | "running" | "finishing" | "done" | "failed" | "cancelled";
+  stage: string; words: string; percent: number | null; log: string[];
+  startedAt: number; finishedAt: number | null; error: string | null; warning: string | null;
+  webKey: string | null; routePoints: number | null;
+};
+type TrainSummary = { configured: boolean; gpu: string; gpuPricePerHour: number | null; timeoutHours: number };
+const trainOver = (j: TrainJob | null) => !j || j.state === "done" || j.state === "failed" || j.state === "cancelled";
+function formatElapsed(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m} min ${String(r).padStart(2, "0")} s`;
+}
 
 type Step = "waiting" | "master" | "converting" | "web" | "done" | "error" | "paused";
 type Item = {
@@ -317,6 +337,8 @@ let nextId = 1;
  * sparse/0 (what Brush trains from).
  */
 const isCameraFile = (name: string) => /\.(json|txt|bin)$/i.test(name);
+/** A phone video picked to train from: kept privately as a master (.mov), never converted here. */
+const isMovVideo = (name: string) => /\.mov$/i.test(name);
 
 export default function SplatUploads() {
   const [r2, setR2] = useState<R2Summary | null>(null);
@@ -329,6 +351,11 @@ export default function SplatUploads() {
   const [message, setMessage] = useState<{ tone: "ok" | "bad" | "info"; text: string } | null>(null);
   const [corsHelp, setCorsHelp] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+  const [trainInfo, setTrainInfo] = useState<TrainSummary | null>(null);
+  const [trainJob, setTrainJob] = useState<TrainJob | null>(null);
+  const [trainError, setTrainError] = useState<string | null>(null);
+  const [trainBusy, setTrainBusy] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
   const stopRef = useRef(false);
   const xhrs = useRef(new Set<XMLHttpRequest>());
   const tourRef = useRef(tour);
@@ -339,8 +366,9 @@ export default function SplatUploads() {
 
   const refresh = useCallback(async () => {
     try {
-      const out = await api<{ r2: R2Summary; objects: Obj[]; tour: Tour }>();
+      const out = await api<{ r2: R2Summary; objects: Obj[]; tour: Tour; train?: TrainSummary }>();
       setR2(out.r2);
+      setTrainInfo(out.train ?? null);
       setObjects(out.objects);
       objectsRef.current = out.objects;
       setTour(out.tour);
@@ -356,6 +384,71 @@ export default function SplatUploads() {
     void refresh();
   }, [refresh]);
 
+  // ── The GPU training (`lib/splats/train.ts`): the current or last one ──
+  const loadTrain = useCallback(async () => {
+    try {
+      const { job } = await api<{ job: TrainJob | null }>({ action: "trainStatus" });
+      setTrainJob(job);
+      setTrainError(null);
+      return job;
+    } catch (e) {
+      setTrainError((e as Error).message);
+      return null;
+    }
+  }, []);
+  useEffect(() => {
+    void loadTrain();
+  }, [loadTrain]);
+  // While it runs: ask every 10 s (the machine reports every 30 s), the clock every second.
+  const trainRunning = !trainOver(trainJob);
+  useEffect(() => {
+    if (!trainRunning) return;
+    const ask = setInterval(() => {
+      void loadTrain().then((j) => { if (j && trainOver(j)) void refresh(); });
+    }, 10_000);
+    const tick = setInterval(() => setClock(Date.now()), 1000);
+    return () => { clearInterval(ask); clearInterval(tick); };
+  }, [trainRunning, loadTrain, refresh]);
+
+  async function startTrain(o: Obj) {
+    const folder = o.key.split("/")[1] ?? "";
+    const scene = window.prompt(
+      `Train a splat from ${o.key.split("/").pop()} on a rented GPU (${trainInfo?.gpu ?? "L4"}`
+        + `${trainInfo?.gpuPricePerHour != null ? `, roughly $${trainInfo.gpuPricePerHour.toFixed(2)}/h` : ""}`
+        + `, stops automatically after ${trainInfo?.timeoutHours ?? 3} h).\n\nScene id for it (it replaces that scene's file if it is already in the tour):`,
+      folder,
+    )?.trim().toLowerCase();
+    if (!scene) return;
+    if (!isSceneId(scene)) {
+      setTrainError("Scene id: lowercase letters, digits, inner hyphens — «store-01».");
+      return;
+    }
+    setTrainBusy(true);
+    setTrainError(null);
+    try {
+      const { job } = await api<{ job: TrainJob }>({ action: "train", key: o.key, scene });
+      setTrainJob(job);
+      setClock(Date.now());
+    } catch (e) {
+      setTrainError((e as Error).message);
+    } finally {
+      setTrainBusy(false);
+    }
+  }
+
+  async function cancelTrain() {
+    if (!window.confirm("Stop the training? The GPU stops at once; what it has done so far is lost.")) return;
+    setTrainBusy(true);
+    try {
+      const { job } = await api<{ job: TrainJob | null }>({ action: "trainCancel" });
+      setTrainJob(job);
+    } catch (e) {
+      setTrainError((e as Error).message);
+    } finally {
+      setTrainBusy(false);
+    }
+  }
+
   const patch = (id: number, p: Partial<Item>) => setItems((all) => all.map((it) => (it.id === id ? { ...it, ...p } : it)));
 
   function addFiles(list: FileList | null) {
@@ -368,7 +461,7 @@ export default function SplatUploads() {
       // A camera file belongs to a scene already in the tour: the first one, until chosen.
       const scene = cameraFile ? tourRef.current.start || tourRef.current.scenes[0]?.id || "" : sceneIdFromFileName(file.name);
       added.push({
-        id: nextId++, file, scene, title: "", convert: kind === "master",
+        id: nextId++, file, scene, title: "", convert: kind === "master" && !isMovVideo(file.name),
         step: "waiting", sent: 0, total: file.size, note: "",
       });
     }
@@ -479,6 +572,11 @@ export default function SplatUploads() {
       const there = objectsRef.current.find((o) => o.key === key && o.size === it.file.size);
       if (there) note("This master is already in R2 — not uploading it again.");
       else await uploadBlob(it.file, it.file.name, it.scene, progress("master"), stopRef, xhrs.current, note);
+      // A phone video is kept (privately) to train from — not a splat, not in the tour yet.
+      if (isMovVideo(it.file.name)) {
+        patch(it.id, { step: "done", note: "Video uploaded (kept private). Press «Train» next to it in «Files in R2» below to make a splat from it." });
+        return;
+      }
       if (!it.convert) {
         patch(it.id, { step: "done", note: "Master uploaded. Not converted: upload its .spz when ready." });
         return;
@@ -497,7 +595,7 @@ export default function SplatUploads() {
       // A 360° walk video is not a splat scene: it stays out of the tour and
       // opens in its own viewer.
       if (isWalkVideo(it.file.name)) {
-        patch(it.id, { step: "done", note: "Walk video uploaded. Open it from «Files in R2» below (Walk)." });
+        patch(it.id, { step: "done", note: "Video uploaded. In «Files in R2» below: «Walk» opens it as a 360° walk video, «Train» makes a splat from it." });
         return;
       }
     }
@@ -633,12 +731,14 @@ export default function SplatUploads() {
           One or many Splatica <b>.ply</b> files (or ready <b>.spz / .sog</b>). Each becomes a scene: the .ply is kept as
           its master, converted here to .spz for the viewer, and added to the tour. A 360° <b>.mp4</b> becomes a walk
           video. A camera <b>.json</b> (cameras.json / transforms.json) or COLMAP <b>images.txt / images.bin</b> (from
-          sparse/0, as used by Brush) becomes the chosen scene&apos;s route — the way visitors are drawn along.
+          sparse/0, as used by Brush) becomes the chosen scene&apos;s route — the way visitors are drawn along. A
+          phone video of a store (<b>.mov</b> from an iPhone, or <b>.mp4</b>) can be trained into a scene on a rented
+          GPU: «Train» next to it in «Files in R2».
         </p>
         <input
           type="file"
           multiple
-          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4,.json,.txt,.bin"
+          accept=".ply,.spz,.sog,.ksplat,.splat,.rad,.mp4,.mov,.json,.txt,.bin"
           disabled={running}
           onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }}
           className="block w-full text-[14px] text-white/80 file:mr-3 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-white/90"
@@ -647,7 +747,7 @@ export default function SplatUploads() {
         {items.length > 0 && (
           <ul className="space-y-2">
             {items.map((it) => {
-              const isMaster = kindOfFile(it.file.name) === "master";
+              const isMaster = kindOfFile(it.file.name) === "master" && !isMovVideo(it.file.name);
               const pct = it.total ? (it.sent / it.total) * 100 : 0;
               const locked = running || it.step === "done";
               return (
@@ -936,6 +1036,70 @@ export default function SplatUploads() {
         )}
       </section>
 
+      {/* ── 3. Train ─────────────────────────────────────────────────── */}
+      {/* ⚠️ A RENTED GPU, PAID BY THE HOUR (lib/splats/train.ts): one training at a time, and
+          Modal stops the machine by itself at the time limit whatever happens here. */}
+      <section dir="ltr" className={`${CARD} text-left`}>
+        <h2 className="text-[15px] font-bold text-white/90">3 · Train a scene from a phone video</h2>
+        <p className="text-[12px] text-white/50">
+          Upload the video above (an iPhone <b>.mov</b> or an <b>.mp4</b>), then press «Train» next to it in «Files in R2».
+          A rented GPU works out where the phone was and trains the splat — usually under an hour — and the scene
+          arrives in the tour with its route. GPU {trainInfo?.gpu ?? "L4"}
+          {trainInfo?.gpuPricePerHour != null ? `, roughly $${trainInfo.gpuPricePerHour.toFixed(2)}/h` : ""}, stops
+          automatically after {trainInfo?.timeoutHours ?? 3} h (price approximate; CPU and memory add a little). One
+          training at a time.
+        </p>
+        {trainInfo && !trainInfo.configured && (
+          <p className="rounded-xl border border-rose-300/40 bg-rose-300/10 p-3 text-[13px] text-rose-200">
+            Training is not set up on this host: set <code>MODAL_TOKEN_ID</code> and <code>MODAL_TOKEN_SECRET</code> (Railway →
+            Variables), then redeploy.
+          </p>
+        )}
+        {trainError && <p className="break-words text-[13px] text-rose-300">{trainError}</p>}
+        {trainJob && (() => {
+          const j = trainJob;
+          const running = !trainOver(j);
+          const elapsed = (j.finishedAt ?? (running ? clock : j.startedAt)) - j.startedAt;
+          return (
+            <div className="space-y-2 rounded-xl border border-white/10 p-3">
+              <div className="flex flex-wrap items-center gap-2 text-[13px]">
+                <b className="text-white/90">«{j.scene}»</b>
+                <code className="break-all text-[11px] text-white/40">{j.video}</code>
+                <span className={`ms-auto rounded-full px-2 py-0.5 text-[11px] ${
+                  j.state === "done" ? "bg-emerald-400/15 text-emerald-200" : j.state === "failed" ? "bg-rose-400/15 text-rose-200" : j.state === "cancelled" ? "bg-white/10 text-white/60" : "bg-amber-300/15 text-amber-100"}`}>
+                  {{ starting: "starting", running: "training", finishing: "adding to the tour", done: "done", failed: "failed", cancelled: "cancelled" }[j.state]}
+                </span>
+              </div>
+              <p className="text-[12px] text-white/70">
+                {j.words || j.stage} · {formatElapsed(elapsed)}{running ? " so far" : ""} · GPU {j.gpu}
+              </p>
+              {running && j.percent != null && (
+                <div className="space-y-1">
+                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full bg-amber-300/70 transition-[width]" style={{ width: `${j.percent}%` }} />
+                  </div>
+                  <p className="text-[11px] tabular-nums text-white/55">{j.percent.toFixed(1)}%</p>
+                </div>
+              )}
+              {j.state === "done" && (
+                <p className="text-[12px] text-emerald-300">
+                  In the tour as «{j.scene}»{j.routePoints ? `, with a route of ${j.routePoints} points` : ""}.{" "}
+                  <a className="underline" href={`/vca/splat?scene=${encodeURIComponent(j.scene)}`}>Walk it</a> — then «Make the streamed copy» above for phones.
+                </p>
+              )}
+              {j.warning && <p className="text-[12px] text-amber-200/80">{j.warning}</p>}
+              {j.error && <p className="break-words text-[12px] text-rose-300">{j.error}</p>}
+              {j.log.length > 0 && (
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/40 p-2 text-[10px] leading-snug text-white/60">{j.log.join("\n")}</pre>
+              )}
+              {running && j.state !== "finishing" && (
+                <button className={QUIET} disabled={trainBusy} onClick={() => void cancelTrain()}>Cancel the training</button>
+              )}
+            </div>
+          );
+        })()}
+      </section>
+
       {/* ── Files in R2 ─────────────────────────────────────────────── */}
       <section dir="ltr" className="space-y-2 text-left">
         <div className="flex items-center justify-between">
@@ -952,8 +1116,18 @@ export default function SplatUploads() {
               <code className="break-all text-white/85">{o.key}</code>
               <span className="tabular-nums text-white/50">{formatBytes(o.size)}</span>
               {o.lastModified && <span className="text-white/40">{new Date(o.lastModified).toLocaleString()}</span>}
-              <span className="ms-auto flex gap-2">
+              <span className="ms-auto flex flex-wrap gap-2">
                 {o.kind === "web" && o.url && isWalkVideo(o.key) && <a className={SMALL} href={`/vca/walk?v=${encodeURIComponent(o.key)}`}>Walk</a>}
+                {isTrainVideo(o.key) && (
+                  <button
+                    className="rounded-full border border-amber-300/60 bg-amber-400/15 px-3 py-1 text-[12px] text-amber-50 disabled:opacity-40"
+                    disabled={trainBusy || trainRunning || trainInfo?.configured === false}
+                    title={trainRunning ? "One training at a time" : trainInfo?.configured === false ? "Modal is not set up on this host" : "Train a splat from this video on a rented GPU"}
+                    onClick={() => void startTrain(o)}
+                  >
+                    {trainBusy ? "Starting…" : "Train"}
+                  </button>
+                )}
                 {/* A scene's file: walk the scene — its streamed copy when it has one. «View alone»
                     opens this very file whole: a 100 MB one never finished on a laptop (operator, 2026-10-08). */}
                 {(() => {

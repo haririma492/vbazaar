@@ -17,6 +17,9 @@
  *   POST { action: "retouch" | "retouchStatus", scene, preset? }    → { job }  (the restored copy of ONE scene;
  *                                                       preset "full" (default), "gentle" or "deep" — deep also removes
  *                                                       cars and people; sets that scene's fileRestored; job.report says what was done)
+ *   POST { action: "train", key, scene, title? }        → { job }  (a splat trained from the phone video at `key`
+ *                                                       on a rented GPU — `lib/splats/train.ts`; one at a time)
+ *   POST { action: "trainStatus" | "trainCancel" }      → { job }  (the current or last training; cancel stops the GPU)
  *
  * The bytes go from the browser straight to R2; nothing here touches them.
  */
@@ -30,6 +33,8 @@ import {
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
+import { trainSummary, trainer } from "@/lib/splats/train-job";
+import { TrainRefused } from "@/lib/splats/train";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,7 +90,7 @@ export async function GET(req: NextRequest) {
   try {
     const [all, tour] = await Promise.all([listSplats(), readTour()]);
     const objects = all.filter((o) => o.key !== TOUR_KEY).map((o) => ({ ...o, url: o.kind === "web" ? publicUrl(o.key) : null }));
-    return ok({ r2: r2Summary(), objects, tour });
+    return ok({ r2: r2Summary(), objects, tour, train: trainSummary() });
   } catch (e) {
     console.error("[operator/splats:GET]", e);
     return fail(500, `R2 refused the listing: ${r2Reason(e)}`);
@@ -103,6 +108,21 @@ export async function POST(req: NextRequest) {
   }
 
   const action = body?.action;
+
+  // Training on a rented GPU (`lib/splats/train.ts`): Modal's words, not R2's.
+  if (action === "train" || action === "trainStatus" || action === "trainCancel") {
+    try {
+      if (action === "trainStatus") return ok({ job: await trainer().status() });
+      if (action === "trainCancel") return ok({ job: await trainer().cancel() });
+      const title = typeof body.title === "string" ? body.title : null;
+      return ok({ job: await trainer().start(String(body.scene ?? ""), String(body.key ?? ""), title) });
+    } catch (e) {
+      if (e instanceof TrainRefused) return fail(e.status, e.message);
+      console.error(`[operator/splats:${action}]`, e);
+      return fail(500, `Training «${action}» failed: ${(e as Error).message || "no message"}`);
+    }
+  }
+
   try {
     if (action === "start") {
       const target = splatKey(String(body.scene ?? ""), String(body.name ?? ""));

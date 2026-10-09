@@ -2,14 +2,15 @@
 /**
  * CONVERT A MASTER THAT IS ALREADY IN R2 — no laptop involved.
  *
- *   node --experimental-strip-types scripts/splats/convert-in-r2.mjs <scene> [--sh 1] [--title "Main hallway"]
+ *   node --experimental-strip-types scripts/splats/convert-in-r2.mjs <scene> [--sh 1] [--title "Main hallway"] [--master masters/<scene>/<file>.ply]
  *
  * Run by `.github/workflows/splat-convert.yml` (Actions → Convert splat →
  * Run workflow). It takes the newest .ply under `masters/<scene>/`, converts it
  * to SPZ v3 with Spark's encoder (the same one `/operator/splats` runs in the
  * tab, and `convert.mjs` on a computer), uploads it as
  * `scenes/<scene>/<scene>-<date>.spz`, and adds the scene to the tour (or
- * points it at the new file, keeping its exits).
+ * points it at the new file, keeping its exits). `--master` names the .ply
+ * instead of the newest (the GPU training's hand-over, `lib/splats/train-job.ts`).
  *
  * Why it exists: converting a 2 GB master needs about 4 GB of memory, and a
  * laptop's browser tab can run out. A GitHub runner has 7 GB or more.
@@ -35,9 +36,11 @@ const opt = (name, fallback) => {
 };
 const sh = Number(opt("--sh", "1"));
 const title = (opt("--title", "") || "").trim();
+const masterKey = (opt("--master", "") || "").trim();
 const [scene] = args;
-if (!scene || !isSceneId(scene) || ![0, 1, 2, 3].includes(sh)) {
-  console.error('usage: convert-in-r2.mjs <scene-id> [--sh 0-3] [--title "Shown to visitors"]');
+if (!scene || !isSceneId(scene) || ![0, 1, 2, 3].includes(sh)
+  || (masterKey && (!masterKey.startsWith(`masters/${scene}/`) || splatKey(scene, masterKey.split("/").pop())?.key !== masterKey))) {
+  console.error('usage: convert-in-r2.mjs <scene-id> [--sh 0-3] [--title "Shown to visitors"] [--master masters/<scene-id>/<file>.ply]');
   process.exit(1);
 }
 
@@ -98,10 +101,10 @@ if (localDir) {
   };
 }
 
-// ── 1. The newest master of this scene ──────────────────────────────────────
-const masters = (await store.list(mastersBucket, `masters/${scene}/`)).filter((o) => /\.ply$/i.test(o.key));
+// ── 1. The newest master of this scene (or the one named) ───────────────────
+const masters = (await store.list(mastersBucket, `masters/${scene}/`)).filter((o) => /\.ply$/i.test(o.key) && (!masterKey || o.key === masterKey));
 if (!masters.length) {
-  console.error(`No .ply under masters/${scene}/ in ${mastersBucket}. Upload it at /operator/splats first.`);
+  console.error(masterKey ? `No ${masterKey} in ${mastersBucket}.` : `No .ply under masters/${scene}/ in ${mastersBucket}. Upload it at /operator/splats first.`);
   process.exit(1);
 }
 const master = masters.sort((a, b) => b.modified - a.modified)[0];

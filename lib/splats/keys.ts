@@ -9,6 +9,9 @@
  *   masters/<scene>/<file>.ply      the reconstruction as it came out of
  *                                   Splatica — the source every web copy is
  *                                   made from. NEVER SERVED to visitors.
+ *   masters/<scene>/<file>.mov      a phone video of the place (iPhone: HEVC
+ *                                   .mov), kept privately to train a splat
+ *                                   from on a rented GPU (`train.ts`).
  *   scenes/<scene>/<file>.spz|sog…  the optimized copy the viewer loads.
  *
  * `<scene>` is the scene's id — `hallway`, `store-01`, … — the same id the
@@ -48,6 +51,7 @@ const CONTENT_TYPES: Record<string, string> = {
   splat: "application/octet-stream",
   rad: "application/octet-stream",
   mp4: "video/mp4",
+  mov: "video/quicktime",
 };
 
 const SCENE_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
@@ -70,10 +74,13 @@ export function safeFileName(name: string): string {
   return FILE_RE.test(cleaned) ? cleaned : "";
 }
 
-/** A `.ply` is a master; a web format is a scene file; anything else is refused. */
+/**
+ * A `.ply` is a master; so is a phone video (`.mov`, to train from — private,
+ * never served); a web format is a scene file; anything else is refused.
+ */
 export function kindOfFile(name: string): SplatKind | null {
   const ext = extensionOf(name);
-  if (ext === "ply") return "master";
+  if (ext === "ply" || ext === "mov") return "master";
   return (WEB_EXTENSIONS as readonly string[]).includes(ext) ? "web" : null;
 }
 
@@ -135,6 +142,12 @@ export function webFileName(scene: string, at: Date, ext = "spz"): string {
 /** A 360° walk video (for `/vca/walk`) rather than a splat. */
 export function isWalkVideo(name: string): boolean {
   return extensionOf(name) === "mp4";
+}
+
+/** A phone video a splat can be trained from (`train.ts`): .mp4 (also a walk video) or .mov. */
+export function isTrainVideo(name: string): boolean {
+  const ext = extensionOf(name);
+  return ext === "mp4" || ext === "mov";
 }
 
 // ── A replaced sign's image (founder, 2026-10-08) ─────────────────────────

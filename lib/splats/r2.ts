@@ -288,3 +288,41 @@ export async function writeTour(tour: Tour, base?: Tour): Promise<Tour> {
   }));
   return clean;
 }
+
+// ── Training on a rented GPU (`lib/splats/train.ts`) ─────────────────────────
+
+/**
+ * A GET link for any key this tool knows (masters/ and training/ in the
+ * masters bucket, the rest in the web bucket) — what the GPU machine
+ * downloads the phone video from. It never gets a key.
+ */
+export function presignGetAny(key: string, seconds: number): Promise<string> {
+  const bucket = /^(masters|training)\//.test(key) ? r2Config().mastersBucket : r2Config().webBucket;
+  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: seconds });
+}
+
+/**
+ * A PUT link into the masters bucket (private) — where the GPU machine writes
+ * its status, log, cameras and the trained .ply. Signed WITHOUT a content
+ * type, so a plain `curl -T` matches it.
+ */
+export function presignPutMasters(key: string, seconds: number): Promise<string> {
+  return getSignedUrl(s3(), new PutObjectCommand({ Bucket: r2Config().mastersBucket, Key: key }), { expiresIn: seconds });
+}
+
+/** A masters-bucket object as text; null when it is not there (yet). */
+export async function readMastersText(key: string): Promise<string | null> {
+  try {
+    const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().mastersBucket, Key: key }));
+    return (await out.Body?.transformToString()) ?? null;
+  } catch (e) {
+    if ((e as { name?: string }).name === "NoSuchKey") return null;
+    throw e;
+  }
+}
+
+export async function writeMastersJson(key: string, value: unknown): Promise<void> {
+  await s3().send(new PutObjectCommand({
+    Bucket: r2Config().mastersBucket, Key: key, Body: JSON.stringify(value), ContentType: "application/json", CacheControl: "no-store",
+  }));
+}

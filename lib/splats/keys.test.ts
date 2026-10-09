@@ -5,7 +5,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  contentTypeFor, isSceneId, isSplatKey, isWalkVideo, kindOfFile, partPlan, partRange, safeFileName, sceneIdFromFileName,
+  contentTypeFor, isSceneId, isSplatKey, isTrainVideo, isWalkVideo, kindOfFile, partPlan, partRange, safeFileName, sceneIdFromFileName,
   splatKey, webFileName, signImageKey, isSignImageKey, imageTypeOf, isSignImageType,
 } from "./keys.ts";
 import { isSignImageOf } from "./tour.ts";
@@ -48,7 +48,7 @@ test("scene ids are lowercase words with inner hyphens", () => {
 test("a .ply is a master, a web format is a scene file, the rest is refused", () => {
   assert.equal(kindOfFile("Hallway Final.PLY"), "master");
   for (const f of ["h.spz", "h.sog", "h.ksplat", "h.splat", "h.rad"]) assert.equal(kindOfFile(f), "web", f);
-  for (const f of ["h.zip", "h", "h.ply.exe", "h.mov"]) assert.equal(kindOfFile(f), null, f);
+  for (const f of ["h.zip", "h", "h.ply.exe", "h.avi"]) assert.equal(kindOfFile(f), null, f);
 });
 
 test("keys: masters/ for the .ply, scenes/ for the web copy, names made safe", () => {
@@ -115,4 +115,14 @@ test("a 360° walk video goes to scenes/ like a web splat, served as video", () 
   assert.equal(isSplatKey("masters/worldonyonge-walk/walk-v1.mp4"), null);
   assert.equal(contentTypeFor("walk.mp4"), "video/mp4");
   assert.ok(isWalkVideo("walk.mp4") && !isWalkVideo("scene.spz"));
+});
+
+test("a phone video to train from: .mov is a private master, .mp4 stays a web file (a walk video too)", () => {
+  assert.deepEqual(splatKey("store-01", "IMG_0421.MOV"), { key: "masters/store-01/IMG_0421.MOV", kind: "master" });
+  assert.equal(isSplatKey("masters/store-01/IMG_0421.MOV"), "master");
+  assert.equal(isSplatKey("scenes/store-01/IMG_0421.mov"), null, "a .mov never goes to the public bucket");
+  assert.equal(contentTypeFor("a.mov"), "video/quicktime");
+  assert.deepEqual(splatKey("store-01", "walk.mp4"), { key: "scenes/store-01/walk.mp4", kind: "web" });
+  assert.ok(isTrainVideo("IMG_0421.MOV") && isTrainVideo("walk.mp4"));
+  assert.ok(!isTrainVideo("store.ply") && !isWalkVideo("IMG_0421.mov"));
 });
