@@ -228,6 +228,60 @@ def pick_frames(cand_dir, images_dir, want):
     return len(names), len(keep), float(np.median(every)), float(np.median(kept))
 
 
+
+def split_360(src_dir, dst_dir, size=1440, yaws=8, down_deg=10.0, fov_deg=90.0):
+    """Each equirectangular frame_00001.jpg … → frame_00001_v0.jpg … frame_00001_v7.jpg: ordinary
+    square pinhole views, looking round at `yaws` headings, tilted slightly down. A 90° view tilted
+    10° down reaches 55° below the horizon: the operator under the camera (60–90° down) stays out,
+    with no mask. Frame-major names, so COLMAP's sequential matcher pairs each view with the next
+    frames' views. (2026-10-09: nerfstudio 1.1.5's `--camera-type equirectangular` on the plaza
+    handed COLMAP 99 images, of which it placed 3.)  Returns (frames, views, focal in px)."""
+    import os  # pylint: disable=import-outside-toplevel
+    from PIL import Image  # pylint: disable=import-outside-toplevel
+    try:
+        import cv2  # pylint: disable=import-outside-toplevel
+    except ImportError:  # pragma: no cover
+        cv2 = None
+
+    names = sorted(f for f in os.listdir(src_dir) if f.lower().endswith((".jpg", ".jpeg", ".png")))
+    if not names:
+        raise ValueError("no equirectangular frames to split")
+    os.makedirs(dst_dir, exist_ok=True)
+    f = (size / 2) / math.tan(math.radians(fov_deg) / 2)
+    c = (size - 1) / 2
+    u, v = np.meshgrid(np.arange(size, dtype=np.float64), np.arange(size, dtype=np.float64))
+    # camera rays: x right, y down, z forward
+    rays = np.stack([(u - c) / f, (v - c) / f, np.ones_like(u)], axis=-1)
+    rays /= np.linalg.norm(rays, axis=-1, keepdims=True)
+    p = math.radians(down_deg)
+    # tilt about x so the forward ray (0, 0, 1) becomes (0, sin p, cos p): y is down, so this looks down
+    rx = np.array([[1, 0, 0], [0, math.cos(p), math.sin(p)], [0, -math.sin(p), math.cos(p)]])
+    maps = []
+    for k in range(yaws):
+        a = 2 * math.pi * k / yaws
+        ry = np.array([[math.cos(a), 0, math.sin(a)], [0, 1, 0], [-math.sin(a), 0, math.cos(a)]])
+        d = rays @ (ry @ rx).T
+        lon = np.arctan2(d[..., 0], d[..., 2])          # −π … π, 0 = forward
+        lat = np.arcsin(np.clip(d[..., 1], -1, 1))      # −π/2 up … π/2 down
+        maps.append((lon, lat))
+    views = 0
+    for name in names:
+        with Image.open(os.path.join(src_dir, name)) as im:
+            eq = np.asarray(im.convert("RGB"))
+        h, w = eq.shape[:2]
+        stem = os.path.splitext(name)[0]
+        for k, (lon, lat) in enumerate(maps):
+            mx = ((lon / (2 * math.pi) + 0.5) * w - 0.5).astype(np.float32)
+            my = ((lat / math.pi + 0.5) * h - 0.5).astype(np.float32)
+            if cv2 is not None:
+                out = cv2.remap(eq, mx, my, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_WRAP)
+            else:
+                out = eq[np.clip(np.round(my).astype(int), 0, h - 1), np.round(mx).astype(int) % w]
+            Image.fromarray(out).save(os.path.join(dst_dir, f"{stem}_v{k}.jpg"), quality=95)
+            views += 1
+    return len(names), views, f
+
+
 def registered_images(model_dir):
     """How many images a COLMAP model holds: images.bin starts with that count (uint64, little endian)."""
     import os  # pylint: disable=import-outside-toplevel
@@ -346,6 +400,9 @@ def main(argv):
     if cmd == "pick-frames" and len(argv) == 5:
         cut, kept, med_all, med_kept = pick_frames(argv[2], argv[3], int(argv[4]))
         print(f"frames: kept the sharpest {kept} of {cut} (median sharpness {med_all:.0f} → {med_kept:.0f})")
+    elif cmd == "split-360" and len(argv) in (4, 5):
+        n, views, f = split_360(argv[2], argv[3], int(argv[4]) if len(argv) == 5 else 1440)
+        print(f"360°: {n} frames → {views} views, focal {f:.1f} px")
     elif cmd == "largest-model" and len(argv) == 3:
         best, n, counts = largest_model(argv[2])
         if best is None:

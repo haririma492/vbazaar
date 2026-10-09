@@ -38,9 +38,11 @@
 #    1. curl the video.
 #    2. ffmpeg cuts ~3× as many frames as wanted, at ≤ 1600 px; gpu-frame.py
 #       pick-frames keeps the sharpest of each run of three (SK_FRAMES, 500).
-#       (A 360° video — 2:1, or SK_EQUIRECT=1 — instead goes through
-#       ns-process-data's equirectangular path: 8 views a frame, the
-#       operator cropped, vocabulary-tree matching; see step 2–3 below.)
+#       (A 360° video — 2:1, or SK_EQUIRECT=1 — ≤ 96 frames at 5760 px, each
+#       cut by gpu-frame.py split-360 into 8 square 1440 px pinhole views,
+#       10° down, the operator out of view; COLMAP then gets a fixed pinhole
+#       lens and 24 neighbours. nerfstudio's own equirectangular path placed
+#       3 of the plaza's 99 frames.)
 #    3. COLMAP run here (not by ns-process-data, which matches only 10
 #       neighbours with no loop detection and always keeps sparse/0):
 #       sequential matching, 20 neighbours + quadratic + loop detection;
@@ -118,13 +120,9 @@ main() {
   # ── 2–3. Frames, and where the camera was for each ──────────────────────
   # ⚠️ A 360° WALK (founder, 2026-10-09: the Iranian plaza, an Insta360 X5
   # video cleaned in Insta360 Studio and exported as a 360° MP4). COLMAP
-  # cannot read a panorama: nerfstudio cuts each equirectangular frame into
-  # 8 ordinary views first (`--camera-type equirectangular`), and the bottom
-  # fifth — the person holding the camera — is cropped away. The views of one
-  # frame are not neighbours in time, so matching uses the vocabulary tree
-  # (finds overlaps anywhere) instead of «sequential». Detected by shape: a
-  # 2:1 video is a panorama (or SK_EQUIRECT=1 / 0 to force it).
-  # A phone video takes the path below it: sharpest frames, COLMAP run here.
+  # cannot read a panorama, so each frame is cut into 8 ordinary views first
+  # (below). Detected by shape: a 2:1 video is a panorama (or SK_EQUIRECT=1
+  # / 0 to force it). Then both kinds take the same COLMAP and training.
   local equi="${SK_EQUIRECT:-}"
   if [[ -z "$equi" ]]; then
     local wh
@@ -132,38 +130,39 @@ main() {
     if [[ "$wh" =~ ^([0-9]+)x([0-9]+)$ ]] && (( BASH_REMATCH[1] == 2 * BASH_REMATCH[2] )); then equi=1; else equi=0; fi
   fi
   local data="$WORK/data" model cut
-  # Phone frames are cut at ≤ 1600 px and train at that size; a panorama's
-  # views are sized by nerfstudio, and its dataparser picks their scale.
   local scale=(--downscale-factor 1)
+  mkdir -p "$data/images"
+  # How COLMAP models the camera: a phone frame's lens is solved (OPENCV); a
+  # 360° view is an ideal pinhole cut by us, so its lens is given and fixed.
+  local cam=(--ImageReader.single_camera 1 --ImageReader.camera_model OPENCV) mapcam=() overlap=20 who="phone"
+  local cand="$WORK/cand" duration fps
+  mkdir -p "$cand"
+  duration=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$video" 2>/dev/null || echo 0)
   if [[ "$equi" == 1 ]]; then
-    # 160 frames (1 280 views) ran past 3 h in COLMAP's mapper on an L4
-    # (2026-10-09, the plaza): mapping grows much faster than the image
-    # count, and every 360° frame already sees all round — 96 is plenty.
+    # ⚠️ OUR OWN 360° SPLIT. nerfstudio 1.1.5's `--camera-type equirectangular`
+    # handed COLMAP 99 images of the plaza and it placed 3 (2026-10-09). Here:
+    # ≤ 96 frames (160 frames, 1 280 views, ran past 3 h in the mapper), each
+    # the sharpest of three, cut at 5760 px wide, then gpu-frame.py split-360
+    # → 8 square 1440 px views a frame, looking round, 10° down (the operator,
+    # 60–90° down, stays out of every view). Frame-major names, so the
+    # sequential matcher pairs each view with the next frames' views.
     (( frames > 96 )) && frames=96
-    local proc=(--camera-type equirectangular --images-per-equirect 8 --crop-factor 0 0.2 0 0 --matching-method vocab_tree)
-    say "A 360° video: each of $frames frames becomes 8 views, the bottom fifth (the operator) cropped."
-    stage matching "Finding where the camera was for each view (COLMAP, 360°) — 40 to 90 min"
-    ns-process-data video --data "$video" --output-dir "$data" \
-      --num-frames-target "$frames" "${proc[@]}" --verbose || true
-    if [[ ! -s "$data/transforms.json" ]]; then
-      say "No transforms.json with GPU feature extraction — trying again on the CPU (slower)."
-      rm -rf "$data"
-      ns-process-data video --data "$video" --output-dir "$data" \
-        --num-frames-target "$frames" "${proc[@]}" --verbose --no-gpu || true
-    fi
-    [[ -s "$data/transforms.json" && -s "$data/colmap/sparse/0/images.bin" ]] \
-      || fail "COLMAP could not work out where the camera was. Walk again more slowly, with more detail in view."
-    rm -f "$video"
-    model="$data/colmap/sparse/0"
-    cut=$(( frames * 8 ))
-    scale=()
+    who="camera"; overlap=24
+    stage matching "Cutting the 360° video into views"
+    fps=$(awk -v d="$duration" -v n="$frames" 'BEGIN { f = (d > 0) ? 3 * n / d : 3; if (f < 0.5) f = 0.5; if (f > 6) f = 6; printf "%.3f", f }')
+    say "360° video: ${duration%.*} s; $frames frames (sharpest of three), 8 views each"
+    ffmpeg -hide_banner -loglevel error -i "$video" -vf "fps=$fps,scale=5760:2880" -q:v 2 "$cand/c_%05d.jpg" \
+      || fail "ffmpeg could not read the video."
+    local eq="$WORK/equirect"
+    python3 "$WORK/gpu-frame.py" pick-frames "$cand" "$eq" "$frames" || fail "Could not choose frames from the video."
+    rm -rf "$cand" "$video"
+    python3 "$WORK/gpu-frame.py" split-360 "$eq" "$data/images" 1440 || fail "Could not cut the 360° frames into views."
+    rm -rf "$eq"
+    cam=(--ImageReader.single_camera 1 --ImageReader.camera_model PINHOLE --ImageReader.camera_params "720,720,719.5,719.5")
+    mapcam=(--Mapper.ba_refine_focal_length 0 --Mapper.ba_refine_principal_point 0 --Mapper.ba_refine_extra_params 0)
   else
     # ── 2. Frames: many cut, the sharpest kept ───────────────────────────────
     stage matching "Choosing the sharpest frames"
-    local cand="$WORK/cand"
-    mkdir -p "$data/images" "$cand"
-    local duration fps
-    duration=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$video" 2>/dev/null || echo 0)
     # About three candidates per kept frame, between 1 and 10 a second.
     fps=$(awk -v d="$duration" -v n="$frames" 'BEGIN { f = (d > 0) ? 3 * n / d : 4; if (f < 1) f = 1; if (f > 10) f = 10; printf "%.3f", f }')
     say "video: ${duration%.*} s; cutting $fps frames a second at ≤ 1600 px"
@@ -174,45 +173,45 @@ main() {
       -q:v 2 "$cand/c_%05d.jpg" || fail "ffmpeg could not read the video."
     python3 "$WORK/gpu-frame.py" pick-frames "$cand" "$data/images" "$frames" || fail "Could not choose frames from the video."
     rm -rf "$cand" "$video"
-    cut=$(find "$data/images" -name 'frame_*' | wc -l)
+  fi
+  cut=$(find "$data/images" -name 'frame_*' | wc -l)
 
-    # ── 3. Where the phone was (COLMAP, run here rather than by ns-process-data:
-    #    more neighbours matched, loops closed, and the biggest model kept) ─────
-    stage matching "Finding where the phone was for each of $cut frames (COLMAP) — 20 to 60 min"
-    local db="$data/colmap/database.db" sparse="$data/colmap/sparse"
-    mkdir -p "$sparse"
-    local gpu=1
-    colmap feature_extractor --database_path "$db" --image_path "$data/images" \
-      --ImageReader.single_camera 1 --ImageReader.camera_model OPENCV --SiftExtraction.use_gpu 1 \
-      || { say "GPU feature extraction failed — on the CPU instead (slower)."; gpu=0; rm -f "$db"
-           colmap feature_extractor --database_path "$db" --image_path "$data/images" \
-             --ImageReader.single_camera 1 --ImageReader.camera_model OPENCV --SiftExtraction.use_gpu 0 \
-             || fail "COLMAP could not read the frames."; }
-    # Each frame against its 20 neighbours (and 1, 2, 4 … 2^k further: quadratic),
-    # plus loop detection — a store walk passes the same shelves again.
-    local loop=()
-    if curl -fsSL --retry 3 --connect-timeout 30 -o "$WORK/vocab_tree.bin" "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin"; then
-      loop=(--SequentialMatching.loop_detection 1 --SequentialMatching.vocab_tree_path "$WORK/vocab_tree.bin")
-    else
-      say "(no vocabulary tree to download: matching without loop detection)"
-    fi
-    colmap sequential_matcher --database_path "$db" --SiftMatching.use_gpu "$gpu" \
-      --SequentialMatching.overlap 20 --SequentialMatching.quadratic_overlap 1 "${loop[@]}" \
-      || colmap sequential_matcher --database_path "$db" --SiftMatching.use_gpu "$gpu" --SequentialMatching.overlap 20 \
-      || fail "COLMAP could not match the frames."
-    # Placing a frame needs 15 inliers at a 15 % ratio (defaults 30 and 25 %):
-    # fewer frames dropped where the shelves look alike.
-    colmap mapper --database_path "$db" --image_path "$data/images" --output_path "$sparse" \
-      --Mapper.ba_global_function_tolerance=1e-6 \
-      --Mapper.abs_pose_min_num_inliers 15 --Mapper.abs_pose_min_inlier_ratio 0.15 \
-      || fail "COLMAP could not work out where the phone was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
-    model=$(python3 "$WORK/gpu-frame.py" largest-model "$sparse") \
-      || fail "COLMAP could not work out where the phone was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
-    say "training on COLMAP model $(basename "$model")"
+  # ── 3. Where the camera was (COLMAP, run here rather than by ns-process-data:
+  #    more neighbours matched, loops closed, and the biggest model kept) ─────
+  stage matching "Finding where the $who was for each of $cut images (COLMAP) — 20 to 90 min"
+  local db="$data/colmap/database.db" sparse="$data/colmap/sparse"
+  mkdir -p "$sparse"
+  local gpu=1
+  colmap feature_extractor --database_path "$db" --image_path "$data/images" "${cam[@]}" --SiftExtraction.use_gpu 1 \
+    || { say "GPU feature extraction failed — on the CPU instead (slower)."; gpu=0; rm -f "$db"
+         colmap feature_extractor --database_path "$db" --image_path "$data/images" "${cam[@]}" --SiftExtraction.use_gpu 0 \
+           || fail "COLMAP could not read the images."; }
+  # Each image against its neighbours (and 1, 2, 4 … 2^k further: quadratic),
+  # plus loop detection — a walk passes the same shelves again.
+  local loop=()
+  if curl -fsSL --retry 3 --connect-timeout 30 -o "$WORK/vocab_tree.bin" "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin"; then
+    loop=(--SequentialMatching.loop_detection 1 --SequentialMatching.vocab_tree_path "$WORK/vocab_tree.bin")
+  else
+    say "(no vocabulary tree to download: matching without loop detection)"
+  fi
+  colmap sequential_matcher --database_path "$db" --SiftMatching.use_gpu "$gpu" \
+    --SequentialMatching.overlap "$overlap" --SequentialMatching.quadratic_overlap 1 "${loop[@]}" \
+    || colmap sequential_matcher --database_path "$db" --SiftMatching.use_gpu "$gpu" --SequentialMatching.overlap "$overlap" \
+    || fail "COLMAP could not match the images."
+  # Placing an image needs 15 inliers at a 15 % ratio (defaults 30 and 25 %):
+  # fewer dropped where the shelves look alike.
+  colmap mapper --database_path "$db" --image_path "$data/images" --output_path "$sparse" \
+    --Mapper.ba_global_function_tolerance=1e-6 \
+    --Mapper.abs_pose_min_num_inliers 15 --Mapper.abs_pose_min_inlier_ratio 0.15 "${mapcam[@]}" \
+    || fail "COLMAP could not work out where the $who was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
+  model=$(python3 "$WORK/gpu-frame.py" largest-model "$sparse") \
+    || fail "COLMAP could not work out where the $who was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
+  say "training on COLMAP model $(basename "$model")"
+  if [[ "$equi" != 1 ]]; then
     colmap bundle_adjuster --input_path "$model" --output_path "$model" --BundleAdjustment.refine_principal_point 1 \
       || say "(refining the lens failed; going on with COLMAP's own)"
-    rm -f "$db"
   fi
+  rm -f "$db"
 
   # COLMAP's own world (y down, like Brush's output), not nerfstudio's z-up one.
   python3 "$WORK/gpu-frame.py" rewrite-transforms "$data" "$model"
