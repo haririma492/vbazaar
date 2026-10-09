@@ -57,8 +57,11 @@ export type TrainConfig = {
   diskGb: number;
   /** The pod is terminated after this long, whatever it is doing. */
   timeoutMs: number;
+  /** Frames kept from the video (the sharpest of ~3× as many cut). */
   frames: number;
   iterations: number;
+  /** nerfstudio method: splatfacto-big (finer, slower) or splatfacto. */
+  method: "splatfacto-big" | "splatfacto";
 };
 
 /**
@@ -90,9 +93,11 @@ export function trainConfig(env: Record<string, string | undefined>): TrainConfi
     gpus: gpus.length ? gpus.slice(0, 8) : DEFAULT_GPUS,
     cloud: (env.RUNPOD_TRAIN_CLOUD || "").trim().toUpperCase() === "COMMUNITY" ? "COMMUNITY" : "SECURE",
     diskGb: Math.round(num("RUNPOD_TRAIN_DISK_GB", 80, 30, 500)),
-    timeoutMs: num("RUNPOD_TRAIN_TIMEOUT_HOURS", 3, 0.5, 23) * 3_600_000,
-    frames: Math.round(num("RUNPOD_TRAIN_FRAMES", 350, 50, 1500)),
+    // 4 h: COLMAP on 500 frames with loop detection, then splatfacto-big, is ~2–2.5 h on an L4.
+    timeoutMs: num("RUNPOD_TRAIN_TIMEOUT_HOURS", 4, 0.5, 23) * 3_600_000,
+    frames: Math.round(num("RUNPOD_TRAIN_FRAMES", 500, 50, 1500)),
     iterations: Math.round(num("RUNPOD_TRAIN_ITERATIONS", 30000, 1000, 100000)),
+    method: (env.RUNPOD_TRAIN_METHOD || "").trim() === "splatfacto" ? "splatfacto" : "splatfacto-big",
   };
 }
 
@@ -311,6 +316,7 @@ export function podBody(config: TrainConfig, gpu: string, job: TrainJob, urls: T
       SK_VIDEO_EXT: trainVideoOf(job.video)?.ext ?? "mp4",
       SK_FRAMES: String(config.frames),
       SK_ITERATIONS: String(config.iterations),
+      SK_METHOD: config.method,
       SK_TIMEOUT_S: String(Math.round(config.timeoutMs / 1000)),
       SK_VIDEO_URL: urls.video,
       SK_STATUS_URL: urls.status,

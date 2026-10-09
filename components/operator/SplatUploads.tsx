@@ -435,6 +435,15 @@ export default function SplatUploads() {
     }
   }
 
+  async function openTrainLog() {
+    try {
+      const { url } = await api<{ url: string }>({ action: "trainLog" });
+      window.open(url, "_blank", "noopener");
+    } catch (e) {
+      setTrainError((e as Error).message);
+    }
+  }
+
   async function cancelTrain() {
     if (!window.confirm("Stop the training? The GPU stops at once; what it has done so far is lost.")) return;
     setTrainBusy(true);
@@ -1089,6 +1098,9 @@ export default function SplatUploads() {
               {j.error && <p className="break-words text-[12px] text-rose-300">{j.error}</p>}
               {j.log.length > 0 && (
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/40 p-2 text-[10px] leading-snug text-white/60">{j.log.join("\n")}</pre>
+              )}
+              {!running && j.state !== "cancelled" && (
+                <button className={QUIET} onClick={() => void openTrainLog()}>Full log</button>
               )}
               {running && j.state !== "finishing" && (
                 <button className={QUIET} disabled={trainBusy} onClick={() => void cancelTrain()}>Cancel the training</button>

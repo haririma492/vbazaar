@@ -36,7 +36,18 @@ The result: splat.ply and cameras.json both in COLMAP's world (normalized by
 COLMAP's mapper to span ~10 units: colmap 3.9.1 sfm/incremental_mapper.cc
 line 721, Reconstruction::Normalize(extent = 10)), like a Brush scene.
 
-  gpu-frame.py rewrite-transforms <data-dir>
+Two helpers for the steps before, same file so the pod gets one script:
+
+  pick-frames: of the frames ffmpeg cut, the sharpest in each run of
+     consecutive ones (variance of the Laplacian — a walking phone's frames
+     blur, and blurred frames both fail COLMAP and smear the splat).
+  largest-model: COLMAP's mapper splits a video it cannot join into several
+     models (sparse/0, sparse/1, …), and sparse/0 is not always the biggest;
+     the one with most registered images is trained.
+
+  gpu-frame.py pick-frames <candidates-dir> <images-dir> <how-many>
+  gpu-frame.py largest-model <sparse-dir>
+  gpu-frame.py rewrite-transforms <data-dir> [<model-dir>]
   gpu-frame.py unnormalize <in.ply> <dataparser_transforms.json> <out.ply>
   gpu-frame.py cameras <transforms.json> <cameras.json>
   gpu-frame.py self-test
@@ -150,20 +161,100 @@ def cameras(transforms_path, dst):
     return len(out)
 
 
-def rewrite_transforms(data_dir):
-    """transforms.json and sparse_pc.ply again, in COLMAP's own world (see 1. above)."""
+def rewrite_transforms(data_dir, model_dir=None):
+    """transforms.json and sparse_pc.ply, in COLMAP's own world (see 1. above), from one COLMAP model."""
     from pathlib import Path
     from nerfstudio.process_data import colmap_utils  # pylint: disable=import-outside-toplevel
 
     d = Path(data_dir)
     n = colmap_utils.colmap_to_json(
-        recon_dir=d / "colmap" / "sparse" / "0", output_dir=d, keep_original_world_coordinate=True,
+        recon_dir=Path(model_dir) if model_dir else d / "colmap" / "sparse" / "0", output_dir=d, keep_original_world_coordinate=True,
     )
     path = d / "transforms.json"
     meta = json.loads(path.read_text(encoding="utf-8"))
     meta["applied_transform"] = IDENTITY_3X4
     path.write_text(json.dumps(meta, indent=2), encoding="utf-8")
     return n
+
+
+def sharpness(path):
+    """Variance of the 4-neighbour Laplacian of the grey image, at ≤ 640 px wide: higher is sharper."""
+    from PIL import Image  # pylint: disable=import-outside-toplevel
+
+    with Image.open(path) as im:
+        g = im.convert("L")
+        if g.width > 640:
+            g = g.resize((640, max(1, round(g.height * 640 / g.width))))
+        a = np.asarray(g, dtype=np.float32)
+    return laplacian_variance(a)
+
+
+def laplacian_variance(a):
+    if a.shape[0] < 3 or a.shape[1] < 3:
+        return 0.0
+    lap = -4 * a[1:-1, 1:-1] + a[:-2, 1:-1] + a[2:, 1:-1] + a[1:-1, :-2] + a[1:-1, 2:]
+    return float(lap.var())
+
+
+def pick_windows(scores, want):
+    """Indices of the best score in each of `want` runs of consecutive candidates (all, if there are fewer)."""
+    n = len(scores)
+    if n <= want:
+        return list(range(n))
+    edges = np.linspace(0, n, want + 1)
+    out = []
+    for k in range(want):
+        lo, hi = int(round(edges[k])), int(round(edges[k + 1]))
+        if hi > lo:
+            out.append(lo + int(np.argmax(scores[lo:hi])))
+    return out
+
+
+def pick_frames(cand_dir, images_dir, want):
+    """The sharpest frame of each window, moved to images_dir as frame_00001.jpg … in filming order."""
+    import os  # pylint: disable=import-outside-toplevel
+
+    names = sorted(f for f in os.listdir(cand_dir) if f.lower().endswith((".jpg", ".jpeg", ".png")))
+    if not names:
+        raise ValueError("ffmpeg cut no frames")
+    scores = [sharpness(os.path.join(cand_dir, f)) for f in names]
+    keep = pick_windows(scores, want)
+    os.makedirs(images_dir, exist_ok=True)
+    ext = os.path.splitext(names[0])[1].lower()
+    for i, k in enumerate(keep, start=1):
+        os.replace(os.path.join(cand_dir, names[k]), os.path.join(images_dir, f"frame_{i:05d}{ext}"))
+    kept = sorted(scores[k] for k in keep)
+    every = sorted(scores)
+    return len(names), len(keep), float(np.median(every)), float(np.median(kept))
+
+
+def registered_images(model_dir):
+    """How many images a COLMAP model holds: images.bin starts with that count (uint64, little endian)."""
+    import os  # pylint: disable=import-outside-toplevel
+
+    path = os.path.join(model_dir, "images.bin")
+    try:
+        with open(path, "rb") as f:
+            head = f.read(8)
+    except OSError:
+        return 0
+    return int(np.frombuffer(head, dtype="<u8")[0]) if len(head) == 8 else 0
+
+
+def largest_model(sparse_dir):
+    """(the sub-folder with most registered images, its count, every model's count) — (None, 0, {}) when none."""
+    import os  # pylint: disable=import-outside-toplevel
+
+    counts = {}
+    if os.path.isdir(sparse_dir):
+        for name in sorted(os.listdir(sparse_dir)):
+            d = os.path.join(sparse_dir, name)
+            if os.path.isdir(d):
+                counts[name] = registered_images(d)
+    if not counts or max(counts.values()) == 0:
+        return None, 0, counts
+    best = max(counts, key=lambda k: (counts[k], -int(k) if k.isdigit() else 0))
+    return os.path.join(sparse_dir, best), counts[best], counts
 
 
 def self_test():
@@ -230,13 +321,40 @@ def self_test():
             raise AssertionError("a z-up transforms.json should be refused")
         except ValueError:
             pass
+    # pick-frames: the sharpest of each window, in order; a blurred image scores lower.
+    rng2 = np.random.default_rng(2)
+    sharp = rng2.integers(0, 255, size=(40, 40)).astype(np.float32)
+    blur = (sharp[:-2, :-2] + sharp[1:-1, 1:-1] + sharp[2:, 2:]) / 3
+    assert laplacian_variance(sharp) > 2 * laplacian_variance(blur)
+    assert pick_windows([1, 5, 2, 9, 3, 3], 3) == [1, 3, 4]
+    assert pick_windows([1, 2], 5) == [0, 1]
+    assert pick_windows(list(range(10)), 4) == sorted(pick_windows(list(range(10)), 4))
+    # largest-model: the biggest model wins, whatever its number.
+    with tempfile.TemporaryDirectory() as tmp:
+        for name, n_img in (("0", 40), ("1", 131), ("2", 7)):
+            os.makedirs(os.path.join(tmp, name))
+            with open(os.path.join(tmp, name, "images.bin"), "wb") as f:
+                f.write(np.array([n_img], dtype="<u8").tobytes())
+        best, n_best, counts = largest_model(tmp)
+        assert best == os.path.join(tmp, "1") and n_best == 131 and counts == {"0": 40, "1": 131, "2": 7}, counts
+        assert largest_model(os.path.join(tmp, "nope"))[0] is None
     print("gpu-frame self-test: ok")
 
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
-    if cmd == "rewrite-transforms" and len(argv) == 3:
-        print(f"transforms.json rewritten in COLMAP's frame: {rewrite_transforms(argv[2])} cameras")
+    if cmd == "pick-frames" and len(argv) == 5:
+        cut, kept, med_all, med_kept = pick_frames(argv[2], argv[3], int(argv[4]))
+        print(f"frames: kept the sharpest {kept} of {cut} (median sharpness {med_all:.0f} → {med_kept:.0f})")
+    elif cmd == "largest-model" and len(argv) == 3:
+        best, n, counts = largest_model(argv[2])
+        if best is None:
+            print("no COLMAP model", file=sys.stderr)
+            return 1
+        print(best)
+        print(f"COLMAP models (images each): {counts}", file=sys.stderr)
+    elif cmd == "rewrite-transforms" and len(argv) in (3, 4):
+        print(f"transforms.json rewritten in COLMAP's frame: {rewrite_transforms(*argv[2:])} cameras")
     elif cmd == "unnormalize" and len(argv) == 5:
         count, s = unnormalize(argv[2], argv[3], argv[4])
         print(f"splat un-normalized: {count} splats, dataparser scale {s:.6g}")

@@ -5,9 +5,11 @@
  *   RUNPOD_API_KEY               RunPod → Settings → API Keys (Railway → Variables)
  *   RUNPOD_TRAIN_GPUS            optional, GPU type ids tried in turn, comma-separated;
  *                                default «NVIDIA L4, NVIDIA RTX A5000, NVIDIA GeForce RTX 4090, NVIDIA L40S»
- *   RUNPOD_TRAIN_TIMEOUT_HOURS   optional, default 3
+ *   RUNPOD_TRAIN_TIMEOUT_HOURS   optional, default 4
  *   RUNPOD_TRAIN_CLOUD           optional, SECURE (default) or COMMUNITY
- *   RUNPOD_TRAIN_IMAGE, _DISK_GB, _FRAMES, _ITERATIONS   optional
+ *   RUNPOD_TRAIN_METHOD          optional, splatfacto-big (default) or splatfacto (faster, coarser)
+ *   RUNPOD_TRAIN_FRAMES          optional, default 500 (the sharpest of ~3× as many)
+ *   RUNPOD_TRAIN_IMAGE, _DISK_GB, _ITERATIONS   optional
  *
  * The key stays on this server: the pod gets presigned R2 links only.
  *
@@ -117,6 +119,12 @@ export function trainer(): Trainer {
     },
   });
   return g.__skTrainer;
+}
+
+/** A 15-minute link to the last job's whole log (it is uploaded when the job ends); null when there is none. */
+export async function trainLogUrl(): Promise<string | null> {
+  const j = await trainer().status();
+  return j?.podId ? presignGetAny(j.keys.log, 900) : null;
 }
 
 /** What the page shows before anything is pressed — never a credential. */

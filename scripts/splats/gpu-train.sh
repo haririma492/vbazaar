@@ -17,8 +17,8 @@
 #    SK_CAMERAS_URL     PUT   cameras.json (the route, in the same frame)
 #    SK_LOG_URL         PUT   the whole log, at the end (also on failure)
 #    SK_FRAME_PY_B64    scripts/splats/gpu-frame.py, base64
-#  and, optional: SK_JOB, SK_SCENE, SK_VIDEO_EXT (mp4|mov), SK_FRAMES (350),
-#  SK_ITERATIONS (30000), SK_TIMEOUT_S (10800).
+#  and, optional: SK_JOB, SK_SCENE, SK_VIDEO_EXT (mp4|mov), SK_FRAMES (500),
+#  SK_ITERATIONS (30000), SK_METHOD (splatfacto-big), SK_TIMEOUT_S (14400).
 #
 #  ⚠️ A POD BILLS UNTIL IT IS TERMINATED, and RunPod starts the container
 #  again when its command ends. So:
@@ -34,18 +34,20 @@
 #
 #  The image has no curl: step 0 installs it (apt, ~20 s).
 #
-#  Steps (each flag checked against nerfstudio v1.1.5's source):
+#  Steps (each flag checked against nerfstudio v1.1.5's and COLMAP 3.9.1's source):
 #    1. curl the video.
-#    2. ns-process-data video — frames (ffmpeg), COLMAP with sequential
-#       matching → transforms.json + colmap/sparse/0. It exits 0 even when it
-#       fails (scripts/process_data.py `entrypoint` only logs the error), so
-#       the output is checked here. Retried once on CPU SIFT if the GPU one
-#       failed.
-#    3. gpu-frame.py rewrite-transforms — the same cameras in COLMAP's own
-#       world (y down, like Brush's output), instead of nerfstudio's z-up one.
-#    4. ns-train splatfacto (30k steps; --vis tensorboard: no viewer, so it
-#       ends with the training), dataparser `--orientation-method none`:
-#       the scene is only centred and scaled, never turned.
+#    2. ffmpeg cuts ~3× as many frames as wanted, at ≤ 1600 px; gpu-frame.py
+#       pick-frames keeps the sharpest of each run of three (SK_FRAMES, 500).
+#    3. COLMAP run here (not by ns-process-data, which matches only 10
+#       neighbours with no loop detection and always keeps sparse/0):
+#       sequential matching, 20 neighbours + quadratic + loop detection;
+#       a mapper that drops fewer frames; the model with most frames kept.
+#       Then gpu-frame.py rewrite-transforms writes transforms.json in
+#       COLMAP's own world (y down, like Brush's output), not nerfstudio's z-up one.
+#    4. ns-train splatfacto-big (30k steps; --vis tensorboard: no viewer, so
+#       it ends with the training), every frame at 1600 px, bilateral grid;
+#       dataparser `--orientation-method none`: the scene is only centred
+#       and scaled, never turned.
 #    5. ns-export gaussian-splat → splat.ply (dataparser frame).
 #    6. gpu-frame.py unnormalize + cameras — splat and cameras both back
 #       in COLMAP's frame (see that file for the maths and the citations).
@@ -60,11 +62,12 @@ main() {
   : "${SK_VIDEO_URL:?}" "${SK_STATUS_URL:?}" "${SK_STATUS_GET_URL:?}" "${SK_PLY_URL:?}" "${SK_CAMERAS_URL:?}" "${SK_LOG_URL:?}" "${SK_FRAME_PY_B64:?}"
   local ext="${SK_VIDEO_EXT:-mp4}"
   [[ "$ext" =~ ^(mp4|mov)$ ]] || ext=mp4
-  local frames="${SK_FRAMES:-350}" iterations="${SK_ITERATIONS:-30000}"
-  [[ "$frames" =~ ^[0-9]+$ ]] || frames=350
+  local frames="${SK_FRAMES:-500}" iterations="${SK_ITERATIONS:-30000}" method="${SK_METHOD:-splatfacto-big}"
+  [[ "$frames" =~ ^[0-9]+$ ]] || frames=500
   [[ "$iterations" =~ ^[0-9]+$ ]] || iterations=30000
-  local limit="${SK_TIMEOUT_S:-10800}"
-  [[ "$limit" =~ ^[0-9]+$ ]] || limit=10800
+  [[ "$method" =~ ^splatfacto(-big)?$ ]] || method=splatfacto-big
+  local limit="${SK_TIMEOUT_S:-14400}"
+  [[ "$limit" =~ ^[0-9]+$ ]] || limit=14400
 
   # ── 0. curl (the image's CUDA runtime base has none) ─────────────────────
   if ! command -v curl > /dev/null; then
@@ -109,38 +112,85 @@ main() {
     || fail "Could not download the video from R2 (the link may have expired)."
   say "video: $(du -h "$video" | cut -f1)"
 
-  # ── 2. Frames and camera positions ───────────────────────────────────────
-  stage matching "Finding where the phone was for each frame (COLMAP) — 10 to 30 min"
-  local data="$WORK/data"
-  ns-process-data video --data "$video" --output-dir "$data" \
-    --num-frames-target "$frames" --matching-method sequential --verbose || true
-  if [[ ! -s "$data/transforms.json" ]]; then
-    say "No transforms.json with GPU feature extraction — trying again on the CPU (slower)."
-    rm -rf "$data"
-    ns-process-data video --data "$video" --output-dir "$data" \
-      --num-frames-target "$frames" --matching-method sequential --verbose --no-gpu || true
-  fi
-  [[ -s "$data/transforms.json" && -s "$data/colmap/sparse/0/images.bin" ]] \
-    || fail "COLMAP could not work out where the phone was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
-  rm -f "$video"
+  # ── 2. Frames: many cut, the sharpest kept ───────────────────────────────
+  stage matching "Choosing the sharpest frames"
+  local data="$WORK/data" cand="$WORK/cand"
+  mkdir -p "$data/images" "$cand"
+  local duration fps
+  duration=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$video" 2>/dev/null || echo 0)
+  # About three candidates per kept frame, between 1 and 10 a second.
+  fps=$(awk -v d="$duration" -v n="$frames" 'BEGIN { f = (d > 0) ? 3 * n / d : 4; if (f < 1) f = 1; if (f > 10) f = 10; printf "%.3f", f }')
+  say "video: ${duration%.*} s; cutting $fps frames a second at ≤ 1600 px"
+  # ≤ 1600 px on the long side: what splatfacto trains at without shrinking
+  # (nerfstudio_dataparser.py MAX_AUTO_RESOLUTION; 4K was trained at 960 px).
+  ffmpeg -hide_banner -loglevel error -i "$video" \
+    -vf "fps=$fps,scale='if(gt(iw,ih),min(1600,iw),-2)':'if(gt(iw,ih),-2,min(1600,ih))'" \
+    -q:v 2 "$cand/c_%05d.jpg" || fail "ffmpeg could not read the video."
+  python3 "$WORK/gpu-frame.py" pick-frames "$cand" "$data/images" "$frames" || fail "Could not choose frames from the video."
+  rm -rf "$cand" "$video"
+  local cut
+  cut=$(find "$data/images" -name 'frame_*' | wc -l)
 
-  # ── 3. COLMAP's own world ────────────────────────────────────────────────
-  python3 "$WORK/gpu-frame.py" rewrite-transforms "$data"
+  # ── 3. Where the phone was (COLMAP, run here rather than by ns-process-data:
+  #    more neighbours matched, loops closed, and the biggest model kept) ─────
+  stage matching "Finding where the phone was for each of $cut frames (COLMAP) — 20 to 60 min"
+  local db="$data/colmap/database.db" sparse="$data/colmap/sparse"
+  mkdir -p "$sparse"
+  local gpu=1
+  colmap feature_extractor --database_path "$db" --image_path "$data/images" \
+    --ImageReader.single_camera 1 --ImageReader.camera_model OPENCV --SiftExtraction.use_gpu 1 \
+    || { say "GPU feature extraction failed — on the CPU instead (slower)."; gpu=0; rm -f "$db"
+         colmap feature_extractor --database_path "$db" --image_path "$data/images" \
+           --ImageReader.single_camera 1 --ImageReader.camera_model OPENCV --SiftExtraction.use_gpu 0 \
+           || fail "COLMAP could not read the frames."; }
+  # Each frame against its 20 neighbours (and 1, 2, 4 … 2^k further: quadratic),
+  # plus loop detection — a store walk passes the same shelves again.
+  local loop=()
+  if curl -fsSL --retry 3 --connect-timeout 30 -o "$WORK/vocab_tree.bin" "https://demuc.de/colmap/vocab_tree_flickr100K_words32K.bin"; then
+    loop=(--SequentialMatching.loop_detection 1 --SequentialMatching.vocab_tree_path "$WORK/vocab_tree.bin")
+  else
+    say "(no vocabulary tree to download: matching without loop detection)"
+  fi
+  colmap sequential_matcher --database_path "$db" --SiftMatching.use_gpu "$gpu" \
+    --SequentialMatching.overlap 20 --SequentialMatching.quadratic_overlap 1 "${loop[@]}" \
+    || colmap sequential_matcher --database_path "$db" --SiftMatching.use_gpu "$gpu" --SequentialMatching.overlap 20 \
+    || fail "COLMAP could not match the frames."
+  # Placing a frame needs 15 inliers at a 15 % ratio (defaults 30 and 25 %):
+  # fewer frames dropped where the shelves look alike.
+  colmap mapper --database_path "$db" --image_path "$data/images" --output_path "$sparse" \
+    --Mapper.ba_global_function_tolerance=1e-6 \
+    --Mapper.abs_pose_min_num_inliers 15 --Mapper.abs_pose_min_inlier_ratio 0.15 \
+    || fail "COLMAP could not work out where the phone was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
+  local model
+  model=$(python3 "$WORK/gpu-frame.py" largest-model "$sparse") \
+    || fail "COLMAP could not work out where the phone was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
+  say "training on COLMAP model $(basename "$model")"
+  colmap bundle_adjuster --input_path "$model" --output_path "$model" --BundleAdjustment.refine_principal_point 1 \
+    || say "(refining the lens failed; going on with COLMAP's own)"
+  rm -f "$db"
+
+  # COLMAP's own world (y down, like Brush's output), not nerfstudio's z-up one.
+  python3 "$WORK/gpu-frame.py" rewrite-transforms "$data" "$model"
   local matched
   matched=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))["frames"]))' "$data/transforms.json")
-  say "COLMAP placed $matched of about $frames frames."
+  say "COLMAP placed $matched of $cut frames."
   (( matched >= 20 )) || fail "COLMAP placed only $matched frames — too few for a scene. Film again more slowly, with more overlap."
 
   # ── 4. Training ──────────────────────────────────────────────────────────
-  stage training "Training the splat ($iterations steps) — 20 to 40 min"
+  # splatfacto-big: more, finer splats (method_configs.py). Every frame
+  # trains (--eval-mode all; nerfstudio holds 10 % back by default), at its
+  # full 1600 px (--downscale-factor 1), and a bilateral grid absorbs the
+  # phone's exposure and white-balance drift so it is not baked in as smears.
+  stage training "Training the splat ($iterations steps, $method) — 40 to 90 min"
   local out="$WORK/out"
-  ns-train splatfacto \
+  ns-train "$method" \
     --data "$data" \
     --output-dir "$out" --experiment-name scene --timestamp run \
     --max-num-iterations "$iterations" \
     --vis tensorboard \
     --viewer.quit-on-train-completion True \
-    nerfstudio-data --orientation-method none --center-method poses \
+    --pipeline.model.use-bilateral-grid True \
+    nerfstudio-data --orientation-method none --center-method poses --eval-mode all --downscale-factor 1 \
     || fail "Training stopped with an error (see the log)."
   local run="$out/scene/splatfacto/run"
   [[ -s "$run/config.yml" && -s "$run/dataparser_transforms.json" ]] || fail "Training wrote no config.yml / dataparser_transforms.json."

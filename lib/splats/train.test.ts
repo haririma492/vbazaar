@@ -23,15 +23,18 @@ async function launch(tr: ReturnType<typeof createTrainer>, scene: string, video
   return tr.launched();
 }
 
-test("settings: L4 first, then other 24–48 GB GPUs, 3 h; env can change them within bounds", () => {
+test("settings: L4 first, then other 24–48 GB GPUs, 4 h, 500 frames, splatfacto-big; env can change them within bounds", () => {
   const c = trainConfig({});
   assert.deepEqual(c.gpus, DEFAULT_GPUS);
   assert.equal(c.gpus[0], "NVIDIA L4");
   assert.equal(c.cloud, "SECURE");
-  assert.equal(c.timeoutMs, 3 * HOUR);
+  assert.equal(c.timeoutMs, 4 * HOUR);
   assert.equal(c.image, DEFAULT_IMAGE);
   assert.equal(c.diskGb, 80);
-  assert.equal(c.frames, 350);
+  assert.equal(c.frames, 500);
+  assert.equal(c.method, "splatfacto-big");
+  assert.equal(trainConfig({ RUNPOD_TRAIN_METHOD: "splatfacto" }).method, "splatfacto");
+  assert.equal(trainConfig({ RUNPOD_TRAIN_METHOD: "nerfacto" }).method, "splatfacto-big", "only the two splat methods");
   assert.equal(c.iterations, 30000);
   const d = trainConfig({
     RUNPOD_TRAIN_GPUS: " NVIDIA RTX A5000 ,, NVIDIA L40S", RUNPOD_TRAIN_TIMEOUT_HOURS: "2", RUNPOD_TRAIN_FRAMES: "9999",
@@ -39,7 +42,7 @@ test("settings: L4 first, then other 24–48 GB GPUs, 3 h; env can change them w
   });
   assert.deepEqual(d.gpus, ["NVIDIA RTX A5000", "NVIDIA L40S"]);
   assert.equal(d.timeoutMs, 2 * HOUR);
-  assert.equal(d.frames, 350, "out of bounds: the default");
+  assert.equal(d.frames, 500, "out of bounds: the default");
   assert.equal(d.diskGb, 80);
   assert.equal(d.cloud, "COMMUNITY");
   assert.equal(trainConfig({ RUNPOD_TRAIN_CLOUD: "cheap" }).cloud, "SECURE");
@@ -147,7 +150,9 @@ test("the pod gets presigned URLs and the scripts, never a key; it idles when th
   assert.equal(p.env.SK_VIDEO_EXT, "mov");
   assert.equal(p.env.SK_STATUS_URL, "https://r2/s?sig");
   assert.equal(p.env.SK_STATUS_GET_URL, "https://r2/s?get");
-  assert.equal(p.env.SK_TIMEOUT_S, "10800");
+  assert.equal(p.env.SK_TIMEOUT_S, "14400");
+  assert.equal(p.env.SK_METHOD, "splatfacto-big");
+  assert.equal(p.env.SK_FRAMES, "500");
   assert.equal(Buffer.from(p.env.SK_TRAIN_SH_B64, "base64").toString("utf8"), "echo hi");
   assert.equal(Buffer.from(p.env.SK_FRAME_PY_B64, "base64").toString("utf8"), "print('ü')");
   assert.ok(Object.keys(p.env).every((k) => !/^(R2|AWS|MODAL|RUNPOD)_/.test(k)), "RunPod injects its own pod-scoped RUNPOD_API_KEY; ours must not be sent");
@@ -269,10 +274,10 @@ test("trainer: start, report, finish, stop the pod and hand over", async () => {
   assert.equal(j.title, "Our store");
   assert.deepEqual(f.calls, ["create NVIDIA L4"]);
   const p = f.created[0];
-  // Every link outlives the 3 h limit by an hour.
-  assert.equal(p.env.SK_VIDEO_URL, "https://r2.example/masters/store-01/IMG_1.mov?get&exp=14400");
-  assert.equal(p.env.SK_PLY_URL, `https://r2.example/${j.keys.ply}?put&exp=14400`);
-  assert.equal(p.env.SK_STATUS_GET_URL, `https://r2.example/${j.keys.status}?get&exp=14400`);
+  // Every link outlives the 4 h limit by an hour.
+  assert.equal(p.env.SK_VIDEO_URL, "https://r2.example/masters/store-01/IMG_1.mov?get&exp=18000");
+  assert.equal(p.env.SK_PLY_URL, `https://r2.example/${j.keys.ply}?put&exp=18000`);
+  assert.equal(p.env.SK_STATUS_GET_URL, `https://r2.example/${j.keys.status}?get&exp=18000`);
   assert.ok(f.r2.has(CURRENT_JOB_KEY), "kept in R2 too");
 
   // One at a time.
@@ -358,7 +363,7 @@ test("trainer: the time limit is ours — the pod is failed and terminated", asy
   await launch(tr, "store-01", "masters/store-01/a.mov", null);
   f.pods.set("pod-1", "RUNNING");
   f.r2.set(trainKeys("store-01", (await tr.status())!.id)!.status, JSON.stringify({ stage: "training", percent: 80 }));
-  f.advanceClock(3 * HOUR);
+  f.advanceClock(4 * HOUR);
   const j = (await tr.status())!;
   assert.equal(j.state, "failed");
   assert.match(j.error!, /time limit/);

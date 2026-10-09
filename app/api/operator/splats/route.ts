@@ -33,7 +33,7 @@ import {
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
-import { trainSummary, trainer } from "@/lib/splats/train-job";
+import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
 import { TrainRefused } from "@/lib/splats/train";
 
 export const runtime = "nodejs";
@@ -110,9 +110,13 @@ export async function POST(req: NextRequest) {
   const action = body?.action;
 
   // Training on a rented GPU (`lib/splats/train.ts`): RunPod's words, not R2's.
-  if (action === "train" || action === "trainStatus" || action === "trainCancel") {
+  if (action === "train" || action === "trainStatus" || action === "trainCancel" || action === "trainLog") {
     try {
       if (action === "trainStatus") return ok({ job: await trainer().status() });
+      if (action === "trainLog") {
+        const url = await trainLogUrl();
+        return url ? ok({ url }) : fail(404, "No training log: the last training never reached a GPU.");
+      }
       if (action === "trainCancel") return ok({ job: await trainer().cancel() });
       const title = typeof body.title === "string" ? body.title : null;
       return ok({ job: await trainer().start(String(body.scene ?? ""), String(body.key ?? ""), title) });
