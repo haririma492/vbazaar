@@ -136,7 +136,10 @@ main() {
   # views are sized by nerfstudio, and its dataparser picks their scale.
   local scale=(--downscale-factor 1)
   if [[ "$equi" == 1 ]]; then
-    (( frames > 160 )) && frames=160
+    # 160 frames (1 280 views) ran past 3 h in COLMAP's mapper on an L4
+    # (2026-10-09, the plaza): mapping grows much faster than the image
+    # count, and every 360° frame already sees all round — 96 is plenty.
+    (( frames > 96 )) && frames=96
     local proc=(--camera-type equirectangular --images-per-equirect 8 --crop-factor 0 0.2 0 0 --matching-method vocab_tree)
     say "A 360° video: each of $frames frames becomes 8 views, the bottom fifth (the operator) cropped."
     stage matching "Finding where the camera was for each view (COLMAP, 360°) — 40 to 90 min"
