@@ -110,15 +110,36 @@ main() {
   say "video: $(du -h "$video" | cut -f1)"
 
   # ── 2. Frames and camera positions ───────────────────────────────────────
-  stage matching "Finding where the phone was for each frame (COLMAP) — 10 to 30 min"
+  # ⚠️ A 360° WALK (founder, 2026-10-09: the Iranian plaza, an Insta360 X5
+  # video cleaned in Insta360 Studio and exported as a 360° MP4). COLMAP
+  # cannot read a panorama: nerfstudio cuts each equirectangular frame into
+  # 8 ordinary views first (`--camera-type equirectangular`), and the bottom
+  # fifth — the person holding the camera — is cropped away. The views of one
+  # frame are not neighbours in time, so matching uses the vocabulary tree
+  # (finds overlaps anywhere) instead of «sequential». Detected by shape: a
+  # 2:1 video is a panorama (or SK_EQUIRECT=1 / 0 to force it).
+  local proc=(--matching-method sequential) equi="${SK_EQUIRECT:-}"
+  if [[ -z "$equi" ]]; then
+    local wh
+    wh=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x "$video" 2>/dev/null || true)
+    if [[ "$wh" =~ ^([0-9]+)x([0-9]+)$ ]] && (( BASH_REMATCH[1] == 2 * BASH_REMATCH[2] )); then equi=1; else equi=0; fi
+  fi
+  if [[ "$equi" == 1 ]]; then
+    (( frames > 160 )) && frames=160
+    proc=(--camera-type equirectangular --images-per-equirect 8 --crop-factor 0 0.2 0 0 --matching-method vocab_tree)
+    say "A 360° video: each of $frames frames becomes 8 views, the bottom fifth (the operator) cropped."
+    stage matching "Finding where the camera was for each view (COLMAP, 360°) — 40 to 90 min"
+  else
+    stage matching "Finding where the phone was for each frame (COLMAP) — 10 to 30 min"
+  fi
   local data="$WORK/data"
   ns-process-data video --data "$video" --output-dir "$data" \
-    --num-frames-target "$frames" --matching-method sequential --verbose || true
+    --num-frames-target "$frames" "${proc[@]}" --verbose || true
   if [[ ! -s "$data/transforms.json" ]]; then
     say "No transforms.json with GPU feature extraction — trying again on the CPU (slower)."
     rm -rf "$data"
     ns-process-data video --data "$video" --output-dir "$data" \
-      --num-frames-target "$frames" --matching-method sequential --verbose --no-gpu || true
+      --num-frames-target "$frames" "${proc[@]}" --verbose --no-gpu || true
   fi
   [[ -s "$data/transforms.json" && -s "$data/colmap/sparse/0/images.bin" ]] \
     || fail "COLMAP could not work out where the phone was. Film again more slowly, with more overlap and detail in view (see the filming guide)."
