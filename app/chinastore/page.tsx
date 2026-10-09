@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond } from "next/font/google";
+import localFont from "next/font/local";
 import ChinaStore from "@/components/chinastore/ChinaStore";
 import "./chinastore.css";
 
@@ -20,10 +20,14 @@ export const metadata: Metadata = {
 // previous walk after every deploy.
 export const dynamic = "force-dynamic";
 
-const serif = Cormorant_Garamond({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  style: ["normal", "italic"],
+// Cormorant Garamond (SIL OFL), Google Fonts' latin variable files kept in
+// the repo: a build that fetched them from Google failed on Railway when
+// Google's answer was not the one next/font expected (app/fonts/README.md).
+const serif = localFont({
+  src: [
+    { path: "../fonts/cormorant-garamond-latin.woff2", weight: "300 700", style: "normal" },
+    { path: "../fonts/cormorant-garamond-italic-latin.woff2", weight: "300 700", style: "italic" },
+  ],
   display: "swap",
   variable: "--cs-serif",
   fallback: ["Didot", "Bodoni 72", "Georgia", "serif"],
