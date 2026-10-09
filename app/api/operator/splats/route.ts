@@ -109,7 +109,7 @@ export async function POST(req: NextRequest) {
 
   const action = body?.action;
 
-  // Training on a rented GPU (`lib/splats/train.ts`): Modal's words, not R2's.
+  // Training on a rented GPU (`lib/splats/train.ts`): RunPod's words, not R2's.
   if (action === "train" || action === "trainStatus" || action === "trainCancel") {
     try {
       if (action === "trainStatus") return ok({ job: await trainer().status() });

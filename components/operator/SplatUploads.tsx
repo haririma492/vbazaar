@@ -18,7 +18,7 @@
  * 3. TRAIN (operator, 2026-10-09: a store owner with only an iPhone). A phone
  *    video (.mov kept private as a master, or .mp4) uploaded here becomes a
  *    splat on a rented GPU: «Train» next to it in «Files in R2». Our server
- *    starts the machine on Modal, it trains for a few tens of minutes, and
+ *    rents the machine on RunPod, it trains for a few tens of minutes, and
  *    the scene arrives in the tour with its route (`lib/splats/train.ts`).
  *
  * ⚠️ THE BROWSER SENDS FILES STRAIGHT TO R2, in 64 MiB parts, four at a time,
@@ -60,13 +60,13 @@ type Obj = { key: string; kind: "master" | "web"; size: number; lastModified: st
 type Resume = { scene: string; key: string; kind: "master" | "web"; uploadId: string; partSize: number; partCount: number };
 /** The GPU training (`lib/splats/train.ts` TrainJob), as much as this screen shows. */
 type TrainJob = {
-  id: string; scene: string; video: string; gpu: string; timeoutMs: number;
+  id: string; scene: string; video: string; gpu: string; costPerHour: number | null; timeoutMs: number;
   state: "starting" | "running" | "finishing" | "done" | "failed" | "cancelled";
   stage: string; words: string; percent: number | null; log: string[];
   startedAt: number; finishedAt: number | null; error: string | null; warning: string | null;
   webKey: string | null; routePoints: number | null;
 };
-type TrainSummary = { configured: boolean; gpu: string; gpuPricePerHour: number | null; timeoutHours: number };
+type TrainSummary = { configured: boolean; gpus: string[]; timeoutHours: number };
 const trainOver = (j: TrainJob | null) => !j || j.state === "done" || j.state === "failed" || j.state === "cancelled";
 function formatElapsed(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -413,9 +413,8 @@ export default function SplatUploads() {
   async function startTrain(o: Obj) {
     const folder = o.key.split("/")[1] ?? "";
     const scene = window.prompt(
-      `Train a splat from ${o.key.split("/").pop()} on a rented GPU (${trainInfo?.gpu ?? "L4"}`
-        + `${trainInfo?.gpuPricePerHour != null ? `, roughly $${trainInfo.gpuPricePerHour.toFixed(2)}/h` : ""}`
-        + `, stops automatically after ${trainInfo?.timeoutHours ?? 3} h).\n\nScene id for it (it replaces that scene's file if it is already in the tour):`,
+      `Train a splat from ${o.key.split("/").pop()} on a rented GPU (${trainInfo?.gpus[0] ?? "L4"} or the next free one`
+        + `, stopped automatically after ${trainInfo?.timeoutHours ?? 3} h).\n\nScene id for it (it replaces that scene's file if it is already in the tour):`,
       folder,
     )?.trim().toLowerCase();
     if (!scene) return;
@@ -1038,20 +1037,19 @@ export default function SplatUploads() {
 
       {/* ── 3. Train ─────────────────────────────────────────────────── */}
       {/* ⚠️ A RENTED GPU, PAID BY THE HOUR (lib/splats/train.ts): one training at a time, and
-          Modal stops the machine by itself at the time limit whatever happens here. */}
+          the server and the script on the machine both stop it at the time limit (RunPod has none). */}
       <section dir="ltr" className={`${CARD} text-left`}>
         <h2 className="text-[15px] font-bold text-white/90">3 · Train a scene from a phone video</h2>
         <p className="text-[12px] text-white/50">
           Upload the video above (an iPhone <b>.mov</b> or an <b>.mp4</b>), then press «Train» next to it in «Files in R2».
           A rented GPU works out where the phone was and trains the splat — usually under an hour — and the scene
-          arrives in the tour with its route. GPU {trainInfo?.gpu ?? "L4"}
-          {trainInfo?.gpuPricePerHour != null ? `, roughly $${trainInfo.gpuPricePerHour.toFixed(2)}/h` : ""}, stops
-          automatically after {trainInfo?.timeoutHours ?? 3} h (price approximate; CPU and memory add a little). One
-          training at a time.
+          arrives in the tour with its route. GPU {trainInfo?.gpus.join(", then ") ?? "L4"} (the first one free on
+          RunPod; its hourly price shows once it starts), stopped automatically after {trainInfo?.timeoutHours ?? 3} h.
+          One training at a time.
         </p>
         {trainInfo && !trainInfo.configured && (
           <p className="rounded-xl border border-rose-300/40 bg-rose-300/10 p-3 text-[13px] text-rose-200">
-            Training is not set up on this host: set <code>MODAL_TOKEN_ID</code> and <code>MODAL_TOKEN_SECRET</code> (Railway →
+            Training is not set up on this host: set <code>RUNPOD_API_KEY</code> (RunPod → Settings → API Keys; Railway →
             Variables), then redeploy.
           </p>
         )}
@@ -1071,7 +1069,7 @@ export default function SplatUploads() {
                 </span>
               </div>
               <p className="text-[12px] text-white/70">
-                {j.words || j.stage} · {formatElapsed(elapsed)}{running ? " so far" : ""} · GPU {j.gpu}
+                {j.words || j.stage} · {formatElapsed(elapsed)}{running ? " so far" : ""} · GPU {j.gpu}{j.costPerHour != null ? ` at $${j.costPerHour.toFixed(2)}/h` : ""}
               </p>
               {running && j.percent != null && (
                 <div className="space-y-1">
@@ -1122,7 +1120,7 @@ export default function SplatUploads() {
                   <button
                     className="rounded-full border border-amber-300/60 bg-amber-400/15 px-3 py-1 text-[12px] text-amber-50 disabled:opacity-40"
                     disabled={trainBusy || trainRunning || trainInfo?.configured === false}
-                    title={trainRunning ? "One training at a time" : trainInfo?.configured === false ? "Modal is not set up on this host" : "Train a splat from this video on a rented GPU"}
+                    title={trainRunning ? "One training at a time" : trainInfo?.configured === false ? "RunPod is not set up on this host" : "Train a splat from this video on a rented GPU"}
                     onClick={() => void startTrain(o)}
                   >
                     {trainBusy ? "Starting…" : "Train"}

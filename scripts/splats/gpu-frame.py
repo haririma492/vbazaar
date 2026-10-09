@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-THE TRAINED SPLAT'S FRAME — run inside the Modal sandbox by modal-train.sh
+THE TRAINED SPLAT'S FRAME — run inside the RunPod pod by gpu-train.sh
 (nerfstudio 1.1.5 image: Python 3.10, numpy < 2). Pure numpy apart from
 `rewrite-transforms`, which calls nerfstudio's own converter.
 
@@ -36,10 +36,10 @@ The result: splat.ply and cameras.json both in COLMAP's world (normalized by
 COLMAP's mapper to span ~10 units: colmap 3.9.1 sfm/incremental_mapper.cc
 line 721, Reconstruction::Normalize(extent = 10)), like a Brush scene.
 
-  modal-frame.py rewrite-transforms <data-dir>
-  modal-frame.py unnormalize <in.ply> <dataparser_transforms.json> <out.ply>
-  modal-frame.py cameras <transforms.json> <cameras.json>
-  modal-frame.py self-test
+  gpu-frame.py rewrite-transforms <data-dir>
+  gpu-frame.py unnormalize <in.ply> <dataparser_transforms.json> <out.ply>
+  gpu-frame.py cameras <transforms.json> <cameras.json>
+  gpu-frame.py self-test
 """
 
 import json
@@ -230,7 +230,7 @@ def self_test():
             raise AssertionError("a z-up transforms.json should be refused")
         except ValueError:
             pass
-    print("modal-frame self-test: ok")
+    print("gpu-frame self-test: ok")
 
 
 def main(argv):

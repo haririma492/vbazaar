@@ -3,11 +3,13 @@
  * a store owner with only an iPhone uploads a video at `/operator/splats`,
  * presses «Train», and the store is a splat in the tour with its walk route).
  *
- * Our server starts a Modal sandbox (GPU L4 by default) on the official
- * nerfstudio image and hands it `scripts/splats/modal-train.sh`; the sandbox
- * downloads the video, finds the cameras (COLMAP), trains (splatfacto) and
- * PUTs its results back. Modal never gets an R2 key: only presigned URLs, one
- * per file, valid for the job's time limit plus an hour.
+ * Our server rents a RunPod pod (an L4 by default, or the next GPU type in
+ * the list when none is free) on the official nerfstudio image and hands it
+ * `scripts/splats/gpu-train.sh`; the pod downloads the video, finds the
+ * cameras (COLMAP), trains (splatfacto) and PUTs its results back. RunPod
+ * never gets an R2 key or ours: only presigned URLs, one per file, valid for
+ * the job's time limit plus an hour. (Modal came first; it wanted a payment
+ * method behind startup-credit forms, and the operator turned it down.)
  *
  *   training/<scene>/<job>/status.json   stage, percent, log tail, error (every ~30 s)
  *   training/<scene>/<job>/cameras.json  the camera positions → the scene's route
@@ -15,18 +17,27 @@
  *   masters/<scene>/<scene>-<job>-trained.ply   the splat: a master like any other
  *
  * all in the masters bucket (private). `training/` sits beside `masters/` and
- * `tour-history/`, so «Files in R2» does not list it. When the sandbox has
+ * `tour-history/`, so «Files in R2» does not list it. When the pod has
  * finished well, the server hands over to what an uploaded master gets: the
  * .ply → .spz web copy and the tour (`scripts/splats/convert-in-r2.mjs`), and
  * the route from cameras.json (`routeFromCameras`) — `lib/splats/train-job.ts`.
+ *
+ * ⚠️ A POD BILLS UNTIL IT IS TERMINATED (`runpod.ts`): RunPod has no time
+ * limit and restarts a container whose command ends. So the pod is
+ * terminated here as soon as status.json says done or failed, at the time
+ * limit, and on cancel — and retried on every watch until RunPod confirms
+ * (`podReleased`). The script also deletes its own pod when it ends, and has
+ * its own timer, in case this server is down.
  *
  * ⚠️ ONE TRAINING AT A TIME (a cost guard): a new one is refused while the
  * last is not finished. The job is kept in this process and in R2
  * (`training/current.json`), so a redeploy mid-training loses nothing.
  *
- * Pure apart from what is passed in (`TrainDeps`): no imports, so `node
- * --test` runs it, with Modal and R2 replaced by fakes.
+ * Pure apart from what is passed in (`TrainDeps`): type imports only, so
+ * `node --test` runs it, with RunPod and R2 replaced by fakes.
  */
+
+import type { PodCreate, PodInfo, RunPodLike } from "./runpod";
 
 // `keys.ts`'s scene-id and file-name rules, repeated (`node --test` runs this without a bundler).
 const SCENE_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
@@ -36,17 +47,15 @@ const isSceneId = (s: string) => SCENE_RE.test(s);
 // ── Settings ────────────────────────────────────────────────────────────────
 
 export type TrainConfig = {
-  /** Modal app the sandboxes are created in (made on first use). */
-  app: string;
   /** Registry image: nerfstudio with CUDA, COLMAP, ffmpeg and gsplat. */
   image: string;
-  /** Modal GPU type, e.g. "L4", "A10G", "L40S". */
-  gpu: string;
-  /** Approximate price of that GPU per hour, in US dollars (shown, never billed by us). */
-  gpuPricePerHour: number | null;
-  cpu: number;
-  memoryMiB: number;
-  /** The sandbox is stopped by Modal after this long, whatever it is doing. */
+  /** RunPod GPU type ids, tried in this order until one is free. */
+  gpus: string[];
+  /** SECURE: RunPod's own data centres; COMMUNITY: cheaper, other people's machines. */
+  cloud: "SECURE" | "COMMUNITY";
+  /** Container disk in GB: the video, ~350 frames at 4K and their downscales, the training. */
+  diskGb: number;
+  /** The pod is terminated after this long, whatever it is doing. */
   timeoutMs: number;
   frames: number;
   iterations: number;
@@ -55,41 +64,39 @@ export type TrainConfig = {
 /**
  * ghcr.io/nerfstudio-project/nerfstudio:1.1.5 — the newest release tag
  * (manifest sha256:b59b8e1012d7a43679d3234b3de9c8416a4b8435fcbf21b9d8c4494b8563f19e
- * when checked, 2026-10-09). Its Dockerfile: CUDA 11.8 (sm 61–90, so L4's
- * sm 89 is covered), COLMAP 3.9.1, ffmpeg, torch 2.1.2, gsplat from
- * nerfstudio's pin.
+ * when checked, 2026-10-09). Its Dockerfile: CUDA 11.8 (sm 61–90, so every
+ * GPU below is covered), COLMAP 3.9.1, ffmpeg, torch 2.1.2, gsplat from
+ * nerfstudio's pin. It has no curl: `gpu-train.sh` installs it first.
  */
 export const DEFAULT_IMAGE = "ghcr.io/nerfstudio-project/nerfstudio:1.1.5";
 
-/** Approximate Modal list prices per GPU-hour (USD), for the screen only. */
-const GPU_PRICES: Record<string, number> = { T4: 0.59, L4: 0.8, A10G: 1.1, L40S: 1.95, A100: 2.1, "A100-80GB": 2.5, H100: 3.95 };
+/**
+ * RunPod's GPU type ids (docs: references/gpu-types), cheapest-that-fits
+ * first: 24 GB is plenty for splatfacto on ~350 frames (it trains at ≤1600 px).
+ */
+export const DEFAULT_GPUS = ["NVIDIA L4", "NVIDIA RTX A5000", "NVIDIA GeForce RTX 4090", "NVIDIA L40S"];
+
+/** «NVIDIA GeForce RTX 4090» → «RTX 4090», for the screen. */
+export const gpuLabel = (id: string) => id.replace(/^NVIDIA\s+/, "").replace(/^GeForce\s+/, "").trim() || id;
 
 export function trainConfig(env: Record<string, string | undefined>): TrainConfig {
   const num = (k: string, d: number, lo: number, hi: number) => {
     const v = Number(env[k]);
     return Number.isFinite(v) && v >= lo && v <= hi ? v : d;
   };
-  const gpu = (env.MODAL_TRAIN_GPU || "").trim() || "L4";
+  const gpus = (env.RUNPOD_TRAIN_GPUS || "").split(",").map((g) => g.trim()).filter(Boolean);
   return {
-    app: (env.MODAL_TRAIN_APP || "").trim() || "sarekooche-splat-train",
-    image: (env.MODAL_TRAIN_IMAGE || "").trim() || DEFAULT_IMAGE,
-    gpu,
-    gpuPricePerHour: GPU_PRICES[gpu.split(":")[0]] ?? null,
-    cpu: num("MODAL_TRAIN_CPU", 4, 1, 32),
-    memoryMiB: num("MODAL_TRAIN_MEMORY_MIB", 16384, 4096, 131072),
-    timeoutMs: num("MODAL_TRAIN_TIMEOUT_HOURS", 3, 0.5, 23) * 3_600_000,
-    frames: Math.round(num("MODAL_TRAIN_FRAMES", 350, 50, 1500)),
-    iterations: Math.round(num("MODAL_TRAIN_ITERATIONS", 30000, 1000, 100000)),
+    image: (env.RUNPOD_TRAIN_IMAGE || "").trim() || DEFAULT_IMAGE,
+    gpus: gpus.length ? gpus.slice(0, 8) : DEFAULT_GPUS,
+    cloud: (env.RUNPOD_TRAIN_CLOUD || "").trim().toUpperCase() === "COMMUNITY" ? "COMMUNITY" : "SECURE",
+    diskGb: Math.round(num("RUNPOD_TRAIN_DISK_GB", 80, 30, 500)),
+    timeoutMs: num("RUNPOD_TRAIN_TIMEOUT_HOURS", 3, 0.5, 23) * 3_600_000,
+    frames: Math.round(num("RUNPOD_TRAIN_FRAMES", 350, 50, 1500)),
+    iterations: Math.round(num("RUNPOD_TRAIN_ITERATIONS", 30000, 1000, 100000)),
   };
 }
 
-export const modalConfigured = (env: Record<string, string | undefined>) =>
-  Boolean((env.MODAL_TOKEN_ID || "").trim() && (env.MODAL_TOKEN_SECRET || "").trim());
-
-/** The image layer added on top: curl (the CUDA runtime base image removes it after setup). */
-export const IMAGE_COMMANDS = [
-  "RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*",
-];
+export const runpodConfigured = (env: Record<string, string | undefined>) => Boolean((env.RUNPOD_API_KEY || "").trim());
 
 // ── Keys ────────────────────────────────────────────────────────────────────
 
@@ -126,7 +133,7 @@ export const CURRENT_JOB_KEY = "training/current.json";
 export const STAGES = ["starting", "downloading", "matching", "training", "exporting", "framing", "uploading", "done", "failed"] as const;
 export type Stage = (typeof STAGES)[number];
 
-export type SandboxStatus = {
+export type ScriptStatus = {
   stage: Stage;
   words: string;
   percent: number | null;
@@ -135,8 +142,8 @@ export type SandboxStatus = {
   updatedAt: string | null;
 };
 
-/** What modal-train.sh wrote, made safe to show; null when it is not a status at all. */
-export function parseStatus(text: string | null): SandboxStatus | null {
+/** What gpu-train.sh wrote, made safe to show; null when it is not a status at all. */
+export function parseStatus(text: string | null): ScriptStatus | null {
   if (!text) return null;
   let raw: unknown;
   try {
@@ -170,11 +177,16 @@ export type TrainJob = {
   /** The video's R2 key. */
   video: string;
   title: string | null;
+  /** The GPU it runs on (its label), or the first one asked for while starting. */
   gpu: string;
   timeoutMs: number;
-  sandboxId: string | null;
+  podId: string | null;
+  /** RunPod's price for the pod, USD per hour (what it said at creation). */
+  costPerHour: number | null;
+  /** RunPod has confirmed the pod is terminated (or never had one). */
+  podReleased: boolean;
   state: TrainState;
-  /** The sandbox's stage (status.json), or ours while starting and finishing. */
+  /** The script's stage (status.json), or ours while starting and finishing. */
   stage: string;
   words: string;
   percent: number | null;
@@ -192,50 +204,53 @@ export type TrainJob = {
 
 export const isFinished = (s: TrainState) => s === "done" || s === "failed" || s === "cancelled";
 
-/** The sandbox: still running (null), its exit code, or gone (Modal no longer knows it). */
-export type SandboxExit = number | null | "gone";
+/** The pod, as RunPod tells it: still on its way or running, stopped, or no more. */
+export type PodState = "up" | "stopped" | "gone";
+
+export function podState(pod: PodInfo | null): PodState {
+  if (!pod || pod.status === "TERMINATED") return "gone";
+  if (pod.status === "EXITED" || pod.status === "ERROR") return "stopped";
+  return "up";
+}
 
 /**
- * Where the job goes next, from what the sandbox last wrote and whether it is
- * still running. Pure; «finishing» means: hand over now.
+ * A pod that has said nothing this long after «Train» is failed: RunPod
+ * pulled the 5 GB image and booted it long ago, or never found it a machine.
  */
-export function advance(job: TrainJob, status: SandboxStatus | null, exit: SandboxExit, now: number): TrainJob {
+export const SILENT_MS = 45 * 60_000;
+
+/**
+ * Where the job goes next, from what the script last wrote and the pod's
+ * state. Pure; «finishing» means: hand over now. The caller terminates the
+ * pod of any job this moves to «finishing» or «failed».
+ */
+export function advance(job: TrainJob, status: ScriptStatus | null, pod: PodState, now: number): TrainJob {
   if (isFinished(job.state) || job.state === "finishing") return job;
   const next: TrainJob = { ...job };
   if (status) Object.assign(next, { stage: status.stage, words: status.words, percent: status.percent, log: status.log });
-  if (exit === null) {
-    next.state = "running";
-    return next;
+  if (status?.stage === "done") {
+    return { ...next, state: "finishing", stage: "handing over", words: "Making the web copy and adding it to the tour", percent: 100 };
   }
-  const succeeded = status?.stage === "done" && (exit === 0 || exit === "gone");
-  if (succeeded) return { ...next, state: "finishing", stage: "handing over", words: "Making the web copy and adding it to the tour", percent: 100 };
-  // The SDK's poll() answers 124 for Modal's time limit, 137 for terminated (modal getReturnCode).
-  const ranOut = exit === 124 || now - job.startedAt >= job.timeoutMs - 60_000;
-  const error = status?.error
-    || (ranOut ? `Stopped by the time limit (${Math.round(job.timeoutMs / 3_600_000)} h).`
-      : exit === "gone" ? "The GPU machine is gone and left no result."
-        : `The GPU machine stopped (exit ${exit}) without saying why — see its log.`);
-  return { ...next, state: "failed", stage: "failed", error, finishedAt: now };
+  const failed = (error: string): TrainJob => ({ ...next, state: "failed", stage: "failed", error, finishedAt: now });
+  if (status?.stage === "failed") return failed(status.error || "The GPU machine stopped without saying why — see its log.");
+  if (pod === "gone") return failed("The GPU machine is gone and left no result.");
+  if (pod === "stopped") return failed("The GPU machine stopped before it had finished — see its log.");
+  if (now - job.startedAt >= job.timeoutMs) return failed(`Stopped by the time limit (${Math.round(job.timeoutMs / 3_600_000)} h).`);
+  if (!status && now - job.startedAt >= SILENT_MS) {
+    return failed(`The GPU machine never reported back in ${SILENT_MS / 60_000} min (RunPod found no machine, or the script could not start). Try again.`);
+  }
+  next.state = "running";
+  return next;
 }
 
 // ── What is passed in ───────────────────────────────────────────────────────
-
-/** The part of the Modal SDK (`modal` on npm, ModalClient) this uses — see node_modules/modal/dist/index.d.ts. */
-export type ModalLike = {
-  apps: { fromName(name: string, params?: { createIfMissing?: boolean }): Promise<unknown> };
-  images: { fromRegistry(tag: string): { dockerfileCommands(commands: string[]): unknown } };
-  sandboxes: {
-    create(app: any, image: any, params: Record<string, unknown>): Promise<{ sandboxId: string }>;
-    fromId(id: string): Promise<{ poll(): Promise<number | null>; terminate(): Promise<unknown> }>;
-  };
-};
 
 export type TrainStore = {
   /** A GET link for an object in either bucket (by its prefix), valid this many seconds. */
   presignGet(key: string, seconds: number): Promise<string>;
   /** A PUT link into the masters bucket, signed without a content type. */
   presignPut(key: string, seconds: number): Promise<string>;
-  /** An object of the masters bucket as text; null when there is none. */
+  /** An object of the masters bucket as text; null when there is none. Throws when R2 cannot be read. */
   readText(key: string): Promise<string | null>;
   saveJob(job: TrainJob): Promise<void>;
   loadJob(): Promise<TrainJob | null>;
@@ -243,12 +258,12 @@ export type TrainStore = {
 
 export type TrainDeps = {
   config: TrainConfig;
-  /** The Modal client (made on first use). */
-  modal: () => Promise<ModalLike>;
-  /** Whether MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set. */
+  /** The RunPod client. */
+  runpod: () => RunPodLike;
+  /** Whether RUNPOD_API_KEY is set. */
   configured: () => boolean;
   store: TrainStore;
-  /** modal-train.sh and modal-frame.py, as text. */
+  /** gpu-train.sh and gpu-frame.py, as text. */
   scripts: () => { sh: string; py: string };
   /** The hand-over after a good training: web copy, tour, route. */
   handoff: (job: TrainJob) => Promise<{ webKey: string; routePoints: number | null; warning: string | null }>;
@@ -269,36 +284,53 @@ export class TrainRefused extends Error {
 const b64 = (s: string) =>
   typeof Buffer !== "undefined" ? Buffer.from(s, "utf8").toString("base64") : btoa(unescape(encodeURIComponent(s)));
 
-/** The sandbox's parameters (SandboxCreateParams), built from the job: pure. */
-export function sandboxParams(config: TrainConfig, job: TrainJob, urls: { video: string; status: string; ply: string; cameras: string; log: string }, scripts: { sh: string; py: string }) {
+/**
+ * The pod's command: unpack gpu-train.sh from the environment and run it,
+ * then idle — RunPod restarts a container whose command ends, which would
+ * train all over again. The script deletes its own pod when it ends; until
+ * then (or if it cannot) the server terminates it.
+ */
+export const POD_BOOT = 'printf %s "$SK_TRAIN_SH_B64" | base64 -d > /tmp/sk-train.sh && bash /tmp/sk-train.sh; '
+  + 'echo "sk-train: ended ($?); idle until the pod is terminated"; exec sleep infinity';
+
+export type TrainUrls = { video: string; status: string; statusGet: string; ply: string; cameras: string; log: string };
+
+/** POST /v2/pods's body for one GPU type, built from the job: pure. RunPod caps the body at 100 KB. */
+export function podBody(config: TrainConfig, gpu: string, job: TrainJob, urls: TrainUrls, scripts: { sh: string; py: string }): PodCreate {
   return {
-    gpu: config.gpu,
-    cpu: config.cpu,
-    memoryMiB: config.memoryMiB,
-    timeoutMs: config.timeoutMs,
-    command: ["bash", "-c", scripts.sh, "modal-train"],
+    name: `sk-train-${job.scene}-${job.id}`,
+    cloud: config.cloud,
+    gpu: { id: gpu, count: 1 },
+    image: config.image,
+    disk: config.diskGb,
+    entrypoint: ["bash", "-c", POD_BOOT],
+    cmd: [],
     env: {
       SK_JOB: job.id,
       SK_SCENE: job.scene,
       SK_VIDEO_EXT: trainVideoOf(job.video)?.ext ?? "mp4",
       SK_FRAMES: String(config.frames),
       SK_ITERATIONS: String(config.iterations),
+      SK_TIMEOUT_S: String(Math.round(config.timeoutMs / 1000)),
       SK_VIDEO_URL: urls.video,
       SK_STATUS_URL: urls.status,
+      SK_STATUS_GET_URL: urls.statusGet,
       SK_PLY_URL: urls.ply,
       SK_CAMERAS_URL: urls.cameras,
       SK_LOG_URL: urls.log,
+      SK_TRAIN_SH_B64: b64(scripts.sh),
       SK_FRAME_PY_B64: b64(scripts.py),
       PYTHONUNBUFFERED: "1",
     },
-    tags: { purpose: "splat-train", scene: job.scene, job: job.id },
   };
 }
 
 // ── The trainer ─────────────────────────────────────────────────────────────
 
-/** A job still without a sandbox this long after it was started was lost to a restart. */
+/** A job still without a pod this long after it was started was lost to a restart. */
 export const LAUNCH_STALE_MS = 30 * 60_000;
+
+const httpStatus = (e: unknown) => (e as { status?: unknown }).status;
 
 export function createTrainer(deps: TrainDeps) {
   let current: TrainJob | null = null;
@@ -311,7 +343,9 @@ export function createTrainer(deps: TrainDeps) {
     if (!loaded) {
       loaded = true;
       try {
-        current = (await deps.store.loadJob()) ?? current;
+        const saved = await deps.store.loadJob();
+        // A record from before RunPod (Modal's) has no pod to release.
+        if (saved) current = { ...saved, podId: saved.podId ?? null, costPerHour: saved.costPerHour ?? null, podReleased: saved.podReleased ?? !saved.podId };
       } catch {
         /* R2 unreadable for a moment: what this process knows */
       }
@@ -328,32 +362,63 @@ export function createTrainer(deps: TrainDeps) {
     }
   }
 
-  /** Presign the links and ask Modal for the sandbox; the job moves to «running» or «failed». */
+  /** Terminate the pod of a job that no longer needs it; tried again on the next watch if RunPod is not reachable. */
+  async function release(j: TrainJob): Promise<TrainJob> {
+    if (j.podReleased || !j.podId) return j.podReleased ? j : { ...j, podReleased: true };
+    try {
+      await deps.runpod().terminate(j.podId);
+      return { ...j, podReleased: true };
+    } catch (e) {
+      return { ...j, warning: `The GPU machine could not be stopped yet (${(e as Error).message}); trying again.` };
+    }
+  }
+
+  /** Presign the links and ask RunPod for a pod, GPU type by type; the job moves to «running» or «failed». */
   async function launch(j: TrainJob) {
     const { config } = deps;
+    const cancelled = () => current?.id === j.id && current.state === "cancelled";
     try {
-      // Every link outlives the sandbox's time limit by an hour.
+      // Every link outlives the time limit by an hour.
       const secs = Math.ceil(config.timeoutMs / 1000) + 3600;
-      const [video, status, ply, cameras, log] = await Promise.all([
+      const [video, status, statusGet, ply, cameras, log] = await Promise.all([
         deps.store.presignGet(j.video, secs),
         deps.store.presignPut(j.keys.status, secs),
+        deps.store.presignGet(j.keys.status, secs),
         deps.store.presignPut(j.keys.ply, secs),
         deps.store.presignPut(j.keys.cameras, secs),
         deps.store.presignPut(j.keys.log, secs),
       ]);
-      const modal = await deps.modal();
-      const app = await modal.apps.fromName(config.app, { createIfMissing: true });
-      const image = modal.images.fromRegistry(config.image).dockerfileCommands(IMAGE_COMMANDS);
-      const sb = await modal.sandboxes.create(app, image, sandboxParams(config, j, { video, status, ply, cameras, log }, deps.scripts()));
-      if (current?.id === j.id && current.state === "cancelled") {
-        // Cancelled while Modal was still starting it: stop it before it bills.
-        await modal.sandboxes.fromId(sb.sandboxId).then((x) => x.terminate()).catch(() => {});
+      const urls = { video, status, statusGet, ply, cameras, log };
+      const scripts = deps.scripts();
+      const refusals: string[] = [];
+      for (const gpu of config.gpus) {
+        if (cancelled()) return;
+        let pod: PodInfo;
+        try {
+          pod = await deps.runpod().create(podBody(config, gpu, j, urls, scripts));
+        } catch (e) {
+          const code = httpStatus(e);
+          // A bad key or a bad body is the same for every GPU: stop asking.
+          if (code === 401 || code === 403 || code === 413 || code === 422) throw e;
+          refusals.push(`${gpuLabel(gpu)}: ${(e as Error).message}`);
+          continue;
+        }
+        if (cancelled()) {
+          // Cancelled while RunPod was creating it: stop it before it bills.
+          const stopped = await deps.runpod().terminate(pod.id).then(() => true, () => false);
+          await save({ ...current!, podId: pod.id, podReleased: stopped }); // not stopped: the watcher tries again
+          return;
+        }
+        await save({
+          ...(current?.id === j.id ? current : j), podId: pod.id, gpu: gpuLabel(gpu), costPerHour: pod.cost, podReleased: false, state: "running",
+          words: "Starting the GPU machine (RunPod fetches the 5 GB image first: a few minutes)",
+        });
         return;
       }
-      await save({ ...(current?.id === j.id ? current : j), sandboxId: sb.sandboxId, state: "running", words: "Starting the GPU machine (the first time, Modal fetches the 5 GB image: a few minutes)" });
+      throw new Error(`no GPU free right now — ${refusals.join(" · ")}`);
     } catch (e) {
-      if (current?.id === j.id && current.state === "cancelled") return;
-      await save({ ...j, state: "failed", stage: "failed", words: "Not started", error: `Modal refused to start the training: ${(e as Error).message}`, finishedAt: deps.now() });
+      if (cancelled()) return;
+      await save({ ...j, state: "failed", stage: "failed", words: "Not started", error: `RunPod refused to start the training: ${(e as Error).message}`, finishedAt: deps.now() });
     }
   }
 
@@ -375,66 +440,71 @@ export function createTrainer(deps: TrainDeps) {
     })();
   }
 
-  /** Ask the sandbox and status.json how it goes, and move the job on. */
+  /** Ask status.json and RunPod how it goes, move the job on, and stop a pod no longer needed. */
   async function refresh(): Promise<TrainJob | null> {
     const j = await job();
-    if (!j || isFinished(j.state)) return j;
-    if (j.state === "finishing") {
-      handOver(j); // after a restart, nobody is handing over: start again
-      return j;
+    if (!j) return j;
+    if (isFinished(j.state) || j.state === "finishing") {
+      let next = j;
+      if (!j.podReleased) {
+        next = await release(j);
+        if (next !== j) await save(next);
+      }
+      if (next.state === "finishing") handOver(next); // after a restart, nobody is handing over: start again
+      return next;
     }
-    if (!j.sandboxId) {
+    if (!j.podId) {
       // Still being launched by this process, or the process that launched it
-      // restarted before Modal answered: then nothing will ever move it on.
+      // restarted before RunPod answered: then nothing will ever move it on.
       if (launching || deps.now() - j.startedAt < LAUNCH_STALE_MS) return j;
-      const failed: TrainJob = { ...j, state: "failed", stage: "failed", words: "Not started", error: "The server restarted while Modal was starting the training. Press «Train» again.", finishedAt: deps.now() };
+      const failed: TrainJob = { ...j, state: "failed", stage: "failed", words: "Not started", error: "The server restarted while RunPod was starting the training. Press «Train» again.", finishedAt: deps.now() };
       await save(failed);
       return failed;
     }
-    let status: SandboxStatus | null = null;
+    let status: ScriptStatus | null;
     try {
       status = parseStatus(await deps.store.readText(j.keys.status));
     } catch {
-      /* not written yet, or R2 busy */
+      return j; // R2 busy: not a reason to judge the pod; ask again next time
     }
-    let exit: SandboxExit;
+    let pod: PodState;
     try {
-      const sb = await (await deps.modal()).sandboxes.fromId(j.sandboxId);
-      exit = await sb.poll();
+      pod = podState(await deps.runpod().get(j.podId));
     } catch (e) {
-      const name = (e as { name?: string }).name ?? "";
-      if (!/NotFound/i.test(name)) return { ...j, warning: `Could not ask Modal: ${(e as Error).message}` };
-      exit = "gone";
+      return { ...j, warning: `Could not ask RunPod: ${(e as Error).message}` };
     }
-    const next = advance(j, status, exit, deps.now());
+    let next = advance(j, status, pod, deps.now());
+    if (next.state === "finishing" || next.state === "failed") next = await release(next);
     if (JSON.stringify(next) !== JSON.stringify(j)) await save(next);
     if (next.state === "finishing") handOver(next);
     return next;
   }
+
+  const settled = (j: TrainJob | null) => !j || (isFinished(j.state) && j.podReleased);
 
   function watch() {
     if (watching || !deps.every) return;
     watching = true;
     deps.every(30_000, async () => {
       const j = await refresh().catch(() => current);
-      const over = !j || isFinished(j.state);
+      const over = settled(j);
       if (over) watching = false;
       return over;
     });
   }
 
   return {
-    /** The current or last job, brought up to date (and watched until it ends). */
+    /** The current or last job, brought up to date (and watched until it ends and its pod is gone). */
     async status(): Promise<TrainJob | null> {
       const j = await refresh();
-      if (j && !isFinished(j.state)) watch();
+      if (!settled(j)) watch();
       return j;
     },
 
     /** Start training `scene` from the video at `videoKey`. Refused while another is unfinished. */
     async start(scene: string, videoKey: string, title: string | null): Promise<TrainJob> {
       if (!deps.configured()) {
-        throw new TrainRefused("Modal is not set up on this host: set MODAL_TOKEN_ID and MODAL_TOKEN_SECRET (Railway → Variables).", 503);
+        throw new TrainRefused("RunPod is not set up on this host: set RUNPOD_API_KEY (Railway → Variables).", 503);
       }
       if (!isSceneId(scene)) throw new TrainRefused("A scene id like «store-01».", 400);
       if (!trainVideoOf(videoKey)) throw new TrainRefused("Not a phone video in R2 (.mp4 or .mov under masters/ or scenes/).", 400);
@@ -447,15 +517,14 @@ export function createTrainer(deps: TrainDeps) {
       const id = newJobId(at, deps.random);
       const keys = trainKeys(scene, id)!;
       const j: TrainJob = {
-        id, scene, video: videoKey, title: title?.trim().slice(0, 80) || null, gpu: config.gpu, timeoutMs: config.timeoutMs,
-        sandboxId: null, state: "starting", stage: "starting", words: "Asking Modal for a GPU", percent: null, log: [],
+        id, scene, video: videoKey, title: title?.trim().slice(0, 80) || null, gpu: gpuLabel(config.gpus[0]), timeoutMs: config.timeoutMs,
+        podId: null, costPerHour: null, podReleased: true, state: "starting", stage: "starting", words: "Asking RunPod for a GPU", percent: null, log: [],
         startedAt: at.getTime(), finishedAt: null, error: null, keys, webKey: null, routePoints: null, warning: null,
       };
       await save(j);
-      // Launched in the background: on the first run Modal pulls the 5 GB
-      // image before `sandboxes.create` returns, far past the ~100 s the CDN
-      // in front of the site waits for an answer (HTTP 524). The page follows
-      // the job through `status()`.
+      // Launched in the background: the page follows the job through
+      // `status()`, and «Train» answers at once whatever RunPod does (the CDN
+      // in front of the site gives up after ~100 s: HTTP 524).
       launching = launch(j).finally(() => { launching = null; });
       watch();
       return current!;
@@ -467,19 +536,13 @@ export function createTrainer(deps: TrainDeps) {
       return current;
     },
 
-    /** Stop the sandbox now (the GPU bill stops with it). */
+    /** Terminate the pod now (the GPU bill stops with it). */
     async cancel(): Promise<TrainJob | null> {
       const j = await job();
       if (!j || isFinished(j.state)) return j;
       if (j.state === "finishing") throw new TrainRefused("The training has finished and is being added to the tour; it cannot be cancelled now.");
-      if (j.sandboxId) {
-        try {
-          await (await (await deps.modal()).sandboxes.fromId(j.sandboxId)).terminate();
-        } catch (e) {
-          if (!/NotFound/i.test((e as { name?: string }).name ?? "")) throw e;
-        }
-      }
-      await save({ ...j, state: "cancelled", stage: "cancelled", words: "Cancelled", finishedAt: deps.now() });
+      if (j.podId) await deps.runpod().terminate(j.podId); // a pod already gone is fine; RunPod unreachable: say so, nothing changes
+      await save({ ...j, state: "cancelled", stage: "cancelled", words: "Cancelled", podReleased: true, finishedAt: deps.now() });
       return current;
     },
   };

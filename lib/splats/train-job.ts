@@ -1,15 +1,15 @@
 /**
  * THE GPU TRAINING, WIRED TO THIS SERVER (`lib/splats/train.ts` is the logic;
- * this gives it Modal, R2, the scripts and the hand-over).
+ * this gives it RunPod, R2, the scripts and the hand-over).
  *
- *   MODAL_TOKEN_ID / MODAL_TOKEN_SECRET   Modal's API token (Railway → Variables)
- *   MODAL_TRAIN_GPU                       optional, default L4
- *   MODAL_TRAIN_TIMEOUT_HOURS             optional, default 3
- *   MODAL_TRAIN_IMAGE, _CPU, _MEMORY_MIB, _FRAMES, _ITERATIONS, _APP   optional
+ *   RUNPOD_API_KEY               RunPod → Settings → API Keys (Railway → Variables)
+ *   RUNPOD_TRAIN_GPUS            optional, GPU type ids tried in turn, comma-separated;
+ *                                default «NVIDIA L4, NVIDIA RTX A5000, NVIDIA GeForce RTX 4090, NVIDIA L40S»
+ *   RUNPOD_TRAIN_TIMEOUT_HOURS   optional, default 3
+ *   RUNPOD_TRAIN_CLOUD           optional, SECURE (default) or COMMUNITY
+ *   RUNPOD_TRAIN_IMAGE, _DISK_GB, _FRAMES, _ITERATIONS   optional
  *
- * The Modal SDK is loaded only when a training is started or asked after
- * (`import("modal")`, Node 22 or later), so nothing else on the site depends
- * on it.
+ * The key stays on this server: the pod gets presigned R2 links only.
  *
  * THE HAND-OVER, after a good training, is what an uploaded master gets —
  * done here on the server, because the operator may have only a phone (the
@@ -33,8 +33,9 @@ import { join } from "node:path";
 import { routeFromCameras } from "./cameras";
 import { presignGetAny, presignPutMasters, readMastersText, readTour, writeMastersJson, writeTour } from "./r2";
 import { sceneById, updateScene } from "./tour";
+import { runpodClient } from "./runpod";
 import {
-  CURRENT_JOB_KEY, createTrainer, modalConfigured, trainConfig, type ModalLike, type TrainJob, type Trainer,
+  CURRENT_JOB_KEY, createTrainer, gpuLabel, runpodConfigured, trainConfig, type TrainJob, type Trainer,
 } from "./train";
 
 const CONVERT = join(process.cwd(), "scripts", "splats", "convert-in-r2.mjs");
@@ -61,7 +62,7 @@ async function handoff(job: TrainJob): Promise<{ webKey: string; routePoints: nu
   if (!canStrip()) throw new Error(`this server runs Node ${process.versions.node}; the conversion needs 22.6 or later`);
   // 1. The web copy and the tour.
   await runConvert([job.scene, "--master", job.keys.ply, ...(job.title ? ["--title", job.title] : [])]);
-  // 2. The route, in the splat's own frame (both come out of modal-frame.py in COLMAP's).
+  // 2. The route, in the splat's own frame (both come out of gpu-frame.py in COLMAP's).
   const tour = await readTour(); // read again: the conversion has just written it
   const scene = sceneById(tour, job.scene);
   if (!scene) throw new Error(`the conversion left no «${job.scene}» in the tour`);
@@ -81,18 +82,11 @@ async function handoff(job: TrainJob): Promise<{ webKey: string; routePoints: nu
   return { webKey: scene.file, routePoints: route?.route.length ?? null, warning };
 }
 
-let modalClient: Promise<ModalLike> | null = null;
-function modal(): Promise<ModalLike> {
-  modalClient ??= import("modal").then((m) => new m.ModalClient() as unknown as ModalLike).catch((e) => {
-    modalClient = null;
-    throw new Error(`the Modal SDK could not be loaded (${(e as Error).message}); it needs Node 22 or later`);
-  });
-  return modalClient;
-}
+const runpod = () => runpodClient((process.env.RUNPOD_API_KEY || "").trim(), (url, init) => fetch(url, { ...init, cache: "no-store" }));
 
 function scripts() {
   const dir = join(process.cwd(), "scripts", "splats");
-  return { sh: readFileSync(join(dir, "modal-train.sh"), "utf8"), py: readFileSync(join(dir, "modal-frame.py"), "utf8") };
+  return { sh: readFileSync(join(dir, "gpu-train.sh"), "utf8"), py: readFileSync(join(dir, "gpu-frame.py"), "utf8") };
 }
 
 // One trainer per server process (kept across hot reloads in development).
@@ -100,8 +94,8 @@ const g = globalThis as unknown as { __skTrainer?: Trainer };
 export function trainer(): Trainer {
   g.__skTrainer ??= createTrainer({
     config: trainConfig(process.env),
-    modal,
-    configured: () => modalConfigured(process.env),
+    runpod,
+    configured: () => runpodConfigured(process.env),
     store: {
       presignGet: presignGetAny,
       presignPut: presignPutMasters,
@@ -128,5 +122,5 @@ export function trainer(): Trainer {
 /** What the page shows before anything is pressed — never a credential. */
 export function trainSummary() {
   const c = trainConfig(process.env);
-  return { configured: modalConfigured(process.env), gpu: c.gpu, gpuPricePerHour: c.gpuPricePerHour, timeoutHours: c.timeoutMs / 3_600_000 };
+  return { configured: runpodConfigured(process.env), gpus: c.gpus.map(gpuLabel), timeoutHours: c.timeoutMs / 3_600_000 };
 }
