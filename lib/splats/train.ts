@@ -297,11 +297,15 @@ export function sandboxParams(config: TrainConfig, job: TrainJob, urls: { video:
 
 // ── The trainer ─────────────────────────────────────────────────────────────
 
+/** A job still without a sandbox this long after it was started was lost to a restart. */
+export const LAUNCH_STALE_MS = 30 * 60_000;
+
 export function createTrainer(deps: TrainDeps) {
   let current: TrainJob | null = null;
   let loaded = false;
   let handing = false;
   let watching = false;
+  let launching: Promise<void> | null = null;
 
   async function job(): Promise<TrainJob | null> {
     if (!loaded) {
@@ -321,6 +325,35 @@ export function createTrainer(deps: TrainDeps) {
       await deps.store.saveJob(j);
     } catch {
       /* kept in this process; saved again on the next change */
+    }
+  }
+
+  /** Presign the links and ask Modal for the sandbox; the job moves to «running» or «failed». */
+  async function launch(j: TrainJob) {
+    const { config } = deps;
+    try {
+      // Every link outlives the sandbox's time limit by an hour.
+      const secs = Math.ceil(config.timeoutMs / 1000) + 3600;
+      const [video, status, ply, cameras, log] = await Promise.all([
+        deps.store.presignGet(j.video, secs),
+        deps.store.presignPut(j.keys.status, secs),
+        deps.store.presignPut(j.keys.ply, secs),
+        deps.store.presignPut(j.keys.cameras, secs),
+        deps.store.presignPut(j.keys.log, secs),
+      ]);
+      const modal = await deps.modal();
+      const app = await modal.apps.fromName(config.app, { createIfMissing: true });
+      const image = modal.images.fromRegistry(config.image).dockerfileCommands(IMAGE_COMMANDS);
+      const sb = await modal.sandboxes.create(app, image, sandboxParams(config, j, { video, status, ply, cameras, log }, deps.scripts()));
+      if (current?.id === j.id && current.state === "cancelled") {
+        // Cancelled while Modal was still starting it: stop it before it bills.
+        await modal.sandboxes.fromId(sb.sandboxId).then((x) => x.terminate()).catch(() => {});
+        return;
+      }
+      await save({ ...(current?.id === j.id ? current : j), sandboxId: sb.sandboxId, state: "running", words: "Starting the GPU machine (the first time, Modal fetches the 5 GB image: a few minutes)" });
+    } catch (e) {
+      if (current?.id === j.id && current.state === "cancelled") return;
+      await save({ ...j, state: "failed", stage: "failed", words: "Not started", error: `Modal refused to start the training: ${(e as Error).message}`, finishedAt: deps.now() });
     }
   }
 
@@ -350,7 +383,14 @@ export function createTrainer(deps: TrainDeps) {
       handOver(j); // after a restart, nobody is handing over: start again
       return j;
     }
-    if (!j.sandboxId) return j;
+    if (!j.sandboxId) {
+      // Still being launched by this process, or the process that launched it
+      // restarted before Modal answered: then nothing will ever move it on.
+      if (launching || deps.now() - j.startedAt < LAUNCH_STALE_MS) return j;
+      const failed: TrainJob = { ...j, state: "failed", stage: "failed", words: "Not started", error: "The server restarted while Modal was starting the training. Press «Train» again.", finishedAt: deps.now() };
+      await save(failed);
+      return failed;
+    }
     let status: SandboxStatus | null = null;
     try {
       status = parseStatus(await deps.store.readText(j.keys.status));
@@ -412,26 +452,19 @@ export function createTrainer(deps: TrainDeps) {
         startedAt: at.getTime(), finishedAt: null, error: null, keys, webKey: null, routePoints: null, warning: null,
       };
       await save(j);
-      try {
-        // Every link outlives the sandbox's time limit by an hour.
-        const secs = Math.ceil(config.timeoutMs / 1000) + 3600;
-        const [video, status, ply, cameras, log] = await Promise.all([
-          deps.store.presignGet(videoKey, secs),
-          deps.store.presignPut(keys.status, secs),
-          deps.store.presignPut(keys.ply, secs),
-          deps.store.presignPut(keys.cameras, secs),
-          deps.store.presignPut(keys.log, secs),
-        ]);
-        const modal = await deps.modal();
-        const app = await modal.apps.fromName(config.app, { createIfMissing: true });
-        const image = modal.images.fromRegistry(config.image).dockerfileCommands(IMAGE_COMMANDS);
-        const sb = await modal.sandboxes.create(app, image, sandboxParams(config, j, { video, status, ply, cameras, log }, deps.scripts()));
-        await save({ ...j, sandboxId: sb.sandboxId, state: "running", words: "Starting the GPU machine (the first time, Modal fetches the 5 GB image: a few minutes)" });
-      } catch (e) {
-        await save({ ...j, state: "failed", stage: "failed", words: "Not started", error: `Modal refused to start the training: ${(e as Error).message}`, finishedAt: deps.now() });
-      }
+      // Launched in the background: on the first run Modal pulls the 5 GB
+      // image before `sandboxes.create` returns, far past the ~100 s the CDN
+      // in front of the site waits for an answer (HTTP 524). The page follows
+      // the job through `status()`.
+      launching = launch(j).finally(() => { launching = null; });
       watch();
       return current!;
+    },
+
+    /** Once the background launch has settled: the job as it then stands. */
+    async launched(): Promise<TrainJob | null> {
+      await launching;
+      return current;
     },
 
     /** Stop the sandbox now (the GPU bill stops with it). */

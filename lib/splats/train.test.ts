@@ -7,13 +7,19 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  CURRENT_JOB_KEY, DEFAULT_IMAGE, IMAGE_COMMANDS, advance, createTrainer, modalConfigured, newJobId, parseStatus, sandboxParams,
+  CURRENT_JOB_KEY, LAUNCH_STALE_MS, DEFAULT_IMAGE, IMAGE_COMMANDS, advance, createTrainer, modalConfigured, newJobId, parseStatus, sandboxParams,
   trainConfig, trainKeys, trainVideoOf, type ModalLike, type TrainDeps, type TrainJob,
 } from "./train.ts";
 import { isSplatKey } from "./keys.ts";
 import { routeFromCameras } from "./cameras.ts";
 
 const HOUR = 3_600_000;
+
+/** Start a job and wait for its background launch, as the page's next status poll would see it. */
+async function launch(tr: ReturnType<typeof createTrainer>, scene: string, video: string, title: string | null) {
+  await tr.start(scene, video, title);
+  return tr.launched();
+}
 
 test("settings: L4 for 3 h by default, env can change them within bounds", () => {
   const c = trainConfig({});
@@ -124,7 +130,7 @@ test("the sandbox gets presigned URLs and the scripts, never an R2 credential", 
 
 // ── The trainer, with fakes ─────────────────────────────────────────────────
 
-function fakes(opts: { configured?: boolean; createFails?: boolean } = {}) {
+function fakes(opts: { configured?: boolean; createFails?: boolean; createGate?: Promise<void> } = {}) {
   const r2 = new Map<string, string>();
   const calls: string[] = [];
   const sandbox = { exit: null as number | null, terminated: false };
@@ -139,6 +145,7 @@ function fakes(opts: { configured?: boolean; createFails?: boolean } = {}) {
     },
     sandboxes: {
       create: async (_app, _image, params) => {
+        if (opts.createGate) await opts.createGate;
         if (opts.createFails) throw new Error("no GPUs left");
         created = params;
         return { sandboxId: "sb-42" };
@@ -177,7 +184,7 @@ const settle = () => new Promise((r) => setImmediate(r));
 test("trainer: start, report, finish and hand over", async () => {
   const f = fakes();
   const tr = createTrainer(f.deps);
-  const j = await tr.start("store-01", "masters/store-01/IMG_1.mov", " Our store ");
+  const j = await launch(tr, "store-01", "masters/store-01/IMG_1.mov", " Our store ");
   assert.equal(j.state, "running");
   assert.equal(j.sandboxId, "sb-42");
   assert.equal(j.title, "Our store");
@@ -215,7 +222,7 @@ test("trainer: start, report, finish and hand over", async () => {
   assert.equal(now.finishedAt! - now.startedAt, 50 * 60_000);
 
   // And the next one may start.
-  const next = await tr.start("store-02", "scenes/store-02/a.mp4", null);
+  const next = await launch(tr, "store-02", "scenes/store-02/a.mp4", null);
   assert.equal(next.state, "running");
   assert.equal(next.scene, "store-02");
 });
@@ -231,7 +238,7 @@ test("trainer: refused without Modal's token, or for a file that is not a video"
 test("trainer: Modal refusing to start is a failed job, not a stuck one", async () => {
   const f = fakes({ createFails: true });
   const tr = createTrainer(f.deps);
-  const j = await tr.start("store-01", "masters/store-01/a.mov", null);
+  const j = await launch(tr, "store-01", "masters/store-01/a.mov", null);
   assert.equal(j.state, "failed");
   assert.match(j.error!, /no GPUs left/);
   assert.equal(JSON.parse(f.r2.get(CURRENT_JOB_KEY)!).state, "failed");
@@ -240,7 +247,7 @@ test("trainer: Modal refusing to start is a failed job, not a stuck one", async 
 test("trainer: cancel stops the sandbox", async () => {
   const f = fakes();
   const tr = createTrainer(f.deps);
-  await tr.start("store-01", "masters/store-01/a.mov", null);
+  await launch(tr, "store-01", "masters/store-01/a.mov", null);
   const c = (await tr.cancel())!;
   assert.equal(c.state, "cancelled");
   assert.ok(f.sandbox.terminated);
@@ -249,7 +256,7 @@ test("trainer: cancel stops the sandbox", async () => {
 
 test("trainer: a restarted server picks the job up from R2, failure reason included", async () => {
   const f = fakes();
-  await createTrainer(f.deps).start("store-01", "masters/store-01/a.mov", null);
+  await launch(createTrainer(f.deps), "store-01", "masters/store-01/a.mov", null);
   const again = createTrainer(f.deps); // a redeploy: nothing in memory
   const j = (await again.status())!;
   assert.equal(j.state, "running");
@@ -264,7 +271,7 @@ test("trainer: a restarted server picks the job up from R2, failure reason inclu
 
 test("trainer: after a restart mid hand-over, the hand-over runs again", async () => {
   const f = fakes();
-  const j = await createTrainer(f.deps).start("store-01", "masters/store-01/a.mov", null);
+  const j = await launch(createTrainer(f.deps), "store-01", "masters/store-01/a.mov", null);
   f.r2.set(CURRENT_JOB_KEY, JSON.stringify({ ...j, state: "finishing" }));
   const again = createTrainer(f.deps);
   assert.equal((await again.status())!.state, "finishing");
@@ -277,7 +284,7 @@ test("trainer: a failed hand-over says where the splat is", async () => {
   const f = fakes();
   f.deps.handoff = async () => { throw new Error("out of memory"); };
   const tr = createTrainer(f.deps);
-  const j = await tr.start("store-01", "masters/store-01/a.mov", null);
+  const j = await launch(tr, "store-01", "masters/store-01/a.mov", null);
   f.r2.set(j.keys.status, JSON.stringify({ stage: "done" }));
   f.sandbox.exit = 0;
   await tr.status();
@@ -294,4 +301,46 @@ test("cameras.json as modal-frame.py writes it becomes a route", () => {
   assert.equal(r.cameras, 20);
   assert.deepEqual(r.route[0], [0, -0.2, 0], "filming order, turned upright as the splat is (flip)");
   assert.ok(r.route.length >= 10);
+});
+
+test("trainer: «Train» answers before Modal does (the first image pull outlasts the CDN's ~100 s)", async () => {
+  let release!: () => void;
+  const f = fakes({ createGate: new Promise<void>((ok) => { release = ok; }) });
+  const tr = createTrainer(f.deps);
+  const j = await tr.start("store-01", "masters/store-01/a.mov", null);
+  assert.equal(j.state, "starting");
+  assert.equal(j.sandboxId, null);
+  // A status poll meanwhile neither fails it nor lets a second job start.
+  assert.equal((await tr.status())!.state, "starting");
+  await assert.rejects(tr.start("store-02", "scenes/store-02/a.mp4", null), /still training/);
+  release();
+  const after = await tr.launched();
+  assert.equal(after!.state, "running");
+  assert.equal(after!.sandboxId, "sb-42");
+});
+
+test("trainer: cancelled while Modal is still starting it, the sandbox is stopped as soon as it exists", async () => {
+  let release!: () => void;
+  const f = fakes({ createGate: new Promise<void>((ok) => { release = ok; }) });
+  const tr = createTrainer(f.deps);
+  await tr.start("store-01", "masters/store-01/a.mov", null);
+  assert.equal((await tr.cancel())!.state, "cancelled");
+  release();
+  const after = await tr.launched();
+  assert.equal(after!.state, "cancelled");
+  assert.equal(f.sandbox.terminated, true);
+});
+
+test("trainer: a launch lost to a restart is failed after a while, so «Train» works again", async () => {
+  let release!: () => void;
+  const f = fakes({ createGate: new Promise<void>((ok) => { release = ok; }) });
+  await createTrainer(f.deps).start("store-01", "masters/store-01/a.mov", null);
+  // A new process (the redeploy) finds the job without a sandbox.
+  const again = createTrainer(f.deps);
+  assert.equal((await again.status())!.state, "starting");
+  f.advanceClock(LAUNCH_STALE_MS + 1);
+  const stale = await again.status();
+  assert.equal(stale!.state, "failed");
+  assert.match(stale!.error!, /restarted/);
+  release();
 });
