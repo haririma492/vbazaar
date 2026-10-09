@@ -13,7 +13,7 @@ test("every hotspot in the demo scene joins a catalogue row, each with its own i
   const products = productsFor(SCENE_ID);
   assert.equal(products.length, HOTSPOTS.length);
   assert.equal(new Set(products.map((p) => p.id)).size, products.length);
-  assert.equal(products.length, 17);
+  assert.equal(products.length, 20);
   for (const p of products) {
     assert.ok(p.modelUrl.endsWith(".glb"), p.id);
     assert.ok(p.labelDistance > p.selectionDistance, p.id);
@@ -162,7 +162,8 @@ test("from the doorway no label shows; from the wall every shelf label does", ()
   const start = at(KEYS[0]);
   for (const p of products) assert.equal(start(p), 0, p.id);
   const wall = at(KEYS.find((k) => k.eye[2] < 0.5 && k.eye[2] > 0)!);
-  for (const p of products.filter((p) => p.anchor.z < -2)) assert.ok(wall(p) > 0.9, p.id);
+  // The main cabinet (|x| < 1.4); the second cabinet stands off to the left, out of this view.
+  for (const p of products.filter((p) => p.anchor.z < -2 && Math.abs(p.anchor.x) < 1.4)) assert.ok(wall(p) > 0.9, p.id);
   // …and the plinth by the door, now beside and behind, has faded.
   for (const p of products.filter((p) => p.anchor.z > 1)) assert.ok(wall(p) < 0.05, p.id);
 });
