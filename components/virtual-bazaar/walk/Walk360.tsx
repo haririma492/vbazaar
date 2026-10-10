@@ -207,6 +207,8 @@ type Engine = {
   setGyro: (on: boolean) => void;
   /** Self-drive at this rate (times as filmed), or null: only the wheel's pedals and the keys walk. */
   setDrive: (rate: number | null) => void;
+  /** Inside a tap: start the video, so a phone that refuses play() without one lets it walk on. */
+  kick: () => void;
   /** The photographer's turn at this moment of the walk (rad/s, + right), read from the picture. */
   turn: () => number;
   setWalks: (w: Walks) => void;
@@ -270,6 +272,7 @@ export default function Walk360() {
   const [drive, setDrive] = useState<Drive | null>(null);
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
+  const [diag, setDiag] = useState("");
   const [view, setView] = useState<View>({ key: null, inside: 0, flat: false, near: [], site: null, atEnd: false, busy: false });
   const [walks, setWalks] = useState<Walks>(emptyWalks());
   const [editing, setEditing] = useState(false);
@@ -281,7 +284,8 @@ export default function Walk360() {
     const flatEl = flatHost.current;
     if (!el || !flatEl) return;
     const params = new URLSearchParams(window.location.search);
-    setDebug(params.get("debug") === "1");
+    const debugOn = params.get("debug") === "1";
+    setDebug(debugOn);
     // ?debug=1&fade=<ms>: a slower cross-fade, to look at it (and screenshot it).
     const fadeMs = params.get("debug") === "1" && Number(params.get("fade")) > 0 ? Math.min(10000, Number(params.get("fade"))) : FADE_MS;
     setEditing(params.get("edit") === "1" && Boolean(readAdminToken()));
@@ -510,6 +514,9 @@ export default function Walk360() {
       const atEnd = Boolean(v && trail.length && Number.isFinite(v.duration) && v.currentTime >= v.duration - 0.3);
       const site = trail[trail.length - 1]?.door.url ?? null;
       const next: View = { key: current?.key ?? null, inside: trail.length, flat: current?.flat ?? false, near, site, atEnd, busy };
+      if (debugOn && v) {
+        setDiag(`rate ${rate.toFixed(2)} → ${(drive ?? 0).toFixed(1)} · ${facingBack ? "facing back" : "facing on"} · yaw ${Math.round((videoYaw() * 180) / Math.PI)}° · ${v.paused ? "paused" : `playing ×${v.playbackRate.toFixed(2)}`}${playRefused === v ? " · play refused" : ""}${gyroOn && gyroHave ? " · phone motion" : ""} · ready ${v.readyState}`);
+      }
       const s = JSON.stringify(next);
       if (s !== lastView) {
         lastView = s;
@@ -585,6 +592,7 @@ export default function Walk360() {
       setMove(x, y) {
         stickX = x;
         stickY = y;
+        if (y !== 0) kick(); // the pedal is pressed inside a tap
       },
       setGyro(on) {
         gyroOn = on;
@@ -592,6 +600,7 @@ export default function Walk360() {
       setDrive(r) {
         drive = r;
       },
+      kick,
       turn: () => turnNow,
       setWalks(w) {
         walksNow = w;
@@ -664,6 +673,19 @@ export default function Walk360() {
     let stickY = 0;
     const maxRate = PEDAL_RATE;
     let drive: number | null = null;
+    let playRefused: HTMLVideoElement | null = null;
+    function kick() {
+      const v = current?.video;
+      if (!v || !v.paused || v.currentTime >= v.duration - 0.05) return;
+      v.play().then(() => {
+        if (playRefused === v) playRefused = null;
+      }, () => {});
+    }
+    // Any tap on the page is a chance to be allowed to play again.
+    const onAnyTap = () => {
+      if (playRefused && playRefused === current?.video) kick();
+    };
+    window.addEventListener("pointerdown", onAnyTap, true);
     let facingBack = false;
     let gyroOn = false;
     let gyroHave = false;
@@ -796,7 +818,7 @@ export default function Walk360() {
         return;
       }
       const now = performance.now();
-      if (now - turnAt < 120) return;
+      if (now - turnAt < (isTouch() ? 250 : 120)) return;
       turnAt = now;
       const t = v.currentTime;
       // Standing still: the wheel stays where it was, as a car's does.
@@ -872,15 +894,22 @@ export default function Walk360() {
 
       const video = current?.video;
       if (video && !busy && video.readyState >= 2 && Number.isFinite(video.duration)) {
-        if (rate >= MIN_PLAY_RATE) {
+        if (rate >= MIN_PLAY_RATE && video !== playRefused) {
           // Walking on at a pace a browser plays smoothly: let it play.
           video.playbackRate = Math.min(4, rate);
-          if (video.paused && video.currentTime < video.duration - 0.05) void video.play().catch(() => {});
+          if (video.paused && video.currentTime < video.duration - 0.05) {
+            void video.play().catch((e: unknown) => {
+              // ⚠️ A PHONE MAY REFUSE play() OUTSIDE A TAP (an iPhone in Low
+              // Power Mode always does). Then walking on steps the time like
+              // walking back, until the next tap lets it play (`kick`).
+              if ((e as Error)?.name === "NotAllowedError") playRefused = video;
+            });
+          }
           stepDebt = 0;
         } else {
           if (!video.paused) video.pause();
           if (Math.abs(rate) > DEAD) {
-            // Walking back, or creeping on: step the time, one seek in flight at a time.
+            // Walking back, creeping on, or a phone that won't play: step the time, one seek in flight at a time.
             stepDebt += rate * dt;
             if (!video.seeking && Math.abs(stepDebt) >= 1 / 60) {
               const to = THREE.MathUtils.clamp(video.currentTime + stepDebt, 0, video.duration);
@@ -916,6 +945,7 @@ export default function Walk360() {
       renderer.setAnimationLoop(null);
       canvas.removeEventListener("pointerdown", onDown);
       window.removeEventListener("deviceorientation", onOrient);
+      window.removeEventListener("pointerdown", onAnyTap, true);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKey);
       window.removeEventListener("blur", onBlur);
@@ -954,16 +984,13 @@ export default function Walk360() {
     // follows the device as it is turned; a computer reports the API but has
     // no sensor, so it looks with the mouse. The finger turns the view either way.
     const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    // ⚠️ BOTH CALLS BEFORE ANY AWAIT: play() too must start inside the tap —
+    // after the motion permission's dialog the tap has expired, and a phone
+    // that only plays from a tap would never walk on.
+    const warm = v ? v.play().then(() => v.pause(), () => {}) : Promise.resolve();
     const ok = touch && hasDeviceOrientation() && (await requestDeviceOrientation());
     engine.current?.setGyro(ok);
-    if (v) {
-      try {
-        await v.play();
-        v.pause();
-      } catch {
-        /* the stick will try again */
-      }
-    }
+    await warm;
     setPhase("walking");
   }
 
@@ -999,6 +1026,7 @@ export default function Walk360() {
       {debug && (
         <div dir="ltr" className="pointer-events-none absolute bottom-16 left-3 rounded-xl bg-black/60 p-2 font-mono text-[11px] text-white/80">
           {info} · {mmss(time.now)} · {shortKey(view.key)}
+          {diag && <div>{diag}</div>}
         </div>
       )}
 
@@ -1014,7 +1042,10 @@ export default function Walk360() {
             {(Object.keys(DRIVES) as Drive[]).map((k) => (
               <button
                 key={k}
-                onClick={() => setDrive(drive === k ? null : k)}
+                onClick={() => {
+                  if (drive !== k) engine.current?.kick();
+                  setDrive(drive === k ? null : k);
+                }}
                 aria-pressed={drive === k}
                 className={`h-9 flex-1 rounded-full border px-1 text-[11px] leading-tight ${drive === k ? "border-amber-300/90 bg-amber-300/40 font-semibold text-amber-50" : "border-white/25 bg-black/60 text-white/85"}`}
               >
