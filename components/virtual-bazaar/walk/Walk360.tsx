@@ -59,7 +59,7 @@ import WalkStick from "../splat/WalkStick";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  PRELOAD_DT, addDoor, angleDiff, doorsAround, doorsNear, emptyWalks, isFlatDoor, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, type SignPin, doorsNear, emptyWalks, isFlatDoor, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
   looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -80,7 +80,7 @@ const DEAD = 0.04;
 const MIN_PLAY_RATE = 0.25;
 /** The cross-fade between the street and a shop (ms). */
 const FADE_MS = 400;
-/** A door's marker floats this far out, a little below the horizon. */
+/** A door's sign floats this far out, in the direction its pins give (`signAt`). */
 const MARK_R = 20;
 const UP = new THREE.Vector3(0, 1, 0);
 /** `?v=` as it was always accepted (a little looser than `isWalkKey`). */
@@ -192,29 +192,44 @@ type Engine = {
   here: () => { key: string | null; t: number; yaw: number; flat: boolean };
   /** Jump to a door's moment and face it. */
   goTo: (door: WalkDoor) => void;
+  /** Edit mode: the next tap on the picture is a sign pin (null: taps are a visitor's again). */
+  setPick: (f: ((pin: SignPin) => void) | null) => void;
+  /** Edit mode: the door being placed, its sign shown as it is pinned. */
+  setPreview: (door: WalkDoor | null) => void;
 };
 
-/** A door's marker: an amber ring and its name, drawn once. */
-function markerTexture(label: string): THREE.CanvasTexture {
+/** A door's sign — «Step inside · name» (and the Persian name) on an amber card — drawn once. */
+function signTexture(en: string, fa?: string): THREE.CanvasTexture {
   const c = document.createElement("canvas");
-  c.width = 512;
-  c.height = 256;
+  c.width = 640;
+  c.height = 300;
   const g = c.getContext("2d")!;
-  g.strokeStyle = "rgba(252,211,77,0.95)";
-  g.fillStyle = "rgba(252,211,77,0.25)";
-  g.lineWidth = 10;
+  const r = 36;
   g.beginPath();
-  g.arc(256, 80, 56, 0, Math.PI * 2);
+  g.moveTo(r, 8);
+  g.arcTo(632, 8, 632, 292, r);
+  g.arcTo(632, 292, 8, 292, r);
+  g.arcTo(8, 292, 8, 8, r);
+  g.arcTo(8, 8, 632, 8, r);
+  g.closePath();
+  g.fillStyle = "rgba(120,72,6,0.72)";
   g.fill();
+  g.lineWidth = 8;
+  g.strokeStyle = "rgba(252,211,77,0.95)";
   g.stroke();
-  g.fillStyle = "rgba(255,251,235,1)";
-  g.font = "bold 44px system-ui, sans-serif";
   g.textAlign = "center";
-  g.fillText("⌂", 256, 96);
-  g.font = "600 40px system-ui, sans-serif";
-  g.shadowColor = "rgba(0,0,0,0.9)";
-  g.shadowBlur = 10;
-  g.fillText(label.length > 22 ? `${label.slice(0, 21)}…` : label, 256, 200);
+  g.fillStyle = "rgba(255,251,235,1)";
+  g.shadowColor = "rgba(0,0,0,0.8)";
+  g.shadowBlur = 8;
+  g.font = "700 54px system-ui, sans-serif";
+  g.fillText("Step inside ›", 320, fa ? 92 : 112);
+  g.font = "600 50px system-ui, sans-serif";
+  g.fillText(en.length > 20 ? `${en.slice(0, 19)}…` : en, 320, fa ? 168 : 200);
+  if (fa) {
+    g.font = "600 46px system-ui, sans-serif";
+    g.direction = "rtl";
+    g.fillText(`ورود · ${fa.length > 18 ? `${fa.slice(0, 17)}…` : fa}`, 320, 246);
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -474,35 +489,45 @@ export default function Walk360() {
     }
 
     // ── Doors on the sphere, and the next video loading ahead ─────────────
-    const markers = new Map<string, THREE.Sprite>();
+    // ⚠️ THE SIGN IS ON THE DOOR, AND IT IS THE BUTTON (founder, 2026-10-10:
+    // "I need ability to move the Step Inside rectangle exactly where the door
+    // is"). Each door's «Step inside» card sits where `signAt` says — between
+    // the pins the operator put on the door — and a tap on it steps inside.
+    const markers = new Map<string, { sprite: THREE.Sprite; door: WalkDoor }>();
+    let preview: WalkDoor | null = null;
+    let pick: ((pin: SignPin) => void) | null = null;
     function updateDoors() {
       const v = current?.video;
       const walk = walkOf(walksNow, current?.key);
       const t = v?.currentTime ?? 0;
       const around = current && !busy && v && v.readyState >= 1 ? doorsAround(walk, t) : [];
-      const nearIds = new Set(doorsNear(walk, t, videoYaw()).map((d) => d.id));
+      const shown = preview && current && !current.flat ? [...around.filter((d) => d.id !== preview!.id), preview] : around;
       const want = new Set<string>();
       if (current && !current.flat) {
-        for (const d of around) {
-          const id = `${current.key}#${d.id}#${d.label.en}`;
+        for (const d of shown) {
+          const sign = signAt(d, t);
+          if (!sign) continue;
+          const id = `${current.key}#${d.id}#${d.label.en}#${d.label.fa ?? ""}`;
           want.add(id);
-          let s = markers.get(id);
-          if (!s) {
-            s = new THREE.Sprite(new THREE.SpriteMaterial({ map: markerTexture(d.label.en), depthTest: false, depthWrite: false, transparent: true }));
-            s.scale.set(6, 3, 1);
-            s.renderOrder = 10;
-            markers.set(id, s);
-            scene.add(s);
+          let m = markers.get(id);
+          if (!m) {
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(d.label.en, d.label.fa), depthTest: false, depthWrite: false, transparent: true }));
+            sprite.scale.set(7.4, 3.45, 1);
+            sprite.renderOrder = 10;
+            m = { sprite, door: d };
+            markers.set(id, m);
+            scene.add(sprite);
           }
-          const h = d.yaw - current.spin;
-          s.position.set(Math.sin(h) * MARK_R, -1.6, -Math.cos(h) * MARK_R);
-          // Brightest at its moment; fading in and out over the 6 s around it.
-          const k = 1 - Math.min(1, Math.abs(d.t - t) / PRELOAD_DT);
-          (s.material as THREE.SpriteMaterial).opacity = nearIds.has(d.id) ? 1 : 0.25 + 0.5 * k;
+          m.door = d;
+          const h = sign.yaw - current.spin;
+          const cp = Math.cos(sign.pitch);
+          m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(sign.pitch) * MARK_R, -Math.cos(h) * cp * MARK_R);
+          (m.sprite.material as THREE.SpriteMaterial).opacity = d === preview ? 0.85 : 1;
         }
       }
-      for (const [id, s] of markers) {
+      for (const [id, m] of markers) {
         if (want.has(id)) continue;
+        const s = m.sprite;
         scene.remove(s);
         (s.material as THREE.SpriteMaterial).map?.dispose();
         s.material.dispose();
@@ -540,6 +565,12 @@ export default function Walk360() {
         walksNow = w;
       },
       enter: (d) => void enter(d),
+      setPick(f) {
+        pick = f;
+      },
+      setPreview(d) {
+        preview = d;
+      },
       back: () => void back(),
       here: () => ({ key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), flat: current?.flat ?? false }),
       goTo(door) {
@@ -547,8 +578,9 @@ export default function Walk360() {
         current.video.pause();
         rate = 0;
         current.video.currentTime = door.t;
-        if (!current.flat) turnYaw += angleDiff(door.yaw - current.spin, heading());
-        pitch = 0;
+        const sign = signAt(door, door.t, Infinity) ?? { yaw: door.yaw, pitch: DEFAULT_PITCH };
+        if (!current.flat) turnYaw += angleDiff(sign.yaw - current.spin, heading());
+        pitch = sign.pitch;
       },
     };
 
@@ -619,10 +651,31 @@ export default function Walk360() {
     };
     const canvas = renderer.domElement;
     canvas.style.touchAction = "none";
+    let tapFrom: { x: number; y: number; at: number } | null = null;
     const onDown = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      tapFrom = pointers.size === 1 ? { x: e.clientX, y: e.clientY, at: performance.now() } : null;
     };
+    // A tap (not a drag): on a door's sign, step inside; in edit mode while
+    // pinning, the spot tapped is where the sign goes at this moment.
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    function onTap(x: number, y: number) {
+      if (!current || current.flat || busy) return;
+      const r = canvas.getBoundingClientRect();
+      ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, camera);
+      if (pick) {
+        const d = raycaster.ray.direction;
+        const worldYaw = Math.atan2(d.x, -d.z);
+        pick({ t: current.video.currentTime, yaw: wrapAngle(worldYaw + current.spin), pitch: Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)) });
+        return;
+      }
+      const hit = raycaster.intersectObjects([...markers.values()].map((m) => m.sprite), false)[0];
+      const m = hit && [...markers.values()].find((x) => x.sprite === hit.object);
+      if (m && m.door !== preview) void enter(m.door);
+    }
     const onMove = (e: PointerEvent) => {
       const prev = pointers.get(e.pointerId);
       if (!prev) return;
@@ -643,6 +696,8 @@ export default function Walk360() {
     const onUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
       pinch = 0;
+      if (tapFrom && e.type === "pointerup" && Math.hypot(e.clientX - tapFrom.x, e.clientY - tapFrom.y) < 8 && performance.now() - tapFrom.at < 500) onTap(e.clientX, e.clientY);
+      tapFrom = null;
     };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -755,9 +810,9 @@ export default function Walk360() {
       window.removeEventListener("resize", onResize);
       release(current);
       release(pending);
-      for (const s of markers.values()) {
-        (s.material as THREE.SpriteMaterial).map?.dispose();
-        s.material.dispose();
+      for (const { sprite } of markers.values()) {
+        (sprite.material as THREE.SpriteMaterial).map?.dispose();
+        sprite.material.dispose();
       }
       geometry.dispose();
       renderer.dispose();
@@ -876,7 +931,8 @@ export default function Walk360() {
           )}
 
           {/* A door in reach: step inside. */}
-          {door && !view.busy && (
+          {/* In a 360° walk the sign on the door is the button; a flat video has no round to put it in. */}
+          {door && !view.busy && view.flat && (
             <button
               dir="ltr"
               onClick={() => engine.current?.enter(door)}
@@ -950,6 +1006,15 @@ export default function Walk360() {
 
 // ── The operator's door editor (?edit=1, with the admin token) ────────────────
 
+/** The door being placed, as the walk draws it (its sign, while pinning). */
+function draftDoor(d: { id?: string; t: number; yaw: number; en: string; fa: string; to: string; pins: SignPin[] }): WalkDoor {
+  return {
+    id: d.id ?? "__draft", t: d.t, yaw: d.yaw, to: d.to || "scenes/draft/draft.mp4",
+    label: d.fa.trim() ? { en: d.en.trim() || "…", fa: d.fa.trim() } : { en: d.en.trim() || "…" },
+    ...(d.pins.length ? { pins: d.pins } : {}),
+  };
+}
+
 type VideoChoice = { key: string; label: string };
 
 function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
@@ -962,7 +1027,8 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
   const [open, setOpen] = useState(true);
   const [videos, setVideos] = useState<VideoChoice[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<null | { id?: string; t: number; yaw: number; en: string; fa: string; to: string; flat: boolean }>(null);
+  type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; flat: boolean; pins: SignPin[]; pinning: boolean };
+  const [draft, setDraft] = useState<null | Draft>(null);
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -987,6 +1053,22 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
     })();
   }, []);
 
+  // The door being placed: its sign shown as it is pinned, and taps on the
+  // picture are pins while «Pin the sign» is on.
+  const pinning = Boolean(draft?.pinning);
+  useEffect(() => {
+    const e = engine.current;
+    if (!e) return;
+    e.setPick(pinning ? (pin) => setDraft((d) => (d ? { ...d, pins: sortPins([...d.pins.filter((q) => Math.abs(q.t - pin.t) >= 0.05), pin]) } : d)) : null);
+    return () => e.setPick(null);
+  }, [engine, pinning]);
+  useEffect(() => {
+    const e = engine.current;
+    if (!e) return;
+    e.setPreview(draft ? draftDoor(draft) : null);
+    return () => e.setPreview(null);
+  }, [engine, draft]);
+
   const walk = walkOf(walks, viewKey);
   const change = (w: Walks) => {
     onChange(w);
@@ -999,22 +1081,26 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
     if (!h?.key) return setStatus({ tone: "bad", text: "Doors can only be placed on a video from the bucket (?v=…), not one opened by address." });
     engine.current?.video().pause();
     const first = (videos?.find((v) => v.key !== h.key && isWalkKey(v.key)) ?? videos?.find((v) => v.key !== h.key))?.key ?? "";
-    setDraft({ t: h.t, yaw: h.yaw, en: "", fa: "", to: first, flat: isPhoneVideoKey(first) });
+    setDraft({ t: h.t, yaw: h.yaw, en: "", fa: "", to: first, flat: isPhoneVideoKey(first), pins: [], pinning: true });
   }
 
   function saveDraft() {
     if (!draft || !viewKey) return;
     if (!draft.en.trim()) return setStatus({ tone: "bad", text: "The door needs an English label." });
     if (!isVideoKey(draft.to) || draft.to === viewKey) return setStatus({ tone: "bad", text: "Choose the shop's video in «Leads to»." });
+    // With pins, the door's moment and heading are its middle pin's.
+    const mid = draft.pins.length ? draft.pins[Math.floor((draft.pins.length - 1) / 2)] : null;
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
     const fields = {
-      t: Math.round(draft.t * 100) / 100,
-      yaw: Math.round(draft.yaw * 1000) / 1000,
+      t: Math.round((mid?.t ?? draft.t) * 100) / 100,
+      yaw: r3(mid?.yaw ?? draft.yaw),
+      ...(mid ? { pitch: r3(mid.pitch), pins: draft.pins.map((q) => ({ t: Math.round(q.t * 100) / 100, yaw: r3(q.yaw), pitch: r3(q.pitch) })) } : {}),
       label: draft.fa.trim() ? { en: draft.en.trim(), fa: draft.fa.trim() } : { en: draft.en.trim() },
       to: draft.to,
       ...(draft.flat && !isPhoneVideoKey(draft.to) ? { flat: true } : {}),
     };
     // An edit replaces «flat» too: unticked is no flag (dropped when saved).
-    if (draft.id) change(updateDoor(walks, viewKey, draft.id, { flat: undefined, ...fields }));
+    if (draft.id) change(updateDoor(walks, viewKey, draft.id, { flat: undefined, pitch: undefined, pins: undefined, ...fields }));
     else change(addDoor(walks, viewKey, fields));
     setDraft(null);
   }
@@ -1081,6 +1167,33 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
                 <input type="checkbox" checked={draft.flat || isPhoneVideoKey(draft.to)} disabled={isPhoneVideoKey(draft.to)} onChange={(e) => setDraft({ ...draft, flat: e.target.checked })} />
                 Flat video (filmed with a phone, not 360°)
               </label>
+              <div className="space-y-1 rounded-md border border-white/15 p-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <b className="text-[12px]">Sign on the door</b>
+                  <button className={`${btn} ${draft.pinning ? "border-amber-300/70 bg-amber-300/25" : ""}`} onClick={() => setDraft({ ...draft, pinning: !draft.pinning })}>
+                    {draft.pinning ? "Pinning: on" : "Pin the sign"}
+                  </button>
+                </div>
+                {draft.pinning && (
+                  <div className="text-[11px] leading-snug text-white/65">
+                    Tap the door in the picture: the sign goes there at this moment. Walk on a little (stick, or W/S) and tap the door again —
+                    2 or 3 pins: where it comes into view, in the middle, where it leaves. The sign follows the door between pins.
+                  </div>
+                )}
+                {draft.pins.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {draft.pins.map((q) => (
+                      <span key={q.t} className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
+                        {mmss(q.t)}.{Math.floor((q.t % 1) * 10)}
+                        <button className="ms-1 text-white/60" title="Remove this pin" onClick={() => setDraft({ ...draft, pins: draft.pins.filter((x) => x !== q) })}>×</button>
+                      </span>
+                    ))}
+                    <button className="text-[11px] text-white/50 underline" onClick={() => setDraft({ ...draft, pins: [] })}>clear</button>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-white/45">No pins: the sign stands at the heading you looked when you pressed «Door here».</div>
+                )}
+              </div>
               <div className="flex gap-2">
                 <button className={`${btn} border-amber-300/60`} onClick={saveDraft}>{draft.id ? "Apply" : "Add door"}</button>
                 {draft.id && (
@@ -1103,7 +1216,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
                 <div className="truncate text-[11px] text-white/50">→ {shortKey(d.to)}{isFlatDoor(d) ? " (flat)" : ""}</div>
                 <div className="mt-1 flex gap-1.5">
                   <button className={btn} onClick={() => engine.current?.goTo(d)}>Go to</button>
-                  <button className={btn} onClick={() => setDraft({ id: d.id, t: d.t, yaw: d.yaw, en: d.label.en, fa: d.label.fa ?? "", to: d.to, flat: isFlatDoor(d) })}>Edit</button>
+                  <button className={btn} onClick={() => setDraft({ id: d.id, t: d.t, yaw: d.yaw, en: d.label.en, fa: d.label.fa ?? "", to: d.to, flat: isFlatDoor(d), pins: d.pins ?? [], pinning: false })}>Edit</button>
                   <button className={btn} onClick={() => { if (viewKey && window.confirm(`Delete the door «${d.label.en}»?`)) change(removeDoor(walks, viewKey, d.id)); }}>Delete</button>
                 </div>
               </li>

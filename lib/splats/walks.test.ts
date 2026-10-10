@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_DOORS, addDoor, angleDiff, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
+  DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
   isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
@@ -196,4 +196,31 @@ test("a shop filmed with an iPhone: a flat .mov the uploader kept privately may 
   assert.equal(looksFlat(3840, 2160), true);
   assert.equal(looksFlat(1080, 1920), true);
   assert.equal(looksFlat(0, 0), true);
+});
+
+test("the sign sits on the door: pins are followed, the short way round, and kept in time order", () => {
+  const door = { id: "shop", t: 10, yaw: 0, label: { en: "Shop" }, to: "scenes/shop/shop-v1.mp4", pins: [
+    { t: 12, yaw: -3, pitch: 0.2 },
+    { t: 8, yaw: 3, pitch: 0 },
+  ] };
+  const w = parseWalks({ walks: { "scenes/street/street-v1.mp4": { doors: [door] } } });
+  const d = w.walks["scenes/street/street-v1.mp4"].doors[0];
+  assert.deepEqual(d.pins!.map((p) => p.t), [8, 12]);
+  // Halfway, across ±π: the short way round (3 → −3 passes π), not through 0.
+  const mid = signAt(d, 10)!;
+  assert.ok(Math.abs(Math.abs(mid.yaw) - Math.PI) < 1e-9);
+  assert.ok(Math.abs(mid.pitch - 0.1) < 1e-9);
+  assert.equal(signAt(d, 7), null);
+  assert.deepEqual(signAt(d, 12.3), { yaw: wrapAngle(-3), pitch: 0.2 });
+  // In reach while looking at it, from the first pin to the last.
+  assert.equal(doorsNear(w.walks["scenes/street/street-v1.mp4"], 11.9, -3).length, 1);
+  assert.equal(doorsNear(w.walks["scenes/street/street-v1.mp4"], 11.9, 0).length, 0);
+});
+
+test("a door without pins: its sign at its own heading, a little below the horizon", () => {
+  const d = { id: "a", t: 5, yaw: 1, label: { en: "A" }, to: "scenes/a/a.mp4" };
+  assert.deepEqual(signAt(d, 5.5), { yaw: 1, pitch: DEFAULT_PITCH });
+  assert.equal(signAt(d, 7), null);
+  const bad = checkWalks({ walks: { "scenes/street/s.mp4": { doors: [{ ...d, pitch: 3 }] } } });
+  assert.equal(bad.problems.length, 1);
 });

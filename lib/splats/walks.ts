@@ -44,6 +44,9 @@ export const NEAR_DT = 1.5;
 export const NEAR_DYAW = Math.PI / 3;
 /** The shop's video starts loading this many seconds before its door. */
 export const PRELOAD_DT = 6;
+/** Where a door's sign sits when only its heading is known: a little below the horizon (radians, + up). */
+export const DEFAULT_PITCH = -0.08;
+export const MAX_PINS = 24;
 
 export type WalkLabel = { en: string; fa?: string };
 export type WalkDoor = {
@@ -59,7 +62,19 @@ export type WalkDoor = {
   flat?: boolean;
   /** Where «Back to the street» lands, when not at the door facing away from it. */
   back?: { t: number; yaw: number };
+  /** The sign's height in the picture at `t` (radians, + up); `DEFAULT_PITCH` when not set. */
+  pitch?: number;
+  /**
+   * ⚠️ THE SIGN SITS ON THE DOOR (founder, 2026-10-10: "I need ability to move
+   * the Step Inside rectangle exactly where the door is"). As the camera walks
+   * past, the door's direction changes every second, so one heading cannot
+   * stay on it: the operator pins the sign on the door at a few moments, and
+   * between pins it follows the door smoothly (`signAt`). With pins, the sign
+   * shows from the first pin's moment to the last's.
+   */
+  pins?: SignPin[];
 };
+export type SignPin = { t: number; yaw: number; pitch: number };
 export type Walk = { title?: { en: string; fa: string }; doors: WalkDoor[] };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -149,8 +164,28 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         if (!finite(b.t) || b.t < 0 || !finite(b.yaw)) { problems.push(`${where}: «back» needs a time ≥ 0 and a direction.`); continue; }
         back = { t: b.t, yaw: wrapAngle(b.yaw) };
       }
+      let pitch: number | undefined;
+      if (x.pitch !== undefined && x.pitch !== null) {
+        if (!finite(x.pitch) || Math.abs(x.pitch) > 1.5) { problems.push(`${where}: its sign height must be an angle between −1.5 and 1.5 (radians).`); continue; }
+        pitch = x.pitch;
+      }
+      let pins: SignPin[] | undefined;
+      if (x.pins !== undefined && x.pins !== null) {
+        const raw = Array.isArray(x.pins) ? x.pins : null;
+        const ok = raw?.every((q) => {
+          const r = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
+          return finite(r.t) && r.t >= 0 && finite(r.yaw) && finite(r.pitch) && Math.abs(r.pitch) <= 1.5;
+        });
+        if (!raw || !ok || raw.length > MAX_PINS) { problems.push(`${where}: its sign pins must be up to ${MAX_PINS} of { t ≥ 0, yaw, pitch }.`); continue; }
+        pins = sortPins((raw as Array<Record<string, number>>).map((q) => ({ t: q.t, yaw: wrapAngle(q.yaw), pitch: q.pitch })));
+        if (!pins.length) pins = undefined;
+      }
       ids.add(id);
-      walk.doors.push({ id, t: x.t, yaw: wrapAngle(x.yaw), label: fa ? { en, fa } : { en }, to: x.to, ...(x.flat === true ? { flat: true } : {}), ...(back ? { back } : {}) });
+      walk.doors.push({
+        id, t: x.t, yaw: wrapAngle(x.yaw), label: fa ? { en, fa } : { en }, to: x.to,
+        ...(x.flat === true ? { flat: true } : {}), ...(back ? { back } : {}),
+        ...(pitch !== undefined ? { pitch } : {}), ...(pins ? { pins } : {}),
+      });
     }
     walk.doors.sort((a, b) => a.t - b.t);
     walks[key] = walk;
@@ -174,7 +209,47 @@ export function keysNamed(w: Walks): string[] {
   return [...s];
 }
 
+/** Pins in time order, one per moment (a later pin within 0.05 s replaces an earlier one). */
+export function sortPins(pins: SignPin[]): SignPin[] {
+  const out: SignPin[] = [];
+  for (const q of [...pins].sort((a, b) => a.t - b.t)) {
+    if (out.length && Math.abs(out[out.length - 1].t - q.t) < 0.05) out[out.length - 1] = q;
+    else out.push(q);
+  }
+  return out;
+}
+
 // ── The visitor's questions ──────────────────────────────────────────────────
+
+/** The moments a door's sign shows between: its pins' first and last, or its own moment. */
+export function signSpan(door: WalkDoor): [number, number] {
+  const p = door.pins;
+  return p && p.length >= 2 ? [p[0].t, p[p.length - 1].t] : p && p.length === 1 ? [p[0].t, p[0].t] : [door.t, door.t];
+}
+
+/**
+ * Where the door's sign is at `t` (the video's frame: yaw + right, pitch + up),
+ * or null when it is not shown. With two pins or more it follows them —
+ * linearly between, the short way round — from the first to the last, held
+ * half a second past either end; with one pin, or none, it is shown within
+ * ±`slack` s of its moment, where it was put.
+ */
+export function signAt(door: WalkDoor, t: number, slack = NEAR_DT): { yaw: number; pitch: number } | null {
+  const p = door.pins;
+  if (p && p.length >= 2) {
+    const a = p[0], z = p[p.length - 1];
+    if (t < a.t - 0.5 || t > z.t + 0.5) return null;
+    if (t <= a.t) return { yaw: a.yaw, pitch: a.pitch };
+    if (t >= z.t) return { yaw: z.yaw, pitch: z.pitch };
+    let i = 0;
+    while (i < p.length - 2 && p[i + 1].t < t) i++;
+    const q0 = p[i], q1 = p[i + 1];
+    const k = (t - q0.t) / (q1.t - q0.t || 1);
+    return { yaw: wrapAngle(q0.yaw + angleDiff(q1.yaw, q0.yaw) * k), pitch: q0.pitch + (q1.pitch - q0.pitch) * k };
+  }
+  const one = p && p.length === 1 ? p[0] : { t: door.t, yaw: door.yaw, pitch: door.pitch ?? DEFAULT_PITCH };
+  return Math.abs(one.t - t) <= slack ? { yaw: one.yaw, pitch: one.pitch } : null;
+}
 
 export const walkOf = (w: Walks, key: string | null | undefined): Walk | null => (key ? w.walks[key] ?? null : null);
 
@@ -186,16 +261,23 @@ export const walkOf = (w: Walks, key: string | null | undefined): Walk | null =>
 export function doorsNear(walk: Walk | null, t: number, yaw: number, reach: { dt?: number; dyaw?: number } = {}): WalkDoor[] {
   if (!walk) return [];
   const dt = reach.dt ?? NEAR_DT, dyaw = reach.dyaw ?? NEAR_DYAW;
-  const cost = (d: WalkDoor) => Math.abs(d.t - t) / dt + Math.abs(angleDiff(d.yaw, yaw)) / dyaw;
-  return walk.doors
-    .filter((d) => Math.abs(d.t - t) <= dt && Math.abs(angleDiff(d.yaw, yaw)) <= dyaw)
-    .sort((a, b) => cost(a) - cost(b));
+  const near: { d: WalkDoor; cost: number }[] = [];
+  for (const d of walk.doors) {
+    const s = signAt(d, t, dt);
+    if (!s) continue;
+    const off = Math.abs(angleDiff(s.yaw, yaw));
+    if (off > dyaw) continue;
+    const [a, b] = signSpan(d);
+    near.push({ d, cost: (t < a ? a - t : t > b ? t - b : 0) / dt + off / dyaw });
+  }
+  return near.sort((x, y) => x.cost - y.cost).map((x) => x.d);
 }
 
 /** Doors within `within` seconds of `t`, whichever way the visitor looks, nearest in time first — what to show on the sphere and preload. */
 export function doorsAround(walk: Walk | null, t: number, within = PRELOAD_DT): WalkDoor[] {
   if (!walk) return [];
-  return walk.doors.filter((d) => Math.abs(d.t - t) <= within).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t));
+  const gap = (d: WalkDoor) => { const [a, b] = signSpan(d); return t < a ? a - t : t > b ? t - b : 0; };
+  return walk.doors.filter((d) => gap(d) <= within).sort((a, b) => gap(a) - gap(b));
 }
 
 /** Whether a door's video is shown flat (full screen, no looking round): ticked, or a phone video. The walk page also detects it from the video's shape. */
@@ -225,7 +307,7 @@ const withWalk = (w: Walks, key: string, f: (walk: Walk) => Walk): Walks =>
 export function addDoor(w: Walks, key: string, door: Omit<WalkDoor, "id"> & { id?: string }): Walks {
   return withWalk(w, key, (walk) => {
     const id = door.id && !walk.doors.some((d) => d.id === door.id) ? door.id : nextDoorId(walk, door.label.en);
-    const doors = [...walk.doors, { ...door, id, yaw: wrapAngle(door.yaw) }].sort((a, b) => a.t - b.t);
+    const doors = [...walk.doors, { ...door, id, yaw: wrapAngle(door.yaw), ...(door.pins ? { pins: sortPins(door.pins.map((q) => ({ ...q, yaw: wrapAngle(q.yaw) }))) } : {}) }].sort((a, b) => a.t - b.t);
     return { ...walk, doors };
   });
 }
