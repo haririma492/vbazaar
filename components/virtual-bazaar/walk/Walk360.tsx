@@ -46,7 +46,7 @@
  *   as a plain <video> over the sphere — the same stick, the same fades, no
  *   looking round.
  *
- *   /vca/walk                               the walk visitors start on (walks.json `start`)
+ *   /vca/walk                               the walk visitors start on (walks.json `start`, else `startOf`'s street)
  *   /vca/walk?v=scenes/<scene>/<file>.mp4   a video in the scenes bucket
  *   /vca/walk?src=<url>                     any video (https, or this site); no doors
  *   …&debug=1                               resolution, buffering, rate
@@ -59,7 +59,7 @@ import WalkStick from "../splat/WalkStick";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
   looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -612,7 +612,7 @@ export default function Walk360() {
         layer = makeLayer({ key: null, src: safeSrc(raw), purpose: "main" });
       } else {
         let key = params.get("v") || "";
-        if (!key) key = (await loadWalks()).start ?? "";
+        if (!key) key = startOf(await loadWalks()) ?? "";
         if (disposed) return;
         if (V_RE.test(key) || isWalkKey(key)) layer = makeLayer({ key, purpose: "main" });
       }

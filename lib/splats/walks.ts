@@ -355,6 +355,21 @@ export function setStart(w: Walks, key: string | null): Walks {
   return key && isWalkKey(key) ? { ...rest, start: key } : rest;
 }
 
+/**
+ * The walk `/vca/walk` opens: the one the operator set, else the street — a
+ * walk with doors that no door leads into (the most doors wins). Doors were
+ * placed and saved without «Set as the street walk» on 2026-10-10, and the
+ * plain address showed nothing.
+ */
+export function startOf(w: Walks): string | null {
+  if (w.start && isWalkKey(w.start)) return w.start;
+  const inside = new Set(Object.values(w.walks).flatMap((walk) => walk.doors.map((d) => d.to)));
+  const streets = Object.entries(w.walks)
+    .filter(([k, walk]) => isWalkKey(k) && walk.doors.length && !inside.has(k))
+    .sort((a, b) => b[1].doors.length - a[1].doors.length);
+  return streets[0]?.[0] ?? null;
+}
+
 // ── Saving without losing someone else's change ──────────────────────────────
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);

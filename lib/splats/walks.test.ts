@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -240,4 +240,14 @@ test("a door may open the shop's website — with its video, or on its own; http
     assert.equal(checkWalks({ walks: { [STREET]: { doors: [{ ...base, url }] } } }).problems.length, 1, url);
   }
   assert.equal(checkWalks({ walks: { [STREET]: { doors: [base] } } }).problems.length, 1);
+});
+
+test("with no start set, /vca/walk opens the street: the walk with doors no door leads into", () => {
+  const SHOP = "scenes/ali/ali.mp4";
+  let w = addDoor(emptyWalks(), STREET, { t: 5, yaw: 0, label: { en: "Ali" }, to: SHOP });
+  w = addDoor(w, SHOP, { t: 2, yaw: 0, label: { en: "Back room" }, to: "scenes/back/back.mp4" });
+  assert.equal(w.start, undefined);
+  assert.equal(startOf(w), STREET);
+  assert.equal(startOf(setStart(w, SHOP)), SHOP);
+  assert.equal(startOf(emptyWalks()), null);
 });
