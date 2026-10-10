@@ -64,13 +64,12 @@ import {
   looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
-/** «Slow / Normal / Fast»: how fast full stick plays the walk (1 = as filmed). */
-const SPEEDS = [
-  { label: "آهسته · Slow", rate: 0.5 },
-  { label: "معمولی · Normal", rate: 1 },
-  { label: "تند · Fast", rate: 2 },
-];
-const SPEED_KEY = "sk-walk-speed";
+/**
+ * How fast the pedal plays the walk (1 = as filmed). One speed: the founder
+ * (2026-10-10) found the Slow/Normal/Fast button extra next to self-drive's
+ * slow and fast.
+ */
+const PEDAL_RATE = 1;
 /**
  * SELF-DRIVE (founder, 2026-10-10: "add two self drive button below the
  * wheel one slow one faster however, still shopper can enter a store while
@@ -206,7 +205,6 @@ type Engine = {
   video: () => HTMLVideoElement;
   setMove: (x: number, y: number) => void;
   setGyro: (on: boolean) => void;
-  setSpeed: (rate: number) => void;
   /** Self-drive at this rate (times as filmed), or null: only the wheel's pedals and the keys walk. */
   setDrive: (rate: number | null) => void;
   /** The photographer's turn at this moment of the walk (rad/s, + right), read from the picture. */
@@ -269,9 +267,7 @@ export default function Walk360() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [time, setTime] = useState({ now: 0, total: 0 });
-  const [speedIx, setSpeedIx] = useState(1);
   const [drive, setDrive] = useState<Drive | null>(null);
-  const [gyro, setGyro] = useState<"off" | "on" | "refused">("off");
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
   const [view, setView] = useState<View>({ key: null, inside: 0, flat: false, near: [], site: null, atEnd: false, busy: false });
@@ -593,9 +589,6 @@ export default function Walk360() {
       setGyro(on) {
         gyroOn = on;
       },
-      setSpeed(r) {
-        maxRate = r;
-      },
       setDrive(r) {
         drive = r;
       },
@@ -669,7 +662,7 @@ export default function Walk360() {
 
     let stickX = 0;
     let stickY = 0;
-    let maxRate = SPEEDS[1].rate;
+    const maxRate = PEDAL_RATE;
     let drive: number | null = null;
     let facingBack = false;
     let gyroOn = false;
@@ -720,11 +713,17 @@ export default function Walk360() {
     const onMove = (e: PointerEvent) => {
       const prev = pointers.get(e.pointerId);
       if (!prev) return;
-      // A flat video has no "round" to look at.
-      if (pointers.size === 1 && !(gyroOn && gyroHave) && !current?.flat) {
+      // A flat video has no "round" to look at. ⚠️ THE FINGER WORKS WITH THE
+      // PHONE'S MOTION ON (founder, 2026-10-10: «Look by phone» must be
+      // automatic, no button): a sideways drag turns round on top of where the
+      // phone points; up and down is the phone's own.
+      if (pointers.size === 1 && !current?.flat) {
         const k = (camera.fov / el.clientHeight) * (Math.PI / 180);
-        yaw += (e.clientX - prev.x) * k;
-        pitch = THREE.MathUtils.clamp(pitch + (e.clientY - prev.y) * k, -1.45, 1.45);
+        if (gyroOn && gyroHave) turnYaw += (e.clientX - prev.x) * k;
+        else {
+          yaw += (e.clientX - prev.x) * k;
+          pitch = THREE.MathUtils.clamp(pitch + (e.clientY - prev.y) * k, -1.45, 1.45);
+        }
       }
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pointers.size === 2) {
@@ -917,19 +916,6 @@ export default function Walk360() {
     };
   }, []);
 
-  // Walking speed, remembered on this device.
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(SPEED_KEY);
-      const saved = raw == null ? NaN : Number(raw);
-      if (Number.isInteger(saved) && saved >= 0 && saved < SPEEDS.length) setSpeedIx(saved);
-    } catch {
-      /* private mode: Normal */
-    }
-  }, []);
-  useEffect(() => {
-    engine.current?.setSpeed(SPEEDS[speedIx].rate);
-  }, [speedIx]);
   useEffect(() => {
     engine.current?.setDrive(drive ? DRIVES[drive].rate : null);
   }, [drive]);
@@ -948,12 +934,12 @@ export default function Walk360() {
    */
   async function start() {
     const v = engine.current?.video();
-    // Phone motion only on a touch screen: a computer reports the API but has
-    // no sensor, and would be left unable to look with the mouse.
+    // ⚠️ AUTOMATIC, NO BUTTON: on a phone or tablet (a touch screen) the view
+    // follows the device as it is turned; a computer reports the API but has
+    // no sensor, so it looks with the mouse. The finger turns the view either way.
     const touch = window.matchMedia?.("(pointer: coarse)").matches ?? false;
     const ok = touch && hasDeviceOrientation() && (await requestDeviceOrientation());
     engine.current?.setGyro(ok);
-    setGyro(ok ? "on" : "off");
     if (v) {
       try {
         await v.play();
@@ -963,16 +949,6 @@ export default function Walk360() {
       }
     }
     setPhase("walking");
-  }
-
-  async function toggleGyro() {
-    if (gyro === "on") {
-      engine.current?.setGyro(false);
-      return setGyro("off");
-    }
-    const ok = hasDeviceOrientation() && (await requestDeviceOrientation());
-    engine.current?.setGyro(ok);
-    setGyro(ok ? "on" : "refused");
   }
 
   const door = view.near[0];
@@ -1030,26 +1006,6 @@ export default function Walk360() {
               </button>
             ))}
           </div>
-          <button
-            dir="ltr"
-            onClick={() => {
-              const next = (speedIx + 1) % SPEEDS.length;
-              setSpeedIx(next);
-              try { window.localStorage.setItem(SPEED_KEY, String(next)); } catch { /* fine */ }
-            }}
-            className="absolute bottom-[17.5rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
-          >
-            {SPEEDS[speedIx].label}
-          </button>
-          {!view.flat && (
-            <button
-              dir="ltr"
-              onClick={() => void toggleGyro()}
-              className="absolute bottom-[20rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
-            >
-              {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد" : "نگاه با گوشی · Look by phone"}
-            </button>
-          )}
 
           {/* A door in reach: step inside. */}
           {/* In a 360° walk the sign on the door is the button; a flat video has no round to put it in. */}
