@@ -667,6 +667,7 @@ export default function Walk360() {
     let facingBack = false;
     let gyroOn = false;
     let gyroHave = false;
+    let gyroAligned = false;
     const gyroQ = new THREE.Quaternion();
     const turnQ = new THREE.Quaternion();
     let yaw = 0;
@@ -832,6 +833,18 @@ export default function Walk360() {
       if (current?.flat) wantTurn = 0;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
       turnYaw += velTurn * dt;
+      // ⚠️ THE PHONE'S COMPASS IS NOT THE WALK'S FORWARD. Its heading is
+      // wherever the phone happened to point, so the first reading is turned
+      // to what the visitor already faced — without this, a phone could start
+      // facing back along the path, where «on» means back in time from 0:00 and
+      // self-drive stood still (founder, 2026-10-10: "self drive does not work
+      // on mobile").
+      if (gyroOn && gyroHave && !gyroAligned) {
+        gyroAligned = true;
+        const wanted = yaw + turnYaw;
+        camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
+        turnYaw += angleDiff(wanted, heading());
+      }
       if (gyroOn && gyroHave) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
       else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
 
@@ -845,10 +858,13 @@ export default function Walk360() {
       // shopper in that direction"). The video's forward is where the camera
       // went; facing more than a right angle away from it, walking on plays the
       // walk backwards (with a little slack either side, so it doesn't flicker).
+      // Looking at the ground or the sky has no "way": keep the last one.
       if (current && !current.flat) {
-        const away = Math.abs(videoYaw());
-        if (!facingBack && away > FACE_BACK) facingBack = true;
-        else if (facingBack && away < Math.PI - FACE_BACK) facingBack = false;
+        const away = Math.abs(videoYaw()); // (fills lookDir)
+        if (Math.abs(lookDir.y) < 0.85) {
+          if (!facingBack && away > FACE_BACK) facingBack = true;
+          else if (facingBack && away < Math.PI - FACE_BACK) facingBack = false;
+        }
       } else facingBack = false;
       if (facingBack) target = -target;
       if (busy) target = 0;
