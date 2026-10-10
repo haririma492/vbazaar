@@ -59,7 +59,7 @@ import WalkStick from "../splat/WalkStick";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, type SignPin, doorsNear, emptyWalks, isFlatDoor, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
   looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -151,6 +151,11 @@ async function loadWalks(): Promise<Walks> {
 }
 
 const mmss = (t: number) => (Number.isFinite(t) ? `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}` : "–:––");
+/** A shop's website, in a new tab that cannot reach back into the walk. */
+function openSite(url: string | null | undefined) {
+  if (isSiteUrl(url)) window.open(url, "_blank", "noopener,noreferrer");
+}
+
 const shortKey = (k: string | null) => (k ? k.replace(/^(scenes|masters)\//, "") : "(a video by address)");
 
 /** One video on screen (or loading for it): a sphere round the visitor, or flat over everything. */
@@ -176,6 +181,8 @@ type View = {
   inside: number;
   flat: boolean;
   near: WalkDoor[];
+  /** Inside a shop: the website its door names, if any. */
+  site: string | null;
   atEnd: boolean;
   busy: boolean;
 };
@@ -199,7 +206,7 @@ type Engine = {
 };
 
 /** A door's sign — «Step inside · name» (and the Persian name) on an amber card — drawn once. */
-function signTexture(en: string, fa?: string): THREE.CanvasTexture {
+function signTexture(en: string, fa?: string, site = false): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 640;
   c.height = 300;
@@ -222,13 +229,13 @@ function signTexture(en: string, fa?: string): THREE.CanvasTexture {
   g.shadowColor = "rgba(0,0,0,0.8)";
   g.shadowBlur = 8;
   g.font = "700 54px system-ui, sans-serif";
-  g.fillText("Step inside ›", 320, fa ? 92 : 112);
+  g.fillText(site ? "Visit website ↗" : "Step inside ›", 320, fa ? 92 : 112);
   g.font = "600 50px system-ui, sans-serif";
   g.fillText(en.length > 20 ? `${en.slice(0, 19)}…` : en, 320, fa ? 168 : 200);
   if (fa) {
     g.font = "600 46px system-ui, sans-serif";
     g.direction = "rtl";
-    g.fillText(`ورود · ${fa.length > 18 ? `${fa.slice(0, 17)}…` : fa}`, 320, 246);
+    g.fillText(`${site ? "وبسایت" : "ورود"} · ${fa.length > 18 ? `${fa.slice(0, 17)}…` : fa}`, 320, 246);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -247,7 +254,7 @@ export default function Walk360() {
   const [gyro, setGyro] = useState<"off" | "on" | "refused">("off");
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
-  const [view, setView] = useState<View>({ key: null, inside: 0, flat: false, near: [], atEnd: false, busy: false });
+  const [view, setView] = useState<View>({ key: null, inside: 0, flat: false, near: [], site: null, atEnd: false, busy: false });
   const [walks, setWalks] = useState<Walks>(emptyWalks());
   const [editing, setEditing] = useState(false);
   /** The walks as last read from (or saved to) the server: the `base` of a merged save. */
@@ -435,7 +442,10 @@ export default function Walk360() {
     }
 
     async function enter(door: WalkDoor) {
-      if (busy || !current?.key) return;
+      // A door with no shop video is the shop's website: a new tab, the walk
+      // stays where it is.
+      if (isSiteOnlyDoor(door)) return openSite(door.url);
+      if (busy || !current?.key || !door.to) return;
       const fromKey = current.key;
       let to = pending && pending.key === door.to && pending.purpose === "door" ? pending : null;
       pending = to ? null : pending;
@@ -480,7 +490,8 @@ export default function Walk360() {
       const walk = walkOf(walksNow, current?.key);
       const near = current && !busy && v && v.readyState >= 1 ? doorsNear(walk, v.currentTime, videoYaw(), current.flat ? { dyaw: 4 } : {}) : [];
       const atEnd = Boolean(v && trail.length && Number.isFinite(v.duration) && v.currentTime >= v.duration - 0.3);
-      const next: View = { key: current?.key ?? null, inside: trail.length, flat: current?.flat ?? false, near, atEnd, busy };
+      const site = trail[trail.length - 1]?.door.url ?? null;
+      const next: View = { key: current?.key ?? null, inside: trail.length, flat: current?.flat ?? false, near, site, atEnd, busy };
       const s = JSON.stringify(next);
       if (s !== lastView) {
         lastView = s;
@@ -507,11 +518,12 @@ export default function Walk360() {
         for (const d of shown) {
           const sign = signAt(d, t);
           if (!sign) continue;
-          const id = `${current.key}#${d.id}#${d.label.en}#${d.label.fa ?? ""}`;
+          const site = isSiteOnlyDoor(d);
+          const id = `${current.key}#${d.id}#${d.label.en}#${d.label.fa ?? ""}#${site}`;
           want.add(id);
           let m = markers.get(id);
           if (!m) {
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(d.label.en, d.label.fa), depthTest: false, depthWrite: false, transparent: true }));
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(d.label.en, d.label.fa, site), depthTest: false, depthWrite: false, transparent: true }));
             sprite.scale.set(7.4, 3.45, 1);
             sprite.renderOrder = 10;
             m = { sprite, door: d };
@@ -537,7 +549,8 @@ export default function Walk360() {
       if (busy || !current) return;
       // ⚠️ ONE AHEAD, NEVER MORE: the nearest door's shop, or the street to go back to.
       let wantKey: { key: string; t: number; flat: boolean; purpose: Layer["purpose"] } | null = null;
-      if (around[0]) wantKey = { key: around[0].to, t: 0, flat: isFlatDoor(around[0]), purpose: "door" };
+      const ahead = around.find((d) => d.to);
+      if (ahead?.to) wantKey = { key: ahead.to, t: 0, flat: isFlatDoor(ahead), purpose: "door" };
       const top = trail[trail.length - 1];
       if (!wantKey && top && v && Number.isFinite(v.duration) && v.duration - t < PRELOAD_DT) {
         wantKey = { key: top.key, t: returnPoint(top.door).t, flat: false, purpose: "back" };
@@ -938,8 +951,8 @@ export default function Walk360() {
               onClick={() => engine.current?.enter(door)}
               className="absolute bottom-24 left-4 z-10 max-w-[calc(100%-14rem)] rounded-2xl border border-amber-300/80 bg-amber-300/30 px-5 py-3 text-left text-amber-50 shadow-lg backdrop-blur-sm sm:max-w-sm"
             >
-              <span className="block text-[17px] font-bold">Step inside · {door.label.en}</span>
-              {door.label.fa && <span dir="rtl" className="block text-right text-[15px] text-amber-100/90">ورود · {door.label.fa}</span>}
+              <span className="block text-[17px] font-bold">{isSiteOnlyDoor(door) ? "Visit website ↗" : "Step inside"} · {door.label.en}</span>
+              {door.label.fa && <span dir="rtl" className="block text-right text-[15px] text-amber-100/90">{isSiteOnlyDoor(door) ? "وبسایت" : "ورود"} · {door.label.fa}</span>}
             </button>
           )}
 
@@ -951,6 +964,16 @@ export default function Walk360() {
               className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-full border border-white/40 bg-black/65 px-5 py-2 text-[15px] font-semibold text-white"
             >
               ← Back to the street · بازگشت به خیابان
+            </button>
+          )}
+          {/* Inside a shop whose door names its website. */}
+          {view.inside > 0 && view.site && !view.busy && (
+            <button
+              dir="ltr"
+              onClick={() => openSite(view.site)}
+              className="absolute right-4 top-16 z-10 rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white"
+            >
+              🌐 Visit the website · وبسایت فروشگاه
             </button>
           )}
           {view.inside > 0 && view.atEnd && !view.busy && (
@@ -1007,13 +1030,16 @@ export default function Walk360() {
 // ── The operator's door editor (?edit=1, with the admin token) ────────────────
 
 /** The door being placed, as the walk draws it (its sign, while pinning). */
-function draftDoor(d: { id?: string; t: number; yaw: number; en: string; fa: string; to: string; pins: SignPin[] }): WalkDoor {
+function draftDoor(d: { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; pins: SignPin[] }): WalkDoor {
   return {
-    id: d.id ?? "__draft", t: d.t, yaw: d.yaw, to: d.to || "scenes/draft/draft.mp4",
+    id: d.id ?? "__draft", t: d.t, yaw: d.yaw,
+    ...(d.to ? { to: d.to } : d.url.trim() ? { url: d.url.trim() } : { to: "scenes/draft/draft.mp4" }),
     label: d.fa.trim() ? { en: d.en.trim() || "…", fa: d.fa.trim() } : { en: d.en.trim() || "…" },
     ...(d.pins.length ? { pins: d.pins } : {}),
   };
 }
+
+const hostOf = (u: string) => { try { return new URL(u).hostname; } catch { return u; } };
 
 type VideoChoice = { key: string; label: string };
 
@@ -1027,7 +1053,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
   const [open, setOpen] = useState(true);
   const [videos, setVideos] = useState<VideoChoice[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; flat: boolean; pins: SignPin[]; pinning: boolean };
+  type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -1081,13 +1107,17 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
     if (!h?.key) return setStatus({ tone: "bad", text: "Doors can only be placed on a video from the bucket (?v=…), not one opened by address." });
     engine.current?.video().pause();
     const first = (videos?.find((v) => v.key !== h.key && isWalkKey(v.key)) ?? videos?.find((v) => v.key !== h.key))?.key ?? "";
-    setDraft({ t: h.t, yaw: h.yaw, en: "", fa: "", to: first, flat: isPhoneVideoKey(first), pins: [], pinning: true });
+    setDraft({ t: h.t, yaw: h.yaw, en: "", fa: "", to: first, url: "", flat: isPhoneVideoKey(first), pins: [], pinning: true });
   }
 
   function saveDraft() {
     if (!draft || !viewKey) return;
     if (!draft.en.trim()) return setStatus({ tone: "bad", text: "The door needs an English label." });
-    if (!isVideoKey(draft.to) || draft.to === viewKey) return setStatus({ tone: "bad", text: "Choose the shop's video in «Leads to»." });
+    const url = draft.url.trim();
+    if (url && !isSiteUrl(url)) return setStatus({ tone: "bad", text: "The website must be a full https:// address (e.g. https://alisbakery.ca)." });
+    if (draft.to ? !isVideoKey(draft.to) || draft.to === viewKey : !url) {
+      return setStatus({ tone: "bad", text: "Choose the shop's video in «Leads to», or give its website." });
+    }
     // With pins, the door's moment and heading are its middle pin's.
     const mid = draft.pins.length ? draft.pins[Math.floor((draft.pins.length - 1) / 2)] : null;
     const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -1096,11 +1126,12 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
       yaw: r3(mid?.yaw ?? draft.yaw),
       ...(mid ? { pitch: r3(mid.pitch), pins: draft.pins.map((q) => ({ t: Math.round(q.t * 100) / 100, yaw: r3(q.yaw), pitch: r3(q.pitch) })) } : {}),
       label: draft.fa.trim() ? { en: draft.en.trim(), fa: draft.fa.trim() } : { en: draft.en.trim() },
-      to: draft.to,
-      ...(draft.flat && !isPhoneVideoKey(draft.to) ? { flat: true } : {}),
+      ...(draft.to ? { to: draft.to } : {}),
+      ...(url ? { url } : {}),
+      ...(draft.to && draft.flat && !isPhoneVideoKey(draft.to) ? { flat: true } : {}),
     };
     // An edit replaces «flat» too: unticked is no flag (dropped when saved).
-    if (draft.id) change(updateDoor(walks, viewKey, draft.id, { flat: undefined, pitch: undefined, pins: undefined, ...fields }));
+    if (draft.id) change(updateDoor(walks, viewKey, draft.id, { to: undefined, url: undefined, flat: undefined, pitch: undefined, pins: undefined, ...fields }));
     else change(addDoor(walks, viewKey, fields));
     setDraft(null);
   }
@@ -1159,12 +1190,17 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
               <input className={field} dir="rtl" placeholder="برچسب فارسی (optional)" value={draft.fa} onChange={(e) => setDraft({ ...draft, fa: e.target.value })} />
               <label className="block text-[11px] text-white/60">Leads to</label>
               <select className={field} value={draft.to} onChange={(e) => setDraft({ ...draft, to: e.target.value, flat: isPhoneVideoKey(e.target.value) })}>
-                <option value="">— choose the shop's video —</option>
+                <option value="">— no video (the website only) —</option>
                 {(videos ?? []).filter((v) => v.key !== viewKey).map((v) => <option key={v.key} value={v.key}>{v.label}</option>)}
               </select>
               {videos === null && <div className="text-[11px] text-white/50">Reading the uploaded videos…</div>}
+              <label className="block text-[11px] text-white/60">The shop's website (optional)</label>
+              <input className={field} type="url" inputMode="url" placeholder="https://…" value={draft.url} onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
+              <div className="text-[11px] leading-snug text-white/45">
+                {draft.to ? "Inside the shop, a «Visit the website» button opens it in a new tab." : "No video chosen: the sign says «Visit website» and opens it in a new tab."}
+              </div>
               <label className="flex items-center gap-2 text-[12px]">
-                <input type="checkbox" checked={draft.flat || isPhoneVideoKey(draft.to)} disabled={isPhoneVideoKey(draft.to)} onChange={(e) => setDraft({ ...draft, flat: e.target.checked })} />
+                <input type="checkbox" checked={draft.flat || isPhoneVideoKey(draft.to)} disabled={!draft.to || isPhoneVideoKey(draft.to)} onChange={(e) => setDraft({ ...draft, flat: e.target.checked })} />
                 Flat video (filmed with a phone, not 360°)
               </label>
               <div className="space-y-1 rounded-md border border-white/15 p-1.5">
@@ -1213,10 +1249,10 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
                   <span className="font-mono text-white/60">{mmss(d.t)}</span> {d.label.en}
                   {d.label.fa && <span className="text-white/60"> · {d.label.fa}</span>}
                 </div>
-                <div className="truncate text-[11px] text-white/50">→ {shortKey(d.to)}{isFlatDoor(d) ? " (flat)" : ""}</div>
+                <div className="truncate text-[11px] text-white/50">→ {d.to ? shortKey(d.to) : "website only"}{isFlatDoor(d) ? " (flat)" : ""}{d.url ? ` · 🌐 ${hostOf(d.url)}` : ""}</div>
                 <div className="mt-1 flex gap-1.5">
                   <button className={btn} onClick={() => engine.current?.goTo(d)}>Go to</button>
-                  <button className={btn} onClick={() => setDraft({ id: d.id, t: d.t, yaw: d.yaw, en: d.label.en, fa: d.label.fa ?? "", to: d.to, flat: isFlatDoor(d), pins: d.pins ?? [], pinning: false })}>Edit</button>
+                  <button className={btn} onClick={() => setDraft({ id: d.id, t: d.t, yaw: d.yaw, en: d.label.en, fa: d.label.fa ?? "", to: d.to ?? "", url: d.url ?? "", flat: isFlatDoor(d), pins: d.pins ?? [], pinning: false })}>Edit</button>
                   <button className={btn} onClick={() => { if (viewKey && window.confirm(`Delete the door «${d.label.en}»?`)) change(removeDoor(walks, viewKey, d.id)); }}>Delete</button>
                 </div>
               </li>

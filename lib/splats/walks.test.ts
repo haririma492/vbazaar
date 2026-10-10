@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
+  DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
   isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
@@ -223,4 +223,21 @@ test("a door without pins: its sign at its own heading, a little below the horiz
   assert.equal(signAt(d, 7), null);
   const bad = checkWalks({ walks: { "scenes/street/s.mp4": { doors: [{ ...d, pitch: 3 }] } } });
   assert.equal(bad.problems.length, 1);
+});
+
+test("a door may open the shop's website — with its video, or on its own; https only", () => {
+  const base = { id: "a", t: 1, yaw: 0, label: { en: "A" } };
+  const ok = checkWalks({ walks: { [STREET]: { doors: [
+    { ...base, url: "https://shop.example/menu" },
+    { ...base, id: "b", to: BAKERY, url: "https://bakery.example" },
+  ] } } });
+  assert.deepEqual(ok.problems, []);
+  assert.equal(ok.walks.walks[STREET].doors[0].to, undefined);
+  assert.equal(isSiteOnlyDoor(ok.walks.walks[STREET].doors[0]), true);
+  assert.equal(isSiteOnlyDoor(ok.walks.walks[STREET].doors[1]), false);
+  assert.deepEqual(keysNamed(ok.walks), [STREET, BAKERY]);
+  for (const url of ["http://shop.example", "javascript:alert(1)", "https://u:p@shop.example", "nope"]) {
+    assert.equal(checkWalks({ walks: { [STREET]: { doors: [{ ...base, url }] } } }).problems.length, 1, url);
+  }
+  assert.equal(checkWalks({ walks: { [STREET]: { doors: [base] } } }).problems.length, 1);
 });

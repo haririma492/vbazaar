@@ -56,8 +56,15 @@ export type WalkDoor = {
   /** The door's heading from the camera at `t`, in the video's own frame. */
   yaw: number;
   label: WalkLabel;
-  /** The shop's video: a 360° walk (`scenes/…/….mp4`) or a flat phone video (`masters/…/….mov`, `isPhoneVideoKey`). */
-  to: string;
+  /** The shop's video: a 360° walk (`scenes/…/….mp4`) or a flat phone video (`masters/…/….mov`, `isPhoneVideoKey`). Absent: the door opens `url` only. */
+  to?: string;
+  /**
+   * THE SHOP'S WEBSITE (founder, 2026-10-10: "allow operator to also enter a
+   * web site to open when shoppers enter the door"). With a video too, the shop
+   * walk shows «Visit the website»; on its own, stepping in opens the site in a
+   * new tab. https only (`isSiteUrl`).
+   */
+  url?: string;
   /** The shop's video is a flat (not 360°) phone video: shown full screen, no looking round. Also detected from its shape. */
   flat?: boolean;
   /** Where «Back to the street» lands, when not at the door facing away from it. */
@@ -85,6 +92,17 @@ const WALK_KEY_RE = new RegExp(`^scenes/${SCENE_ID}/[A-Za-z0-9][A-Za-z0-9._-]{0,
 const DOOR_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 
 const PHONE_VIDEO_RE = new RegExp(`^masters/${SCENE_ID}/[A-Za-z0-9][A-Za-z0-9._-]{0,116}\\.(?:[mM][oO][vV]|[mM][pP]4)$`);
+
+/** A shop's website: an https address, nothing else (no javascript:, no plain http). */
+export function isSiteUrl(v: unknown): v is string {
+  if (typeof v !== "string" || v.length > 400) return false;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" && Boolean(u.hostname) && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
 
 /** A 360° walk video's key in the scenes bucket, as the uploader makes them. */
 export const isWalkKey = (v: unknown): v is string => typeof v === "string" && WALK_KEY_RE.test(v);
@@ -156,8 +174,12 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       const lbl = (x.label ?? {}) as Record<string, unknown>;
       const en = str(lbl.en, 80), fa = str(lbl.fa, 80);
       if (!en) { problems.push(`${where}: it needs an English label.`); continue; }
-      if (!isVideoKey(x.to)) { problems.push(`${where}: «leads to» must be a walk video (scenes/<scene>/<file>.mp4) or a phone video (masters/<scene>/<file>.mov).`); continue; }
-      if (x.to === key) { problems.push(`${where}: it leads to the walk it is on.`); continue; }
+      const hasTo = x.to !== undefined && x.to !== null && x.to !== "";
+      const hasUrl = x.url !== undefined && x.url !== null && x.url !== "";
+      if (!hasTo && !hasUrl) { problems.push(`${where}: it leads nowhere — choose the shop's video, or enter its website.`); continue; }
+      if (hasTo && !isVideoKey(x.to)) { problems.push(`${where}: «leads to» must be a walk video (scenes/<scene>/<file>.mp4) or a phone video (masters/<scene>/<file>.mov).`); continue; }
+      if (hasTo && x.to === key) { problems.push(`${where}: it leads to the walk it is on.`); continue; }
+      if (hasUrl && !isSiteUrl(x.url)) { problems.push(`${where}: its website must be an https:// address.`); continue; }
       let back: WalkDoor["back"];
       if (x.back !== undefined && x.back !== null) {
         const b = x.back as Record<string, unknown>;
@@ -182,7 +204,8 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       }
       ids.add(id);
       walk.doors.push({
-        id, t: x.t, yaw: wrapAngle(x.yaw), label: fa ? { en, fa } : { en }, to: x.to,
+        id, t: x.t, yaw: wrapAngle(x.yaw), label: fa ? { en, fa } : { en },
+        ...(hasTo ? { to: x.to as string } : {}), ...(hasUrl ? { url: x.url as string } : {}),
         ...(x.flat === true ? { flat: true } : {}), ...(back ? { back } : {}),
         ...(pitch !== undefined ? { pitch } : {}), ...(pins ? { pins } : {}),
       });
@@ -204,7 +227,7 @@ export const parseWalks = (raw: unknown): Walks => checkWalks(raw).walks;
 /** Every video key the walks name (walks, doors' targets, start) — what must exist in the bucket. */
 export function keysNamed(w: Walks): string[] {
   const s = new Set<string>(Object.keys(w.walks));
-  for (const walk of Object.values(w.walks)) for (const d of walk.doors) s.add(d.to);
+  for (const walk of Object.values(w.walks)) for (const d of walk.doors) if (d.to) s.add(d.to);
   if (w.start) s.add(w.start);
   return [...s];
 }
@@ -282,6 +305,8 @@ export function doorsAround(walk: Walk | null, t: number, within = PRELOAD_DT): 
 
 /** Whether a door's video is shown flat (full screen, no looking round): ticked, or a phone video. The walk page also detects it from the video's shape. */
 export const isFlatDoor = (door: WalkDoor) => door.flat === true || isPhoneVideoKey(door.to);
+/** A door with a website and no video: stepping in opens the site. */
+export const isSiteOnlyDoor = (door: WalkDoor) => !door.to && Boolean(door.url);
 
 /** A video that is not about 2:1 is not an equirectangular 360° picture. */
 export const looksFlat = (width: number, height: number) => !(width > 0 && height > 0) || Math.abs(width / height - 2) > 0.05;
