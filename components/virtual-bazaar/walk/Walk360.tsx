@@ -654,6 +654,13 @@ export default function Walk360() {
         if (current !== layer) return;
         setTime({ now: layer!.video.currentTime, total: layer!.video.duration });
         setInfo(`${layer!.video.videoWidth}×${layer!.video.videoHeight} · ${mmss(layer!.video.duration)}${layer!.flat ? " · flat" : ""}`);
+        // ⚠️ NO PHONE PLAYS AN 8K WALK (founder, 2026-10-10: "on mobile-web
+        // auto drive does not work, manual drive does not work either" — the
+        // plaza was the 8K export, and no `-phone.mp4` next to it). Say so,
+        // rather than a walk that won't move.
+        if (isTouch() && layer!.video.videoWidth > 4096) {
+          setNotice(`This walk is ${layer!.video.videoWidth}×${layer!.video.videoHeight} — too big for a phone; it may not move. Its 4K copy (…-phone.mp4, see scripts/splats/walk-video.md) fixes it. · این ویدیو برای گوشی بزرگ است.`);
+        }
       });
       try {
         await layer.ready;
