@@ -1128,6 +1128,9 @@ export default function SplatUploads() {
               {o.lastModified && <span className="text-white/40">{new Date(o.lastModified).toLocaleString()}</span>}
               <span className="ms-auto flex flex-wrap gap-2">
                 {o.kind === "web" && o.url && isWalkVideo(o.key) && <a className={SMALL} href={`/vca/walk?v=${encodeURIComponent(o.key)}`}>Walk</a>}
+                {o.kind === "web" && o.url && isWalkVideo(o.key) && (
+                  <a className={SMALL} href={`/vca/walk?v=${encodeURIComponent(o.key)}&edit=1`} title="Place doors into shops on this walk">Doors</a>
+                )}
                 {isTrainVideo(o.key) && (
                   <button
                     className="rounded-full border border-amber-300/60 bg-amber-400/15 px-3 py-1 text-[12px] text-amber-50 disabled:opacity-40"

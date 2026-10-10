@@ -29,6 +29,7 @@ import {
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { contentTypeFor, type SignImageType, type SplatKind } from "./keys";
 import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
+import { WALKS_KEY, emptyWalks, mergeConflicts, mergeWalks, parseWalks, type Walks } from "./walks";
 
 const env = (k: string) => (process.env[k] || "").trim();
 
@@ -287,6 +288,53 @@ export async function writeTour(tour: Tour, base?: Tour): Promise<Tour> {
     CacheControl: "no-cache",
   }));
   return clean;
+}
+
+// ── The walks: doors from the 360° street walk into shops (`lib/splats/walks.ts`) ──
+
+/** The walks as the bucket holds them; none before the first save. */
+export async function readWalks(): Promise<Walks> {
+  try {
+    const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: WALKS_KEY }));
+    return parseWalks(JSON.parse((await out.Body?.transformToString()) || "{}"));
+  } catch (e) {
+    if ((e as { name?: string }).name === "NoSuchKey") return emptyWalks();
+    throw e;
+  }
+}
+
+/**
+ * Saved like the tour: MERGED with what is stored (`mergeWalks`, `base` being
+ * the walks the page last read), the replaced file kept in the private
+ * bucket (`walks-history/`), and NO-CACHE (rewritten in place). `walks` must
+ * already be checked (`checkWalks`). `conflicts`: doors both this page and
+ * someone else changed — this page's version was kept.
+ */
+export async function writeWalks(walks: Walks, base?: Walks): Promise<{ walks: Walks; conflicts: string[] }> {
+  const stored = await readWalks();
+  const mine = parseWalks(walks);
+  const clean = base ? mergeWalks(parseWalks(base), mine, stored) : mine;
+  const conflicts = base ? mergeConflicts(parseWalks(base), mine, stored) : [];
+  if (Object.keys(stored.walks).length || stored.start) {
+    try {
+      await s3().send(new PutObjectCommand({
+        Bucket: r2Config().mastersBucket,
+        Key: `walks-history/${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+        Body: JSON.stringify(stored, null, 1),
+        ContentType: "application/json",
+      }));
+    } catch {
+      /* a missing backup never stops a save */
+    }
+  }
+  await s3().send(new PutObjectCommand({
+    Bucket: r2Config().webBucket,
+    Key: WALKS_KEY,
+    Body: JSON.stringify(clean, null, 1),
+    ContentType: "application/json",
+    CacheControl: "no-cache",
+  }));
+  return { walks: clean, conflicts };
 }
 
 // ── Training on a rented GPU (`lib/splats/train.ts`) ─────────────────────────

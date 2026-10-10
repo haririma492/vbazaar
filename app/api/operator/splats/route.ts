@@ -11,6 +11,9 @@
  *   POST { action: "link", key }                       → { url }      (24 h download link)
  *   POST { action: "cors" }                            (lets this site's browser PUT to the bucket)
  *   POST { action: "tour", tour, base? }               → { tour }     (merges into scenes/tour.json)
+ *   POST { action: "walksSave", walks, base? }        → { walks, conflicts }  (merges into scenes/walks.json —
+ *                                                       `lib/splats/walks.ts`; refused, with every problem named,
+ *                                                       when a door is malformed or a video is not in the buckets)
  *   POST { action: "signImage", scene, sign, type, size } → { key, url, headers }  (a replaced sign's image:
  *                                                       PUT it to `url` with `headers`; scenes/<scene>/signs/…)
  *   POST { action: "stream" | "streamStatus", scene, sharp? }       → { job }  (the streamed copy)
@@ -28,9 +31,10 @@ import { isAdminTokenValid } from "@/lib/adminAuth";
 import { MAX_SIGN_IMAGE_BYTES, isSceneId, isSignImageType, isSplatKey, partPlan, signImageKey, splatKey } from "@/lib/splats/keys";
 import {
   abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signImageHeaders, signImagePutUrl,
-  signPart, startUpload, writeTour,
+  signPart, startUpload, writeTour, writeWalks,
 } from "@/lib/splats/r2";
 import { TOUR_KEY } from "@/lib/splats/tour";
+import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
@@ -89,7 +93,7 @@ export async function GET(req: NextRequest) {
   if (refused) return refused;
   try {
     const [all, tour] = await Promise.all([listSplats(), readTour()]);
-    const objects = all.filter((o) => o.key !== TOUR_KEY).map((o) => ({ ...o, url: o.kind === "web" ? publicUrl(o.key) : null }));
+    const objects = all.filter((o) => o.key !== TOUR_KEY && o.key !== WALKS_KEY).map((o) => ({ ...o, url: o.kind === "web" ? publicUrl(o.key) : null }));
     return ok({ r2: r2Summary(), objects, tour, train: trainSummary() });
   } catch (e) {
     console.error("[operator/splats:GET]", e);
@@ -180,6 +184,21 @@ export async function POST(req: NextRequest) {
       // `base`: the tour as this page last read it — the save is merged (`mergeTour`).
       const base = body.base && typeof body.base === "object" ? body.base : undefined;
       return ok({ tour: await writeTour(body.tour, base) });
+    }
+
+    // The walks (`lib/splats/walks.ts`): doors from the street walk into shops.
+    if (action === "walksSave") {
+      const { walks, problems } = checkWalks(body?.walks);
+      if (!body?.walks || typeof body.walks !== "object") problems.unshift("No walks.");
+      // Every video a walk or door names must be in the buckets: a door to a
+      // file that was never uploaded (or was renamed) would lead to nothing.
+      if (!problems.length) {
+        const have = new Set((await listSplats()).map((o) => o.key));
+        for (const k of keysNamed(walks)) if (!have.has(k)) problems.push(`«${k}» is not in the buckets.`);
+      }
+      if (problems.length) return fail(400, `Not saved:\n${problems.join("\n")}`);
+      const base = body.base && typeof body.base === "object" ? checkWalks(body.base).walks : undefined;
+      return ok(await writeWalks(walks, base));
     }
 
     const key = typeof body?.key === "string" ? body.key : "";
