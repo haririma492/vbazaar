@@ -87,6 +87,8 @@ type Drive = keyof typeof DRIVES;
 const TURN_RATE = 0.8;
 /** How long starting, stopping and turning take to settle (s). */
 const EASE_S = 0.35;
+/** Facing further than this from the video's forward (rad, ~100°), walking on plays the walk backwards; back under ~80°, forwards again. */
+const FACE_BACK = 1.75;
 /** Below this the walk stands still. */
 const DEAD = 0.04;
 /** Forward slower than this is stepped like backward: browsers play no slower smoothly. */
@@ -669,6 +671,7 @@ export default function Walk360() {
     let stickY = 0;
     let maxRate = SPEEDS[1].rate;
     let drive: number | null = null;
+    let facingBack = false;
     let gyroOn = false;
     let gyroHave = false;
     const gyroQ = new THREE.Quaternion();
@@ -810,7 +813,9 @@ export default function Walk360() {
       turnPrev = { p, t, layer: current };
       if (!prev || prev.layer !== current || Math.abs(t - prev.t) > 1.5) return;
       const m = ringShift(prev.p, p, 24);
-      const r = m.score > 0.5 ? THREE.MathUtils.clamp(turnRate(m.shift, TURN_COLS, t - prev.t), -2, 2) : 0;
+      // The turn as the visitor feels it: walking the path backwards, the
+      // photographer's right turn comes as a left one.
+      const r = m.score > 0.5 ? THREE.MathUtils.clamp(turnRate(m.shift, TURN_COLS, Math.abs(t - prev.t)), -2, 2) : 0;
       turnNow += (r - turnNow) * 0.35;
     }
 
@@ -836,6 +841,17 @@ export default function Walk360() {
       if (keys.has("s") || keys.has("arrowdown")) wantRate = -1;
       // Self-drive walks on unless the pedals or the keys say otherwise.
       let target = wantRate !== 0 || drive === null ? wantRate * maxRate : drive;
+      // ⚠️ "ON" IS THE WAY THE VISITOR FACES (founder, 2026-10-10: "when we use
+      // the wheel to turn the view backward then forward key should move the
+      // shopper in that direction"). The video's forward is where the camera
+      // went; facing more than a right angle away from it, walking on plays the
+      // walk backwards (with a little slack either side, so it doesn't flicker).
+      if (current && !current.flat) {
+        const away = Math.abs(videoYaw());
+        if (!facingBack && away > FACE_BACK) facingBack = true;
+        else if (facingBack && away < Math.PI - FACE_BACK) facingBack = false;
+      } else facingBack = false;
+      if (facingBack) target = -target;
       if (busy) target = 0;
       rate += (target - rate) * ease;
 
