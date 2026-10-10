@@ -118,12 +118,12 @@ test("the shop's walk is preloaded from 6 s before its door", () => {
   assert.deepEqual(doorsAround(walk, 12).map((d) => d.id), ["butcher"]);
 });
 
-test("back to the street: at the door, facing away from it — unless overridden", () => {
+test("back to the street: at the door, still facing the shops — unless overridden", () => {
   const w = built();
   const bakery = walkOf(w, STREET)!.doors.find((d) => d.id === "bakery")!;
   const r = returnPoint(bakery);
   assert.equal(r.t, 42);
-  assert.ok(Math.abs(r.yaw - (1.2 - Math.PI)) < 1e-12);
+  assert.ok(Math.abs(r.yaw - 1.2) < 1e-12);
   const moved = updateDoor(w, STREET, "bakery", { back: { t: 44, yaw: 0.3 } });
   assert.deepEqual(returnPoint(walkOf(moved, STREET)!.doors.find((d) => d.id === "bakery")!), { t: 44, yaw: 0.3 });
 });

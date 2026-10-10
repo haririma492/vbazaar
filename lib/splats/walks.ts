@@ -67,7 +67,7 @@ export type WalkDoor = {
   url?: string;
   /** The shop's video is a flat (not 360°) phone video: shown full screen, no looking round. Also detected from its shape. */
   flat?: boolean;
-  /** Where «Back to the street» lands, when not at the door facing away from it. */
+  /** Where «Back to the street» lands, when not at the door facing it (`returnPoint`). */
   back?: { t: number; yaw: number };
   /** The sign's height in the picture at `t` (radians, + up); `DEFAULT_PITCH` when not set. */
   pitch?: number;
@@ -312,8 +312,13 @@ export const isSiteOnlyDoor = (door: WalkDoor) => !door.to && Boolean(door.url);
 export const looksFlat = (width: number, height: number) => !(width > 0 && height > 0) || Math.abs(width / height - 2) > 0.05;
 
 /** Where «Back to the street» lands: at the door, facing away from it (toward the street), unless overridden. */
+/**
+ * Where «Back to the street» lands: at the door, FACING IT — the row of
+ * shops, not the far side of the street (founder, 2026-10-10: "do not turn
+ * away from rows of store, looking the other way, keep watching stores").
+ */
 export function returnPoint(door: WalkDoor): { t: number; yaw: number } {
-  return door.back ? { ...door.back } : { t: door.t, yaw: wrapAngle(door.yaw + Math.PI) };
+  return door.back ? { ...door.back } : { t: door.t, yaw: signAt(door, door.t, Infinity)?.yaw ?? door.yaw };
 }
 
 // ── The operator's edits ─────────────────────────────────────────────────────

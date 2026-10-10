@@ -25,7 +25,7 @@
  * (`lib/splats/walks.ts`) puts DOORS on a walk: a moment of the video and a
  * direction in it. Near one, looking its way, «Step inside» cross-fades to
  * the shop's own video at its start; «Back to the street» cross-fades back to
- * the street at the door, facing the street. The shop's video starts loading
+ * the street at the door, still facing the row of shops. The shop's video starts loading
  * 6 s before its door, so the step is immediate.
  *
  *   ⚠️ ONE VIDEO PLAYS AT A TIME. The next one only loads (paused) while the
@@ -35,8 +35,8 @@
  *
  *   ⚠️ THE SPHERE TURNS, NOT THE VISITOR. Each video's sphere has a `spin`, so
  *   whatever the visitor faces when they step in becomes the shop video's
- *   forward (and the street's "away from the door" on return): the view never
- *   jumps. Doors are stored in the video's OWN frame (`yaw`, positive right),
+ *   forward: the view never jumps. Coming back out, the visitor faces what
+ *   they faced going in — the shops, not the far side of the street. Doors are stored in the video's OWN frame (`yaw`, positive right),
  *   so `videoYaw = heading + spin`.
  *
  *   A SHOP FILMED WITH A PHONE (founder, 2026-10-10: the first interiors are
@@ -55,7 +55,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import WalkStick from "../splat/WalkStick";
+import SteeringWheel from "./SteeringWheel";
+import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
@@ -70,6 +71,18 @@ const SPEEDS = [
   { label: "تند · Fast", rate: 2 },
 ];
 const SPEED_KEY = "sk-walk-speed";
+/**
+ * SELF-DRIVE (founder, 2026-10-10: "add two self drive button below the
+ * wheel one slow one faster however, still shopper can enter a store while
+ * on self drive"): the walk plays on by itself; the wheel, the pedals and the
+ * keys still work over it, and a tap on a door's sign still steps inside
+ * (which ends the drive — the shop is looked round, not driven through).
+ */
+const DRIVES = {
+  slow: { rate: 0.6, label: "▶ آهسته · Auto slow" },
+  fast: { rate: 1.5, label: "▶▶ تند · Auto fast" },
+} as const;
+type Drive = keyof typeof DRIVES;
 /** Full steering turns this fast (rad/s). */
 const TURN_RATE = 0.8;
 /** How long starting, stopping and turning take to settle (s). */
@@ -192,6 +205,10 @@ type Engine = {
   setMove: (x: number, y: number) => void;
   setGyro: (on: boolean) => void;
   setSpeed: (rate: number) => void;
+  /** Self-drive at this rate (times as filmed), or null: only the wheel's pedals and the keys walk. */
+  setDrive: (rate: number | null) => void;
+  /** The photographer's turn at this moment of the walk (rad/s, + right), read from the picture. */
+  turn: () => number;
   setWalks: (w: Walks) => void;
   enter: (door: WalkDoor) => void;
   back: () => void;
@@ -251,6 +268,7 @@ export default function Walk360() {
   const [notice, setNotice] = useState<string | null>(null);
   const [time, setTime] = useState({ now: 0, total: 0 });
   const [speedIx, setSpeedIx] = useState(1);
+  const [drive, setDrive] = useState<Drive | null>(null);
   const [gyro, setGyro] = useState<"off" | "on" | "refused">("off");
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
@@ -285,7 +303,7 @@ export default function Walk360() {
     let current: Layer | null = null;
     let pending: Layer | null = null;
     /** The doors stepped through, innermost last: «Back to the street» pops one. */
-    const trail: Array<{ key: string; door: WalkDoor }> = [];
+    const trail: Array<{ key: string; door: WalkDoor; yaw: number }> = [];
     let busy = false;
     let fade: { from: Layer; to: Layer; start: number; done: () => void } | null = null;
 
@@ -455,16 +473,18 @@ export default function Walk360() {
         to = makeLayer({ key: door.to, t: 0, flat: isFlatDoor(door), purpose: "door" });
       }
       if (isFlatDoor(door)) to.forcedFlat = to.flat = true;
-      // What the visitor faces now becomes the shop video's forward.
+      // What the visitor faces now becomes the shop video's forward — and is
+      // what they face again when they come back out.
       const h = heading();
-      if (await switchTo(to, () => -h)) trail.push({ key: fromKey, door });
+      const yawIn = videoYaw();
+      if (await switchTo(to, () => -h)) trail.push({ key: fromKey, door, yaw: yawIn });
       report(true);
     }
 
     async function back() {
       const top = trail[trail.length - 1];
       if (busy || !top || !current) return;
-      const rp = returnPoint(top.door);
+      const rp = top.door.back ?? { t: returnPoint(top.door).t, yaw: top.yaw };
       let to = pending && pending.key === top.key && pending.purpose === "back" ? pending : null;
       pending = to ? null : pending;
       if (!to) {
@@ -472,7 +492,7 @@ export default function Walk360() {
         pending = null;
         to = makeLayer({ key: top.key, t: rp.t, purpose: "back" });
       }
-      // The street's "away from the door" appears where the visitor faces now.
+      // The shops they faced going in appear where the visitor faces now.
       const h = heading();
       if (await switchTo(to, () => rp.yaw - h)) trail.pop();
       report(true);
@@ -574,6 +594,10 @@ export default function Walk360() {
       setSpeed(r) {
         maxRate = r;
       },
+      setDrive(r) {
+        drive = r;
+      },
+      turn: () => turnNow,
       setWalks(w) {
         walksNow = w;
       },
@@ -644,6 +668,7 @@ export default function Walk360() {
     let stickX = 0;
     let stickY = 0;
     let maxRate = SPEEDS[1].rate;
+    let drive: number | null = null;
     let gyroOn = false;
     let gyroHave = false;
     const gyroQ = new THREE.Quaternion();
@@ -749,6 +774,46 @@ export default function Walk360() {
     window.addEventListener("blur", onBlur);
     window.addEventListener("resize", onResize);
 
+    // ── The photographer's turns, for the wheel (`lib/splats/walkTurn.ts`) ──
+    // A band round the horizon, a few times a second, compared with the last
+    // one: how far it came back rotated over how much video time is the turn.
+    const BAND_H = 16;
+    const turnCanvas = document.createElement("canvas");
+    turnCanvas.width = TURN_COLS;
+    turnCanvas.height = BAND_H;
+    const turnCtx = turnCanvas.getContext("2d", { willReadFrequently: true });
+    let turnPrev: { p: Float32Array; t: number; layer: Layer } | null = null;
+    let turnAt = 0;
+    let turnNow = 0;
+    let turnBlind: Layer | null = null; // a video the browser won't let us read (no CORS)
+    function readTurn() {
+      const v = current?.video;
+      if (!turnCtx || !current || current.flat || busy || current === turnBlind || !v || v.readyState < 2 || v.seeking || !v.videoWidth) {
+        if (!current || current.flat || current === turnBlind) turnNow = 0;
+        return;
+      }
+      const now = performance.now();
+      if (now - turnAt < 120) return;
+      turnAt = now;
+      const t = v.currentTime;
+      // Standing still: the wheel stays where it was, as a car's does.
+      if (turnPrev && turnPrev.layer === current && Math.abs(t - turnPrev.t) < 0.06) return;
+      let p: Float32Array;
+      try {
+        turnCtx.drawImage(v, 0, v.videoHeight * 0.4, v.videoWidth, v.videoHeight * 0.2, 0, 0, TURN_COLS, BAND_H);
+        p = bandProfile(turnCtx.getImageData(0, 0, TURN_COLS, BAND_H).data, TURN_COLS, BAND_H);
+      } catch {
+        turnBlind = current;
+        return;
+      }
+      const prev = turnPrev;
+      turnPrev = { p, t, layer: current };
+      if (!prev || prev.layer !== current || Math.abs(t - prev.t) > 1.5) return;
+      const m = ringShift(prev.p, p, 24);
+      const r = m.score > 0.5 ? THREE.MathUtils.clamp(turnRate(m.shift, TURN_COLS, t - prev.t), -2, 2) : 0;
+      turnNow += (r - turnNow) * 0.35;
+    }
+
     // ── The loop: look, then walk the video ───────────────────────────────
     const clock = new THREE.Clock();
     const look = new THREE.Euler(0, 0, 0, "YXZ");
@@ -769,8 +834,10 @@ export default function Walk360() {
       let wantRate = shape(-stickY);
       if (keys.has("w") || keys.has("arrowup")) wantRate = 1;
       if (keys.has("s") || keys.has("arrowdown")) wantRate = -1;
-      if (busy) wantRate = 0;
-      rate += (wantRate * maxRate - rate) * ease;
+      // Self-drive walks on unless the pedals or the keys say otherwise.
+      let target = wantRate !== 0 || drive === null ? wantRate * maxRate : drive;
+      if (busy) target = 0;
+      rate += (target - rate) * ease;
 
       const video = current?.video;
       if (video && !busy && video.readyState >= 2 && Number.isFinite(video.duration)) {
@@ -806,6 +873,7 @@ export default function Walk360() {
         }
       }
 
+      readTurn();
       updateDoors();
       renderer.render(scene, camera);
       report();
@@ -846,6 +914,13 @@ export default function Walk360() {
   useEffect(() => {
     engine.current?.setSpeed(SPEEDS[speedIx].rate);
   }, [speedIx]);
+  useEffect(() => {
+    engine.current?.setDrive(drive ? DRIVES[drive].rate : null);
+  }, [drive]);
+  // Stepping into a shop (or back out) ends the drive: the visitor looks round first.
+  useEffect(() => {
+    setDrive(null);
+  }, [view.inside]);
   useEffect(() => {
     engine.current?.setWalks(walks);
   }, [walks]);
@@ -921,7 +996,24 @@ export default function Walk360() {
 
       {phase === "walking" && (
         <>
-          <WalkStick onMove={(x, y) => engine.current?.setMove(x, y)} />
+          <SteeringWheel
+            className="bottom-[6.75rem] right-5"
+            onMove={(x, y) => engine.current?.setMove(x, y)}
+            follow={() => engine.current?.turn() ?? 0}
+          />
+          {/* Self-drive, below the wheel. */}
+          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-40 gap-1.5">
+            {(Object.keys(DRIVES) as Drive[]).map((k) => (
+              <button
+                key={k}
+                onClick={() => setDrive(drive === k ? null : k)}
+                aria-pressed={drive === k}
+                className={`h-9 flex-1 rounded-full border px-1 text-[11px] leading-tight ${drive === k ? "border-amber-300/90 bg-amber-300/40 font-semibold text-amber-50" : "border-white/25 bg-black/60 text-white/85"}`}
+              >
+                {drive === k ? "■ توقف · Stop" : DRIVES[k].label}
+              </button>
+            ))}
+          </div>
           <button
             dir="ltr"
             onClick={() => {
@@ -929,7 +1021,7 @@ export default function Walk360() {
               setSpeedIx(next);
               try { window.localStorage.setItem(SPEED_KEY, String(next)); } catch { /* fine */ }
             }}
-            className="absolute bottom-[15.5rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
+            className="absolute bottom-[17.5rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
           >
             {SPEEDS[speedIx].label}
           </button>
@@ -937,7 +1029,7 @@ export default function Walk360() {
             <button
               dir="ltr"
               onClick={() => void toggleGyro()}
-              className="absolute bottom-[18rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
+              className="absolute bottom-[20rem] right-5 w-40 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] text-white/85"
             >
               {gyro === "on" ? "نگاه با انگشت · Look by finger" : gyro === "refused" ? "گوشی اجازه نداد" : "نگاه با گوشی · Look by phone"}
             </button>
