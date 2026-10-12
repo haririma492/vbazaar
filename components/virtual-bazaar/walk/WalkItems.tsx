@@ -13,7 +13,8 @@
  * the toggle, the limit) and shows up on /basket under the shop's name.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { followProduct } from "./followProduct";
 import AddToListKey from "@/components/shopping/AddToListKey";
 import { offerItemId, type ShoppingItemInput } from "@/lib/shoppingList/shoppingList";
 import {
@@ -111,6 +112,8 @@ export function ItemCard({ item, walkKey, walk, onClose }: {
  */
 type Step = "product" | "en" | "fa" | "price" | "photo" | "follow";
 const STEPS: Step[] = ["product", "en", "fa", "price", "photo", "follow"];
+const mmssTenth = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}.${Math.floor((t % 1) * 10)}`;
+
 type Draft = { id?: string; en: string; fa: string; price: string; image: string; pins: ItemPin[]; step: Step };
 
 const draftItem = (d: Draft): WalkItem => ({
@@ -137,6 +140,40 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
   const [shopOpen, setShopOpen] = useState(false);
   const walk = walkOf(walks, viewKey);
 
+  // ⚠️ THE DOT FOLLOWS THE PRODUCT BY ITSELF (founder, 2026-10-12: "the dot
+  // moves with shopper, instead of being pinned to the product … the single
+  // most important issue"). On a flat phone video each tap starts a follow
+  // (`followProduct`): the first places the dot for every step the product is
+  // in view; a later tap re-follows from there and replaces that stretch.
+  const [follow, setFollow] = useState<Follow | null>(null);
+  const run = useRef<{ cancelled: boolean } | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  function startFollow(pin: ItemPin, replace: boolean) {
+    const e = engine.current;
+    if (run.current) run.current.cancelled = true;
+    run.current = null;
+    if (!e || !e.here().flat || !e.video().currentSrc) { setFollow(null); return; } // a 360° walk: taps by hand
+    const sig = { cancelled: false };
+    run.current = sig;
+    setFollow({ running: true, done: 0, total: 1 });
+    followProduct(e.video().currentSrc, pin, (p) => { if (!sig.cancelled) setFollow({ running: true, ...p }); }, sig)
+      .then((pins) => {
+        if (sig.cancelled) return;
+        const lo = pins[0].t - 0.05, hi = pins[pins.length - 1].t + 0.05;
+        setDraft((d) => (d ? { ...d, pins: replace ? pins : sortItemPins([...d.pins.filter((q) => q.t < lo || q.t > hi), ...pins]) } : d));
+        setFollow({ running: false, done: 1, total: 1 });
+      })
+      .catch((err: Error) => {
+        if (sig.cancelled) return;
+        setFollow({ running: false, done: 0, total: 0, error: err.message || "It could not be followed." });
+      });
+  }
+  // A product put away (Done, No, Back out): stop following it.
+  useEffect(() => {
+    if (!draft && run.current) { run.current.cancelled = true; run.current = null; setFollow(null); }
+  }, [draft]);
+
   // Taps on the picture: the first starts a product; on «Is this a product?» a
   // tap moves its dot; on «Follow it» each tap is one more place along the way.
   const tapsOn = !draft || TAPS_ON.includes(draft.step);
@@ -145,11 +182,14 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
     if (!e || !viewKey) return;
     e.setItemPick(tapsOn ? (pin) => {
       e.video().pause();
-      setDraft((d) => {
-        if (!d) return { en: "", fa: "", price: "", image: "", pins: [pin], step: "product" };
-        if (d.step === "product") return { ...d, pins: [pin] };
-        return { ...d, pins: sortItemPins([...d.pins.filter((q) => Math.abs(q.t - pin.t) >= 0.05), pin]) };
+      const d = draftRef.current;
+      const fresh = !d || d.step === "product";
+      setDraft((cur) => {
+        if (!cur) return { en: "", fa: "", price: "", image: "", pins: [pin], step: "product" };
+        if (cur.step === "product") return { ...cur, pins: [pin] };
+        return { ...cur, pins: sortItemPins([...cur.pins.filter((q) => Math.abs(q.t - pin.t) >= 0.05), pin]) };
       });
+      startFollow(pin, fresh);
     } : null);
     return () => e.setItemPick(null);
   }, [engine, tapsOn, viewKey]);
@@ -228,7 +268,7 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
         {walk && !(walk.items ?? []).length && !draft && <li className="text-white/50">No products tagged on this video yet.</li>}
       </ul>
 
-      {draft && <TagCard draft={draft} setDraft={setDraft} onDone={finish} />}
+      {draft && <TagCard draft={draft} setDraft={setDraft} onDone={finish} follow={follow} />}
     </div>
   );
 }
@@ -237,10 +277,13 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
  * The one-question card, over the bottom of the picture (where the operator is
  * looking), not in the side panel.
  */
-function TagCard({ draft, setDraft, onDone }: {
+type Follow = { running: boolean; done: number; total: number; error?: string };
+
+function TagCard({ draft, setDraft, onDone, follow }: {
   draft: Draft;
   setDraft: (d: Draft | null) => void;
   onDone: () => void;
+  follow: Follow | null;
 }) {
   const [error, setError] = useState<string | null>(null);
   const i = STEPS.indexOf(draft.step);
@@ -300,20 +343,36 @@ function TagCard({ draft, setDraft, onDone }: {
       </>);
       break;
     }
-    case "follow":
-      title = "Keep the dot on it";
-      body = (<>
+    case "follow": {
+      const span = draft.pins.length > 1 ? `${mmssTenth(draft.pins[0].t)} to ${mmssTenth(draft.pins[draft.pins.length - 1].t)}` : "";
+      title = follow ? "The dot follows it" : "Keep the dot on it";
+      body = follow ? (<>
+        {follow.running ? (
+          <>
+            <p className="text-[13px] text-white/75">Following the product through the video…</p>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full bg-[#00B8C8] transition-all" style={{ width: `${Math.round((100 * follow.done) / Math.max(1, follow.total))}%` }} />
+            </div>
+          </>
+        ) : follow.error ? (
+          <p className="text-[13px] text-rose-200">
+            It could not be followed by itself ({follow.error}). Move the video on a little and tap the product again, two or three times.
+          </p>
+        ) : (
+          <p className="text-[13px] leading-snug text-white/80">
+            ✓ The dot stays on it from <b>{span}</b>. Play the video (wheel ▲) to check. If it slips somewhere, <b>tap the product there</b> — it follows again from that point.
+          </p>
+        )}
+      </>) : (<>
         <p className="text-[13px] leading-snug text-white/75">
           Move the video on a little (wheel ▲ or the time bar) and <b>tap the product again</b>. Do it two or three times while it is in
           view — the dot follows it. Or press Done if it hardly moves.
         </p>
-        <p className="text-[13px] font-semibold text-[#00B8C8]">
-          {draft.pins.length} {draft.pins.length === 1 ? "tap" : "taps"} so far
-          {draft.pins.length > 1 && <button className="ms-2 text-[12px] font-normal text-white/55 underline" onClick={() => setDraft({ ...draft, pins: draft.pins.slice(0, 1) })}>start again</button>}
-        </p>
+        <p className="text-[13px] font-semibold text-[#00B8C8]">{draft.pins.length} {draft.pins.length === 1 ? "tap" : "taps"} so far</p>
       </>);
-      actions = <button className={primary} disabled={!draft.pins.length} onClick={onDone}>Done ✓</button>;
+      actions = <button className={primary} disabled={!draft.pins.length || Boolean(follow?.running)} onClick={onDone}>{follow?.running ? "Following…" : "Done ✓"}</button>;
       break;
+    }
   }
 
   return (

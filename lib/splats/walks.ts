@@ -47,6 +47,8 @@ export const PRELOAD_DT = 6;
 /** Where a door's sign sits when only its heading is known: a little below the horizon (radians, + up). */
 export const DEFAULT_PITCH = -0.08;
 export const MAX_PINS = 24;
+/** An item's dot, followed through the video every 0.2 s for up to 15 s either way (`followProduct`). */
+export const MAX_ITEM_PINS = 200;
 
 export type WalkLabel = { en: string; fa?: string };
 export type WalkDoor = {
@@ -280,7 +282,7 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         return finite(o.t) && o.t >= 0 && finite(o.x) && finite(o.y) && Math.abs(o.x) <= 3.2 && Math.abs(o.y) <= 1.6;
       });
       const pins = x.pins === undefined || x.pins === null ? [] : raw;
-      if (!pins || (raw && !ok) || pins.length > MAX_PINS) { problems.push(`${where}: its pins must be up to ${MAX_PINS} of { t ≥ 0, x, y }.`); continue; }
+      if (!pins || (raw && !ok) || pins.length > MAX_ITEM_PINS) { problems.push(`${where}: its pins must be up to ${MAX_ITEM_PINS} of { t ≥ 0, x, y }.`); continue; }
       itemIds.add(id);
       kept.push({
         id, label: fa ? { en, fa } : { en },
