@@ -31,10 +31,11 @@ import { isAdminTokenValid } from "@/lib/adminAuth";
 import { MAX_SIGN_IMAGE_BYTES, isSceneId, isSignImageType, isSplatKey, partPlan, signImageKey, splatKey } from "@/lib/splats/keys";
 import {
   abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signImageHeaders, signImagePutUrl,
-  signPart, startUpload, writeTour, writeWalks,
+  signPart, startUpload, writeCatalogue, writeTour, writeWalks,
 } from "@/lib/splats/r2";
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
+import { checkCatalogue } from "@/lib/splats/catalogue";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
@@ -199,6 +200,14 @@ export async function POST(req: NextRequest) {
       if (problems.length) return fail(400, `Not saved:\n${problems.join("\n")}`);
       const base = body.base && typeof body.base === "object" ? checkWalks(body.base).walks : undefined;
       return ok(await writeWalks(walks, base));
+    }
+
+    // A store's product list (`lib/splats/catalogue.ts`): merchant on-boarding.
+    if (action === "catalogueSave") {
+      const { catalogue, problems } = checkCatalogue(body?.catalogue);
+      if (!catalogue) return fail(400, `Not saved:\n${problems.join("\n")}`);
+      if (problems.length) return fail(400, `Not saved:\n${problems.join("\n")}`);
+      return ok({ catalogue: await writeCatalogue(catalogue) });
     }
 
     const key = typeof body?.key === "string" ? body.key : "";

@@ -30,6 +30,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { contentTypeFor, type SignImageType, type SplatKind } from "./keys";
 import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
 import { WALKS_KEY, emptyWalks, mergeConflicts, mergeWalks, parseWalks, type Walks } from "./walks";
+import { catalogueKey, checkCatalogue, type Catalogue } from "./catalogue";
 
 const env = (k: string) => (process.env[k] || "").trim();
 
@@ -305,6 +306,43 @@ export async function writeTour(tour: Tour, base?: Tour): Promise<Tour> {
 // ── The walks: doors from the 360° street walk into shops (`lib/splats/walks.ts`) ──
 
 /** The walks as the bucket holds them; none before the first save. */
+/** A store's product list (`lib/splats/catalogue.ts`), or null when none was uploaded. Read with the S3 API: it is rewritten in place. */
+export async function readCatalogue(store: string): Promise<Catalogue | null> {
+  try {
+    const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: catalogueKey(store) }));
+    return checkCatalogue(JSON.parse((await out.Body?.transformToString()) || "{}")).catalogue;
+  } catch (e) {
+    if ((e as { name?: string }).name === "NoSuchKey") return null;
+    throw e;
+  }
+}
+
+/** Saved whole (the operator's page holds the whole list); the one replaced is kept in the private bucket. */
+export async function writeCatalogue(c: Catalogue): Promise<Catalogue> {
+  const before = await readCatalogue(c.store);
+  if (before) {
+    try {
+      await s3().send(new PutObjectCommand({
+        Bucket: r2Config().mastersBucket,
+        Key: `catalogues-history/${c.store}/${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+        Body: JSON.stringify(before),
+        ContentType: "application/json",
+      }));
+    } catch {
+      /* a missing backup never stops a save */
+    }
+  }
+  const out: Catalogue = { ...c, updated: new Date().toISOString() };
+  await s3().send(new PutObjectCommand({
+    Bucket: r2Config().webBucket,
+    Key: catalogueKey(c.store),
+    Body: JSON.stringify(out),
+    ContentType: "application/json",
+    CacheControl: "no-cache",
+  }));
+  return out;
+}
+
 export async function readWalks(): Promise<Walks> {
   try {
     const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: WALKS_KEY }));

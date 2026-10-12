@@ -109,6 +109,12 @@ export type WalkItem = {
   /** The product's photo (https), for the card and the basket line. */
   image?: string;
   /**
+   * Its number in the store's product list (`catalogue.ts`, 1–999). With it,
+   * the card shows the list's name, unit, price and photo — the label here is
+   * only what it was called when tagged.
+   */
+  n?: number;
+  /**
    * Where its dot is. Empty only on an item saved while shelves existed
    * (2026-10-12, since dropped): it is kept, listed «(no dot)» in the editor,
    * until the operator gives it a dot or deletes it.
@@ -274,6 +280,8 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       const en = str(lbl.en, 80), fa = str(lbl.fa, 80);
       if (!en) { problems.push(`${where}: it needs an English name.`); continue; }
       const price = str(x.price, 24);
+      const num = x.n;
+      if (num !== undefined && num !== null && (typeof num !== "number" || !Number.isInteger(num) || num < 1 || num > 999)) { problems.push(`${where}: its product number must be 1 to 999.`); continue; }
       const hasImage = x.image !== undefined && x.image !== null && x.image !== "";
       if (hasImage && !isSiteUrl(x.image)) { problems.push(`${where}: its photo must be an https:// address.`); continue; }
       const raw = Array.isArray(x.pins) ? x.pins : null;
@@ -286,7 +294,7 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       itemIds.add(id);
       kept.push({
         id, label: fa ? { en, fa } : { en },
-        ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}),
+        ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}), ...(typeof num === "number" ? { n: num } : {}),
         pins: sortItemPins((pins as Array<Record<string, number>>).map((q) => ({ t: q.t, x: q.x, y: q.y }))),
       });
     }

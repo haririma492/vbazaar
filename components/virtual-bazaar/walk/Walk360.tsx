@@ -57,6 +57,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
+import { STORE_RE, checkCatalogue, storeOfScene, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
@@ -310,6 +311,8 @@ export default function Walk360() {
   const [drive, setDrive] = useState<Drive | null>(null);
   /** The item whose card is open (a tap on its dot). */
   const [card, setCard] = useState<WalkItem | null>(null);
+  /** The product list of the store this video belongs to (`lib/splats/catalogue.ts`), or null. */
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
   const [diag, setDiag] = useState("");
@@ -1171,6 +1174,34 @@ export default function Walk360() {
   useEffect(() => {
     engine.current?.setDrive(drive ? DRIVES[drive].rate : null);
   }, [drive]);
+  // The store's product list: what the cards show, and what the operator tags by number.
+  const store = view.key ? storeOfScene(view.key) : "";
+  useEffect(() => {
+    setCatalogue(null);
+    if (!STORE_RE.test(store)) return;
+    let gone = false;
+    void fetch(`/api/splats/catalogue?store=${encodeURIComponent(store)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (!gone && j?.ok && j.catalogue) setCatalogue(checkCatalogue(j.catalogue).catalogue); })
+      .catch(() => { /* no list: the cards show what each product was tagged with */ });
+    return () => { gone = true; };
+  }, [store]);
+  async function saveCatalogue(c: Catalogue): Promise<string | null> {
+    try {
+      const res = await fetch("/api/operator/splats", {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
+        body: JSON.stringify({ action: "catalogueSave", catalogue: c }),
+      });
+      const json = await res.json().catch(() => ({ ok: false, error: `HTTP ${res.status}` }));
+      if (!json.ok) return json.error || `HTTP ${res.status}`;
+      setCatalogue(checkCatalogue(json.catalogue).catalogue);
+      return null;
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
+
   // A tap on an item's dot opens its card, and the walk stands while it is open.
   useEffect(() => {
     engine.current?.setOnItem((item) => {
@@ -1347,7 +1378,7 @@ export default function Walk360() {
       )}
 
       {card && view.key && (
-        <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} onClose={() => setCard(null)} />
+        <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => setCard(null)} />
       )}
 
       {needSignIn && (
@@ -1361,6 +1392,9 @@ export default function Walk360() {
           viewKey={view.key}
           onChange={setWalks}
           serverWalks={serverWalks}
+          store={store}
+          catalogue={catalogue}
+          saveCatalogue={saveCatalogue}
         />
       )}
     </div>
@@ -1383,12 +1417,15 @@ const hostOf = (u: string) => { try { return new URL(u).hostname; } catch { retu
 
 type VideoChoice = { key: string; label: string };
 
-function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
+function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, catalogue, saveCatalogue }: {
   engine: React.MutableRefObject<Engine | null>;
   walks: Walks;
   viewKey: string | null;
   onChange: (w: Walks) => void;
   serverWalks: React.MutableRefObject<Walks>;
+  store: string;
+  catalogue: Catalogue | null;
+  saveCatalogue: (c: Catalogue) => Promise<string | null>;
 }) {
   const [open, setOpen] = useState(true);
   const [videos, setVideos] = useState<VideoChoice[] | null>(null);
@@ -1542,7 +1579,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
           <div className="truncate text-[11px] text-white/60">This walk: {shortKey(viewKey)}{walk?.doors.length ? ` · ${walk.doors.length} door(s)` : ""}</div>
           {listError && <div className="text-rose-300">{listError}</div>}
 
-          {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
+          {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
 
           {tab === "doors" && !draft && (
             <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} disabled={!viewKey} onClick={doorHere}>
