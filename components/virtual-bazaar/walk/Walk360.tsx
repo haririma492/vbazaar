@@ -59,7 +59,7 @@ import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
-import { readAdminToken } from "@/lib/admin/useAdminMode";
+import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
   itemsAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
@@ -316,6 +316,8 @@ export default function Walk360() {
   const [view, setView] = useState<View>({ key: null, inside: 0, flat: false, near: [], site: null, atEnd: false, busy: false });
   const [walks, setWalks] = useState<Walks>(emptyWalks());
   const [editing, setEditing] = useState(false);
+  /** ?edit=1 in a browser not signed in as operator: ask here, rather than show nothing. */
+  const [needSignIn, setNeedSignIn] = useState(false);
   /** The walks as last read from (or saved to) the server: the `base` of a merged save. */
   const serverWalks = useRef<Walks>(emptyWalks());
 
@@ -329,6 +331,10 @@ export default function Walk360() {
     // ?debug=1&fade=<ms>: a slower cross-fade, to look at it (and screenshot it).
     const fadeMs = params.get("debug") === "1" && Number(params.get("fade")) > 0 ? Math.min(10000, Number(params.get("fade"))) : FADE_MS;
     setEditing(params.get("edit") === "1" && Boolean(readAdminToken()));
+    // ⚠️ SAY SO (founder, 2026-10-12, on staging: "this does not have the panel …
+    // although operator is logged in"). The sign-in is kept per site address;
+    // without it the edit panel silently did not appear.
+    setNeedSignIn(params.get("edit") === "1" && !readAdminToken());
     let disposed = false;
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -1344,6 +1350,10 @@ export default function Walk360() {
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} onClose={() => setCard(null)} />
       )}
 
+      {needSignIn && (
+        <OperatorSignIn onIn={() => { setNeedSignIn(false); setEditing(true); }} />
+      )}
+
       {editing && phase !== "loading" && (
         <DoorEditor
           engine={engine}
@@ -1633,5 +1643,40 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
         </div>
       )}
     </div>
+  );
+}
+
+/** The edit link opened in a browser not signed in as operator on this site: sign in here. */
+function OperatorSignIn({ onIn }: { onIn: () => void }) {
+  const [typed, setTyped] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      dir="ltr"
+      className="absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] space-y-2 rounded-xl border border-amber-300/50 bg-black/85 p-3 text-[13px] text-white shadow-xl"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setError(null);
+        if (await armAdminMode(typed)) onIn();
+        else setError("That admin token was refused on this site.");
+      }}
+    >
+      <b>Edit mode needs the operator sign-in</b>
+      <div className="text-[12px] text-white/65">
+        This browser is not signed in as operator on {typeof window === "undefined" ? "this site" : window.location.host} (each site address keeps its own sign-in).
+      </div>
+      <input
+        type="password"
+        autoComplete="current-password"
+        placeholder="Admin token"
+        value={typed}
+        onChange={(e) => setTyped(e.target.value)}
+        className="w-full rounded-md border border-white/20 bg-black/50 px-2 py-1.5 text-[13px] text-white"
+      />
+      {error && <div className="text-rose-300">{error}</div>}
+      <button type="submit" disabled={!typed.trim()} className="w-full rounded-md border border-amber-300/60 bg-amber-300/20 py-1.5 font-semibold disabled:opacity-40">
+        Sign in · ورود
+      </button>
+    </form>
   );
 }
