@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, addShelf, updateShelf, removeShelf, shelfAt, itemTime, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -265,7 +265,7 @@ test("items you can pick up: kept with their pins in order, checked, merged", ()
   assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
   const bad = JSON.parse(JSON.stringify(w));
   bad.walks[SHOP].items[0].image = "http://example.com/a.jpg";
-  bad.walks[SHOP].items[1].pins = [];
+  bad.walks[SHOP].items[1].pins = [{ t: -1, x: 0, y: 0 }];
   assert.equal(checkWalks(bad).problems.length, 2);
   // Edit and delete; two pages adding items at once both keep theirs.
   const edited = updateItem(w, SHOP, "saffron-2g", { price: "$11.99" });
@@ -293,27 +293,19 @@ test("an item's dot follows its pins, and only while they last", () => {
   assert.deepEqual(itemsAt({ doors: [], items: [item, one] }, 12, false).map((a) => a.item.id), ["tea"]);
 });
 
-test("shelves: a stretch of the walk lists its products; an item may be on a shelf with no dot", () => {
+test("no shelves (dropped 2026-10-12): an old walks.json with them still reads, without them", () => {
   const SHOP = "scenes/test/shop-video.mp4";
-  let w = addShelf(emptyWalks(), SHOP, { label: { en: "Spices", fa: "ادویه" }, t0: 10, t1: 20 });
-  w = addShelf(w, SHOP, { label: { en: "Rice" }, t0: 18, t1: 30 });
-  w = addItem(w, SHOP, { label: { en: "Saffron" }, shelf: "spices", pins: [] });
-  w = addItem(w, SHOP, { label: { en: "Sumac" }, shelf: "spices", pins: [{ t: 12, x: 0.5, y: 0.5 }] });
-  w = addItem(w, SHOP, { label: { en: "Basmati" }, shelf: "rice", pins: [] });
-  const walk = walkOf(w, SHOP)!;
-  assert.deepEqual(walk.shelves!.map((s) => s.id), ["spices", "rice"]);
-  assert.equal(shelfAt(walk, 9), null);
-  assert.deepEqual(shelfAt(walk, 15)!.items.map((i) => i.id), ["saffron", "sumac"]);
-  assert.equal(shelfAt(walk, 19)!.shelf.id, "rice", "overlapping: the one that began last");
-  assert.equal(itemTime(walk.items!.find((i) => i.id === "saffron")!, walk), 10);
-  // Round trip; an item with neither dot nor shelf, or a shelf that is not there, is refused.
-  assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
-  const bad = JSON.parse(JSON.stringify(w));
-  bad.walks[SHOP].items.push({ id: "x", label: { en: "X" }, pins: [] }, { id: "y", label: { en: "Y" }, shelf: "nope", pins: [] });
-  bad.walks[SHOP].shelves.push({ id: "z", label: { en: "Z" }, t0: 5, t1: 5 });
-  assert.equal(checkWalks(bad).problems.length, 3);
-  // Moving a shelf; deleting one takes its dot-less products with it, keeps the rest off any shelf.
-  assert.equal(walkOf(updateShelf(w, SHOP, "rice", { t1: 40 }), SHOP)!.shelves![1].t1, 40);
-  const gone = walkOf(removeShelf(w, SHOP, "spices"), SHOP)!;
-  assert.deepEqual(gone.items!.map((i) => [i.id, i.shelf ?? null]), [["sumac", null], ["basmati", "rice"]]);
+  const old = { walks: { [SHOP]: { doors: [],
+    shelves: [{ id: "electronic", label: { en: "Electronic" }, t0: 0, t1: 8 }],
+    items: [
+      { id: "phone", label: { en: "Phone" }, shelf: "electronic", pins: [{ t: 3, x: 0.5, y: 0.5 }] },
+      { id: "cable", label: { en: "Cable" }, shelf: "electronic", pins: [] },
+    ] } } };
+  const { walks, problems } = checkWalks(old);
+  assert.deepEqual(problems, []);
+  const walk = walkOf(walks, SHOP)!;
+  assert.equal("shelves" in walk, false);
+  assert.deepEqual(walk.items!.map((i) => [i.id, "shelf" in i, i.pins.length]), [["cable", false, 0], ["phone", false, 1]]);
+  assert.equal(itemTime(walk.items![0]), 0);
+  assert.equal(itemTime(walk.items![1]), 3);
 });
