@@ -1239,11 +1239,15 @@ export default function Walk360() {
 
           {/* A door in reach: step inside. */}
           {/* In a 360° walk the sign on the door is the button; a flat video has no round to put it in. */}
+          {/* ⚠️ CENTRED, NOT IN A CORNER: a flat video is shown whole in the middle,
+              so a portrait one leaves black margins either side on a wide screen —
+              the founder (2026-10-12) found the door's button out in that margin.
+              The bottom middle is always on the picture. */}
           {door && !view.busy && view.flat && (
             <button
               dir="ltr"
               onClick={() => engine.current?.enter(door)}
-              className="absolute bottom-24 left-4 z-10 max-w-[calc(100%-14rem)] rounded-2xl border border-amber-300/80 bg-amber-300/30 px-5 py-3 text-left text-amber-50 shadow-lg backdrop-blur-sm sm:max-w-sm"
+              className="absolute bottom-28 left-1/2 z-10 w-max max-w-[min(22rem,calc(100%-2rem))] -translate-x-1/2 rounded-2xl border border-amber-300/80 bg-amber-300/30 px-5 py-3 text-left text-amber-50 shadow-lg backdrop-blur-sm"
             >
               <span className="block text-[17px] font-bold">{isSiteOnlyDoor(door) ? "Visit website ↗" : "Step inside"} · {door.label.en}</span>
               {door.label.fa && <span dir="rtl" className="block text-right text-[15px] text-amber-100/90">{isSiteOnlyDoor(door) ? "وبسایت" : "ورود"} · {door.label.fa}</span>}
