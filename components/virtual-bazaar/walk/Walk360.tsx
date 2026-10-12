@@ -1191,7 +1191,9 @@ export default function Walk360() {
         </div>
       )}
       {phase === "ready" && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+        // z-30: above the items' dots, which are already on the picture (one in the
+        // middle covered this button — found 2026-10-12).
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/40">
           <button onClick={() => void start()} className="rounded-full border border-amber-300/70 bg-amber-300/25 px-8 py-4 text-[18px] font-bold text-amber-50">
             شروع قدم زدن · Start walking
           </button>
@@ -1457,11 +1459,31 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
       const conflicts: string[] = json.conflicts ?? [];
       setStatus(conflicts.length
         ? { tone: "warn", text: `Saved, but someone else changed the walks meanwhile:\n${conflicts.join("\n")}` }
-        : { tone: "ok", text: "Saved. Visitors see these doors now." });
+        : { tone: "ok", text: "Saved — shoppers see it now." });
     } catch (e) {
-      setStatus({ tone: "bad", text: (e as Error).message });
+      setStatus({ tone: "bad", text: `Not saved: ${(e as Error).message}` });
     }
   }
+
+  // ⚠️ SAVED BY ITSELF, A SECOND AFTER EACH CHANGE (founder, 2026-10-12:
+  // "dots I added on a product does not show up on shopper's walk" — «Add
+  // item» changed only the operator's own screen until «Save» was pressed,
+  // and nothing made that plain). A failed save stays «unsaved» and says why;
+  // the next change, or «Save», tries again.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    if (!dirty) return;
+    const timer = window.setTimeout(() => void saveRef.current(), 1000);
+    return () => window.clearTimeout(timer);
+  }, [dirty, walks]);
+  // Leaving with a change not yet saved: the browser asks first.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const isStart = Boolean(viewKey && walks.start === viewKey);
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";

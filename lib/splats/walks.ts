@@ -409,13 +409,16 @@ export function sortItemPins(pins: ItemPin[]): ItemPin[] {
   return out;
 }
 
+/** A dot tapped once shows this long either side of its moment (s) — a door's 1.5 s was easy to walk past. */
+export const ITEM_SLACK = 3;
+
 /**
  * Where an item's dot is at `t`, or null when it is not shown: between its
  * first and last pin (held half a second past either end), following the pins
  * linearly — `round` (a 360° walk) takes x the short way round — or within
  * ±`slack` s of a single pin.
  */
-export function itemAt(item: WalkItem, t: number, round: boolean, slack = NEAR_DT): { x: number; y: number } | null {
+export function itemAt(item: WalkItem, t: number, round: boolean, slack = ITEM_SLACK): { x: number; y: number } | null {
   const p = item.pins;
   if (!p.length) return null;
   if (p.length === 1) return Math.abs(t - p[0].t) <= slack ? { x: p[0].x, y: p[0].y } : null;

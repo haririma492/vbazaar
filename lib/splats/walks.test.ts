@@ -289,7 +289,7 @@ test("an item's dot follows its pins, and only while they last", () => {
   assert.ok(Math.abs(Math.abs(itemAt(round, 1, true)!.x) - Math.PI) < 0.01);
   // One pin: shown round its moment.
   const one = { id: "o", label: { en: "O" }, pins: [{ t: 5, x: 0.5, y: 0.5 }] };
-  assert.ok(itemAt(one, 6, false) && !itemAt(one, 7, false));
+  assert.ok(itemAt(one, 7.9, false) && !itemAt(one, 8.1, false));
   assert.deepEqual(itemsAt({ doors: [], items: [item, one] }, 12, false).map((a) => a.item.id), ["tea"]);
 });
 
