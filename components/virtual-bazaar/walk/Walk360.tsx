@@ -577,7 +577,11 @@ export default function Walk360() {
       const site = trail[trail.length - 1]?.door.url ?? null;
       const next: View = { key: current?.key ?? null, inside: trail.length, flat: current?.flat ?? false, near, site, atEnd, busy };
       if (debugOn && v) {
-        setDiag(`rate ${rate.toFixed(2)} → ${(drive ?? 0).toFixed(1)} · ${facingBack ? "facing back" : "facing on"} · yaw ${Math.round((videoYaw() * 180) / Math.PI)}° · ${v.paused ? "paused" : `playing ×${v.playbackRate.toFixed(2)}`}${playRefused === v ? " · play refused" : ""}${gyroOn && gyroHave ? " · phone motion" : ""} · ready ${v.readyState}`);
+        setDiag(`rate ${rate.toFixed(2)} → ${(drive ?? 0).toFixed(1)} · ${facingBack ? "facing back" : "facing on"} · yaw ${Math.round((videoYaw() * 180) / Math.PI)}° · ${v.paused ? "paused" : `playing ×${v.playbackRate.toFixed(2)}`}${playRefused === v ? " · play refused" : ""}${gyroOn && gyroHave ? " · phone motion" : ""} · ready ${v.readyState}` +
+          // The items on this walk: how many, which are on screen now, and when each one's dot shows.
+          ` · ${current?.flat ? "flat" : "360°"} · items ${(walk?.items ?? []).length}` +
+          `${(walk?.items ?? []).map((it) => ` [${it.label.en}: ${it.pins.length ? `${it.pins[0].t.toFixed(1)}–${it.pins[it.pins.length - 1].t.toFixed(1)}s` : "no dot"}]`).join("")}` +
+          ` · shown now ${itemButtons.size + itemSprites.size}`);
       }
       const s = JSON.stringify(next);
       if (s !== lastView) {
