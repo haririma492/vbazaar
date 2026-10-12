@@ -99,8 +99,13 @@ export function ItemCard({ item, walkKey, walk, onClose }: {
 
 /**
  * THE SHELF STRIP (founder, 2026-10-12): while the video passes a shelf, its
- * products in a row — photo, name, price — so a shopper picks from the shelf
- * in view without hunting for dots. A tap opens the product's card.
+ * products in a row — so a shopper picks from the shelf in view without
+ * hunting for dots. A tap opens the product's card.
+ *
+ * ⚠️ ONE SLIM ROW. It lies over the top of the picture, and the first strip
+ * (photo cards, ~9rem tall) hid the dots on the products there — the founder
+ * saw the dot as operator and not as a shopper (2026-10-12). A small thumbnail,
+ * the name and the price on one line; the card has the big photo.
  */
 export function ShelfStrip({ shelf, items, onOpen, className = "" }: {
   shelf: WalkShelf;
@@ -109,29 +114,21 @@ export function ShelfStrip({ shelf, items, onOpen, className = "" }: {
   className?: string;
 }) {
   return (
-    <div className={`absolute z-20 rounded-2xl border border-white/15 bg-black/65 p-2 text-white shadow-xl backdrop-blur-sm ${className}`}>
-      <div className="mb-1.5 flex items-baseline gap-2 px-1">
-        <b className="text-[14px]">{shelf.label.fa ? `${shelf.label.fa} · ${shelf.label.en}` : shelf.label.en}</b>
-        <span className="text-[11px] text-white/55">{items.length} {items.length === 1 ? "item · کالا" : "items · کالا"}</span>
-      </div>
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {items.map((it) => (
-          <button key={it.id} onClick={() => onOpen(it)} className="flex w-[7.5rem] shrink-0 flex-col items-start rounded-xl bg-white/10 p-1.5 text-left hover:bg-white/20">
-            {it.image ? (
-              // eslint-disable-next-line @next/next/no-img-element -- hot-linked, as basket lines are
-              <img src={it.image} alt="" className="h-16 w-full rounded-lg bg-white object-contain" />
-            ) : (
-              <div className="flex h-16 w-full items-center justify-center rounded-lg bg-white/10 text-[22px]">🛒</div>
-            )}
-            <span className="mt-1 line-clamp-2 text-[12px] font-semibold leading-tight">{it.label.fa ? `${it.label.fa}` : it.label.en}</span>
-            {it.label.fa && <span className="line-clamp-1 text-[11px] text-white/60">{it.label.en}</span>}
-            <span className="mt-auto flex w-full items-center justify-between pt-1">
-              <span className="text-[12px] font-bold text-amber-200">{it.price ?? ""}</span>
-              <span className="rounded-full bg-[#00B8C8] px-1.5 text-[13px] font-bold leading-5">+</span>
-            </span>
-          </button>
-        ))}
-      </div>
+    <div className={`absolute z-20 flex items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-black/60 p-1 text-white shadow-lg backdrop-blur-sm ${className}`}>
+      <b className="shrink-0 whitespace-nowrap px-2 text-[12.5px]">{shelf.label.fa ? `${shelf.label.fa} · ${shelf.label.en}` : shelf.label.en}</b>
+      {items.map((it) => (
+        <button key={it.id} onClick={() => onOpen(it)} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-white/12 pe-1 ps-1 text-[12px] hover:bg-white/25">
+          {it.image ? (
+            // eslint-disable-next-line @next/next/no-img-element -- hot-linked, as basket lines are
+            <img src={it.image} alt="" className="h-7 w-7 rounded-full bg-white object-contain" />
+          ) : (
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-[13px]">🛒</span>
+          )}
+          <span className="max-w-[8rem] truncate font-semibold">{it.label.fa ?? it.label.en}</span>
+          {it.price && <span className="font-bold text-amber-200">{it.price}</span>}
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#00B8C8] text-[15px] font-bold">+</span>
+        </button>
+      ))}
     </div>
   );
 }

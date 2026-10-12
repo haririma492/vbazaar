@@ -1271,7 +1271,7 @@ export default function Walk360() {
               shelf={shelfNow.shelf}
               items={shelfNow.items}
               onOpen={(item) => { setDrive(null); setCard(item); }}
-              className={`inset-x-3 sm:left-1/2 sm:right-auto sm:w-[34rem] sm:-translate-x-1/2 ${view.inside > 0 ? "top-16" : "top-3"}`}
+              className={`left-3 right-3 max-w-max sm:left-1/2 sm:right-auto sm:max-w-[40rem] sm:-translate-x-1/2 ${view.inside > 0 ? "top-16" : "top-3"}`}
             />
           )}
 
@@ -1280,7 +1280,7 @@ export default function Walk360() {
             <button
               dir="ltr"
               onClick={() => openSite(view.site)}
-              className={`absolute right-4 z-10 ${shelfNow ? "top-[13.5rem]" : "top-16"} rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white`}
+              className={`absolute right-4 z-10 ${shelfNow ? "top-[7.5rem]" : "top-16"} rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white`}
             >
               🌐 Visit the website · وبسایت فروشگاه
             </button>
