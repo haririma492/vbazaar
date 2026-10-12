@@ -82,7 +82,40 @@ export type WalkDoor = {
   pins?: SignPin[];
 };
 export type SignPin = { t: number; yaw: number; pitch: number };
-export type Walk = { title?: { en: string; fa: string }; doors: WalkDoor[] };
+
+/**
+ * ITEMS YOU CAN PICK UP (founder, 2026-10-12: "add hot spot in this test .mp4
+ * video to pick up some items to add to basket"). A dot on a product in the
+ * walk's picture: tap it, its card opens, «Add to Basket».
+ *
+ * ⚠️ A PIN'S x AND y DEPEND ON THE PICTURE. On a flat (phone) video they are
+ * fractions of the frame — x from the left, y from the top, 0…1. On a 360°
+ * walk they are a direction, like a door's sign: x the yaw (radians, + right,
+ * the video's own frame), y the pitch (+ up). The walk page knows which it
+ * is showing; the item does not need to.
+ *
+ * Like a door's sign, the dot follows the product between the operator's pins
+ * (`itemAt`) and shows from the first pin to the last (or ±`NEAR_DT` round a
+ * single pin).
+ */
+export type ItemPin = { t: number; x: number; y: number };
+export type WalkItem = {
+  id: string;
+  label: WalkLabel;
+  /** As the shop writes it: "$4.99", "2/$5", "$3.49/lb". */
+  price?: string;
+  /** The product's photo (https), for the card and the basket line. */
+  image?: string;
+  pins: ItemPin[];
+};
+export const MAX_ITEMS = 150;
+
+export type Walk = {
+  /** The shop's (or the street's) name — on a shop walk, the shop the basket lines say they are from. */
+  title?: { en: string; fa: string };
+  doors: WalkDoor[];
+  items?: WalkItem[];
+};
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
 // `keys.ts`'s rules, repeated (no imports): `scenes/<scene id>/<file name>.mp4`,
@@ -211,6 +244,38 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       });
     }
     walk.doors.sort((a, b) => a.t - b.t);
+
+    const items = Array.isArray(r.items) ? r.items : [];
+    if (r.items !== undefined && !Array.isArray(r.items)) problems.push(`${key}: «items» must be a list.`);
+    if (items.length > MAX_ITEMS) problems.push(`${key}: ${items.length} items; at most ${MAX_ITEMS}.`);
+    const itemIds = new Set<string>();
+    const kept: WalkItem[] = [];
+    for (const it of items.slice(0, MAX_ITEMS)) {
+      const x = (it && typeof it === "object" ? it : {}) as Record<string, unknown>;
+      const id = typeof x.id === "string" ? x.id : "";
+      const where = `${key}, item «${id || "?"}»`;
+      if (!DOOR_ID_RE.test(id)) { problems.push(`${where}: an id of lowercase letters, digits and hyphens.`); continue; }
+      if (itemIds.has(id)) { problems.push(`${where}: the id is used twice.`); continue; }
+      const lbl = (x.label ?? {}) as Record<string, unknown>;
+      const en = str(lbl.en, 80), fa = str(lbl.fa, 80);
+      if (!en) { problems.push(`${where}: it needs an English name.`); continue; }
+      const price = str(x.price, 24);
+      const hasImage = x.image !== undefined && x.image !== null && x.image !== "";
+      if (hasImage && !isSiteUrl(x.image)) { problems.push(`${where}: its photo must be an https:// address.`); continue; }
+      const raw = Array.isArray(x.pins) ? x.pins : null;
+      const ok = raw?.every((q) => {
+        const o = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
+        return finite(o.t) && o.t >= 0 && finite(o.x) && finite(o.y) && Math.abs(o.x) <= 3.2 && Math.abs(o.y) <= 1.6;
+      });
+      if (!raw || !raw.length || !ok || raw.length > MAX_PINS) { problems.push(`${where}: it needs 1 to ${MAX_PINS} pins of { t ≥ 0, x, y }.`); continue; }
+      itemIds.add(id);
+      kept.push({
+        id, label: fa ? { en, fa } : { en },
+        ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}),
+        pins: sortItemPins((raw as Array<Record<string, number>>).map((q) => ({ t: q.t, x: q.x, y: q.y }))),
+      });
+    }
+    if (kept.length) walk.items = kept.sort((a, b) => a.pins[0].t - b.pins[0].t);
     walks[key] = walk;
   }
   const out: Walks = { walks };
@@ -321,6 +386,50 @@ export function returnPoint(door: WalkDoor): { t: number; yaw: number } {
   return door.back ? { ...door.back } : { t: door.t, yaw: signAt(door, door.t, Infinity)?.yaw ?? door.yaw };
 }
 
+/** An item's pins in time order, one per moment (as `sortPins`). */
+export function sortItemPins(pins: ItemPin[]): ItemPin[] {
+  const out: ItemPin[] = [];
+  for (const q of [...pins].sort((a, b) => a.t - b.t)) {
+    if (out.length && Math.abs(out[out.length - 1].t - q.t) < 0.05) out[out.length - 1] = q;
+    else out.push(q);
+  }
+  return out;
+}
+
+/**
+ * Where an item's dot is at `t`, or null when it is not shown: between its
+ * first and last pin (held half a second past either end), following the pins
+ * linearly — `round` (a 360° walk) takes x the short way round — or within
+ * ±`slack` s of a single pin.
+ */
+export function itemAt(item: WalkItem, t: number, round: boolean, slack = NEAR_DT): { x: number; y: number } | null {
+  const p = item.pins;
+  if (!p.length) return null;
+  if (p.length === 1) return Math.abs(t - p[0].t) <= slack ? { x: p[0].x, y: p[0].y } : null;
+  const a = p[0], z = p[p.length - 1];
+  if (t < a.t - 0.5 || t > z.t + 0.5) return null;
+  if (t <= a.t) return { x: a.x, y: a.y };
+  if (t >= z.t) return { x: z.x, y: z.y };
+  let i = 0;
+  while (p[i + 1].t < t) i++;
+  const q = p[i], w = p[i + 1];
+  const k = (t - q.t) / (w.t - q.t || 1);
+  return {
+    x: round ? wrapAngle(q.x + angleDiff(w.x, q.x) * k) : q.x + (w.x - q.x) * k,
+    y: q.y + (w.y - q.y) * k,
+  };
+}
+
+/** The items shown at `t` on a walk, with where. */
+export function itemsAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem; x: number; y: number }> {
+  const out: Array<{ item: WalkItem; x: number; y: number }> = [];
+  for (const item of walk?.items ?? []) {
+    const at = itemAt(item, t, round);
+    if (at) out.push({ item, ...at });
+  }
+  return out;
+}
+
 // ── The operator's edits ─────────────────────────────────────────────────────
 
 /** A door id from its label: `Ali's Bakery` → `alis-bakery`, `-2`, `-3`… when taken. */
@@ -348,6 +457,41 @@ export function updateDoor(w: Walks, key: string, id: string, patch: Partial<Omi
     ...walk,
     doors: walk.doors.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.yaw !== undefined ? { yaw: wrapAngle(patch.yaw) } : {}) } : d)).sort((a, b) => a.t - b.t),
   }));
+}
+
+/** A new item on a walk; its id from its name, like a door's. */
+export function addItem(w: Walks, key: string, item: Omit<WalkItem, "id">): Walks {
+  return withWalk(w, key, (walk) => {
+    const id = nextItemId(walk, item.label.en);
+    const items = [...(walk.items ?? []), { ...item, id, pins: sortItemPins(item.pins) }].sort((a, b) => a.pins[0].t - b.pins[0].t);
+    return { ...walk, items };
+  });
+}
+
+export function updateItem(w: Walks, key: string, id: string, patch: Partial<Omit<WalkItem, "id">>): Walks {
+  if (!w.walks[key]) return w;
+  return withWalk(w, key, (walk) => ({
+    ...walk,
+    items: (walk.items ?? []).map((it) => (it.id === id ? { ...it, ...patch, ...(patch.pins ? { pins: sortItemPins(patch.pins) } : {}) } : it)),
+  }));
+}
+
+export function removeItem(w: Walks, key: string, id: string): Walks {
+  if (!w.walks[key]) return w;
+  return withWalk(w, key, (walk) => ({ ...walk, items: (walk.items ?? []).filter((it) => it.id !== id) }));
+}
+
+/** The shop's name on a walk (empty: none). */
+export function setTitle(w: Walks, key: string, title: { en: string; fa: string }): Walks {
+  const en = title.en.trim(), fa = title.fa.trim();
+  return withWalk(w, key, (walk) => {
+    const { title: _drop, ...rest } = walk;
+    return en || fa ? { ...rest, title: { en: en || fa, fa } } : rest;
+  });
+}
+
+function nextItemId(walk: Walk, label: string): string {
+  return nextDoorId({ doors: (walk.items ?? []).map((it) => ({ id: it.id })) as unknown as WalkDoor[] }, label);
 }
 
 export function removeDoor(w: Walks, key: string, id: string): Walks {
@@ -411,7 +555,8 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     if (!t) { if (!b || !same(m, b)) walks[k] = m; continue; } // added here; or removed there but changed here
     const bb: Walk = b ?? { doors: [] };
     const title = same(m.title, bb.title) ? t.title : m.title;
-    walks[k] = { ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors) };
+    const items = mergeById(bb.items ?? [], m.items ?? [], t.items ?? []);
+    walks[k] = { ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}) };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;
   return parseWalks({ walks, ...(start ? { start } : {}) });

@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -250,4 +250,45 @@ test("with no start set, /vca/walk opens the street: the walk with doors no door
   assert.equal(startOf(w), STREET);
   assert.equal(startOf(setStart(w, SHOP)), SHOP);
   assert.equal(startOf(emptyWalks()), null);
+});
+
+test("items you can pick up: kept with their pins in order, checked, merged", () => {
+  const SHOP = "scenes/test/shop-video.mp4";
+  let w = setTitle(emptyWalks(), SHOP, { en: "Ali's Market", fa: "بازار علی" });
+  w = addItem(w, SHOP, { label: { en: "Saffron 2g", fa: "زعفران" }, price: "$12.99", pins: [{ t: 9, x: 0.7, y: 0.4 }, { t: 5, x: 0.3, y: 0.5 }] });
+  w = addItem(w, SHOP, { label: { en: "Saffron 2g" }, pins: [{ t: 2, x: 0.5, y: 0.5 }] });
+  const walk = walkOf(w, SHOP)!;
+  assert.deepEqual(walk.title, { en: "Ali's Market", fa: "بازار علی" });
+  assert.deepEqual(walk.items!.map((i) => i.id), ["saffron-2g-2", "saffron-2g"]);
+  assert.deepEqual(walk.items![1].pins.map((p) => p.t), [5, 9]);
+  // A round trip through JSON keeps them; a bad one is reported.
+  assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
+  const bad = JSON.parse(JSON.stringify(w));
+  bad.walks[SHOP].items[0].image = "http://example.com/a.jpg";
+  bad.walks[SHOP].items[1].pins = [];
+  assert.equal(checkWalks(bad).problems.length, 2);
+  // Edit and delete; two pages adding items at once both keep theirs.
+  const edited = updateItem(w, SHOP, "saffron-2g", { price: "$11.99" });
+  assert.equal(walkOf(edited, SHOP)!.items!.find((i) => i.id === "saffron-2g")!.price, "$11.99");
+  assert.deepEqual(walkOf(removeItem(w, SHOP, "saffron-2g"), SHOP)!.items!.map((i) => i.id), ["saffron-2g-2"]);
+  const theirs = addItem(w, SHOP, { label: { en: "Tea" }, pins: [{ t: 20, x: 0.1, y: 0.1 }] });
+  const mine = addItem(w, SHOP, { label: { en: "Rice" }, pins: [{ t: 30, x: 0.2, y: 0.2 }] });
+  assert.deepEqual(walkOf(mergeWalks(w, mine, theirs), SHOP)!.items!.map((i) => i.id).sort(), ["rice", "saffron-2g", "saffron-2g-2", "tea"]);
+  assert.ok(MAX_ITEMS >= 100);
+});
+
+test("an item's dot follows its pins, and only while they last", () => {
+  const item = { id: "tea", label: { en: "Tea" }, pins: [{ t: 10, x: 0.2, y: 0.5 }, { t: 14, x: 0.6, y: 0.3 }] };
+  assert.equal(itemAt(item, 9.4, false), null);
+  assert.deepEqual(itemAt(item, 9.6, false), { x: 0.2, y: 0.5 });
+  const mid = itemAt(item, 12, false)!;
+  assert.ok(Math.abs(mid.x - 0.4) < 1e-12 && Math.abs(mid.y - 0.4) < 1e-12);
+  assert.equal(itemAt(item, 14.6, false), null);
+  // On a 360° walk, x is a direction: it goes the short way round.
+  const round = { id: "r", label: { en: "R" }, pins: [{ t: 0, x: 3, y: 0 }, { t: 2, x: -3, y: 0 }] };
+  assert.ok(Math.abs(Math.abs(itemAt(round, 1, true)!.x) - Math.PI) < 0.01);
+  // One pin: shown round its moment.
+  const one = { id: "o", label: { en: "O" }, pins: [{ t: 5, x: 0.5, y: 0.5 }] };
+  assert.ok(itemAt(one, 6, false) && !itemAt(one, 7, false));
+  assert.deepEqual(itemsAt({ doors: [], items: [item, one] }, 12, false).map((a) => a.item.id), ["tea"]);
 });

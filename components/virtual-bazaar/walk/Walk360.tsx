@@ -56,12 +56,13 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
+import { ItemCard, ItemsEditor } from "./WalkItems";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -189,6 +190,35 @@ type Layer = {
   purpose: "main" | "door" | "back";
 };
 
+/** An item's dot on a 360° walk — a round «+» with its name under it — drawn once. */
+function itemTexture(en: string): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 320;
+  c.height = 200;
+  const g = c.getContext("2d")!;
+  g.beginPath();
+  g.arc(160, 62, 46, 0, Math.PI * 2);
+  g.fillStyle = "rgba(0,184,200,0.88)";
+  g.fill();
+  g.lineWidth = 8;
+  g.strokeStyle = "rgba(255,255,255,0.95)";
+  g.stroke();
+  g.fillStyle = "#fff";
+  g.fillRect(140, 58, 40, 8);
+  g.fillRect(156, 42, 8, 40);
+  g.font = "600 34px system-ui, sans-serif";
+  g.textAlign = "center";
+  const label = en.length > 16 ? `${en.slice(0, 15)}…` : en;
+  const w = Math.min(310, g.measureText(label).width + 28);
+  g.fillStyle = "rgba(0,0,0,0.6)";
+  g.fillRect(160 - w / 2, 126, w, 50);
+  g.fillStyle = "#fff";
+  g.fillText(label, 160, 163);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 /** What the screen shows about the engine, a few times a second. */
 type View = {
   key: string | null;
@@ -222,6 +252,14 @@ type Engine = {
   setPick: (f: ((pin: SignPin) => void) | null) => void;
   /** Edit mode: the door being placed, its sign shown as it is pinned. */
   setPreview: (door: WalkDoor | null) => void;
+  /** Edit mode: the next tap on the picture is an item's pin (`ItemPin`: a fraction of a flat frame, or a direction). */
+  setItemPick: (f: ((pin: ItemPin) => void) | null) => void;
+  /** Edit mode: the item being placed, its dot shown as it is pinned. */
+  setItemPreview: (item: WalkItem | null) => void;
+  /** A tap on an item's dot. */
+  setOnItem: (f: ((item: WalkItem) => void) | null) => void;
+  /** Jump to a moment of this video (stands there). */
+  seek: (t: number) => void;
 };
 
 /** A door's sign — «Step inside · name» (and the Persian name) on an amber card — drawn once. */
@@ -270,6 +308,8 @@ export default function Walk360() {
   const [notice, setNotice] = useState<string | null>(null);
   const [time, setTime] = useState({ now: 0, total: 0 });
   const [drive, setDrive] = useState<Drive | null>(null);
+  /** The item whose card is open (a tap on its dot). */
+  const [card, setCard] = useState<WalkItem | null>(null);
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
   const [diag, setDiag] = useState("");
@@ -532,6 +572,95 @@ export default function Walk360() {
     const markers = new Map<string, { sprite: THREE.Sprite; door: WalkDoor }>();
     let preview: WalkDoor | null = null;
     let pick: ((pin: SignPin) => void) | null = null;
+
+    // ── Items you can pick up: a dot on each, a tap opens its card ────────
+    // On a 360° walk a sprite like a door's sign; on a flat video a button
+    // over the picture, where the pins put it (fractions of the frame).
+    let itemPick: ((pin: ItemPin) => void) | null = null;
+    let itemPreview: WalkItem | null = null;
+    let onItem: ((item: WalkItem) => void) | null = null;
+    const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem }>();
+    const itemButtons = new Map<string, { el: HTMLButtonElement; item: WalkItem }>();
+    /** Where a flat video's picture sits on the screen (it is shown «contain»). */
+    function flatRect(v: HTMLVideoElement) {
+      const W = flatEl.clientWidth, H = flatEl.clientHeight;
+      const vw = v.videoWidth || W, vh = v.videoHeight || H;
+      const k = Math.min(W / vw, H / vh);
+      const w = vw * k, h = vh * k;
+      return { x: (W - w) / 2, y: (H - h) / 2, w, h };
+    }
+    function updateItems() {
+      const v = current?.video;
+      const ready = Boolean(current && !busy && v && v.readyState >= 1);
+      const walk = walkOf(walksNow, current?.key);
+      const t = v?.currentTime ?? 0;
+      const flat = Boolean(current?.flat);
+      let shown = ready ? itemsAt(walk, t, !flat) : [];
+      if (ready && itemPreview) {
+        shown = shown.filter((s) => s.item.id !== itemPreview!.id);
+        const p = itemsAt({ doors: [], items: [itemPreview] }, t, !flat)[0];
+        if (p) shown.push(p);
+      }
+      const wantSprites = new Set<string>();
+      const wantButtons = new Set<string>();
+      for (const { item, x, y } of shown) {
+        const id = `${current!.key}#${item.id}#${item.label.en}`;
+        if (flat) {
+          wantButtons.add(id);
+          let b = itemButtons.get(id);
+          if (!b) {
+            const el = document.createElement("button");
+            el.type = "button";
+            el.style.zIndex = "2"; // above the video, which is put on screen after it on re-entry
+            el.className = "pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1";
+            el.innerHTML = `<span class="flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-white bg-[#00B8C8]/90 text-[26px] font-bold leading-none text-white shadow-lg">+</span><span class="max-w-[14rem] truncate rounded-md bg-black/65 px-2 py-0.5 text-[12px] font-semibold text-white"></span>`;
+            (el.lastElementChild as HTMLElement).textContent = item.label.fa ? `${item.label.en} · ${item.label.fa}` : item.label.en;
+            el.addEventListener("click", () => {
+              const m = itemButtons.get(id);
+              if (m && m.item !== itemPreview && !itemPick) onItem?.(m.item);
+            });
+            b = { el, item };
+            itemButtons.set(id, b);
+            flatEl.appendChild(el);
+          }
+          b.item = item;
+          const r = flatRect(v!);
+          b.el.style.left = `${r.x + x * r.w}px`;
+          b.el.style.top = `${r.y + y * r.h}px`;
+          b.el.style.opacity = item === itemPreview ? "0.8" : "1";
+          // While pinning, taps go through to the picture.
+          b.el.style.pointerEvents = itemPick ? "none" : "auto";
+        } else {
+          wantSprites.add(id);
+          let m = itemSprites.get(id);
+          if (!m) {
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: itemTexture(item.label.en), depthTest: false, depthWrite: false, transparent: true }));
+            sprite.scale.set(3.6, 2.25, 1);
+            sprite.renderOrder = 11;
+            m = { sprite, item };
+            itemSprites.set(id, m);
+            scene.add(sprite);
+          }
+          m.item = item;
+          const h = x - current!.spin;
+          const cp = Math.cos(y);
+          m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
+          (m.sprite.material as THREE.SpriteMaterial).opacity = item === itemPreview ? 0.8 : 1;
+        }
+      }
+      for (const [id, m] of itemSprites) {
+        if (wantSprites.has(id)) continue;
+        scene.remove(m.sprite);
+        (m.sprite.material as THREE.SpriteMaterial).map?.dispose();
+        m.sprite.material.dispose();
+        itemSprites.delete(id);
+      }
+      for (const [id, b] of itemButtons) {
+        if (wantButtons.has(id)) continue;
+        b.el.remove();
+        itemButtons.delete(id);
+      }
+    }
     function updateDoors() {
       const v = current?.video;
       const walk = walkOf(walksNow, current?.key);
@@ -611,6 +740,21 @@ export default function Walk360() {
       },
       setPreview(d) {
         preview = d;
+      },
+      setItemPick(f) {
+        itemPick = f;
+      },
+      setItemPreview(item) {
+        itemPreview = item;
+      },
+      setOnItem(f) {
+        onItem = f;
+      },
+      seek(t) {
+        if (!current || busy) return;
+        current.video.pause();
+        rate = 0;
+        current.video.currentTime = Math.max(0, t);
       },
       back: () => void back(),
       here: () => ({ key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), flat: current?.flat ?? false }),
@@ -726,10 +870,31 @@ export default function Walk360() {
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
     function onTap(x: number, y: number) {
-      if (!current || current.flat || busy) return;
+      if (!current || busy) return;
+      if (current.flat) {
+        // A flat video: only the operator's item pins are taps on the picture.
+        if (!itemPick) return;
+        const box = flatEl.getBoundingClientRect();
+        const r = flatRect(current.video);
+        const fx = (x - box.left - r.x) / r.w, fy = (y - box.top - r.y) / r.h;
+        if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) itemPick({ t: current.video.currentTime, x: Math.round(fx * 1000) / 1000, y: Math.round(fy * 1000) / 1000 });
+        return;
+      }
       const r = canvas.getBoundingClientRect();
       ndc.set(((x - r.left) / r.width) * 2 - 1, -((y - r.top) / r.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
+      if (itemPick) {
+        const d = raycaster.ray.direction;
+        const worldYaw = Math.atan2(d.x, -d.z);
+        itemPick({ t: current.video.currentTime, x: wrapAngle(worldYaw + current.spin), y: Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)) });
+        return;
+      }
+      const itemHit = raycaster.intersectObjects([...itemSprites.values()].map((m) => m.sprite), false)[0];
+      const im = itemHit && [...itemSprites.values()].find((m) => m.sprite === itemHit.object);
+      if (im && im.item !== itemPreview) {
+        onItem?.(im.item);
+        return;
+      }
       if (pick) {
         const d = raycaster.ray.direction;
         const worldYaw = Math.atan2(d.x, -d.z);
@@ -942,6 +1107,7 @@ export default function Walk360() {
 
       readTurn();
       updateDoors();
+      updateItems();
       renderer.render(scene, camera);
       report();
     });
@@ -959,7 +1125,8 @@ export default function Walk360() {
       window.removeEventListener("resize", onResize);
       release(current);
       release(pending);
-      for (const { sprite } of markers.values()) {
+      for (const { el } of itemButtons.values()) el.remove();
+      for (const { sprite } of [...markers.values(), ...itemSprites.values()]) {
         (sprite.material as THREE.SpriteMaterial).map?.dispose();
         sprite.material.dispose();
       }
@@ -972,6 +1139,15 @@ export default function Walk360() {
   useEffect(() => {
     engine.current?.setDrive(drive ? DRIVES[drive].rate : null);
   }, [drive]);
+  // A tap on an item's dot opens its card, and the walk stands while it is open.
+  useEffect(() => {
+    engine.current?.setOnItem((item) => {
+      setDrive(null);
+      setCard(item);
+    });
+    return () => engine.current?.setOnItem(null);
+  }, []);
+
   // Stepping into a shop (or back out) ends the drive: the visitor looks round first.
   useEffect(() => {
     setDrive(null);
@@ -1132,6 +1308,10 @@ export default function Walk360() {
         </>
       )}
 
+      {card && view.key && (
+        <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} onClose={() => setCard(null)} />
+      )}
+
       {editing && phase !== "loading" && (
         <DoorEditor
           engine={engine}
@@ -1173,6 +1353,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
   const [listError, setListError] = useState<string | null>(null);
   type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
+  const [tab, setTab] = useState<"doors" | "items">("doors");
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -1285,7 +1466,13 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
   return (
     <div dir="ltr" className="absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl">
       <div className="flex items-center justify-between gap-2">
-        <b>Doors · edit mode</b>
+        <div className="flex gap-1">
+          {(["doors", "items"] as const).map((k) => (
+            <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
+              {k === "doors" ? "Doors" : "Items to pick up"}
+            </button>
+          ))}
+        </div>
         <button className={btn} onClick={() => setOpen(!open)}>{open ? "Hide" : "Show"}</button>
       </div>
       {open && (
@@ -1293,13 +1480,15 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
           <div className="truncate text-[11px] text-white/60">This walk: {shortKey(viewKey)}{walk?.doors.length ? ` · ${walk.doors.length} door(s)` : ""}</div>
           {listError && <div className="text-rose-300">{listError}</div>}
 
-          {!draft && (
+          {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
+
+          {tab === "doors" && !draft && (
             <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} disabled={!viewKey} onClick={doorHere}>
               Door here (this moment, the way I look)
             </button>
           )}
 
-          {draft && (
+          {tab === "doors" && draft && (
             <div className="space-y-1.5 rounded-lg border border-amber-300/40 p-2">
               <div className="text-[11px] text-white/60">
                 At {mmss(draft.t)} ({draft.t.toFixed(2)} s), heading {Math.round((draft.yaw * 180) / Math.PI)}° in the video
@@ -1360,7 +1549,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
             </div>
           )}
 
-          <ul className="space-y-1">
+          {tab === "doors" && <ul className="space-y-1">
             {(walk?.doors ?? []).map((d) => (
               <li key={d.id} className="rounded-md bg-white/5 p-1.5">
                 <div className="truncate">
@@ -1376,7 +1565,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
               </li>
             ))}
             {walk && !walk.doors.length && <li className="text-white/50">No doors on this walk yet.</li>}
-          </ul>
+          </ul>}
 
           <button className={`${btn} w-full`} disabled={!viewKey || !isWalkKey(viewKey) || isStart} onClick={() => viewKey && change(setStart(walks, viewKey))}>
             {isStart ? "✓ Visitors start on this walk" : "Set as the street walk visitors start on"}
