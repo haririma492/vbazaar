@@ -358,6 +358,23 @@ export default function Walk360() {
       return "This video could not be loaded in this browser. An .mp4 in H.264 plays everywhere.";
     };
 
+    /**
+     * Why a walk video did not load: the bucket refusing this site (CORS), the
+     * file not being in the bucket this site reads, or the file itself.
+     */
+    async function diagnose(src: string): Promise<string> {
+      const host = (() => { try { return new URL(src).host; } catch { return src; } })();
+      const site = window.location.origin;
+      try {
+        const res = await fetch(src, { method: "HEAD", mode: "cors", cache: "no-store" });
+        if (res.status === 404) return `The video is not in the bucket this site reads (${host}): 404 for ${src}. Upload it there, or point this site at the bucket that has it.`;
+        if (!res.ok) return `The bucket (${host}) answered ${res.status} for the video.`;
+        return "The video was found, but this browser cannot play it. An .mp4 in H.264 plays everywhere.";
+      } catch {
+        return `The bucket (${host}) does not let this site (${site}) load its videos. In Cloudflare → R2 → the bucket → Settings → CORS policy, add "${site}" to AllowedOrigins.`;
+      }
+    }
+
     function makeLayer(opts: { key: string | null; src?: string | null; t?: number; flat?: boolean; purpose: Layer["purpose"] }): Layer {
       const phoneVideo = Boolean(opts.key && isPhoneVideoKey(opts.key));
       const video = document.createElement("video");
@@ -397,7 +414,12 @@ export default function Walk360() {
           check();
         });
         for (const ev of ["loadeddata", "canplay", "seeked"]) video.addEventListener(ev, check);
-        video.addEventListener("error", () => finish(errorText(layer)));
+        video.addEventListener("error", () => {
+          // The walk's own video: find out WHY, and say it (staging, 2026-10-12, got
+          // only "is the bucket's CORS set" — which of the causes it was, nobody could tell).
+          if (layer.purpose === "main" && video.currentSrc && !/\.mov$/i.test(layer.key ?? "")) void diagnose(video.currentSrc).then((why) => finish(why));
+          else finish(errorText(layer));
+        });
         // iOS may not decode a frame of a video nobody plays: play a moment, then stand.
         timers.push(window.setTimeout(() => {
           if (settled || layer.released || video.readyState >= 2) return;
