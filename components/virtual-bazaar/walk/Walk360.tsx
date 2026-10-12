@@ -1531,7 +1531,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
         <div className="flex gap-1">
           {(["doors", "items"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : "Items to pick up"}
+              {k === "doors" ? "Doors" : "Products"}
             </button>
           ))}
         </div>
@@ -1629,11 +1629,14 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks }: {
             {walk && !walk.doors.length && <li className="text-white/50">No doors on this walk yet.</li>}
           </ul>}
 
-          <button className={`${btn} w-full`} disabled={!viewKey || !isWalkKey(viewKey) || isStart} onClick={() => viewKey && change(setStart(walks, viewKey))}>
-            {isStart ? "✓ Visitors start on this walk" : "Set as the street walk visitors start on"}
-          </button>
+          {tab === "doors" && (
+            <button className={`${btn} w-full`} disabled={!viewKey || !isWalkKey(viewKey) || isStart} onClick={() => viewKey && change(setStart(walks, viewKey))}>
+              {isStart ? "✓ Visitors start on this walk" : "Set as the street walk visitors start on"}
+            </button>
+          )}
+          {/* It saves by itself; the key is for saving again after a failure. */}
           <button className={`${btn} w-full border-emerald-300/60 bg-emerald-300/20 py-2 text-[13px] font-semibold`} onClick={() => void save()}>
-            Save{dirty ? " (unsaved changes)" : ""}
+            {dirty ? "Saving… (or press to save now)" : "✓ Saved"}
           </button>
           {status && (
             <div className={`whitespace-pre-wrap text-[12px] ${status.tone === "bad" ? "text-rose-300" : status.tone === "warn" ? "text-amber-200" : "text-emerald-200"}`}>

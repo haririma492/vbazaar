@@ -97,18 +97,34 @@ export function ItemCard({ item, walkKey, walk, onClose }: {
   );
 }
 
-type Draft = { id?: string; en: string; fa: string; price: string; image: string; pins: ItemPin[]; pinning: boolean };
+/**
+ * TAGGING A PRODUCT, ONE QUESTION AT A TIME (founder, 2026-10-12: "this
+ * interface … needs to be much more intuitive and much simpler and also like a
+ * canvas: first ask if this is a product, then start asking other questions
+ * ONE by ONE (with back option)").
+ *
+ * The operator taps the picture; a card asks «Is this a product?», then its
+ * name, its Farsi name, its price, its photo — each on its own, with «Back»
+ * and, where it may be left out, «Skip» — and last asks them to follow it: move
+ * the video on and tap it again, so the dot stays on it. «Done» saves (the
+ * editor saves by itself).
+ */
+type Step = "product" | "en" | "fa" | "price" | "photo" | "follow";
+const STEPS: Step[] = ["product", "en", "fa", "price", "photo", "follow"];
+type Draft = { id?: string; en: string; fa: string; price: string; image: string; pins: ItemPin[]; step: Step };
 
 const draftItem = (d: Draft): WalkItem => ({
   id: d.id ?? "__draft",
-  label: d.fa.trim() ? { en: d.en.trim() || "…", fa: d.fa.trim() } : { en: d.en.trim() || "…" },
+  label: d.fa.trim() ? { en: d.en.trim() || "Product", fa: d.fa.trim() } : { en: d.en.trim() || "Product" },
   pins: d.pins,
 });
 
+/** Taps on the picture are pins only on these steps (and before a product is started). */
+const TAPS_ON: Step[] = ["product", "follow"];
+
 /**
- * The operator's items on this walk: the shop's name (the basket groups by
- * it), «Item here», pins tapped on the product as the video moves, and the
- * list. Saved with the doors («Save»), so it only edits `walks`.
+ * The operator's products on this walk: «tap a product», the one-question card,
+ * and the list of what is tagged. It only edits `walks`; the editor saves.
  */
 export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
   engine: React.MutableRefObject<ItemEngine | null>;
@@ -118,15 +134,25 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
   setStatus: (s: { tone: "ok" | "warn" | "bad"; text: string } | null) => void;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [shopOpen, setShopOpen] = useState(false);
   const walk = walkOf(walks, viewKey);
 
-  const pinning = Boolean(draft?.pinning);
+  // Taps on the picture: the first starts a product; on «Is this a product?» a
+  // tap moves its dot; on «Follow it» each tap is one more place along the way.
+  const tapsOn = !draft || TAPS_ON.includes(draft.step);
   useEffect(() => {
     const e = engine.current;
-    if (!e) return;
-    e.setItemPick(pinning ? (pin) => setDraft((d) => (d ? { ...d, pins: sortItemPins([...d.pins.filter((q) => Math.abs(q.t - pin.t) >= 0.05), pin]) } : d)) : null);
+    if (!e || !viewKey) return;
+    e.setItemPick(tapsOn ? (pin) => {
+      e.video().pause();
+      setDraft((d) => {
+        if (!d) return { en: "", fa: "", price: "", image: "", pins: [pin], step: "product" };
+        if (d.step === "product") return { ...d, pins: [pin] };
+        return { ...d, pins: sortItemPins([...d.pins.filter((q) => Math.abs(q.t - pin.t) >= 0.05), pin]) };
+      });
+    } : null);
     return () => e.setItemPick(null);
-  }, [engine, pinning]);
+  }, [engine, tapsOn, viewKey]);
   useEffect(() => {
     const e = engine.current;
     if (!e) return;
@@ -134,18 +160,9 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
     return () => e.setItemPreview(null);
   }, [engine, draft]);
 
-  function itemHere() {
-    if (!viewKey) return setStatus({ tone: "bad", text: "Items can only be placed on a video from the bucket (?v=…)." });
-    engine.current?.video().pause();
-    setDraft({ en: "", fa: "", price: "", image: "", pins: [], pinning: true });
-  }
-
-  function saveDraft() {
+  function finish() {
     if (!draft || !viewKey) return;
-    if (!draft.en.trim()) return setStatus({ tone: "bad", text: "The item needs an English name." });
-    if (!draft.pins.length) return setStatus({ tone: "bad", text: "Tap the product in the picture to put its dot there (Pinning: on)." });
     const image = draft.image.trim();
-    if (image && !isSiteUrl(image)) return setStatus({ tone: "bad", text: "The photo must be an https:// address (or leave it empty)." });
     const fields = {
       label: draft.fa.trim() ? { en: draft.en.trim(), fa: draft.fa.trim() } : { en: draft.en.trim() },
       ...(draft.price.trim() ? { price: draft.price.trim() } : {}),
@@ -154,6 +171,7 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
     };
     if (draft.id) change(updateItem(walks, viewKey, draft.id, { price: undefined, image: undefined, ...fields }));
     else change(addItem(walks, viewKey, fields));
+    setStatus({ tone: "ok", text: `«${fields.label.en}» tagged — saving…` });
     setDraft(null);
   }
 
@@ -163,61 +181,31 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
 
   return (
     <div className="space-y-2">
-      <div className="space-y-1">
-        <label className="block text-[11px] text-white/60">Shop name (the basket lists items under it)</label>
-        <div className="flex gap-1.5">
-          <input className={field} placeholder="Ali's Market" defaultValue={walk?.title?.en ?? ""} key={`en-${viewKey}`}
-            onBlur={(e) => viewKey && e.target.value.trim() !== (walk?.title?.en ?? "") && change(setTitle(walks, viewKey, { en: e.target.value, fa: walk?.title?.fa ?? "" }))} />
-          <input className={field} dir="rtl" placeholder="بازار علی" defaultValue={walk?.title?.fa ?? ""} key={`fa-${viewKey}`}
-            onBlur={(e) => viewKey && e.target.value.trim() !== (walk?.title?.fa ?? "") && change(setTitle(walks, viewKey, { en: walk?.title?.en ?? "", fa: e.target.value }))} />
-        </div>
+      {/* The shop's name: the basket lists its products under it. Folded away once set. */}
+      <div className="rounded-md bg-white/5 p-1.5 text-[12px]">
+        {!shopOpen && walk?.title ? (
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate">Shop: <b>{walk.title.en}</b>{walk.title.fa ? ` · ${walk.title.fa}` : ""}</span>
+            <button className={btn} onClick={() => setShopOpen(true)}>Change</button>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <div className="text-white/60">Shop name (the basket lists its products under it)</div>
+            <div className="flex gap-1.5">
+              <input className={field} placeholder="Ali's Market" defaultValue={walk?.title?.en ?? ""} key={`en-${viewKey}`}
+                onBlur={(e) => viewKey && e.target.value.trim() !== (walk?.title?.en ?? "") && change(setTitle(walks, viewKey, { en: e.target.value, fa: walk?.title?.fa ?? "" }))} />
+              <input className={field} dir="rtl" placeholder="بازار علی" defaultValue={walk?.title?.fa ?? ""} key={`fa-${viewKey}`}
+                onBlur={(e) => viewKey && e.target.value.trim() !== (walk?.title?.fa ?? "") && change(setTitle(walks, viewKey, { en: walk?.title?.en ?? "", fa: e.target.value }))} />
+            </div>
+            {walk?.title && <button className={btn} onClick={() => setShopOpen(false)}>Done</button>}
+          </div>
+        )}
       </div>
 
       {!draft && (
-        <button className={`${btn} w-full border-[#00B8C8]/70 bg-[#00B8C8]/20 py-2 text-[13px] font-semibold`} disabled={!viewKey} onClick={itemHere}>
-          + Item here (tap it in the picture)
-        </button>
-      )}
-
-      {draft && (
-        <div className="space-y-1.5 rounded-lg border border-[#00B8C8]/50 p-2">
-          <input className={field} placeholder="English name (e.g. Saffron 2 g)" value={draft.en} onChange={(e) => setDraft({ ...draft, en: e.target.value })} autoFocus />
-          <input className={field} dir="rtl" placeholder="نام فارسی (اختیاری)" value={draft.fa} onChange={(e) => setDraft({ ...draft, fa: e.target.value })} />
-          <div className="flex gap-1.5">
-            <input className={field} placeholder="Price ($4.99)" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} />
-            <input className={field} type="url" inputMode="url" placeholder="Photo https://… (optional)" value={draft.image} onChange={(e) => setDraft({ ...draft, image: e.target.value })} />
-          </div>
-          <div className="space-y-1 rounded-md border border-white/15 p-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <b className="text-[12px]">Dot on the item</b>
-              <button className={`${btn} ${draft.pinning ? "border-[#00B8C8]/80 bg-[#00B8C8]/25" : ""}`} onClick={() => setDraft({ ...draft, pinning: !draft.pinning })}>
-                {draft.pinning ? "Pinning: on" : "Pin the dot"}
-              </button>
-            </div>
-            {draft.pinning && (
-              <div className="text-[11px] leading-snug text-white/65">
-                Tap the product in the picture: the dot goes there at this moment. Move on a little (wheel ▲ or W) and tap it again —
-                where it comes into view, the middle, where it leaves. The dot follows it between taps and shows only while it is in view.
-              </div>
-            )}
-            {draft.pins.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {draft.pins.map((q) => (
-                  <span key={q.t} className="rounded bg-white/10 px-1.5 py-0.5 font-mono text-[11px]">
-                    {mmss(q.t)}.{Math.floor((q.t % 1) * 10)}
-                    <button className="ms-1 text-white/60" title="Remove this pin" onClick={() => setDraft({ ...draft, pins: draft.pins.filter((x) => x !== q) })}>×</button>
-                  </span>
-                ))}
-                <button className="text-[11px] text-white/50 underline" onClick={() => setDraft({ ...draft, pins: [] })}>clear</button>
-              </div>
-            ) : (
-              <div className="text-[11px] text-white/45">No pins yet.</div>
-            )}
-          </div>
-          <div className="flex gap-2">
-            <button className={`${btn} border-[#00B8C8]/70`} onClick={saveDraft}>{draft.id ? "Apply" : "Add item"}</button>
-            <button className={btn} onClick={() => setDraft(null)}>Cancel</button>
-          </div>
+        <div className="rounded-lg border border-[#00B8C8]/60 bg-[#00B8C8]/15 p-2.5 text-[13px] leading-snug">
+          <b>Tap a product in the picture</b> to tag it.
+          <div className="mt-0.5 text-[12px] text-white/65">Move the video (wheel ▲, or the time bar) until the product is in view, then tap it.</div>
         </div>
       )}
 
@@ -228,17 +216,120 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus }: {
               <span className="font-mono text-white/60">{mmss(itemTime(it))}</span> {it.label.en}
               {it.label.fa && <span className="text-white/60"> · {it.label.fa}</span>}
               {it.price && <span className="text-amber-200"> · {it.price}</span>}
-              {!it.pins.length && <span className="text-white/40"> (no dot)</span>}
+              {!it.pins.length && <span className="text-rose-300"> · no dot</span>}
             </div>
             <div className="mt-1 flex gap-1.5">
               <button className={btn} onClick={() => engine.current?.seek(itemTime(it))}>Go to</button>
-              <button className={btn} onClick={() => { engine.current?.seek(itemTime(it)); setDraft({ id: it.id, en: it.label.en, fa: it.label.fa ?? "", price: it.price ?? "", image: it.image ?? "", pins: it.pins, pinning: false }); }}>Edit</button>
-              <button className={btn} onClick={() => { if (viewKey && window.confirm(`Delete the item «${it.label.en}»?`)) change(removeItem(walks, viewKey, it.id)); }}>Delete</button>
+              <button className={btn} disabled={Boolean(draft)} onClick={() => { engine.current?.seek(itemTime(it)); setDraft({ id: it.id, en: it.label.en, fa: it.label.fa ?? "", price: it.price ?? "", image: it.image ?? "", pins: it.pins, step: "en" }); }}>Edit</button>
+              <button className={btn} onClick={() => { if (viewKey && window.confirm(`Delete «${it.label.en}»?`)) change(removeItem(walks, viewKey, it.id)); }}>Delete</button>
             </div>
           </li>
         ))}
-        {walk && !(walk.items ?? []).length && !draft && <li className="text-white/50">No items on this walk yet.</li>}
+        {walk && !(walk.items ?? []).length && !draft && <li className="text-white/50">No products tagged on this video yet.</li>}
       </ul>
+
+      {draft && <TagCard draft={draft} setDraft={setDraft} onDone={finish} />}
+    </div>
+  );
+}
+
+/**
+ * The one-question card, over the bottom of the picture (where the operator is
+ * looking), not in the side panel.
+ */
+function TagCard({ draft, setDraft, onDone }: {
+  draft: Draft;
+  setDraft: (d: Draft | null) => void;
+  onDone: () => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const i = STEPS.indexOf(draft.step);
+  const go = (step: Step) => { setError(null); setDraft({ ...draft, step }); };
+  const back = () => (i === 0 || (draft.id && draft.step === "en") ? setDraft(null) : go(STEPS[i - 1]));
+  const next = () => go(STEPS[i + 1]);
+
+  const big = "w-full rounded-xl border border-white/25 bg-black/50 px-3 py-2.5 text-[17px] text-white outline-none focus:border-[#00B8C8]";
+  const primary = "rounded-xl bg-[#00B8C8] px-5 py-2.5 text-[15px] font-bold text-black disabled:opacity-40";
+  const quiet = "rounded-xl border border-white/25 px-4 py-2.5 text-[14px] text-white/85";
+
+  let title = "";
+  let body: React.ReactNode = null;
+  let actions: React.ReactNode = null;
+  const onEnter = (ok: boolean, then: () => void) => (e: React.KeyboardEvent) => { if (e.key === "Enter" && ok) then(); };
+
+  switch (draft.step) {
+    case "product":
+      title = "Is this a product?";
+      body = <p className="text-[13px] text-white/65">The dot is where you tapped. Tap again to move it.</p>;
+      actions = (<>
+        <button className={quiet} onClick={() => setDraft(null)}>No</button>
+        <button className={primary} onClick={next}>Yes, a product</button>
+      </>);
+      break;
+    case "en":
+      title = "What is it called?";
+      body = <input autoFocus className={big} placeholder="e.g. Saffron 2 g" value={draft.en} onChange={(e) => setDraft({ ...draft, en: e.target.value })} onKeyDown={onEnter(Boolean(draft.en.trim()), next)} />;
+      actions = <button className={primary} disabled={!draft.en.trim()} onClick={next}>Next</button>;
+      break;
+    case "fa":
+      title = "Its name in Farsi?";
+      body = <input autoFocus dir="rtl" className={big} placeholder="مثلاً زعفران ۲ گرمی" value={draft.fa} onChange={(e) => setDraft({ ...draft, fa: e.target.value })} onKeyDown={onEnter(true, next)} />;
+      actions = (<>
+        <button className={quiet} onClick={() => { setDraft({ ...draft, fa: "", step: "price" }); }}>Skip</button>
+        <button className={primary} onClick={next}>Next</button>
+      </>);
+      break;
+    case "price":
+      title = "Its price?";
+      body = <input autoFocus inputMode="decimal" className={big} placeholder="e.g. $12.99" value={draft.price} onChange={(e) => setDraft({ ...draft, price: e.target.value })} onKeyDown={onEnter(true, next)} />;
+      actions = (<>
+        <button className={quiet} onClick={() => { setDraft({ ...draft, price: "", step: "photo" }); }}>Skip</button>
+        <button className={primary} onClick={next}>Next</button>
+      </>);
+      break;
+    case "photo": {
+      title = "A photo of it? (a link)";
+      const ok = !draft.image.trim() || isSiteUrl(draft.image.trim());
+      body = (<>
+        <input autoFocus type="url" inputMode="url" className={big} placeholder="https://…" value={draft.image} onChange={(e) => setDraft({ ...draft, image: e.target.value })} onKeyDown={onEnter(ok, next)} />
+        <p className="text-[12px] text-white/55">Right-click a photo on the web → «Copy image address», then paste it here.</p>
+      </>);
+      actions = (<>
+        <button className={quiet} onClick={() => { setDraft({ ...draft, image: "", step: "follow" }); }}>Skip</button>
+        <button className={primary} onClick={() => (ok ? next() : setError("That is not an https:// link to a picture."))}>Next</button>
+      </>);
+      break;
+    }
+    case "follow":
+      title = "Keep the dot on it";
+      body = (<>
+        <p className="text-[13px] leading-snug text-white/75">
+          Move the video on a little (wheel ▲ or the time bar) and <b>tap the product again</b>. Do it two or three times while it is in
+          view — the dot follows it. Or press Done if it hardly moves.
+        </p>
+        <p className="text-[13px] font-semibold text-[#00B8C8]">
+          {draft.pins.length} {draft.pins.length === 1 ? "tap" : "taps"} so far
+          {draft.pins.length > 1 && <button className="ms-2 text-[12px] font-normal text-white/55 underline" onClick={() => setDraft({ ...draft, pins: draft.pins.slice(0, 1) })}>start again</button>}
+        </p>
+      </>);
+      actions = <button className={primary} disabled={!draft.pins.length} onClick={onDone}>Done ✓</button>;
+      break;
+  }
+
+  return (
+    <div dir="ltr" className="fixed bottom-24 left-1/2 z-40 w-[min(26rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl border border-[#00B8C8]/60 bg-[#0f1418]/95 p-4 text-white shadow-2xl">
+      <div className="mb-1 flex items-center justify-between text-[11px] text-white/45">
+        <span>{draft.id ? "Editing" : "New product"}{draft.en.trim() && draft.step !== "en" ? ` · ${draft.en.trim()}` : ""}</span>
+        <span>{i + 1} / {STEPS.length}</span>
+      </div>
+      <div className="mb-2 text-[19px] font-bold">{title}</div>
+      {/* Keyed by the step: each question's box is new, so it takes the cursor (autoFocus) — a reused one kept it on «Back». */}
+      <div key={draft.step} className="space-y-2">{body}</div>
+      {error && <div className="mt-2 text-[13px] text-rose-300">{error}</div>}
+      <div className="mt-3 flex items-center gap-2">
+        <button className="me-auto text-[14px] text-white/70 underline-offset-2 hover:underline" onClick={back}>← Back</button>
+        {actions}
+      </div>
     </div>
   );
 }
