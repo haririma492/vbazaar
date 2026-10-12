@@ -56,13 +56,13 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
-import { ItemCard, ItemsEditor } from "./WalkItems";
+import { ItemCard, ItemsEditor, ShelfStrip } from "./WalkItems";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, shelfAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -1178,6 +1178,7 @@ export default function Walk360() {
   }
 
   const door = view.near[0];
+  const shelfNow = view.key ? shelfAt(walkOf(walks, view.key), time.now) : null;
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -1264,12 +1265,22 @@ export default function Walk360() {
               ← Back to the street · بازگشت به خیابان
             </button>
           )}
+          {/* The shelf in view: its products in a row (`ShelfStrip`). */}
+          {shelfNow && !view.busy && (
+            <ShelfStrip
+              shelf={shelfNow.shelf}
+              items={shelfNow.items}
+              onOpen={(item) => { setDrive(null); setCard(item); }}
+              className={`inset-x-3 sm:left-1/2 sm:right-auto sm:w-[34rem] sm:-translate-x-1/2 ${view.inside > 0 ? "top-16" : "top-3"}`}
+            />
+          )}
+
           {/* Inside a shop whose door names its website. */}
           {view.inside > 0 && view.site && !view.busy && (
             <button
               dir="ltr"
               onClick={() => openSite(view.site)}
-              className="absolute right-4 top-16 z-10 rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white"
+              className={`absolute right-4 z-10 ${shelfNow ? "top-[13.5rem]" : "top-16"} rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white`}
             >
               🌐 Visit the website · وبسایت فروشگاه
             </button>

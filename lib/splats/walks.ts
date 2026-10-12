@@ -106,15 +106,28 @@ export type WalkItem = {
   price?: string;
   /** The product's photo (https), for the card and the basket line. */
   image?: string;
+  /** The shelf it is on (`WalkShelf.id`): listed in that shelf's strip. */
+  shelf?: string;
+  /** Where its dot is; none when it is only listed on its shelf. */
   pins: ItemPin[];
 };
 export const MAX_ITEMS = 150;
+
+/**
+ * A SHELF (founder, 2026-10-12, the shelf strip): a stretch of the walk —
+ * from `t0` to `t1` seconds — where one shelf is in view. While the video is
+ * there, a strip lists the products on it (`item.shelf`), each with its card
+ * and «Add to Basket», so a shopper need not find every dot.
+ */
+export type WalkShelf = { id: string; label: WalkLabel; t0: number; t1: number };
+export const MAX_SHELVES = 60;
 
 export type Walk = {
   /** The shop's (or the street's) name — on a shop walk, the shop the basket lines say they are from. */
   title?: { en: string; fa: string };
   doors: WalkDoor[];
   items?: WalkItem[];
+  shelves?: WalkShelf[];
 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -245,6 +258,26 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     }
     walk.doors.sort((a, b) => a.t - b.t);
 
+    const shelves = Array.isArray(r.shelves) ? r.shelves : [];
+    if (r.shelves !== undefined && !Array.isArray(r.shelves)) problems.push(`${key}: «shelves» must be a list.`);
+    if (shelves.length > MAX_SHELVES) problems.push(`${key}: ${shelves.length} shelves; at most ${MAX_SHELVES}.`);
+    const shelfIds = new Set<string>();
+    const keptShelves: WalkShelf[] = [];
+    for (const sh of shelves.slice(0, MAX_SHELVES)) {
+      const x = (sh && typeof sh === "object" ? sh : {}) as Record<string, unknown>;
+      const id = typeof x.id === "string" ? x.id : "";
+      const where = `${key}, shelf «${id || "?"}»`;
+      if (!DOOR_ID_RE.test(id)) { problems.push(`${where}: an id of lowercase letters, digits and hyphens.`); continue; }
+      if (shelfIds.has(id)) { problems.push(`${where}: the id is used twice.`); continue; }
+      const lbl = (x.label ?? {}) as Record<string, unknown>;
+      const en = str(lbl.en, 60), fa = str(lbl.fa, 60);
+      if (!en) { problems.push(`${where}: it needs an English name.`); continue; }
+      if (!finite(x.t0) || !finite(x.t1) || x.t0 < 0 || x.t1 <= x.t0) { problems.push(`${where}: it needs a start and a later end (seconds).`); continue; }
+      shelfIds.add(id);
+      keptShelves.push({ id, label: fa ? { en, fa } : { en }, t0: x.t0, t1: x.t1 });
+    }
+    if (keptShelves.length) walk.shelves = keptShelves.sort((a, b) => a.t0 - b.t0);
+
     const items = Array.isArray(r.items) ? r.items : [];
     if (r.items !== undefined && !Array.isArray(r.items)) problems.push(`${key}: «items» must be a list.`);
     if (items.length > MAX_ITEMS) problems.push(`${key}: ${items.length} items; at most ${MAX_ITEMS}.`);
@@ -267,15 +300,19 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         const o = (q && typeof q === "object" ? q : {}) as Record<string, unknown>;
         return finite(o.t) && o.t >= 0 && finite(o.x) && finite(o.y) && Math.abs(o.x) <= 3.2 && Math.abs(o.y) <= 1.6;
       });
-      if (!raw || !raw.length || !ok || raw.length > MAX_PINS) { problems.push(`${where}: it needs 1 to ${MAX_PINS} pins of { t ≥ 0, x, y }.`); continue; }
+      const shelf = typeof x.shelf === "string" && shelfIds.has(x.shelf) ? x.shelf : "";
+      if (x.shelf !== undefined && x.shelf !== null && x.shelf !== "" && !shelf) { problems.push(`${where}: its shelf «${String(x.shelf)}» is not on this walk.`); continue; }
+      const pins = x.pins === undefined || x.pins === null ? [] : raw;
+      if (!pins || (raw && !ok) || pins.length > MAX_PINS) { problems.push(`${where}: its pins must be up to ${MAX_PINS} of { t ≥ 0, x, y }.`); continue; }
+      if (!pins.length && !shelf) { problems.push(`${where}: it needs a dot in the picture, a shelf, or both.`); continue; }
       itemIds.add(id);
       kept.push({
         id, label: fa ? { en, fa } : { en },
-        ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}),
-        pins: sortItemPins((raw as Array<Record<string, number>>).map((q) => ({ t: q.t, x: q.x, y: q.y }))),
+        ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}), ...(shelf ? { shelf } : {}),
+        pins: sortItemPins((pins as Array<Record<string, number>>).map((q) => ({ t: q.t, x: q.x, y: q.y }))),
       });
     }
-    if (kept.length) walk.items = kept.sort((a, b) => a.pins[0].t - b.pins[0].t);
+    if (kept.length) walk.items = kept.sort((a, b) => itemTime(a, walk) - itemTime(b, walk));
     walks[key] = walk;
   }
   const out: Walks = { walks };
@@ -420,6 +457,22 @@ export function itemAt(item: WalkItem, t: number, round: boolean, slack = NEAR_D
   };
 }
 
+/** When an item is first seen: its first pin, else its shelf's start. */
+export function itemTime(item: WalkItem, walk: Walk | null): number {
+  if (item.pins.length) return item.pins[0].t;
+  return walk?.shelves?.find((s) => s.id === item.shelf)?.t0 ?? 0;
+}
+
+/** The shelf in view at `t` (the one that began last, if two overlap), with its products. */
+export function shelfAt(walk: Walk | null, t: number): { shelf: WalkShelf; items: WalkItem[] } | null {
+  let best: WalkShelf | null = null;
+  // A quarter second of slack either side: a shelf marked at 0:00.01 is in view at 0:00.
+  for (const s of walk?.shelves ?? []) if (t >= s.t0 - 0.25 && t <= s.t1 + 0.25 && (!best || s.t0 > best.t0)) best = s;
+  if (!best) return null;
+  const items = (walk?.items ?? []).filter((it) => it.shelf === best!.id);
+  return items.length ? { shelf: best, items } : null;
+}
+
 /** The items shown at `t` on a walk, with where. */
 export function itemsAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem; x: number; y: number }> {
   const out: Array<{ item: WalkItem; x: number; y: number }> = [];
@@ -463,7 +516,7 @@ export function updateDoor(w: Walks, key: string, id: string, patch: Partial<Omi
 export function addItem(w: Walks, key: string, item: Omit<WalkItem, "id">): Walks {
   return withWalk(w, key, (walk) => {
     const id = nextItemId(walk, item.label.en);
-    const items = [...(walk.items ?? []), { ...item, id, pins: sortItemPins(item.pins) }].sort((a, b) => a.pins[0].t - b.pins[0].t);
+    const items = [...(walk.items ?? []), { ...item, id, pins: sortItemPins(item.pins) }].sort((a, b) => itemTime(a, walk) - itemTime(b, walk));
     return { ...walk, items };
   });
 }
@@ -479,6 +532,34 @@ export function updateItem(w: Walks, key: string, id: string, patch: Partial<Omi
 export function removeItem(w: Walks, key: string, id: string): Walks {
   if (!w.walks[key]) return w;
   return withWalk(w, key, (walk) => ({ ...walk, items: (walk.items ?? []).filter((it) => it.id !== id) }));
+}
+
+/** A new shelf on a walk; its id from its name. */
+export function addShelf(w: Walks, key: string, shelf: Omit<WalkShelf, "id">): Walks {
+  return withWalk(w, key, (walk) => {
+    const id = nextDoorId({ doors: (walk.shelves ?? []).map((s) => ({ id: s.id })) as unknown as WalkDoor[] }, shelf.label.en);
+    return { ...walk, shelves: [...(walk.shelves ?? []), { ...shelf, id }].sort((a, b) => a.t0 - b.t0) };
+  });
+}
+
+export function updateShelf(w: Walks, key: string, id: string, patch: Partial<Omit<WalkShelf, "id">>): Walks {
+  if (!w.walks[key]) return w;
+  return withWalk(w, key, (walk) => ({
+    ...walk,
+    shelves: (walk.shelves ?? []).map((s) => (s.id === id ? { ...s, ...patch } : s)).sort((a, b) => a.t0 - b.t0),
+  }));
+}
+
+/** A shelf gone: its products stay, off any shelf (an item left with no dot either goes too). */
+export function removeShelf(w: Walks, key: string, id: string): Walks {
+  if (!w.walks[key]) return w;
+  return withWalk(w, key, (walk) => ({
+    ...walk,
+    shelves: (walk.shelves ?? []).filter((s) => s.id !== id),
+    items: (walk.items ?? [])
+      .map((it): WalkItem => (it.shelf === id ? (({ shelf: _s, ...rest }) => rest)(it) : it))
+      .filter((it) => it.pins.length > 0 || it.shelf),
+  }));
 }
 
 /** The shop's name on a walk (empty: none). */
@@ -556,7 +637,11 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const bb: Walk = b ?? { doors: [] };
     const title = same(m.title, bb.title) ? t.title : m.title;
     const items = mergeById(bb.items ?? [], m.items ?? [], t.items ?? []);
-    walks[k] = { ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}) };
+    const shelves = mergeById(bb.shelves ?? [], m.shelves ?? [], t.shelves ?? []);
+    walks[k] = {
+      ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors),
+      ...(items.length ? { items } : {}), ...(shelves.length ? { shelves } : {}),
+    };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;
   return parseWalks({ walks, ...(start ? { start } : {}) });
