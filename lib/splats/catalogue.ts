@@ -243,3 +243,20 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
   products.sort((a, b) => a.n - b.n);
   return { catalogue: { store, products, ...(typeof o.updated === "string" ? { updated: o.updated } : {}) }, problems };
 }
+
+/**
+ * A STORE'S AISLES — its shelf videos in order (founder, 2026-10-12: "map
+ * later, simple next previous now"): every `scenes/<store>-shelf-<id>/….mp4`,
+ * by shelf (`2` before `10`, `3a` before `3b`), leaving out phone copies.
+ */
+export type Aisle = { key: string; shelf: string };
+export function aislesOf(keys: string[], store: string): Aisle[] {
+  const re = new RegExp(`^scenes/${store.replace(/[-]/g, "\\-")}-shelf-([a-z0-9-]+)/[^/]+\\.mp4$`, "i");
+  const out: Aisle[] = [];
+  for (const key of keys) {
+    const m = re.exec(key);
+    if (m && !/-phone\.mp4$/i.test(key)) out.push({ key, shelf: m[1] });
+  }
+  const num = (s: string) => Number(/^\d+/.exec(s)?.[0] ?? Infinity);
+  return out.sort((a, b) => num(a.shelf) - num(b.shelf) || a.shelf.localeCompare(b.shelf) || a.key.localeCompare(b.key));
+}

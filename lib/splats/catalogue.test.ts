@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   checkCatalogue, formatCents, nextNumber, parseSheet, priceOf, productName, productOf, readPrice, readUnit,
-  storeOfScene, unitPriceSay, weightChoices,
+  aislesOf, storeOfScene, unitPriceSay, weightChoices,
 } from "./catalogue.ts";
 
 const HEADER = ["number", "product no", "title_fa", "title_en", "units", "unit price", "link to photo"];
@@ -97,4 +97,13 @@ test("a stored catalogue is checked on the way in", () => {
   assert.deepEqual(catalogue?.products, [{ n: 1, en: "Tea", unit: "pack", priceCents: 499, by: "hand" }]);
   assert.equal(problems.length, 3);
   assert.equal(checkCatalogue({ store: "Bad Store!", products: [] }).catalogue, null);
+});
+
+test("a store's aisles are its shelf videos, in shelf order", () => {
+  const keys = [
+    "scenes/alis-market-shelf-10/v.mp4", "scenes/alis-market-shelf-03b/v.mp4", "scenes/alis-market-shelf-2/v.mp4",
+    "scenes/alis-market-shelf-03a/v.mp4", "scenes/alis-market-shelf-03a/v-phone.mp4", "scenes/alis-market-shelf-2/notes.json",
+    "scenes/other-store-shelf-1/v.mp4", "scenes/alis-market/entrance.mp4",
+  ];
+  assert.deepEqual(aislesOf(keys, "alis-market").map((a) => a.shelf), ["2", "03a", "03b", "10"]);
 });

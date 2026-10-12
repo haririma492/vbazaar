@@ -57,7 +57,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
-import { STORE_RE, checkCatalogue, storeOfScene, type Catalogue } from "@/lib/splats/catalogue";
+import { STORE_RE, checkCatalogue, storeOfScene, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
@@ -245,6 +245,8 @@ type Engine = {
   setWalks: (w: Walks) => void;
   enter: (door: WalkDoor) => void;
   back: () => void;
+  /** Cross-fade to another walk video from its start — the next or previous aisle of a store. */
+  goToWalk: (key: string) => void;
   /** Where the visitor is, in the current video's own frame (the operator's «Door here»). */
   here: () => { key: string | null; t: number; yaw: number; flat: boolean };
   /** Jump to a door's moment and face it. */
@@ -313,6 +315,8 @@ export default function Walk360() {
   const [card, setCard] = useState<WalkItem | null>(null);
   /** The product list of the store this video belongs to (`lib/splats/catalogue.ts`), or null. */
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  /** The store's aisles (its shelf videos, in order), for Next / Previous. */
+  const [aisles, setAisles] = useState<Aisle[]>([]);
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
   const [diag, setDiag] = useState("");
@@ -554,6 +558,28 @@ export default function Walk360() {
       report(true);
     }
 
+    /**
+     * Another aisle of the store: the same cross-fade as a door, from its start,
+     * and no way «back» (the aisles are side by side, not one inside another).
+     * The address follows, so a reload or the edit link stays on this aisle.
+     */
+    async function goToWalk(key: string) {
+      if (busy || !current || current.key === key) return;
+      release(pending);
+      pending = null;
+      trail.length = 0;
+      const to = makeLayer({ key, t: 0, purpose: "main" });
+      const h = heading();
+      if (await switchTo(to, () => -h)) {
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.set("v", key);
+          window.history.replaceState(null, "", u.toString());
+        } catch { /* the address is a convenience */ }
+      }
+      report(true);
+    }
+
     async function back() {
       const top = trail[trail.length - 1];
       if (busy || !top || !current) return;
@@ -792,6 +818,7 @@ export default function Walk360() {
         current.video.currentTime = Math.max(0, t);
       },
       back: () => void back(),
+      goToWalk: (k) => void goToWalk(k),
       here: () => ({ key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), flat: current?.flat ?? false }),
       goTo(door) {
         if (!current || busy) return;
@@ -1178,12 +1205,17 @@ export default function Walk360() {
   const store = view.key ? storeOfScene(view.key) : "";
   useEffect(() => {
     setCatalogue(null);
+    setAisles([]);
     if (!STORE_RE.test(store)) return;
     let gone = false;
     void fetch(`/api/splats/catalogue?store=${encodeURIComponent(store)}`, { cache: "no-store" })
       .then((r) => r.json())
       .then((j) => { if (!gone && j?.ok && j.catalogue) setCatalogue(checkCatalogue(j.catalogue).catalogue); })
       .catch(() => { /* no list: the cards show what each product was tagged with */ });
+    void fetch(`/api/splats/store?store=${encodeURIComponent(store)}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => { if (!gone && j?.ok && Array.isArray(j.aisles)) setAisles(j.aisles); })
+      .catch(() => { /* no aisles: no Next / Previous */ });
     return () => { gone = true; };
   }, [store]);
   async function saveCatalogue(c: Catalogue): Promise<string | null> {
@@ -1241,6 +1273,9 @@ export default function Walk360() {
   }
 
   const door = view.near[0];
+  const aisleAt = view.key ? aisles.findIndex((a) => a.key === view.key) : -1;
+  /** An aisle's name, from its shelf id: «Aisle 3a» (the walk's title is the shop's name, the same on every aisle). */
+  const aisleName = (i: number) => (aisles[i] ? `Aisle ${aisles[i].shelf.replace(/^0+(?=\d)/, "")}` : "");
 
   return (
     <div className="fixed inset-0 bg-black">
@@ -1329,6 +1364,26 @@ export default function Walk360() {
               ← Back to the street · بازگشت به خیابان
             </button>
           )}
+          {/* A store's aisles: «‹ Aisle 2 · Aisle 3 of 6 · Aisle 4 ›» (founder, 2026-10-12: "map later, simple next previous now"). */}
+          {aisleAt >= 0 && aisles.length > 1 && !view.busy && (
+            <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full border border-white/20 bg-black/65 p-1 text-[13px] text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
+              <button disabled={aisleAt === 0} onClick={() => engine.current?.goToWalk(aisles[aisleAt - 1].key)}
+                className="rounded-full px-3 py-1.5 hover:bg-white/15 disabled:opacity-30">‹ {aisleName(aisleAt - 1)}</button>
+              <span className="px-1 text-white/60">{aisleName(aisleAt)} · {aisleAt + 1} / {aisles.length}</span>
+              <button disabled={aisleAt === aisles.length - 1} onClick={() => engine.current?.goToWalk(aisles[aisleAt + 1].key)}
+                className="rounded-full px-3 py-1.5 hover:bg-white/15 disabled:opacity-30">{aisleName(aisleAt + 1)} ›</button>
+            </div>
+          )}
+          {/* The end of an aisle: on to the next. */}
+          {aisleAt >= 0 && aisleAt < aisles.length - 1 && !view.busy && Number.isFinite(time.total) && time.now >= time.total - 0.4 && (
+            <div className="absolute inset-x-0 bottom-28 z-10 flex justify-center">
+              <button dir="ltr" onClick={() => engine.current?.goToWalk(aisles[aisleAt + 1].key)}
+                className="rounded-full border border-amber-300/80 bg-amber-300/30 px-7 py-3.5 text-[17px] font-bold text-amber-50 shadow-lg">
+                Next aisle · {aisleName(aisleAt + 1)} → · راهروی بعد
+              </button>
+            </div>
+          )}
+
           {/* Inside a shop whose door names its website. */}
           {view.inside > 0 && view.site && !view.busy && (
             <button
