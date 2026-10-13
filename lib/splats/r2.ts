@@ -183,6 +183,18 @@ export async function listSplats(): Promise<SplatObject[]> {
   return [...scenes, ...masters];
 }
 
+/** A master's body as a stream (and its size), or null when it is not there — for `/api/demo`. */
+export async function readMaster(key: string): Promise<{ body: ReadableStream; size: number | null } | null> {
+  try {
+    const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().mastersBucket, Key: key }));
+    if (!out.Body) return null;
+    return { body: out.Body.transformToWebStream() as ReadableStream, size: out.ContentLength ?? null };
+  } catch (e) {
+    if ((e as { name?: string }).name === "NoSuchKey") return null;
+    throw e;
+  }
+}
+
 /** A time-limited download link — for a master, the way to hand it to the converter without a key. */
 export function downloadLink(kind: SplatKind, key: string): Promise<string> {
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }), { expiresIn: LINK_SECONDS });
