@@ -23,6 +23,14 @@ const KEYS = [
     href: "/vca/walk",
   },
   {
+    id: "shop",
+    icon: "🛒",
+    fa: "خرید از داخل فروشگاه",
+    en: "Shop inside a store",
+    note: "Walk the aisle, tap a product, add it to the basket",
+    href: "/vca/walk?v=scenes%2Fchinastoreyoutube%2FBillstra-119-Hamburg-20539-Qm7OVO4braI-.mp4",
+  },
+  {
     id: "store",
     icon: "🏬",
     fa: "داخل فروشگاه — ورلد آن یانگ",
