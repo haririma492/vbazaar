@@ -23,7 +23,7 @@
 
 import {
   AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand,
-  GetBucketCorsCommand, GetObjectCommand, ListObjectsV2Command, ListPartsCommand, PutBucketCorsCommand, PutObjectCommand,
+  GetBucketCorsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, ListPartsCommand, PutBucketCorsCommand, PutObjectCommand,
   S3Client, UploadPartCommand, type CORSRule,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -235,14 +235,26 @@ export async function installCors(origins: string[]) {
   }
 }
 
-/** A web-bucket object saved to a local file (the streamed-copy job's input). */
-export async function downloadToFile(key: string, path: string): Promise<number> {
+/** A web-bucket object (or, with `kind` "master", a masters one) saved to a local file — the streamed-copy job's input. */
+export async function downloadToFile(key: string, path: string, kind: SplatKind = "web"): Promise<number> {
   const { createWriteStream } = await import("node:fs");
   const { pipeline } = await import("node:stream/promises");
-  const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: key }));
+  const out = await s3().send(new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }));
   if (!out.Body) throw new Error(`«${key}» is empty`);
   await pipeline(out.Body as NodeJS.ReadableStream, createWriteStream(path));
   return out.ContentLength ?? 0;
+}
+
+/** Whether the web bucket holds `key`. */
+export async function webObjectExists(key: string): Promise<boolean> {
+  try {
+    await s3().send(new HeadObjectCommand({ Bucket: r2Config().webBucket, Key: key }));
+    return true;
+  } catch (e) {
+    const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (err.name === "NotFound" || err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) return false;
+    throw e;
+  }
 }
 
 /** A local file put into the web bucket at `key` (one request: R2 takes up to ~5 GB that way). */

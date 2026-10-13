@@ -1,6 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type Store3d = { state: "working" | "done" | "failed"; step?: string; error?: string | null; url?: string | null };
+
+/**
+ * The 3D store opens its STREAMED copy (.rad): the viewer reads it a piece at a
+ * time, so the first picture comes in seconds. The server makes that copy from
+ * the .ply the first time it is asked (about a minute) — this says so on the
+ * screen while it waits, and opens the store when it is ready.
+ */
+function useStore3d() {
+  const [s, setS] = useState<Store3d | null>(null);
+  const [waiting, setWaiting] = useState(false);
+  useEffect(() => {
+    let stop = false;
+    let timer = 0;
+    const ask = async () => {
+      try {
+        const r = await fetch("/api/demo/store-3d", { cache: "no-store" });
+        const j = (await r.json()) as Store3d;
+        if (stop) return;
+        setS(j);
+        if (j.state === "working") timer = window.setTimeout(ask, 3000);
+      } catch {
+        if (!stop) setS({ state: "failed", error: "Could not reach the server. Check the connection and reload." });
+      }
+    };
+    void ask();
+    return () => { stop = true; window.clearTimeout(timer); };
+  }, []);
+  useEffect(() => {
+    if (waiting && s?.state === "done" && s.url) window.location.href = `/vca/splat?src=${encodeURIComponent(s.url)}`;
+  }, [waiting, s]);
+  return { s, waiting, open: () => setWaiting(true), close: () => setWaiting(false) };
+}
 
 /**
  * The pitch screen: three big keys, nothing else. The intro plays right here;
@@ -36,13 +70,13 @@ const KEYS = [
     fa: "داخل فروشگاه — ورلد آن یانگ",
     en: "Inside World on Yonge (3D)",
     note: "The first alley, scanned in 3D — move through it",
-    href: "/vca/splat?src=%2Fapi%2Fdemo%2Fworld-on-yonge.ply&big=1",
   },
 ] as const;
 
 export default function DemoScreen() {
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
+  const store = useStore3d();
   return (
     <main className="min-h-dvh bg-[#0b0f12] px-4 py-8 text-white">
       <div className="mx-auto flex max-w-xl flex-col gap-4">
@@ -66,11 +100,32 @@ export default function DemoScreen() {
           return "href" in k ? (
             <a key={k.id} href={k.href} className={cls}>{inner}</a>
           ) : (
-            <button key={k.id} className={cls} onClick={() => { setFailed(false); setPlaying(true); }}>{inner}</button>
+            <button
+              key={k.id}
+              className={cls}
+              onClick={() => (k.id === "store" ? store.open() : (setFailed(false), setPlaying(true)))}
+            >
+              {inner}
+            </button>
           );
         })}
         <p className="mt-2 text-center text-[12px] text-white/35">sarekooche.com</p>
       </div>
+
+      {store.waiting && store.s?.state !== "done" && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/90 p-6 text-center">
+          {store.s?.state === "failed" ? (
+            <p className="max-w-sm text-[15px] text-rose-200">The 3D store could not be prepared: {store.s.error}</p>
+          ) : (
+            <>
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-[#00B8C8]" />
+              <p className="max-w-sm text-[16px]">Preparing the 3D store — the first time takes about a minute.</p>
+              {store.s?.step && <p className="max-w-sm text-[12px] text-white/50">{store.s.step}</p>}
+            </>
+          )}
+          <button onClick={store.close} className="rounded-full bg-white/15 px-4 py-2 text-[15px] font-semibold">✕ Close</button>
+        </div>
+      )}
 
       {playing && (
         <div className="fixed inset-0 z-50 flex flex-col bg-black">

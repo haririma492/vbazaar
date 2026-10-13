@@ -6,6 +6,11 @@
  *                        bucket, passed through (same site: no CORS to set up;
  *                        the name ends in .ply so the viewer knows the format)
  *   intro                the «vca-intro» video: a short-lived link to it
+ *   store-3d             the same point cloud as a STREAMED copy (.rad) in the
+ *                        public bucket, made on first ask (~a minute): JSON
+ *                        { state, step, url }. The .ply alone took "forever"
+ *                        (founder, 2026-10-13) — all of it through this server
+ *                        before the first picture.
  *
  * ⚠️ AN ALLOW-LIST OF ONE FILE EACH, like `/api/splats/walks/video` signing
  * only what a door names: the masters bucket stays private; only what the
@@ -14,11 +19,14 @@
  */
 import { NextResponse } from "next/server";
 import { downloadLink, listSplats, r2Config, readMaster } from "@/lib/splats/r2";
+import { startMasterStreamJob } from "@/lib/splats/stream-job";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const PLY_KEY = "masters/worldonyonge-inside-1st-alley/point_cloud_last-2-.ply";
+/** Its streamed copy, in the public bucket — the /demo page is public too. */
+const RAD_KEY = "scenes/demo/world-on-yonge-lod.rad";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ file: string }> }) {
   const { file } = await ctx.params;
@@ -34,6 +42,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ file: string }
           "cache-control": "private, max-age=3600",
         },
       });
+    }
+    if (file === "store-3d") {
+      const job = startMasterStreamJob(PLY_KEY, RAD_KEY);
+      const base = r2Config().publicBase;
+      if (job.state === "done" && !base) {
+        return NextResponse.json({ ok: false, state: "failed", error: "NEXT_PUBLIC_SPLAT_BASE_URL is not set on this host." }, { status: 503 });
+      }
+      return NextResponse.json(
+        { ok: job.state !== "failed", state: job.state, step: job.step, error: job.error, url: job.state === "done" ? `${base}/${RAD_KEY}` : null },
+        { headers: { "cache-control": "no-store" } },
+      );
     }
     if (file === "intro") {
       const intro = await findIntro();

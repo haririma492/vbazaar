@@ -25,7 +25,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, readTour, uploadFile, writeTour } from "./r2";
+import { downloadToFile, readTour, uploadFile, webObjectExists, writeTour } from "./r2";
 import { sceneById, updateScene } from "./tour";
 
 export type StreamJob = {
@@ -100,6 +100,50 @@ export function startStreamJob(scene: string, sharp = false): StreamJob {
       // Read again: the tour may have changed while this ran.
       await writeTour(updateScene(await readTour(), scene, { fileRad: key }));
       Object.assign(job, { state: "done", step: "done", key, finishedAt: Date.now() });
+    } catch (e) {
+      Object.assign(job, { state: "failed", error: (e as Error).message, finishedAt: Date.now() });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  })();
+  return job;
+}
+
+/**
+ * A streamed copy of ONE MASTER, outside the tour — for `/demo`'s 3D store
+ * (founder, 2026-10-13: "this takes forever"). The raw .ply passed through our
+ * server whole before the first picture; the .rad is read by the viewer a page
+ * at a time, straight from the public bucket, like every other scene.
+ *
+ * Idempotent: done when `outKey` is already in the web bucket, and one job per
+ * `outKey` at a time. Its progress is under `streamJob(outKey)`.
+ */
+export function startMasterStreamJob(masterKey: string, outKey: string): StreamJob {
+  const running = jobs.get(outKey);
+  if (running?.state === "working" || running?.state === "done") return running;
+  const job: StreamJob = { scene: outKey, state: "working", step: "starting", startedAt: Date.now(), finishedAt: null, key: null, error: null };
+  jobs.set(outKey, job);
+  void (async () => {
+    const dir = mkdtempSync(join(tmpdir(), "sk-rad-master-"));
+    try {
+      if (await webObjectExists(outKey)) {
+        Object.assign(job, { state: "done", step: "done", key: outKey, finishedAt: Date.now() });
+        return;
+      }
+      if (!existsSync(BIN)) throw new Error("the converter (bin/build-lod) is not on this server");
+      const ext = masterKey.split(".").pop() ?? "ply";
+      const input = join(dir, `input.${ext}`);
+      job.step = "downloading the 3D file";
+      await downloadToFile(masterKey, input, "master");
+      job.step = `converting ${Math.round(statSync(input).size / 1048576)} MB`;
+      await run(["--quick", "--max-sh=1", input], dir, (line) => {
+        if (/^(Read:|Removed|Wrote|Encoding)/.test(line)) job.step = line.slice(0, 160);
+      });
+      const out = readdirSync(dir).find((f) => f.endsWith("-lod.rad"));
+      if (!out) throw new Error("the converter wrote no .rad file");
+      job.step = `uploading ${Math.round(statSync(join(dir, out)).size / 1048576)} MB`;
+      await uploadFile(outKey, join(dir, out));
+      Object.assign(job, { state: "done", step: "done", key: outKey, finishedAt: Date.now() });
     } catch (e) {
       Object.assign(job, { state: "failed", error: (e as Error).message, finishedAt: Date.now() });
     } finally {
