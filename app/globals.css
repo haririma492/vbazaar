@@ -1,0 +1,272 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   sarekooche — the look-and-feel standard, declared here and nowhere else.
+   Carried over from the parent project, where each of these was measured.
+   =========================================================================== */
+
+:root {
+  /* The house colour. Change this ONE value and every field, key, chip and
+     accent on the site follows it. */
+  --sk: #00b8c8;
+  --sk-hover: #1fc8d6;
+  --sk-ground: #06131c;
+  --sk-ink: #f0fffc;
+
+  --sk-line: var(--sk);
+
+  /* ⚠️ 25%, NOT 12% — A KEY HAS TO LOOK FOUND BEFORE IT IS TOUCHED. 12% is
+     what a lit menu GROUP CARD wears, which is right at the size of a card and
+     too faint at the size of a word: the only state that read as "on" was the
+     hover, which a phone never shows at all. 25% is what the ACTIVE SUBMENU
+     ENTRY wears — the menu's own answer to "this one is turned on" at exactly
+     this scale. The hover moves up from there, so pointing at a key still
+     says something. */
+  --sk-key-bg: rgba(0, 184, 200, 0.25);
+  --sk-key-bg-hover: rgba(0, 184, 200, 0.36);
+
+  /* An OPAQUE pair, because an <option> is painted on a surface the browser
+     owns: a translucent fill composites to nothing there and the list comes
+     out white-on-near-white — present, focusable and unreadable. Dark wins on
+     evidence: an opaque pair carries its own contrast and so is legible on
+     either ground. BOTH halves, always together. */
+  --sk-option-bg: #0b1b26;
+  --sk-option-fg: #f0fffc;
+}
+
+html { scroll-behavior: smooth; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--sk-ground);
+  color: var(--sk-ink);
+  /* ⚠️ `clip`, NOT `hidden`. `hidden` on html AND body turns body into a
+     scroll container that never scrolls, and every `position: sticky` under
+     it (the home page's basket column) then sticks to nothing. `clip` cuts
+     the sideways overflow the same way without making a scroll container.
+     `hidden` stays first as the fallback for browsers without `clip`. */
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* ===========================================================================
+   THE FONT.
+
+   ⚠️ IT IS NOT A FONT WE LOAD — it is the app's DEFAULT SANS STACK, and this
+   class exists so a heading can be ASKED for the face by name and so the
+   tracking cannot drift. No webfont on purpose: this audience is largely
+   inside Iran, where a blocked request to a foreign font CDN is a blank
+   heading rather than a slow one.
+
+   ⚠️ A HEADING THAT LOOKS LIKE A DIFFERENT FONT IS ALMOST NEVER A DIFFERENT
+   FAMILY — IT IS THE WEIGHT. There is no 800/900 Persian face on an ordinary
+   machine, so `font-black` / `font-extrabold` make the browser substitute
+   another family or synthesise a fake bold. Persian text is capped at 700,
+   with NORMAL tracking — negative letter-spacing pulls joined Persian letters
+   into each other. The emoji families are carried verbatim; dropping them
+   would leave any emoji in a heading to a different fallback.
+   =========================================================================== */
+.sk-font {
+  font-family: Vazirmatn, ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  letter-spacing: normal;
+}
+
+body {
+  font-family: Vazirmatn, ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* ===========================================================================
+   THE FIELD AND THE KEY — one border, one fill, every section.
+
+   ⚠️ THESE RULES ARE UNLAYERED, DELIBERATELY. Tailwind v4 puts its utilities
+   in `@layer utilities`, and unlayered CSS beats every layered rule whatever
+   the specificity or source order — so `.sk-field` overrides the
+   `border-white/15` already written into dozens of class strings with no
+   `!important` and no edit to those strings.
+
+   The consequence to know: a `focus:border-*` utility on a field no longer
+   does anything, so the focus affordance is restated as an OUTLINE — drawn
+   outside the box, so it moves nothing.
+   =========================================================================== */
+.sk-field,
+.sk-key {
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--sk-line);
+}
+
+/* ⚠️ `.sk-field` SETS NO TEXT COLOUR EITHER, AND THE CALL SITE MUST. Tailwind's
+   preflight gives every form control `color: inherit`, so a field wears the
+   PAGE's ink — the near-white `--sk-ink` this dark site is written in. On a
+   dark panel that is right; dropped on a white card it is white on white and
+   the reader cannot see what they are typing, which is how the flyer's search
+   box shipped. A field on a light surface states its own `text-*` and
+   `placeholder:text-*`. Same reasoning as `.sk-key` below: this rule cannot
+   know which surface it landed on. */
+.sk-field:focus-visible,
+.sk-key:focus-visible,
+.sk-field:focus {
+  outline: 2px solid rgba(0, 184, 200, 0.55);
+  outline-offset: 1px;
+}
+
+/* ⚠️ `.sk-key` SETS NO TEXT COLOUR, ON PURPOSE. A 25% wash takes the colour of
+   whatever is behind it; a colour written in here would be right on one
+   surface and invisible on another. The call site passes its palette's own. */
+.sk-key { background-color: var(--sk-key-bg); }
+
+/* `:not(:disabled)` so a key that is off — a Search key disables itself until
+   there is something to search for — does not light up under the pointer and
+   promise an action it will not perform. */
+.sk-key:hover:not(:disabled) { background-color: var(--sk-key-bg-hover); }
+
+select.sk-field { color-scheme: dark; }
+
+/* ⚠️ THE BROWSER'S OWN CLEAR MARK IS OFF ON A `type="search"` FIELD. WebKit
+   draws its own ✕ inside the box, and the flyer's search draws one too —
+   positioned, coloured and labelled for a screen reader. Two ✕ a few pixels
+   apart, one of them unlabelled, is a worse control than either alone. */
+.sk-field::-webkit-search-decoration,
+.sk-field::-webkit-search-cancel-button,
+.sk-field::-webkit-search-results-button,
+.sk-field::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.sk-field option,
+.sk-field optgroup {
+  background-color: var(--sk-option-bg);
+  color: var(--sk-option-fg);
+}
+
+/* One vertical gap between sections, for the whole main page. */
+.sk-section-gap { margin-bottom: 1.75rem; }
+@media (min-width: 768px) { .sk-section-gap { margin-bottom: 2.5rem; } }
+
+/* ===========================================================================
+   THE MAP PINS of «فهرست قصابی ها» (components/butchery/ButcherShops.tsx).
+
+   ⚠️ PLAIN CSS BECAUSE THE NODES ARE NOT REACT'S. Each pin is a <div> handed
+   to Google's AdvancedMarkerElement, so it is built with createElement and
+   lives inside Google's own DOM. A lit pin is the house colour, 1.75× the
+   size, shows the shop's name and pulses; its label is scaled back down so
+   the enlargement reads as the PIN growing, not the text shouting.
+   =========================================================================== */
+.sk-pin {
+  position: relative;
+  display: grid;
+  place-items: center;
+  transform-origin: 50% 100%;
+  transition: transform .25s cubic-bezier(.3, 1.6, .5, 1);
+  cursor: pointer;
+}
+.sk-pin-dot {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: #7a2e12;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  color: #fff;
+  font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
+  transition: background .2s;
+}
+.sk-pin-n { transform: rotate(45deg); } /* keep the number upright */
+.sk-pin-label {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #fff;
+  color: #16191d;
+  font: 600 12px/1.4 Vazirmatn, ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s;
+}
+.sk-pin:hover .sk-pin-label { opacity: 1; }
+.sk-pin.is-on { transform: scale(1.75); }
+.sk-pin.is-on .sk-pin-dot {
+  background: var(--sk);
+  animation: sk-pin-pulse 1.6s ease-out infinite;
+}
+.sk-pin.is-on .sk-pin-label { opacity: 1; transform: scale(.6); transform-origin: 50% 100%; }
+
+@keyframes sk-pin-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 184, 200, .6), 0 3px 10px rgba(0, 0, 0, .4); }
+  100% { box-shadow: 0 0 0 14px rgba(0, 184, 200, 0), 0 3px 10px rgba(0, 0, 0, .4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-pin { transition: none; }
+  .sk-pin.is-on .sk-pin-dot { animation: none; }
+}
+
+/* ===========================================================================
+   THE COVERAGE MAP (`/coverage`) AND THE MEMBERSHIP FORM (`/membership`).
+   Their own `sk-cov-*` / `sk-mem-*` names, because `.sk-pin` above is the
+   butchers' map's and a shared name would restyle one from the other.
+   =========================================================================== */
+.sk-cov-area { cursor: pointer; transition: fill .25s, stroke .25s, stroke-width .25s; outline: none; }
+.sk-cov-area:focus-visible { stroke: #fff; stroke-width: 4; }
+.sk-cov-pin { transition: transform .25s cubic-bezier(.3, 1.6, .5, 1); }
+.sk-cov-flow { animation: sk-cov-flow 1.4s linear infinite; }
+.sk-cov-pulse { transform-box: fill-box; transform-origin: center; animation: sk-cov-pulse 1.6s ease-out infinite; }
+
+@keyframes sk-cov-flow { to { stroke-dashoffset: -44; } }
+@keyframes sk-cov-pulse {
+  0%   { transform: scale(.6); opacity: .9; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* A block that has just appeared rises into place. */
+.sk-rise { animation: sk-rise .35s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes sk-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The membership card's slow sheen, and the checkmark that draws itself. */
+.sk-mem-card { position: relative; overflow: hidden; }
+.sk-mem-card::after {
+  content: "";
+  position: absolute;
+  inset: -50%;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, .12) 50%, transparent 60%);
+  animation: sk-mem-sheen 5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes sk-mem-sheen {
+  0%, 60% { transform: translateX(-60%); }
+  100%    { transform: translateX(60%); }
+}
+.sk-mem-check { stroke-dasharray: 48; stroke-dashoffset: 48; animation: sk-mem-check .6s .15s ease-out forwards; }
+@keyframes sk-mem-check { to { stroke-dashoffset: 0; } }
+
+/* The opening seal on the main page: a drop shadow under the foil and a
+   sheen that sweeps across it every few seconds. */
+.sk-seal { filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .45)); }
+.sk-seal-sheen { animation: sk-seal-sheen 6s ease-in-out infinite; }
+@keyframes sk-seal-sheen {
+  0%, 70% { transform: translateX(0); }
+  100%    { transform: translateX(200px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-cov-flow, .sk-cov-pulse, .sk-rise, .sk-mem-card::after, .sk-seal-sheen { animation: none; }
+  .sk-mem-check { animation: none; stroke-dashoffset: 0; }
+  .sk-cov-pin, .sk-cov-area { transition: none; }
+}

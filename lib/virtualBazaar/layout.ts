@@ -14,6 +14,9 @@
  * direction into it.
  */
 
+/** The basket and the shops are Sarekooche's, on its own site (VCA moved to olgoo.com, 2026-10-15). */
+const SAREKOOCHE = "https://sarekooche.com";
+
 export const EYE_HEIGHT = 1.7;
 
 /** Inner face of the arcade that rings the square. */
@@ -101,12 +104,12 @@ const bayX = (i: number) => FOOD_STREET.firstBay + i * FOOD_STREET.bay;
 export const SHOPS: Shop[] = [
   { id: "attari", name: "عطاری", en: "Herbalist", street: "food", side: "north", x: bayX(0), color: 0x8a6a3b },
   { id: "bakery", name: "نانوایی", en: "Bakery", street: "food", side: "north", x: bayX(1), color: 0xd9a55b },
-  { id: "sarekooche", name: "سرکوچه", en: "Sarekooche", street: "food", side: "north", x: bayX(2), color: 0x00b8c8, href: "/", brand: true },
+  { id: "sarekooche", name: "سرکوچه", en: "Sarekooche", street: "food", side: "north", x: bayX(2), color: 0x00b8c8, href: `${SAREKOOCHE}/`, brand: true },
   { id: "nuts", name: "خشکبار", en: "Nuts & Dried Fruit", street: "food", side: "north", x: bayX(3), color: 0xa0522d },
   { id: "sweets", name: "قنادی", en: "Confectionery", street: "food", side: "north", x: bayX(4), color: 0xe79bb0 },
   { id: "tea", name: "چایخانه", en: "Teahouse", street: "food", side: "north", x: bayX(5), color: 0x7b3f2a },
   { id: "grocer", name: "بقالی", en: "Grocer", street: "food", side: "south", x: bayX(0), color: 0x6f9b54 },
-  { id: "butcher", name: "قصابی سرکوچه", en: "Sarekooche Butcher", street: "food", side: "south", x: bayX(1), color: 0xb03a3a, href: "/?open=meat-order", brand: true },
+  { id: "butcher", name: "قصابی سرکوچه", en: "Sarekooche Butcher", street: "food", side: "south", x: bayX(1), color: 0xb03a3a, href: `${SAREKOOCHE}/?open=meat-order`, brand: true },
   { id: "greens", name: "سبزی‌فروشی", en: "Greengrocer", street: "food", side: "south", x: bayX(2), color: 0x4f8f3a },
   { id: "fish", name: "ماهی‌فروشی", en: "Fishmonger", street: "food", side: "south", x: bayX(3), color: 0x3f7fa6 },
   { id: "dairy", name: "لبنیاتی", en: "Dairy", street: "food", side: "south", x: bayX(4), color: 0xe8e2cf },

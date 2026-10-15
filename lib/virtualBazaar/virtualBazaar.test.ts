@@ -104,7 +104,7 @@ test("spot: a shop and an open street survive the url; nonsense does not", () =>
 
 test("the Sarekooche shops open real pages; the scenery opens none", () => {
   const open = SHOPS.filter((s) => s.href).map((s) => [s.id, s.href]);
-  assert.deepEqual(open, [["sarekooche", "/"], ["butcher", "/?open=meat-order"]]);
+  assert.deepEqual(open, [["sarekooche", "https://sarekooche.com/"], ["butcher", "https://sarekooche.com/?open=meat-order"]]);
   assert.equal(new Set(SHOPS.map((s) => s.id)).size, SHOPS.length, "ids are unique");
   assert.equal(STREETS.filter((s) => s.open).map((s) => s.id).join(), "food");
 });

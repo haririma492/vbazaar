@@ -710,14 +710,14 @@ export default function SplatUploads() {
     setTourDirty(true);
   };
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://sarekooche.com";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://olgoo.com";
   const waiting = items.some((i) => i.step !== "done");
   const badIds = items.filter((i) => i.step !== "done" && !isSceneId(i.scene));
 
   return (
     <div className="space-y-6">
       <header>
-        <a href="/operator" className="text-[13px] text-white/50">← اپراتور</a>
+        <a href="https://sarekooche.com/operator" className="text-[13px] text-white/50">← اپراتور سرکوچه</a>
         <h1 className="sk-font mt-2 text-2xl font-bold text-amber-200">صحنه‌های سه‌بعدی</h1>
         <p dir="ltr" className="text-left text-[13px] text-white/50">
           Gaussian-splat scenes for the Virtual Bazaar, in Cloudflare R2, and the tour that links them.

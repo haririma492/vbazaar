@@ -15,8 +15,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { followProduct } from "./followProduct";
-import AddToListKey from "@/components/shopping/AddToListKey";
-import { offerItemId, type ShoppingItemInput } from "@/lib/shoppingList/shoppingList";
+import { basketAddHref, offerItemId, sarekoocheHref, type BasketLine } from "@/lib/sarekooche";
 import {
   addItem, isSiteUrl, itemTime, removeItem, setTitle, sortItemPins, updateItem, walkOf,
   type ItemPin, type Walk, type WalkItem, type Walks,
@@ -57,7 +56,7 @@ const amountSay = (a: number) => String(Math.round(a * 1000) / 1000);
  * at that weight's price («پسته · 1.5 lb — $19.49»), so the basket needs no
  * notion of weight. Without the list, what the item was tagged with.
  */
-export function itemLine(item: WalkItem, walkKey: string, walk: Walk | null, lang: Lang, product?: Product, amount = 1): ShoppingItemInput {
+export function itemLine(item: WalkItem, walkKey: string, walk: Walk | null, lang: Lang, product?: Product, amount = 1): BasketLine {
   const href = `/vca/walk?v=${encodeURIComponent(walkKey)}`;
   const merchant = shopName(walkKey, walk, lang);
   if (product) {
@@ -153,9 +152,18 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
             )}
           </div>
         )}
-        <AddToListKey item={itemLine(item, walkKey, walk, lang, product, amount)} lang={lang} variant="wide" theme="dark" className="mt-4" />
+        {/* The basket is Sarekooche's, on its own site (`lib/sarekooche.ts`): a new
+            tab, so the walk stays where the shopper stood. */}
+        <a
+          href={basketAddHref(itemLine(item, walkKey, walk, lang, product, amount), typeof window !== "undefined" ? window.location.origin : "https://olgoo.com")}
+          target="_blank"
+          rel="noopener"
+          className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-full bg-[#00B8C8] px-4 text-[15px] font-bold text-[#06131c]"
+        >
+          {lang === "fa" ? "افزودن به سبد سرکوچه" : "Add to Sarekooche basket"}
+        </a>
         <div className="mt-3 flex items-center justify-between text-[13px]">
-          <a href="/basket" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>
+          <a href={sarekoocheHref("/basket")} target="_blank" rel="noopener" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>
           <button className="text-white/55 underline" onClick={() => setLang(lang === "fa" ? "en" : "fa")}>{lang === "fa" ? "English" : "فارسی"}</button>
         </div>
       </div>

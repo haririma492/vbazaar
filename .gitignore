@@ -1,0 +1,10 @@
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+# Splat masters and web copies live in Cloudflare R2, never in git (lib/splats/)
+*.ply
+*.spz
+*.sog
+*.ksplat
+*.splat
