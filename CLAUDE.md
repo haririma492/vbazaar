@@ -13,9 +13,13 @@ app served by the root `server.js` at the paths it had on sarekooche.com:
   `npx next build`; then `node server.js` at the root and open `/vca/walk`.
 - **Env (Railway, the olgoo.com service):** `R2_ACCOUNT_ID`,
   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_MASTERS_BUCKET`,
-  `RUNPOD_API_KEY` (+ its `RUNPOD_TRAIN_*` tunables), `ADMIN_TOKEN` (the
-  operator's), and at build time `NEXT_PUBLIC_SPLAT_BASE_URL`,
-  `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
+  `ADMIN_TOKEN` (the operator's), and at build time
+  `NEXT_PUBLIC_SPLAT_BASE_URL`, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
+- **No GPU training here (owner, 2026-10-15):** *"RUNPOD_TRAIN no longer
+  needed I was not happy with the result of training."* `RUNPOD_API_KEY` and
+  the `RUNPOD_TRAIN_*` tunables are not set on olgoo.com, so «Train» on
+  `/operator/splats` says it is not configured. The code stays as R&D; the
+  splat notes below are history, not the path.
 
 The notes below came with it from Sarekooche's CLAUDE.md, unchanged.
 
