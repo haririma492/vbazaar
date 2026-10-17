@@ -58,6 +58,7 @@ import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
 import { SoundEditor, WalkSound } from "./WalkSound";
+import { CutEditor } from "./WalkCut";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, storeOfScene, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
@@ -152,15 +153,17 @@ function hasPhoneCopy(url: string): Promise<boolean> {
  * timeline, same frame, so the doors fit both. A phone video of a shop
  * (`masters/…`) comes through the server's short-lived link.
  */
-async function srcFor(key: string): Promise<string | null> {
+/** `rev`: the walk's cut count (`Walk.rev`) — a cut video keeps its name, so the address changes instead. */
+async function srcFor(key: string, rev?: number): Promise<string | null> {
   if (isPhoneVideoKey(key)) return `/api/splats/walks/video?key=${encodeURIComponent(key)}`;
   const base = await sceneBase();
   if (!base) return null;
+  const r = rev ? `?r=${rev}` : "";
   if (isTouch() && !isPhoneCopy(key)) {
-    const phone = `${base}/${phoneKeyOf(key)}`;
+    const phone = `${base}/${phoneKeyOf(key)}${r}`;
     if (await hasPhoneCopy(phone)) return phone;
   }
-  return `${base}/${key}`;
+  return `${base}/${key}${r}`;
 }
 
 async function loadWalks(): Promise<Walks> {
@@ -459,7 +462,7 @@ export default function Walk360() {
       });
       layer.ready.catch(() => {}); // a preload nobody used fails quietly
       void (async () => {
-        const src = opts.src !== undefined ? opts.src : opts.key ? await srcFor(opts.key) : null;
+        const src = opts.src !== undefined ? opts.src : opts.key ? await srcFor(opts.key, walkOf(walksNow, opts.key)?.rev) : null;
         if (layer.released) return;
         if (!src) return layer.fail("No address for the video: is NEXT_PUBLIC_SPLAT_BASE_URL set?");
         video.src = src;
@@ -1526,7 +1529,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   const [listError, setListError] = useState<string | null>(null);
   type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
-  const [tab, setTab] = useState<"doors" | "items" | "sound">("doors");
+  const [tab, setTab] = useState<"doors" | "items" | "sound" | "cut">("doors");
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -1662,9 +1665,9 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
     <div dir="ltr" className="absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl">
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1">
-          {(["doors", "items", "sound"] as const).map((k) => (
+          {(["doors", "items", "sound", "cut"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : k === "items" ? "Products" : "Sound"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : "Cut"}
             </button>
           ))}
         </div>
@@ -1675,6 +1678,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           <div className="truncate text-[11px] text-white/60">This walk: {shortKey(viewKey)}{walk?.doors.length ? ` · ${walk.doors.length} door(s)` : ""}</div>
           {listError && <div className="text-rose-300">{listError}</div>}
 
+          {tab === "cut" && <CutEditor video={() => engine.current?.video() ?? null} viewKey={viewKey} />}
           {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
 

@@ -150,6 +150,12 @@ export type Walk = {
    * 2–3× its own sound would garble.
    */
   audio?: string;
+  /**
+   * Bumped by each cut of the video (`cut.ts`): the file keeps its name but
+   * changes, and files are cached "forever" by name, so the player asks for
+   * `<file>?r=<rev>`.
+   */
+  rev?: number;
 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -229,6 +235,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.projection !== undefined && r.projection !== null) {
       if (r.projection === "equirect" || r.projection === "eac" || r.projection === "flat") walk.projection = r.projection;
       else problems.push(`${key}: «projection» must be equirect, eac or flat.`);
+    }
+    if (r.rev !== undefined && r.rev !== null) {
+      if (Number.isSafeInteger(r.rev) && (r.rev as number) > 0) walk.rev = r.rev as number;
+      else problems.push(`${key}: «rev» must be a whole number.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -635,9 +645,10 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const items = mergeById(bb.items ?? [], m.items ?? [], t.items ?? []);
     const projection = same(m.projection, bb.projection) ? t.projection : m.projection;
     const audio = same(m.audio, bb.audio) ? t.audio : m.audio;
+    const rev = Math.max(m.rev ?? 0, t.rev ?? 0);
     walks[k] = {
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
-      ...(projection ? { projection } : {}), ...(audio ? { audio } : {}),
+      ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
     };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;

@@ -65,6 +65,21 @@ quality and choice to break away and enter in a shop. (period)"*
   against ffmpeg's `v360`). Download it at the highest quality: a 480p 360°
   video is ~200 px across the view. Someone else's YouTube video is for
   trying the idea in private, not for shoppers.
+- **A walk's own sound** (founder, 2026-10-18, «how to add my own audio» →
+  a background loop): the video stays muted (walked back and at 2–3× its
+  sound garbles); «Sound» on `?edit=1` uploads an .mp3/.m4a to
+  `scenes/<scene>/audio/sound-<stamp>.<ext>` and saves it as the walk's
+  `audio`; it loops from the shopper's first tap, with 🔊/🔇
+  (`walk/WalkSound.tsx`).
+- **Cut and stitch a walk video** (founder, 2026-10-18: "4:20 - 4:40, 7:48 -
+  8:20 … cut and stitch … save on olgoo (under the same name)"): «Cut» on
+  `?edit=1` asks the parts to keep one card at a time; our server's ffmpeg
+  reads only those stretches by a signed URL, joins them and saves the
+  result under the SAME key (and its phone copy). The first cut keeps
+  `<key>.original` and the walk as it was (`cuts/<key>.json`, masters
+  bucket): «Put the original back» restores both. Doors and dots move with
+  the picture (`lib/splats/cut.ts`, `cut-job.ts`); the walk's `rev` changes
+  so the player asks for `<file>?r=<rev>` past the "forever" cache.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

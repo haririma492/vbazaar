@@ -38,6 +38,7 @@ import {
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { checkCatalogue } from "@/lib/splats/catalogue";
+import { cutJob, hasOriginal, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
@@ -216,6 +217,18 @@ export async function POST(req: NextRequest) {
       if (problems.length) return fail(400, `Not saved:\n${problems.join("\n")}`);
       const base = body.base && typeof body.base === "object" ? checkWalks(body.base).walks : undefined;
       return ok(await writeWalks(walks, base));
+    }
+
+    // Cut a walk video down to the parts worth keeping (`lib/splats/cut.ts`),
+    // or put its original back; the job runs here, the page asks after it.
+    if (action === "cut" || action === "cutRestore" || action === "cutStatus") {
+      const key = String(body.key ?? "");
+      if (action === "cutStatus") return ok({ job: cutJob(key), original: await hasOriginal(key) });
+      try {
+        return ok({ job: action === "cut" ? startCutJob(key, body.parts) : startRestoreJob(key) });
+      } catch (e) {
+        return fail(409, (e as Error).message);
+      }
     }
 
     // A store's product list (`lib/splats/catalogue.ts`): merchant on-boarding.

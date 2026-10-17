@@ -22,7 +22,7 @@
  */
 
 import {
-  AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CreateMultipartUploadCommand,
+  AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CopyObjectCommand, CreateMultipartUploadCommand,
   GetBucketCorsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, ListPartsCommand, PutBucketCorsCommand, PutObjectCommand,
   S3Client, UploadPartCommand, type CORSRule,
 } from "@aws-sdk/client-s3";
@@ -258,16 +258,28 @@ export async function webObjectExists(key: string): Promise<boolean> {
 }
 
 /** A local file put into the web bucket at `key` (one request: R2 takes up to ~5 GB that way). */
-export async function uploadFile(key: string, path: string): Promise<void> {
+export async function uploadFile(key: string, path: string, contentType = "application/octet-stream"): Promise<void> {
   const { createReadStream, statSync } = await import("node:fs");
   await s3().send(new PutObjectCommand({
     Bucket: r2Config().webBucket,
     Key: key,
     Body: createReadStream(path),
     ContentLength: statSync(path).size,
-    ContentType: "application/octet-stream",
+    ContentType: contentType,
     // A new copy gets a new name: this one never changes.
     CacheControl: "public, max-age=31536000, immutable",
+  }));
+}
+
+/**
+ * One web-bucket object copied to another key, inside R2 (nothing passes
+ * through this server; up to 5 GB) — a cut walk's original kept, and put back.
+ */
+export async function copyWebObject(from: string, to: string, contentType?: string): Promise<void> {
+  const bucket = r2Config().webBucket;
+  await s3().send(new CopyObjectCommand({
+    Bucket: bucket, Key: to, CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
+    ...(contentType ? { MetadataDirective: "REPLACE", ContentType: contentType, CacheControl: "public, max-age=31536000, immutable" } : {}),
   }));
 }
 
