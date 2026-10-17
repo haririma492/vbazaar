@@ -1792,6 +1792,17 @@ function ProjectionCard({ engine, viewKey, projection, onKeep }: {
   const v = engine.current?.video();
   const w = v?.videoWidth ?? 0, h = v?.videoHeight ?? 0;
   const [done, setDone] = useState(false);
+  // A big video knows its size only seconds after the page draws: look again
+  // until it does, or the question never comes and the walk stays flat.
+  const [, setSeen] = useState("");
+  useEffect(() => {
+    if (done || projection) return;
+    const id = window.setInterval(() => {
+      const el = engine.current?.video();
+      setSeen(el && el.videoWidth ? `${el.currentSrc}|${el.videoWidth}x${el.videoHeight}` : "");
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [engine, done, projection]);
   const reloadWith = (p: string | null) => {
     const u = new URL(window.location.href);
     if (p) u.searchParams.set("proj", p);
