@@ -15,7 +15,8 @@ test("times as people type them", () => {
   assert.equal(readTime(" 7:48 "), 468);
   assert.equal(readTime("1:02:03"), 3723);
   assert.equal(readTime("260.5"), 260.5);
-  assert.equal(readTime("4:75"), null);
+  assert.equal(readTime("4:75"), 315, "seconds past 59 carry over");
+  assert.equal(readTime("1:60"), 120);
   assert.equal(readTime("four"), null);
   assert.equal(sayTime(260), "4:20");
   assert.equal(sayTime(3723.5), "1:02:03.5");

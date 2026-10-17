@@ -26,14 +26,16 @@ export const MAX_PARTS = 20;
 /** Shorter than this is a slip of the finger, not a part. */
 export const MIN_PART_SECONDS = 1;
 
-/** «4:20», «1:02:03», «260» or «260.5» → seconds; null when it is none of those. */
+/**
+ * «4:20», «1:02:03», «260» or «260.5» → seconds; null when it is none of
+ * those. Seconds past 59 carry over, as people type them: «1:60» is 2:00,
+ * «4:75» is 5:15 (founder, 2026-10-18: «1:60» held the whole list back).
+ */
 export function readTime(s: string): number | null {
   const t = s.trim();
   if (!/^\d+(?::\d{1,2}){0,2}(?:\.\d+)?$/.test(t)) return null;
   const [whole, frac] = t.split(".");
   const n = whole.split(":").reduce((acc, p) => acc * 60 + Number(p), 0);
-  const parts = whole.split(":");
-  if (parts.slice(1).some((p) => Number(p) >= 60)) return null;
   return n + (frac ? Number(`0.${frac}`) : 0);
 }
 

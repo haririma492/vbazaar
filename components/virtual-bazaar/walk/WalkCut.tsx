@@ -163,6 +163,11 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
   const parsed = rows.map((r) => ({ from: readTime(r.from) ?? NaN, to: readTime(r.to) ?? NaN }));
   const whole = rows.length && rowProblems.every((p) => !p) ? checkParts(parsed, duration) : null;
   const ready = Boolean(whole && !whole.problems.length);
+  /** What holds the stitch back, said where the button is. */
+  const firstBad = rowProblems.findIndex(Boolean);
+  const whyNot = !rows.length ? "Add a part to keep first."
+    : firstBad >= 0 ? `Part ${firstBad + 1}: ${rowProblems[firstBad]}.`
+      : whole?.problems[0] ?? "";
 
   async function start(body: Record<string, unknown>) {
     setNote(null);
@@ -291,9 +296,13 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
       {whole && whole.problems.length > 0 && <p className="whitespace-pre-line text-[12px] text-amber-200">{whole.problems.join("\n")}</p>}
       {said}
       <button className={`${quiet} w-full`} onClick={() => setRows([...rows, { from: now !== null ? secs(now) : "", to: "" }])}>+ Add a part</button>
-      <button className={`${primary} w-full`} disabled={!ready} onClick={() => { setNote(null); setStep("confirm"); }}>
-        {ready && whole ? `Stitch ${whole.parts.length} part${whole.parts.length > 1 ? "s" : ""} (${sayTime(keptSeconds(whole.parts))}) and replace the video →` : "Stitch and replace the video →"}
-      </button>
+      {/* Always in sight at the foot of the panel, saying what holds it back (founder: "does not let me to stich"). */}
+      <div className="sticky bottom-0 -mx-1 space-y-1 bg-black/90 px-1 pb-1 pt-2">
+        {!ready && <p className="text-[12px] text-amber-200">{whyNot}</p>}
+        <button className={`${primary} w-full`} disabled={!ready} onClick={() => { setNote(null); setStep("confirm"); }}>
+          {ready && whole ? `Stitch ${whole.parts.length} part${whole.parts.length > 1 ? "s" : ""} (${sayTime(keptSeconds(whole.parts))}) and replace the video →` : "Stitch and replace the video →"}
+        </button>
+      </div>
       {original && (
         <button className="text-[12px] text-white/60 underline" onClick={() => setStep("undo")}>Put the original back</button>
       )}
