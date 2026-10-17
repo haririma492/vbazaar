@@ -8,10 +8,14 @@
  * the video is now») → «Keep 0:52 and cut the rest?» → our server cuts and
  * saves it under the same name and says so. The first cut keeps the original:
  * «Put the original back» undoes it. The rules: `lib/splats/cut.ts`.
+ *
+ * ⚠️ Every time on this card is the ORIGINAL video's (founder: "we mean 4:20
+ * to 4:40 from original video"): after a cut, the card shows the parts the
+ * last cut kept, and «where the video is now» is said in the original's time.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { checkParts, keptSeconds, readTime, sayTime, type Part } from "@/lib/splats/cut";
+import { checkParts, keptSeconds, readTime, sayTime, unmapTime, type Part } from "@/lib/splats/cut";
 import { isWalkKey } from "@/lib/splats/walks";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 
@@ -21,16 +25,18 @@ type Job = {
 };
 type Step = "list" | "from" | "to" | "confirm" | "undo" | "working";
 
-async function ask(body: Record<string, unknown>): Promise<{ job: Job | null; original?: boolean }> {
+type Info = { original?: boolean; seconds?: number | null; parts?: Part[] };
+
+async function ask(body: Record<string, unknown>): Promise<{ job: Job | null } & Info> {
   const res = await fetch("/api/operator/splats", {
     method: "POST",
     headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
     body: JSON.stringify(body),
   });
-  const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; job?: Job | null; original?: boolean };
+  const j = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; job?: Job | null } & Info;
   if (res.status === 401) throw new Error("you are not signed in as operator on this site — sign in and try again");
   if (!res.ok || !j.ok) throw new Error(j.error || `HTTP ${res.status}`);
-  return { job: j.job ?? null, original: j.original };
+  return { job: j.job ?? null, original: j.original, seconds: j.seconds, parts: j.parts };
 }
 
 export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | null; viewKey: string | null }) {
@@ -41,16 +47,28 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
   const [note, setNote] = useState<string | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [original, setOriginal] = useState(false);
+  /** The original's length, once a cut has kept it; and the parts the last cut kept (on the original's times). */
+  const [originalSeconds, setOriginalSeconds] = useState<number | null>(null);
+  const [lastParts, setLastParts] = useState<Part[]>([]);
   const poll = useRef<number | null>(null);
 
-  const duration = video()?.duration ?? 0;
-  const nowText = () => sayTime(video()?.currentTime ?? 0);
+  // The original's timeline: as uploaded, or the one the last cut came from.
+  const duration = original ? originalSeconds ?? 0 : video()?.duration ?? 0;
+  /** Where the video is now, in the original's time; null when that cannot be known. */
+  const nowOnOriginal = (): number | null => {
+    const t = video()?.currentTime ?? 0;
+    if (!original) return t;
+    return lastParts.length ? unmapTime(t, lastParts) : null;
+  };
 
   // A cut already running (or just done) for this video: show it.
   useEffect(() => {
     if (!viewKey) return;
-    void ask({ action: "cutStatus", key: viewKey }).then(({ job: j, original: o }) => {
+    void ask({ action: "cutStatus", key: viewKey, info: true }).then(({ job: j, original: o, seconds, parts: last }) => {
       setOriginal(Boolean(o));
+      setOriginalSeconds(seconds ?? null);
+      setLastParts(last ?? []);
+      if (last?.length) setParts(last);
       if (j?.state === "working") { setJob(j); setStep("working"); }
     }).catch(() => {});
   }, [viewKey]);
@@ -143,11 +161,16 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
       <div className="space-y-2">
         <div className="text-[11px] text-white/45">Part {parts.length + 1}{!isFrom ? ` · from ${from}` : ""}</div>
         <div className={title}>{isFrom ? "Where does this part start?" : "Where does it end?"}</div>
-        <p className="text-white/70">Type the time, or play the video to that moment and tap «Where the video is now».</p>
+        <p className="text-white/70">
+          The time in the original video{duration ? ` (0:00–${sayTime(duration)})` : ""}. Type it, or play the video to that
+          moment and tap «Where the video is now».
+        </p>
         <div className="flex flex-wrap items-center gap-2">
           <input key={step} autoFocus className={field} value={value} placeholder="4:20" inputMode="decimal"
             onChange={(e) => set(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") next(); }} />
-          <button className={quiet} onClick={() => set(nowText())}>Where the video is now ({nowText()})</button>
+          {nowOnOriginal() !== null && (
+            <button className={quiet} onClick={() => set(sayTime(nowOnOriginal()!))}>Where the video is now ({sayTime(nowOnOriginal()!)})</button>
+          )}
         </div>
         {said}
         <div className="flex gap-2">
@@ -167,7 +190,8 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
           {parts.map((p, i) => <li key={i}>{i + 1}. {sayTime(p.from)} – {sayTime(p.to)}</li>)}
         </ul>
         <p className="text-white/70">
-          Joined in this order and saved under the same name, so every link still works. Doors and product dots move
+          Each part is cut out of the original, then the parts are stitched in this order and saved under the same name,
+          so every link still works. Doors and product dots move
           with the picture; those in parts cut away are taken off. The original is kept: «Put the original back» undoes it.
         </p>
         {said}
@@ -197,6 +221,11 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
   return (
     <div className="space-y-2">
       <div className={title}>{parts.length ? "Parts to keep" : "Keep only the good parts?"}</div>
+      {parts.length > 0 && (
+        <p className="text-[12px] text-white/55">
+          Times in the original video (0:00–{sayTime(duration)}){lastParts.length && parts === lastParts ? " — what the last cut kept; add or remove parts and cut again" : ""}.
+        </p>
+      )}
       {parts.length ? (
         <ul className="space-y-1">
           {parts.map((p, i) => (
@@ -209,8 +238,8 @@ export function CutEditor({ video, viewKey }: { video: () => HTMLVideoElement | 
         </ul>
       ) : (
         <p className="text-white/70">
-          Choose the parts of this video worth walking ({sayTime(duration)} now). They are joined into one video and the
-          rest is cut away.
+          Choose the parts of the {original ? "original " : ""}video worth walking (0:00–{sayTime(duration)}). Each is cut out of
+          it on its own, then they are stitched together into one video and the rest is left out.
         </p>
       )}
       {said}

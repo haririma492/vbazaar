@@ -5,7 +5,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkParts, cutArgs, keptSeconds, mapTime, readTime, remapWalk, sayTime } from "./cut.ts";
+import {
+  checkParts, concatList, keptSeconds, mapTime, originalWalk, partArgs, readCutRecord, readTime, remapWalk, sayTime, stitchArgs, unmapTime,
+} from "./cut.ts";
 import type { Walk } from "./walks.ts";
 
 test("times as people type them", () => {
@@ -60,11 +62,42 @@ test("doors and dots move with the picture; those cut away are said", () => {
   assert.deepEqual(dropped, ["door «Old»", "the dot of «Nut» (kept in the list, place it again)"]);
 });
 
-test("ffmpeg reads only the parts, joins them, writes H.264 without sound", () => {
-  const a = cutArgs("https://r2/x.mp4?sig", [{ from: 260, to: 280 }, { from: 468, to: 500 }], "/tmp/out.mp4");
-  const s = a.join(" ");
-  assert.match(s, /-ss 260 -to 280 -i https:\/\/r2\/x\.mp4\?sig -ss 468 -to 500 -i/);
-  assert.match(s, /concat=n=2:v=1:a=0\[v\]/);
-  assert.match(s, /-an -c:v libx264/);
-  assert.equal(a.at(-1), "/tmp/out.mp4");
+test("cut: each part out of the original on its own; stitch: joined in order, not encoded again", () => {
+  const cut = partArgs("https://r2/x.mp4.original?sig", { from: 260, to: 280 }, "/tmp/part-0.mp4").join(" ");
+  assert.match(cut, /-ss 260 -to 280 -i https:\/\/r2\/x\.mp4\.original\?sig/);
+  assert.match(cut, /-an -c:v libx264/);
+  const stitch = stitchArgs("/tmp/parts.txt", "/tmp/out.mp4").join(" ");
+  assert.match(stitch, /-f concat -safe 0 -i \/tmp\/parts\.txt -c copy/);
+  assert.equal(concatList(["/tmp/a.mp4", "/tmp/b'c.mp4"]), "file '/tmp/a.mp4'\nfile '/tmp/b'\\''c.mp4'\n");
+});
+
+test("⚠️ times are the original's: a second cut is read from the original, not from the first cut", () => {
+  // The first cut kept 4:20–4:40 and 4:40–5:08 (0:48); the founder then asks for 4:20–4:40 and 7:48–8:20.
+  const first = [{ from: 260, to: 280 }, { from: 280, to: 308 }];
+  assert.equal(unmapTime(30, first), 290, "0:30 of the cut video is 4:50 of the original");
+  assert.equal(unmapTime(60, first), null);
+  const { parts, problems } = checkParts([{ from: 260, to: 280 }, { from: 468, to: 500 }], 953 /* the original's length */);
+  assert.deepEqual(problems, []);
+  assert.equal(keptSeconds(parts), 52);
+
+  // The walk as it was before the first cut, plus a dot placed on the cut video since.
+  const record = {
+    walk: { doors: [{ id: "in", t: 470, yaw: 0, label: { en: "Tools" }, to: "scenes/a/b.mp4" }], items: [{ id: "saw", label: { en: "Saw" }, pins: [{ t: 475, x: 0.5, y: 0.5 }] }] },
+    parts: first,
+  };
+  const now = { doors: [], items: [{ id: "saw", label: { en: "Saw" }, pins: [] }, { id: "nut", label: { en: "Nut" }, pins: [{ t: 30, x: 0.1, y: 0.1 }] }], audio: "scenes/a/audio/sound-20261018-101500.mp3" };
+  const { walk, lost } = originalWalk(record, now);
+  assert.deepEqual(lost, []);
+  assert.deepEqual(walk.doors.map((d) => d.t), [470], "the door cut away by the first cut comes back");
+  assert.deepEqual(walk.items!.map((i) => [i.id, i.pins.map((p) => p.t)]), [["saw", [475]], ["nut", [290]]]);
+  assert.equal(walk.audio, now.audio, "what was set since stays");
+  const cut = remapWalk(walk, parts).walk;
+  assert.deepEqual(cut.doors.map((d) => d.t), [22]);
+  assert.deepEqual(cut.items!.map((i) => i.pins.map((p) => p.t)), [[27], []]);
+});
+
+test("the record kept by the first cuts (the walk alone) is still read", () => {
+  assert.deepEqual(readCutRecord({ doors: [] }), { walk: { doors: [] } });
+  assert.deepEqual(readCutRecord({ walk: { doors: [] }, parts: [{ from: 1, to: 5 }] }), { walk: { doors: [] }, parts: [{ from: 1, to: 5 }] });
+  assert.equal(readCutRecord(null), null);
 });

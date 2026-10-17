@@ -38,7 +38,7 @@ import {
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { checkCatalogue } from "@/lib/splats/catalogue";
-import { cutJob, hasOriginal, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
+import { cutInfo, cutJob, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
@@ -223,7 +223,7 @@ export async function POST(req: NextRequest) {
     // or put its original back; the job runs here, the page asks after it.
     if (action === "cut" || action === "cutRestore" || action === "cutStatus") {
       const key = String(body.key ?? "");
-      if (action === "cutStatus") return ok({ job: cutJob(key), original: await hasOriginal(key) });
+      if (action === "cutStatus") return ok({ job: cutJob(key), ...(body.info ? await cutInfo(key) : {}) });
       try {
         return ok({ job: action === "cut" ? startCutJob(key, body.parts) : startRestoreJob(key) });
       } catch (e) {

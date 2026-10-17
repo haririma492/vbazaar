@@ -73,9 +73,12 @@ quality and choice to break away and enter in a shop. (period)"*
   (`walk/WalkSound.tsx`).
 - **Cut and stitch a walk video** (founder, 2026-10-18: "4:20 - 4:40, 7:48 -
   8:20 … cut and stitch … save on olgoo (under the same name)"): «Cut» on
-  `?edit=1` asks the parts to keep one card at a time; our server's ffmpeg
-  reads only those stretches by a signed URL, joins them and saves the
-  result under the SAME key (and its phone copy). The first cut keeps
+  `?edit=1` asks the parts to keep one card at a time, **always in the
+  ORIGINAL video's times** (founder: "we mean 4:20 to 4:40 from original
+  video"); our server's ffmpeg CUTS each part out of the kept original by a
+  signed URL (only that stretch is read), then STITCHES them in order
+  (concat, no second encoding) and saves the result under the SAME key (and
+  its phone copy). A second cut starts from the last cut's parts. The first cut keeps
   `<key>.original` and the walk as it was (`cuts/<key>.json`, masters
   bucket): «Put the original back» restores both. Doors and dots move with
   the picture (`lib/splats/cut.ts`, `cut-job.ts`); the walk's `rev` changes

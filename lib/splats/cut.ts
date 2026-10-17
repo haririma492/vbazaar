@@ -3,10 +3,14 @@
  * … only useful part … cut and stitch couple of sections and save on olgoo
  * (under the same name)"). The rules; the server job is `cut-job.ts`.
  *
- * - The parts kept are joined in time order into one video saved under the
+ * - ⚠️ TIMES ARE ALWAYS THE ORIGINAL VIDEO'S (founder, 2026-10-18: "we mean
+ *   4:20 to 4:40 from original video"). The first cut keeps the original
+ *   beside it, `<key>.original`; every cut — the first and each one after —
+ *   reads its parts from that original, never from the last cut's result.
+ * - Two phases: each part is CUT out of the original into a file of its own,
+ *   then the parts are STITCHED in time order into one video saved under the
  *   SAME key, so the walk, its projection, its sound and every link stay.
- * - The first cut keeps the original beside it, `<key>.original` (not a walk
- *   key, so no list shows it): «Put the original back» copies it home.
+ * - «Put the original back» copies the original home.
  * - The walk's doors and product dots move with the picture (`remapWalk`):
  *   a moment in a kept part moves to its place in the new video; a moment in
  *   a part cut away is dropped (a door there goes, a dot loses that pin).
@@ -75,6 +79,51 @@ export function mapTime(t: number, parts: Part[]): number | null {
   return null;
 }
 
+/** Where a moment of a cut video was in the original (the inverse of `mapTime`). */
+export function unmapTime(t: number, parts: Part[]): number | null {
+  let at = 0;
+  for (const p of parts) {
+    const len = p.to - p.from;
+    if (t >= at && t <= at + len) return Math.round((p.from + t - at) * 100) / 100;
+    at += len;
+  }
+  return null;
+}
+
+/**
+ * The walk on the ORIGINAL's times, ready to be cut again: the record's
+ * doors and dots, plus any added since the last cut, moved back to the
+ * original by that cut's parts (without them, they cannot be placed: said).
+ */
+export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: string[] } {
+  const lost: string[] = [];
+  const back = (t: number) => (record.parts ? unmapTime(t, record.parts) : null);
+  const known = new Set(record.walk.doors.map((d) => d.id));
+  const doors = [...record.walk.doors];
+  for (const d of now.doors) {
+    if (known.has(d.id)) continue;
+    const t = back(d.t);
+    if (t === null) { lost.push(`door «${d.label.en}» (added after the last cut)`); continue; }
+    const pins = d.pins?.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
+    const bt = d.back ? back(d.back.t) : null;
+    const { pins: _p, back: _b, ...rest } = d;
+    doors.push({ ...rest, t, ...(pins?.length ? { pins } : {}), ...(d.back && bt !== null ? { back: { ...d.back, t: bt } } : {}) });
+  }
+  const before = new Map((record.walk.items ?? []).map((it) => [it.id, it]));
+  const items = (now.items ?? []).map((it) => {
+    const old = before.get(it.id);
+    // Its dots as placed on the original; a dot placed since, moved back.
+    const added = it.pins.flatMap((p) => {
+      if (old) return [];
+      const pt = back(p.t);
+      return pt === null ? [] : [{ ...p, t: pt }];
+    });
+    if (!old && it.pins.length && !added.length) lost.push(`the dot of «${it.label.en}» (placed after the last cut)`);
+    return { ...it, pins: old ? old.pins : added };
+  });
+  return { walk: { ...now, doors, ...(items.length ? { items } : {}) }, lost };
+}
+
 /** The walk's doors and dots moved to the new video's times (see the head of this file). */
 export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: string[] } {
   const dropped: string[] = [];
@@ -97,22 +146,46 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
 /** Where the original is kept by the first cut. */
 export const originalKeyOf = (key: string) => `${key}.original`;
 
+/** How a walk wants its video: H.264, a keyframe every second (quick stepping back), no sound (`Walk.audio` is its sound). */
+const ENCODE = [
+  "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
+  "-force_key_frames", "expr:gte(t,n_forced*1)",
+];
+
 /**
- * ffmpeg's arguments: each part read straight from `src` (a signed address —
- * `-ss` before `-i` asks R2 for that stretch only, not the whole file),
- * joined, and written once as H.264 the way walks want it (a frame every
- * second for quick stepping back, faststart). No sound: the walk plays its
- * video muted (`Walk.audio` is its sound).
+ * THE CUT: one part out of the ORIGINAL video into a file of its own. `src`
+ * is a signed address — `-ss` before `-i` asks R2 for that stretch only, not
+ * the whole file.
  */
-export function cutArgs(src: string, parts: Part[], out: string): string[] {
-  const inputs = parts.flatMap((p) => ["-ss", String(p.from), "-to", String(p.to), "-i", src]);
-  const filter = parts.map((_, i) => `[${i}:v:0]setpts=PTS-STARTPTS[v${i}]`).join(";")
-    + `;${parts.map((_, i) => `[v${i}]`).join("")}concat=n=${parts.length}:v=1:a=0[v]`;
+export function partArgs(src: string, part: Part, out: string): string[] {
   return [
     "-hide_banner", "-y", "-nostdin", "-progress", "pipe:1", "-nostats",
-    ...inputs,
-    "-filter_complex", filter, "-map", "[v]", "-an",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-    "-force_key_frames", "expr:gte(t,n_forced*1)", "-movflags", "+faststart", out,
+    "-ss", String(part.from), "-to", String(part.to), "-i", src,
+    "-map", "0:v:0", ...ENCODE, out,
   ];
+}
+
+/** THE STITCH: the cut parts, every one encoded alike, joined in order without encoding again (`list` is ffmpeg's concat list). */
+export function stitchArgs(list: string, out: string): string[] {
+  return ["-hide_banner", "-y", "-nostdin", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", "-movflags", "+faststart", out];
+}
+
+/** ffmpeg's concat list for the part files, in order. */
+export const concatList = (files: string[]) => files.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join("\n") + "\n";
+
+/**
+ * What a cut keeps beside the walk (`cuts/<key>.json`, private): the walk as
+ * it was before the first cut (its doors and dots on the original's times)
+ * and the parts of the latest cut, so the next cut starts from them.
+ */
+export type CutRecord = { walk: Walk; parts?: Part[] };
+
+/** The record as stored; the first cuts stored the walk alone. */
+export function readCutRecord(raw: unknown): CutRecord | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  if (Array.isArray(o.doors)) return { walk: o as unknown as Walk };
+  if (!o.walk || typeof o.walk !== "object") return null;
+  const parts = Array.isArray(o.parts) ? checkParts(o.parts, 0).parts : undefined;
+  return { walk: o.walk as Walk, ...(parts?.length ? { parts } : {}) };
 }
