@@ -57,13 +57,14 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
+import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, storeOfScene, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -189,6 +190,8 @@ type Layer = {
   fail: (why: string) => void;
   released: boolean;
   purpose: "main" | "door" | "back";
+  /** How it holds its picture when its shape does not say (its walk's `projection`, or ?proj= to try one). */
+  projection: Projection | null;
 };
 
 /** An item's dot on a 360° walk — a round «+» with its name under it — drawn once. */
@@ -403,9 +406,12 @@ export default function Walk360() {
       Object.assign(video.style, { position: "absolute", inset: "0", width: "100%", height: "100%", objectFit: "contain", background: "#000", opacity: "0" });
       const forcedFlat = Boolean(opts.flat) || phoneVideo;
       const at = Math.max(0, opts.t ?? 0);
+      // ?proj= tries a projection on the video in the address (the operator's «Which looks right?»).
+      const tried = opts.purpose === "main" && opts.key && opts.key === params.get("v") ? params.get("proj") : null;
+      const projection = (tried === "eac" || tried === "equirect" || tried === "flat" ? tried : walkOf(walksNow, opts.key)?.projection) ?? null;
       const layer: Layer = {
-        key: opts.key, video, forcedFlat, flat: forcedFlat, spin: 0, texture: null, material: null, mesh: null,
-        ready: Promise.resolve(), fail: () => {}, released: false, purpose: opts.purpose,
+        key: opts.key, video, forcedFlat, flat: forcedFlat || projection === "flat", spin: 0, texture: null, material: null, mesh: null,
+        ready: Promise.resolve(), fail: () => {}, released: false, purpose: opts.purpose, projection,
       };
       layer.ready = new Promise<void>((resolve, reject) => {
         let settled = false;
@@ -422,7 +428,8 @@ export default function Walk360() {
           if (video.readyState >= 2 && !video.seeking && Math.abs(video.currentTime - Math.min(at, video.duration || at)) < 0.5) finish();
         };
         video.addEventListener("loadedmetadata", () => {
-          layer.flat = forcedFlat || looksFlat(video.videoWidth, video.videoHeight);
+          // Its walk may say (a YouTube 360° download is 16:9, which would look flat).
+          layer.flat = forcedFlat || (projection ? projection === "flat" : looksFlat(video.videoWidth, video.videoHeight));
           if (at > 0) video.currentTime = Math.min(at, Math.max(0, video.duration - 0.05));
           check();
         });
@@ -469,6 +476,25 @@ export default function Walk360() {
       texture.anisotropy = maxAniso;
       texture.needsUpdate = true; // the paused frame, before any new one is presented
       const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity, depthTest: false, depthWrite: false });
+      // ⚠️ YOUTUBE'S CUBE MAP: the sphere keeps its panorama uv, and each pixel
+      // looks itself up in the 3×2 cube-map frame instead (`EAC_GLSL`), so the
+      // front, doors and dots stay where a panorama would put them.
+      if (l.projection === "eac") {
+        material.onBeforeCompile = (shader) => {
+          shader.fragmentShader = shader.fragmentShader
+            .replace("void main() {", `${EAC_GLSL}\nvoid main() {`)
+            .replace("#include <map_fragment>", `
+#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, eacUv( vMapUv ) );
+  #ifdef DECODE_VIDEO_TEXTURE
+    sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
+  #endif
+  diffuseColor *= sampledDiffuseColor;
+#endif
+`);
+        };
+        material.customProgramCacheKey = () => "eac";
+      }
       const mesh = new THREE.Mesh(geometry, material);
       // The middle of an equirectangular frame is where the camera faced; turn
       // it to −Z, where a three.js camera looks at yaw 0 — then by its spin.
@@ -846,7 +872,10 @@ export default function Walk360() {
         layer = makeLayer({ key: null, src: safeSrc(raw), purpose: "main" });
       } else {
         let key = params.get("v") || "";
-        if (!key) key = startOf(await loadWalks()) ?? "";
+        // The walks first: a video's walk may say how it holds its picture (`projection`).
+        const w = await loadWalks();
+        walksNow = w;
+        if (!key) key = startOf(w) ?? "";
         if (disposed) return;
         if (V_RE.test(key) || isWalkKey(key)) layer = makeLayer({ key, purpose: "main" });
       }
@@ -1047,8 +1076,9 @@ export default function Walk360() {
     let turnBlind: Layer | null = null; // a video the browser won't let us read (no CORS)
     function readTurn() {
       const v = current?.video;
-      if (!turnCtx || !current || current.flat || busy || current === turnBlind || !v || v.readyState < 2 || v.seeking || !v.videoWidth) {
-        if (!current || current.flat || current === turnBlind) turnNow = 0;
+      // (A cube map's band is not a ring of the horizon: no reading.)
+      if (!turnCtx || !current || current.flat || current.projection === "eac" || busy || current === turnBlind || !v || v.readyState < 2 || v.seeking || !v.videoWidth) {
+        if (!current || current.flat || current.projection === "eac" || current === turnBlind) turnNow = 0;
         return;
       }
       const now = performance.now();
@@ -1617,7 +1647,9 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
   const field = "w-full rounded-md border border-white/20 bg-black/50 px-2 py-1 text-[13px] text-white";
 
-  return (
+  return (<>
+    {viewKey && <ProjectionCard engine={engine} viewKey={viewKey} projection={walk?.projection ?? null}
+      onKeep={(p) => change(setProjection(walks, viewKey, p))} />}
     <div dir="ltr" className="absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl">
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1">
@@ -1737,6 +1769,66 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           )}
         </div>
       )}
+    </div>
+  </>);
+}
+
+/**
+ * «IS THIS A 360° VIDEO?» (founder, 2026-10-17: a YouTube 360° download showed
+ * flat). A landscape video that is not 2:1 is shown flat by its shape; in
+ * edit mode this card asks, one question at a time: «Yes» reloads it as
+ * YouTube's cube map (?proj=eac), and «Does it look right?» keeps it, tries the
+ * other layout (a squeezed panorama, ?proj=equirect), or says it is flat.
+ * What is kept is the walk's `projection`, saved by itself.
+ */
+function ProjectionCard({ engine, viewKey, projection, onKeep }: {
+  engine: React.MutableRefObject<Engine | null>;
+  viewKey: string;
+  projection: Projection | null;
+  onKeep: (p: Projection) => void;
+}) {
+  const params = typeof window === "undefined" ? null : new URLSearchParams(window.location.search);
+  const trying = params?.get("v") === viewKey ? params.get("proj") : null;
+  const v = engine.current?.video();
+  const w = v?.videoWidth ?? 0, h = v?.videoHeight ?? 0;
+  const [done, setDone] = useState(false);
+  const reloadWith = (p: string | null) => {
+    const u = new URL(window.location.href);
+    if (p) u.searchParams.set("proj", p);
+    else u.searchParams.delete("proj");
+    window.location.href = u.toString();
+  };
+  const primary = "rounded-xl bg-[#00B8C8] px-4 py-2.5 text-[15px] font-bold text-black";
+  const quiet = "rounded-xl border border-white/25 px-4 py-2.5 text-[14px] text-white/85";
+  const box = "fixed bottom-24 left-1/2 z-40 w-[min(27rem,calc(100%-1.5rem))] -translate-x-1/2 rounded-2xl border border-[#00B8C8]/60 bg-[#0f1418]/95 p-4 text-white shadow-2xl";
+  if (done) return null;
+
+  if (trying === "eac" || trying === "equirect") {
+    const name = trying === "eac" ? "YouTube's cube map" : "a squeezed panorama";
+    return (
+      <div dir="ltr" className={box}>
+        <div className="mb-1 text-[11px] text-white/45">Showing it as {name}</div>
+        <div className="mb-2 text-[19px] font-bold">Does it look right?</div>
+        <p className="mb-3 text-[13px] text-white/70">Look around (drag the picture): straight lines and one whole scene mean right; a picture cut into squares, or stretched, means try the other.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="me-auto text-[14px] text-white/70 underline" onClick={() => { onKeep("flat"); setDone(true); window.setTimeout(() => reloadWith(null), 2500); /* after it saves (a second) */ }}>It&apos;s flat</button>
+          <button className={quiet} onClick={() => reloadWith(trying === "eac" ? "equirect" : "eac")}>Try the other way</button>
+          <button className={primary} onClick={() => { onKeep(trying); setDone(true); }}>✓ Looks right</button>
+        </div>
+      </div>
+    );
+  }
+  // Asked only of a landscape video, not 2:1, that nothing has decided yet.
+  if (projection || !v || !w || !h || h >= w || Math.abs(w / h - 2) < 0.05) return null;
+  return (
+    <div dir="ltr" className={box}>
+      <div className="mb-1 text-[11px] text-white/45">{w}×{h} · shown flat by its shape</div>
+      <div className="mb-2 text-[19px] font-bold">Is this a 360° video?</div>
+      <p className="mb-3 text-[13px] text-white/70">360° videos downloaded from YouTube come in this shape. Tell it once; it is saved for this video.</p>
+      <div className="flex items-center gap-2">
+        <button className={`${quiet} me-auto`} onClick={() => { onKeep("flat"); setDone(true); }}>No, it&apos;s flat</button>
+        <button className={primary} onClick={() => reloadWith("eac")}>Yes, 360°</button>
+      </div>
     </div>
   );
 }

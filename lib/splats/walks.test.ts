@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -308,4 +308,16 @@ test("no shelves (dropped 2026-10-12): an old walks.json with them still reads, 
   assert.deepEqual(walk.items!.map((i) => [i.id, "shelf" in i, i.pins.length]), [["cable", false, 0], ["phone", false, 1]]);
   assert.equal(itemTime(walk.items![0]), 0);
   assert.equal(itemTime(walk.items![1]), 3);
+});
+
+test("a walk may say how its video holds its picture (a YouTube 360° download is 16:9)", () => {
+  const K = "scenes/ax-man/tour.mp4";
+  const w = setProjection(emptyWalks(), K, "eac");
+  assert.equal(walkOf(w, K)!.projection, "eac");
+  assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
+  assert.equal(walkOf(setProjection(w, K, null), K)!.projection, undefined);
+  assert.equal(checkWalks({ walks: { [K]: { doors: [], projection: "fisheye" } } }).problems.length, 1);
+  // Set here while someone else added a door: both kept.
+  const theirs = addDoor(emptyWalks(), K, { t: 1, yaw: 0, label: { en: "Way out" }, to: STREET });
+  assert.equal(walkOf(mergeWalks(emptyWalks(), w, theirs), K)!.projection, "eac");
 });

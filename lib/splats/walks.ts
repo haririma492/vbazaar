@@ -135,6 +135,14 @@ export type Walk = {
   title?: { en: string; fa: string };
   doors: WalkDoor[];
   items?: WalkItem[];
+  /**
+   * How the video holds its picture, when its shape does not say
+   * (`lib/splats/projection.ts`): a 360° video downloaded from YouTube is 16:9
+   * — «eac» (its cube map) or «equirect» (a squeezed panorama) — and would
+   * otherwise be shown flat; «flat» says a 2:1 one is not 360°. Set by the
+   * operator's «Is this a 360° video?» on the walk's edit page.
+   */
+  projection?: "equirect" | "eac" | "flat";
 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -207,6 +215,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     }
     const r = (w && typeof w === "object" ? w : {}) as Record<string, unknown>;
     const walk: Walk = { doors: [] };
+    if (r.projection !== undefined && r.projection !== null) {
+      if (r.projection === "equirect" || r.projection === "eac" || r.projection === "flat") walk.projection = r.projection;
+      else problems.push(`${key}: «projection» must be equirect, eac or flat.`);
+    }
     if (r.title !== undefined) {
       const t = (r.title ?? {}) as Record<string, unknown>;
       const en = str(t.en, 120), fa = str(t.fa, 120);
@@ -512,6 +524,14 @@ export function removeItem(w: Walks, key: string, id: string): Walks {
   return withWalk(w, key, (walk) => ({ ...walk, items: (walk.items ?? []).filter((it) => it.id !== id) }));
 }
 
+/** How a walk's video holds its picture; null: by its shape. */
+export function setProjection(w: Walks, key: string, projection: Walk["projection"] | null): Walks {
+  return withWalk(w, key, (walk) => {
+    const { projection: _drop, ...rest } = walk;
+    return projection ? { ...rest, projection } : rest;
+  });
+}
+
 /** The shop's name on a walk (empty: none). */
 export function setTitle(w: Walks, key: string, title: { en: string; fa: string }): Walks {
   const en = title.en.trim(), fa = title.fa.trim();
@@ -587,7 +607,11 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const bb: Walk = b ?? { doors: [] };
     const title = same(m.title, bb.title) ? t.title : m.title;
     const items = mergeById(bb.items ?? [], m.items ?? [], t.items ?? []);
-    walks[k] = { ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}) };
+    const projection = same(m.projection, bb.projection) ? t.projection : m.projection;
+    walks[k] = {
+      ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
+      ...(projection ? { projection } : {}),
+    };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;
   return parseWalks({ walks, ...(start ? { start } : {}) });

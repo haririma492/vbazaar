@@ -56,6 +56,15 @@ quality and choice to break away and enter in a shop. (period)"*
   a **flat phone video** (the iPhone's `.mov`, private until a door leads to
   it, via `/api/splats/walks/video`), shown full screen with the same stick.
   Steps and video prep: `scripts/splats/walk-video.md`.
+- **A 360° video downloaded from YouTube is 16:9, not 2:1** (2026-10-17): it is
+  YouTube's Equi-Angular Cubemap (or a squeezed panorama), and was shown flat.
+  In edit mode the walk asks «Is this a 360° video?» → shows it as the cube
+  map → «Does it look right?» (✓ / try the other way / it's flat), and saves
+  the walk's `projection` (`lib/splats/projection.ts`; the sphere keeps its
+  panorama uv and a shader looks each pixel up in the cube map, checked
+  against ffmpeg's `v360`). Download it at the highest quality: a 480p 360°
+  video is ~200 px across the view. Someone else's YouTube video is for
+  trying the idea in private, not for shoppers.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and
