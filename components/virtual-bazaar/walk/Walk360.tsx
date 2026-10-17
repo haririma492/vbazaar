@@ -57,6 +57,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
+import { SoundEditor, WalkSound } from "./WalkSound";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, storeOfScene, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
@@ -122,6 +123,12 @@ function sceneBase(): Promise<string | null> {
     .then(({ base }) => (base ? base.replace(/\/+$/, "") : null))
     .catch(() => null);
   return basePromise;
+}
+
+/** A walk sound's address (`Walk.audio`), in the public bucket. */
+async function soundSrc(key: string): Promise<string | null> {
+  const base = await sceneBase();
+  return base ? `${base}/${key}` : null;
 }
 
 const isTouch = () => (typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches) ?? false;
@@ -1462,6 +1469,8 @@ export default function Walk360() {
         </>
       )}
 
+      {phase !== "loading" && <WalkSound audioKey={walkOf(walks, view.key)?.audio ?? null} srcOf={soundSrc} />}
+
       {card && view.key && (
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => setCard(null)} />
       )}
@@ -1517,7 +1526,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   const [listError, setListError] = useState<string | null>(null);
   type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
-  const [tab, setTab] = useState<"doors" | "items">("doors");
+  const [tab, setTab] = useState<"doors" | "items" | "sound">("doors");
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -1653,9 +1662,9 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
     <div dir="ltr" className="absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl">
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1">
-          {(["doors", "items"] as const).map((k) => (
+          {(["doors", "items", "sound"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : "Products"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : "Sound"}
             </button>
           ))}
         </div>
@@ -1666,6 +1675,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           <div className="truncate text-[11px] text-white/60">This walk: {shortKey(viewKey)}{walk?.doors.length ? ` · ${walk.doors.length} door(s)` : ""}</div>
           {listError && <div className="text-rose-300">{listError}</div>}
 
+          {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
 
           {tab === "doors" && !draft && (

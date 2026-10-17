@@ -7,7 +7,9 @@ import assert from "node:assert/strict";
 import {
   contentTypeFor, isSceneId, isSplatKey, isTrainVideo, isWalkVideo, kindOfFile, partPlan, partRange, safeFileName, sceneIdFromFileName,
   splatKey, webFileName, signImageKey, isSignImageKey, imageTypeOf, isSignImageType,
+  walkAudioKey, isWalkAudioKey, audioTypeOf,
 } from "./keys.ts";
+import { isAudioKey } from "./walks.ts";
 import { isSignImageOf } from "./tour.ts";
 
 test("a sign's image: its own folder, a stamped name, only PNG, JPEG or WebP", () => {
@@ -125,4 +127,21 @@ test("a phone video to train from: .mov is a private master, .mp4 stays a web fi
   assert.deepEqual(splatKey("store-01", "walk.mp4"), { key: "scenes/store-01/walk.mp4", kind: "web" });
   assert.ok(isTrainVideo("IMG_0421.MOV") && isTrainVideo("walk.mp4"));
   assert.ok(!isTrainVideo("store.ply") && !isWalkVideo("IMG_0421.mov"));
+});
+
+test("a walk's sound: its own folder, a stamped name, only .mp3 or .m4a, checked by its bytes", () => {
+  const at = new Date("2026-10-18T10:15:00.000Z");
+  const key = walkAudioKey("minesotastore", "audio/mpeg", at);
+  assert.equal(key, "scenes/minesotastore/audio/sound-20261018-101500.mp3");
+  assert.equal(walkAudioKey("minesotastore", "audio/mp4", at), "scenes/minesotastore/audio/sound-20261018-101500.m4a");
+  assert.equal(walkAudioKey("minesotastore", "audio/wav", at), null);
+  assert.equal(walkAudioKey("Bad Scene", "audio/mpeg", at), null);
+  assert.equal(isWalkAudioKey(key!), "audio/mpeg");
+  assert.equal(isAudioKey(key), true, "walks.ts repeats the same rule");
+  assert.equal(isWalkAudioKey("scenes/minesotastore/signs/sound-20261018-101500.mp3"), null);
+  assert.equal(isSplatKey(key!), null, "not a splat: nothing else may be sent there");
+  assert.equal(audioTypeOf(new Uint8Array([0x49, 0x44, 0x33, 4, 0])), "audio/mpeg");
+  assert.equal(audioTypeOf(new Uint8Array([0xff, 0xfb, 0x90, 0x64])), "audio/mpeg");
+  assert.equal(audioTypeOf(new Uint8Array([0, 0, 0, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41])), "audio/mp4");
+  assert.equal(audioTypeOf(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x41, 0x56, 0x45])), null, "a .wav is refused");
 });

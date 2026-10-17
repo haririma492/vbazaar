@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -320,4 +320,22 @@ test("a walk may say how its video holds its picture (a YouTube 360° download i
   // Set here while someone else added a door: both kept.
   const theirs = addDoor(emptyWalks(), K, { t: 1, yaw: 0, label: { en: "Way out" }, to: STREET });
   assert.equal(walkOf(mergeWalks(emptyWalks(), w, theirs), K)!.projection, "eac");
+});
+
+test("a walk may have its own background sound, uploaded for walks", () => {
+  const K = "scenes/ax-man/tour.mp4";
+  const SOUND = "scenes/ax-man/audio/sound-20261018-101500.mp3";
+  const w = setAudio(emptyWalks(), K, SOUND);
+  assert.equal(walkOf(w, K)!.audio, SOUND);
+  assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
+  assert.ok(keysNamed(w).includes(SOUND), "saving checks the sound is in the bucket");
+  assert.equal(walkOf(setAudio(w, K, null), K)!.audio, undefined);
+  for (const bad of ["https://example.com/a.mp3", "scenes/ax-man/signs/a.mp3", "scenes/ax-man/audio/sound-1.wav"]) {
+    assert.equal(checkWalks({ walks: { [K]: { doors: [], audio: bad } } }).problems.length, 1, bad);
+  }
+  // Set here while someone else set the projection: both kept.
+  const theirs = setProjection(emptyWalks(), K, "eac");
+  const merged = walkOf(mergeWalks(emptyWalks(), w, theirs), K)!;
+  assert.equal(merged.audio, SOUND);
+  assert.equal(merged.projection, "eac");
 });

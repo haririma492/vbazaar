@@ -192,3 +192,41 @@ export function imageTypeOf(b: Uint8Array): SignImageType | null {
   if (b.length >= 12 && at(0, 0x52, 0x49, 0x46, 0x46) && at(8, 0x57, 0x45, 0x42, 0x50)) return "image/webp";
   return null;
 }
+
+/**
+ * A WALK'S BACKGROUND SOUND, NOT A SPLAT (founder, 2026-10-18: "how to add my
+ * own audio" → a background loop). An .mp3 or .m4a uploaded from the walk's
+ * edit page («Sound») to `scenes/<scene>/audio/sound-<stamp>.<ext>` — its own
+ * folder and rule, like a sign's image. A new sound is a new name.
+ */
+export const WALK_AUDIO_TYPES = { "audio/mpeg": "mp3", "audio/mp4": "m4a" } as const;
+export type WalkAudioType = keyof typeof WALK_AUDIO_TYPES;
+/** Ten minutes of good mp3 (256 kbit/s) is under 20 MB; a loop needs far less. */
+export const MAX_WALK_AUDIO_BYTES = 40 * MiB;
+
+const WALK_AUDIO_KEY_RE = /^scenes\/([^/]+)\/audio\/sound-(\d{8}-\d{6})\.(mp3|m4a)$/;
+
+export const isWalkAudioType = (t: unknown): t is WalkAudioType =>
+  typeof t === "string" && Object.prototype.hasOwnProperty.call(WALK_AUDIO_TYPES, t);
+
+/** The key a walk's sound is uploaded under, or null when the scene or type is not acceptable. */
+export function walkAudioKey(scene: string, type: string, at: Date): string | null {
+  if (!isSceneId(scene) || !isWalkAudioType(type)) return null;
+  const stamp = at.toISOString().replace(/[-:]/g, "").replace("T", "-").slice(0, 15);
+  return `scenes/${scene}/audio/sound-${stamp}.${WALK_AUDIO_TYPES[type]}`;
+}
+
+/** Whether a key a browser sent back is a walk sound this tool could have made — and its type. */
+export function isWalkAudioKey(key: string): WalkAudioType | null {
+  const m = WALK_AUDIO_KEY_RE.exec(key);
+  if (!m || !isSceneId(m[1])) return null;
+  return (Object.keys(WALK_AUDIO_TYPES) as WalkAudioType[]).find((t) => WALK_AUDIO_TYPES[t] === m[3]) ?? null;
+}
+
+/** What the bytes really are: an mp3 (an ID3 tag or a frame's sync bits) or an MPEG-4 audio file («ftyp»). */
+export function audioTypeOf(b: Uint8Array): WalkAudioType | null {
+  if (b.length >= 3 && b[0] === 0x49 && b[1] === 0x44 && b[2] === 0x33) return "audio/mpeg";
+  if (b.length >= 2 && b[0] === 0xff && (b[1] & 0xe0) === 0xe0) return "audio/mpeg";
+  if (b.length >= 8 && b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "audio/mp4";
+  return null;
+}

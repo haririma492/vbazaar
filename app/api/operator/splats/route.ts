@@ -28,7 +28,9 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminTokenValid } from "@/lib/adminAuth";
-import { MAX_SIGN_IMAGE_BYTES, isSceneId, isSignImageType, isSplatKey, partPlan, signImageKey, splatKey } from "@/lib/splats/keys";
+import {
+  MAX_SIGN_IMAGE_BYTES, MAX_WALK_AUDIO_BYTES, isSceneId, isSignImageType, isSplatKey, isWalkAudioType, partPlan, signImageKey, splatKey, walkAudioKey,
+} from "@/lib/splats/keys";
 import {
   abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signImageHeaders, signImagePutUrl,
   signPart, startUpload, writeCatalogue, writeTour, writeWalks,
@@ -177,6 +179,20 @@ export async function POST(req: NextRequest) {
       }
       const key = signImageKey(scene, String(body.sign ?? ""), type, new Date());
       if (!key) return fail(400, "A scene id and a sign id like «sign-1».");
+      return ok({ key, url: await signImagePutUrl(key, type), headers: signImageHeaders(type), publicUrl: publicUrl(key) });
+    }
+
+    // A walk's background sound (`walkAudioKey`): a key in the scene's audio/
+    // folder and one signed PUT for it, like a sign's image.
+    if (action === "walkAudio") {
+      const type = String(body.type ?? "");
+      const size = Number(body.size);
+      if (!isWalkAudioType(type)) return fail(400, "An .mp3 or .m4a sound.");
+      if (!Number.isSafeInteger(size) || size <= 0 || size > MAX_WALK_AUDIO_BYTES) {
+        return fail(400, `A sound of at most ${MAX_WALK_AUDIO_BYTES / 1048576} MB.`);
+      }
+      const key = walkAudioKey(String(body.scene ?? ""), type, new Date());
+      if (!key) return fail(400, "A scene id.");
       return ok({ key, url: await signImagePutUrl(key, type), headers: signImageHeaders(type), publicUrl: publicUrl(key) });
     }
 

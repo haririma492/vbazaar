@@ -143,6 +143,13 @@ export type Walk = {
    * operator's «Is this a 360° video?» on the walk's edit page.
    */
   projection?: "equirect" | "eac" | "flat";
+  /**
+   * The walk's background sound (founder, 2026-10-18): a key `walkAudioKey`
+   * made, `scenes/<scene>/audio/sound-<stamp>.mp3|m4a`, looped while the
+   * shopper is on this walk. The video itself stays muted: walked back and at
+   * 2–3× its own sound would garble.
+   */
+  audio?: string;
 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -151,6 +158,10 @@ export type Walks = { start?: string; walks: Record<string, Walk> };
 const SCENE_ID = "[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?";
 const WALK_KEY_RE = new RegExp(`^scenes/${SCENE_ID}/[A-Za-z0-9][A-Za-z0-9._-]{0,116}\\.[mM][pP]4$`);
 const DOOR_ID_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
+
+const AUDIO_KEY_RE = new RegExp(`^scenes/${SCENE_ID}/audio/sound-\\d{8}-\\d{6}\\.(?:mp3|m4a)$`);
+/** A walk's background sound key (`keys.ts`'s `isWalkAudioKey`, repeated). */
+export const isAudioKey = (v: unknown): v is string => typeof v === "string" && AUDIO_KEY_RE.test(v);
 
 const PHONE_VIDEO_RE = new RegExp(`^masters/${SCENE_ID}/[A-Za-z0-9][A-Za-z0-9._-]{0,116}\\.(?:[mM][oO][vV]|[mM][pP]4)$`);
 
@@ -218,6 +229,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.projection !== undefined && r.projection !== null) {
       if (r.projection === "equirect" || r.projection === "eac" || r.projection === "flat") walk.projection = r.projection;
       else problems.push(`${key}: «projection» must be equirect, eac or flat.`);
+    }
+    if (r.audio !== undefined && r.audio !== null) {
+      if (isAudioKey(r.audio)) walk.audio = r.audio;
+      else problems.push(`${key}: «audio» is not a sound uploaded for a walk.`);
     }
     if (r.title !== undefined) {
       const t = (r.title ?? {}) as Record<string, unknown>;
@@ -327,7 +342,10 @@ export const parseWalks = (raw: unknown): Walks => checkWalks(raw).walks;
 /** Every video key the walks name (walks, doors' targets, start) — what must exist in the bucket. */
 export function keysNamed(w: Walks): string[] {
   const s = new Set<string>(Object.keys(w.walks));
-  for (const walk of Object.values(w.walks)) for (const d of walk.doors) if (d.to) s.add(d.to);
+  for (const walk of Object.values(w.walks)) {
+    for (const d of walk.doors) if (d.to) s.add(d.to);
+    if (walk.audio) s.add(walk.audio);
+  }
   if (w.start) s.add(w.start);
   return [...s];
 }
@@ -532,6 +550,14 @@ export function setProjection(w: Walks, key: string, projection: Walk["projectio
   });
 }
 
+/** A walk's background sound (a `walkAudioKey`); null: none. */
+export function setAudio(w: Walks, key: string, audio: string | null): Walks {
+  return withWalk(w, key, (walk) => {
+    const { audio: _drop, ...rest } = walk;
+    return audio ? { ...rest, audio } : rest;
+  });
+}
+
 /** The shop's name on a walk (empty: none). */
 export function setTitle(w: Walks, key: string, title: { en: string; fa: string }): Walks {
   const en = title.en.trim(), fa = title.fa.trim();
@@ -608,9 +634,10 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const title = same(m.title, bb.title) ? t.title : m.title;
     const items = mergeById(bb.items ?? [], m.items ?? [], t.items ?? []);
     const projection = same(m.projection, bb.projection) ? t.projection : m.projection;
+    const audio = same(m.audio, bb.audio) ? t.audio : m.audio;
     walks[k] = {
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
-      ...(projection ? { projection } : {}),
+      ...(projection ? { projection } : {}), ...(audio ? { audio } : {}),
     };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;
