@@ -73,7 +73,12 @@ quality and choice to break away and enter in a shop. (period)"*
   (`walk/WalkSound.tsx`).
 - **Cut and stitch a walk video** (founder, 2026-10-18: "4:20 - 4:40, 7:48 -
   8:20 … cut and stitch … save on olgoo (under the same name)"): «Cut» on
-  `?edit=1` asks the parts to keep one card at a time, **always in the
+  `?edit=1` is a LIST of the parts to keep (founder, 2026-10-18: "list all
+  parts … with begining and end Second, allow user to add or delete or modify
+  the list, when list is final … stich the result and replace the video"):
+  each row's start and end in seconds, changed or deleted in place and
+  checked as typed, a draft kept on the device, then «Stitch and replace the
+  video» → one «Are you sure?» card. Times are **always in the
   ORIGINAL video's times** (founder: "we mean 4:20 to 4:40 from original
   video"); our server's ffmpeg CUTS each part out of the kept original by a
   signed URL (only that stretch is read), then STITCHES them in order
