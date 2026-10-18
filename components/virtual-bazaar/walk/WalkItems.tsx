@@ -171,7 +171,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
           rel="noopener"
           className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-full bg-[#00B8C8] px-4 text-[15px] font-bold text-[#06131c]"
         >
-          {lang === "fa" ? "افزودن به سبد سرکوچه" : "Add to Sarekooche basket"}
+          {lang === "fa" ? "افزودن به سبد" : "Add to basket"}
         </a>
         <div className="mt-3 flex items-center justify-between text-[13px]">
           <a href={sarekoocheHref("/basket")} target="_blank" rel="noopener" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>
