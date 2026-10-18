@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { followProduct } from "./followProduct";
+import { followProduct, followProduct360 } from "./followProduct";
 import { basketAddHref, offerItemId, sarekoocheHref, type BasketLine } from "@/lib/sarekooche";
 import {
   addItem, isSiteUrl, itemTime, removeItem, setTitle, sortItemPins, updateItem, walkOf,
@@ -30,7 +30,7 @@ type Lang = "fa" | "en";
 
 /** The minimal engine the editor drives (`Walk360.tsx`'s `Engine`). */
 export type ItemEngine = {
-  here: () => { key: string | null; t: number; flat: boolean };
+  here: () => { key: string | null; t: number; flat: boolean; projection?: "equirect" | "eac" | "flat" | null };
   setItemPick: (f: ((pin: ItemPin) => void) | null) => void;
   setItemPreview: (item: WalkItem | null) => void;
   seek: (t: number) => void;
@@ -248,9 +248,11 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
 
   // ⚠️ THE DOT FOLLOWS THE PRODUCT BY ITSELF (founder, 2026-10-12: "the dot
   // moves with shopper, instead of being pinned to the product … the single
-  // most important issue"). On a flat phone video each tap starts a follow
-  // (`followProduct`): the first places the dot for every step the product is
-  // in view; a later tap re-follows from there and replaces that stretch.
+  // most important issue"). Each tap starts a follow — `followProduct` on a
+  // flat phone video, `followProduct360` on a 360° walk (2026-10-18: "the label
+  // need to be pined on the product … not moved with shoppers"): the first
+  // places the dot for every step the product is in view; a later tap
+  // re-follows from there and replaces that stretch.
   const [follow, setFollow] = useState<Follow | null>(null);
   const run = useRef<{ cancelled: boolean } | null>(null);
   const draftRef = useRef(draft);
@@ -259,11 +261,16 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
     const e = engine.current;
     if (run.current) run.current.cancelled = true;
     run.current = null;
-    if (!e || !e.here().flat || !e.video().currentSrc) { setFollow(null); return; } // a 360° walk: taps by hand
+    if (!e || !e.video().currentSrc) { setFollow(null); return; }
+    const here = e.here();
     const sig = { cancelled: false };
     run.current = sig;
     setFollow({ running: true, done: 0, total: 1 });
-    followProduct(e.video().currentSrc, pin, (p) => { if (!sig.cancelled) setFollow({ running: true, ...p }); }, sig)
+    const onProgress = (p: { done: number; total: number }) => { if (!sig.cancelled) setFollow({ running: true, ...p }); };
+    // A flat phone video: the patch in the frame; a 360° walk: the patch in a view cut around the product (2026-10-18).
+    (here.flat
+      ? followProduct(e.video().currentSrc, pin, onProgress, sig)
+      : followProduct360(e.video().currentSrc, pin, here.projection === "eac" ? "eac" : "equirect", onProgress, sig))
       .then((pins) => {
         if (sig.cancelled) return;
         const lo = pins[0].t - 0.05, hi = pins[pins.length - 1].t + 0.05;

@@ -99,6 +99,18 @@ quality and choice to break away and enter in a shop. (period)"*
   English voice says it once as it comes into view (`specialSay`,
   `sayAloud` in `walk/WalkSound.tsx`; muted by the same 🔊/🔇). Only
   specials speak.
+- **Price tags on sticks, pinned to the product on 360° walks too**
+  (founder, 2026-10-18: "the label need to be pined on the product on top of
+  product not moved with shoppers as shopper move … we need like a stick that
+  holds the price tag up attached to the product"). Every product is a tag
+  (name + price, the list's price for a numbered one; red SPECIAL for a
+  special) held up on a stick whose foot dot is the product's spot
+  (`tagTexture`, `Sprite.center`; the same as DOM on a flat video). A tap on
+  a 360° walk now follows the product like a flat video's does
+  (`followProduct360`): each step a small normal camera view is cut out of
+  the 360° frame around where it was (`renderView` in `projection.ts`), the
+  patch found again, the next step guessed from the last move — checked on a
+  synthetic walk: 12 s, 90° of sliding, within 0.9°.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

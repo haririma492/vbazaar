@@ -15,6 +15,7 @@
  */
 
 import { clampCentre, followStep, patchAt, toGray } from "@/lib/splats/track";
+import { renderView, viewDir, type Projection } from "@/lib/splats/projection";
 import type { ItemPin } from "@/lib/splats/walks";
 
 /** Seconds between followed frames. */
@@ -94,6 +95,100 @@ export async function followProduct(
         at = r;
         template = r.template;
         pins.push({ t: Math.round(t * 100) / 100, x: Math.round((r.x / w) * 1000) / 1000, y: Math.round((r.y / h) * 1000) / 1000 });
+      }
+    }
+    return pins.sort((a, b) => a.t - b.t);
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+/** The 360° frame's width while following (px): sharp enough to cut a view from. */
+const WORK_360 = 1536;
+/** The view cut around the product: its field of view and size (px). */
+const VIEW_FOV = (36 * Math.PI) / 180;
+const VIEW_N = 96;
+const VIEW_PATCH = 15;
+const VIEW_RADIUS = 20;
+
+/**
+ * FOLLOW A TAPPED PRODUCT THROUGH A 360° WALK (founder, 2026-10-18: "the
+ * label need to be pined on the product on top of product not moved with
+ * shoppers as shopper move"). The same hidden video, stepped the same way;
+ * each frame is read whole, and the product is looked for in a small normal
+ * camera view cut out of it around where it was (`renderView`), so the bend
+ * of the panorama or cube map does not lose it. Pins are directions, as taps
+ * on a 360° walk are.
+ */
+export async function followProduct360(
+  src: string,
+  start: ItemPin,
+  projection: Projection,
+  onProgress: (p: FollowProgress) => void,
+  signal: { cancelled: boolean },
+): Promise<ItemPin[]> {
+  const video = document.createElement("video");
+  video.crossOrigin = "anonymous";
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.src = src;
+  try {
+    await new Promise<void>((ok, fail) => {
+      video.addEventListener("loadeddata", () => ok(), { once: true });
+      video.addEventListener("error", () => fail(new Error("The video could not be opened to follow the product.")), { once: true });
+      video.load();
+    });
+    const W = WORK_360, H = Math.round((video.videoHeight / video.videoWidth) * WORK_360);
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const duration = video.duration;
+    const viewAt = async (t: number, at: { lon: number; lat: number }): Promise<Float32Array> => {
+      await new Promise<void>((ok) => {
+        video.addEventListener("seeked", () => ok(), { once: true });
+        video.currentTime = Math.min(Math.max(0, t), Math.max(0, duration - 0.05));
+      });
+      ctx.drawImage(video, 0, 0, W, H);
+      // Throws on a video without CORS: the caller says so and falls back to taps.
+      return renderView(toGray(ctx.getImageData(0, 0, W, H).data, W, H), W, H, projection, at.lon, at.lat, VIEW_FOV, VIEW_N);
+    };
+
+    const c = VIEW_N / 2;
+    const at0 = { lon: start.x, lat: start.y };
+    const template0 = patchAt(await viewAt(start.t, at0), VIEW_N, c, c, VIEW_PATCH);
+    const pins: ItemPin[] = [{ t: start.t, x: start.x, y: start.y }];
+    const forwardSteps = Math.max(0, Math.min(Math.floor(SPAN / STEP), Math.floor((duration - start.t) / STEP)));
+    const backSteps = Math.max(0, Math.min(Math.floor(SPAN / STEP), Math.floor(start.t / STEP)));
+    const total = forwardSteps + backSteps;
+    let done = 0;
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
+
+    for (const dir of [1, -1] as const) {
+      let at = at0;
+      let move = { lon: 0, lat: 0 }; // the last step's move: the camera walks smoothly, so the product goes on the same way
+      let template = template0;
+      const steps = dir === 1 ? forwardSteps : backSteps;
+      for (let i = 1; i <= steps; i++) {
+        if (signal.cancelled) throw new Error("cancelled");
+        const t = start.t + dir * i * STEP;
+        const guess = { lon: at.lon + move.lon, lat: at.lat + move.lat };
+        const r = followStep(await viewAt(t, guess), VIEW_N, VIEW_N, template, VIEW_PATCH, { x: c, y: c }, VIEW_RADIUS);
+        done++;
+        onProgress({ done, total });
+        if (!r) {
+          done += steps - i;
+          onProgress({ done, total });
+          break;
+        }
+        const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, r.x, r.y);
+        const dLon = Math.atan2(Math.sin(next.lon - at.lon), Math.cos(next.lon - at.lon));
+        move = { lon: dLon, lat: next.lat - at.lat };
+        at = next;
+        template = r.template;
+        pins.push({ t: Math.round(t * 100) / 100, x: r3(at.lon), y: r3(at.lat) });
       }
     }
     return pins.sort((a, b) => a.t - b.t);
