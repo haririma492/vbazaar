@@ -63,7 +63,9 @@ export function itemLine(item: WalkItem, walkKey: string, walk: Walk | null, lan
     const weighed = byWeight(product.unit);
     const name = productName(product, lang);
     const other = productName(product, lang === "fa" ? "en" : "fa");
-    const cents = priceOf(product, weighed ? amount : 1);
+    // On special: the special price (per unit, so a weighed one times the weight).
+    const specialCents = item.special ? readPrice(item.special.now) : null;
+    const cents = specialCents !== null ? Math.round(specialCents * (weighed ? amount : 1)) : priceOf(product, weighed ? amount : 1);
     const unit = UNIT_SAY[product.unit][lang];
     return {
       id: offerItemId(`walk-${sceneOf(walkKey)}-n${product.n}${weighed ? `-${amountSay(amount)}${product.unit}` : ""}`),
@@ -83,7 +85,7 @@ export function itemLine(item: WalkItem, walkKey: string, walk: Walk | null, lan
     label: lang === "fa" && fa ? fa : item.label.en,
     ...(fa ? { sub: lang === "fa" ? item.label.en : fa } : {}),
     merchant,
-    ...(item.price ? { price: item.price } : {}),
+    ...(item.special ? { price: item.special.now } : item.price ? { price: item.price } : {}),
     ...(item.image ? { imageUrl: item.image } : {}),
     href,
   };
@@ -97,7 +99,8 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   catalogue: Catalogue | null;
   onClose: () => void;
 }) {
-  const [lang, setLang] = useState<Lang>("fa");
+  // A special opens in English (founder: "no farsi … only … english … when there is special").
+  const [lang, setLang] = useState<Lang>(item.special ? "en" : "fa");
   const product = productOf(catalogue, item.n);
   const weighed = Boolean(product && byWeight(product.unit));
   const choices = product ? weightChoices(product.unit) : [1];
@@ -105,7 +108,8 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   const name = product ? productName(product, lang) : lang === "fa" && item.label.fa ? item.label.fa : item.label.en;
   const other = product ? productName(product, lang === "fa" ? "en" : "fa") : item.label.fa ? (lang === "fa" ? item.label.en : item.label.fa) : "";
   const photo = product ? product.photo : item.image;
-  const total = product ? priceOf(product, weighed ? amount : 1) : null;
+  const specialCents = item.special ? readPrice(item.special.now) : null;
+  const total = product ? (specialCents !== null ? Math.round(specialCents * (weighed ? amount : 1)) : priceOf(product, weighed ? amount : 1)) : null;
   return (
     <div className="absolute inset-0 z-40 flex items-end justify-center bg-black/40 sm:items-center" onClick={onClose}>
       <div
@@ -126,7 +130,14 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
             <div className="mt-1 text-[13px] text-white/55">
               {shopName(walkKey, walk, lang)}{product?.sku ? ` · ${lang === "fa" ? "کد" : "No."} ${product.sku}` : ""}
             </div>
-            {product ? (
+            {item.special ? (
+              // On special: English only (founder).
+              <div dir="ltr" className="mt-1.5 inline-flex flex-col rounded-xl bg-[#d61424] px-3 py-1.5 text-white">
+                <span className="text-[13px] font-black tracking-wide text-[#ffe14d]">SPECIAL</span>
+                <span className="text-[14px] text-white/80 line-through">{item.special.was}</span>
+                <span className="text-[24px] font-black leading-tight">{item.special.now}{product && byWeight(product.unit) ? ` / ${product.unit}` : ""}</span>
+              </div>
+            ) : product ? (
               <div className="mt-1.5 text-[17px] font-bold text-amber-200">{unitPriceSay(product, lang)}</div>
             ) : item.price ? (
               <div className="mt-1.5 text-[20px] font-extrabold text-amber-200">{item.price}</div>
@@ -230,6 +241,8 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [shopOpen, setShopOpen] = useState(false);
   const [sheet, setSheet] = useState<SheetImport | null>(null);
+  /** The product being put on special: its two questions, one card each. */
+  const [special, setSpecial] = useState<SpecialDraft | null>(null);
   const walk = walkOf(walks, viewKey);
   const hasList = Boolean(catalogue?.products.length);
 
@@ -423,6 +436,7 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
                 {p ? productName(p, "en") : it.label.en}
                 {(p?.fa ?? it.label.fa) && <span className="text-white/60"> · {p?.fa ?? it.label.fa}</span>}
                 {p ? <span className="text-amber-200"> · {unitPriceSay(p, "en")}</span> : it.price && <span className="text-amber-200"> · {it.price}</span>}
+                {it.special && <span className="ms-1 rounded bg-[#d61424] px-1 text-[11px] font-bold text-white">SPECIAL {it.special.now}</span>}
                 {it.n !== undefined && !p && <span className="text-rose-300"> · not in the list</span>}
                 {!it.pins.length && <span className="text-rose-300"> · no dot</span>}
               </div>
@@ -438,6 +452,11 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
                     pins: it.pins, step: hand ? "en" : "number",
                   });
                 }}>Edit</button>
+                <button className={btn} disabled={Boolean(draft)} onClick={() => setSpecial({
+                  id: it.id, name: p ? productName(p, "en") : it.label.en, step: "was",
+                  was: it.special?.was ?? (p && p.priceCents !== null ? formatCents(p.priceCents) : it.price ?? ""), now: it.special?.now ?? "",
+                  on: Boolean(it.special),
+                })}>{it.special ? "★ Special" : "☆ Put on special"}</button>
                 <button className={btn} onClick={() => { if (viewKey && window.confirm(`Delete «${it.label.en}» from this video?`)) change(removeItem(walks, viewKey, it.id)); }}>Delete</button>
               </div>
             </li>
@@ -446,8 +465,62 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
         {walk && !(walk.items ?? []).length && !draft && <li className="text-white/50">No products tagged on this video yet.</li>}
       </ul>
 
+      {special && viewKey && (
+        <SpecialCard draft={special} setDraft={setSpecial} onDone={(sp) => {
+          change(updateItem(walks, viewKey, special.id, { special: sp ?? undefined }));
+          setStatus({ tone: "ok", text: sp ? `«${special.name}» is on special: ${sp.was} → ${sp.now}.` : `«${special.name}» is no longer on special.` });
+          setSpecial(null);
+        }} />
+      )}
       {draft && !sheet && <TagCard draft={draft} setDraft={setDraft} onDone={() => void finish()} follow={follow} catalogue={catalogue} />}
       {sheet && <SheetCard sheet={sheet} kept={(catalogue?.products ?? []).filter((p) => p.by === "hand" && !sheet.products.some((q) => q.n === p.n)).length} onUse={() => void useSheet()} onCancel={() => setSheet(null)} />}
+    </div>
+  );
+}
+
+type SpecialDraft = { id: string; name: string; step: "was" | "now"; was: string; now: string; on: boolean };
+
+/**
+ * PUTTING A PRODUCT ON SPECIAL, ONE QUESTION AT A TIME (founder, 2026-10-18):
+ * its price before the special → the special price → saved by the editor.
+ * Shoppers then see a big red SPECIAL badge with the old price crossed out,
+ * and hear it said in English as they pass (`specialSay`).
+ */
+function SpecialCard({ draft, setDraft, onDone }: {
+  draft: SpecialDraft;
+  setDraft: (d: SpecialDraft | null) => void;
+  onDone: (special: { was: string; now: string } | null) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const primary = "rounded-xl bg-[#00B8C8] px-5 py-2.5 text-[15px] font-bold text-black";
+  const quiet = "rounded-xl border border-white/25 px-4 py-2.5 text-[14px] text-white/85";
+  const big = "w-full rounded-xl border border-white/25 bg-black/60 px-3 py-2.5 text-[18px] text-white";
+  // «12.99» → «$12.99»; «2/$5» as written.
+  const money = (v: string) => (/^\d+(\.\d{1,2})?$/.test(v.trim()) ? `$${Number(v.trim()).toFixed(2)}` : v.trim());
+  const isWas = draft.step === "was";
+  const value = isWas ? draft.was : draft.now;
+  const next = () => {
+    const v = value.trim();
+    if (!v) return setError(isWas ? "Type the price before the special (e.g. 15.99)." : "Type the special price (e.g. 12.99).");
+    if (v.length > 24) return setError("Shorter, please (e.g. 12.99 or 2/$5).");
+    setError(null);
+    if (isWas) setDraft({ ...draft, was: money(v), step: "now" });
+    else onDone({ was: money(draft.was), now: money(v) });
+  };
+  return (
+    <div dir="ltr" className="space-y-2 rounded-xl border border-[#d61424]/70 bg-[#d61424]/15 p-3">
+      <div className="text-[11px] text-white/55">{draft.name} · on special · {isWas ? "1" : "2"} of 2</div>
+      <div className="text-[17px] font-bold">{isWas ? "Its price before the special?" : "The special price now?"}</div>
+      {!isWas && <div className="text-[13px] text-white/65">Before: <span className="line-through">{draft.was}</span></div>}
+      <input key={draft.step} autoFocus className={big} inputMode="decimal" placeholder={isWas ? "e.g. 15.99" : "e.g. 12.99"} value={value}
+        onChange={(e) => setDraft(isWas ? { ...draft, was: e.target.value } : { ...draft, now: e.target.value })}
+        onKeyDown={(e) => { if (e.key === "Enter") next(); }} />
+      {error && <p className="text-[13px] text-amber-200">{error}</p>}
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={quiet} onClick={() => (isWas ? setDraft(null) : setDraft({ ...draft, step: "was" }))}>← Back</button>
+        {draft.on && isWas && <button className="text-[13px] text-white/70 underline" onClick={() => onDone(null)}>No longer on special</button>}
+        <button className={`${primary} ms-auto`} onClick={next}>{isWas ? "Next" : "Put on special"}</button>
+      </div>
     </div>
   );
 }

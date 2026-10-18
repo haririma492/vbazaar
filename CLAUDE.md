@@ -88,6 +88,17 @@ quality and choice to break away and enter in a shop. (period)"*
   bucket): «Put the original back» restores both. Doors and dots move with
   the picture (`lib/splats/cut.ts`, `cut-job.ts`); the walk's `rev` changes
   so the player asks for `<file>?r=<rev>` past the "forever" cache.
+- **Items on special** (founder, 2026-10-18: "few of items on special with a
+  better more clear label and audio activation when user pass by them";
+  «SPECIAL + was/now price»; *"no farsi, no farsi text, no farsi audio only
+  Robotic lady in english only when there is special"*): «☆ Put on special»
+  on a product in «Products» asks its price before → the special price, and
+  saves `special: { was, now }` on the item. Shoppers see a big red SPECIAL
+  badge (old price crossed out) instead of the dot, its card opens in
+  English, the basket line is at the special price, and the browser's
+  English voice says it once as it comes into view (`specialSay`,
+  `sayAloud` in `walk/WalkSound.tsx`; muted by the same 🔊/🔇). Only
+  specials speak.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

@@ -120,8 +120,25 @@ export type WalkItem = {
    * until the operator gives it a dot or deletes it.
    */
   pins: ItemPin[];
+  /**
+   * ON SPECIAL (founder, 2026-10-18: "few of items on special with a better
+   * more clear label and audio activation when user pass by them"; «SPECIAL +
+   * was/now price»; "no farsi … only Robotic lady in english only when there
+   * is special"). The walk shows a big red SPECIAL badge with `was` crossed
+   * out and `now`, says it aloud in English as the shopper passes
+   * (`specialSay`), and the basket line is at `now`. As the shop writes them:
+   * "$15.99", "2/$5".
+   */
+  special?: { was: string; now: string };
 };
 export const MAX_ITEMS = 150;
+
+/** What the walk says aloud as the shopper passes an item on special — English only (founder). */
+export function specialSay(item: WalkItem, name = item.label.en): string | null {
+  if (!item.special) return null;
+  const money = (s: string) => s.replace(/^\$?(\d+)\.(\d\d)$/, (_, d, c) => `${d} dollars ${Number(c) ? `${Number(c)}` : ""}`.trim());
+  return `Special! ${name}. Now ${money(item.special.now)}, was ${money(item.special.was)}.`;
+}
 
 
 // ⚠️ NO SHELVES (founder, 2026-10-12: "lets remove the shelf layer, there is
@@ -328,10 +345,18 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       });
       const pins = x.pins === undefined || x.pins === null ? [] : raw;
       if (!pins || (raw && !ok) || pins.length > MAX_ITEM_PINS) { problems.push(`${where}: its pins must be up to ${MAX_ITEM_PINS} of { t ≥ 0, x, y }.`); continue; }
+      let special: WalkItem["special"];
+      if (x.special !== undefined && x.special !== null) {
+        const sp = (typeof x.special === "object" ? x.special : {}) as Record<string, unknown>;
+        const was = str(sp.was, 24), now = str(sp.now, 24);
+        if (!was || !now) { problems.push(`${where}: a special needs its price before («was») and now.`); continue; }
+        special = { was, now };
+      }
       itemIds.add(id);
       kept.push({
         id, label: fa ? { en, fa } : { en },
         ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}), ...(typeof num === "number" ? { n: num } : {}),
+        ...(special ? { special } : {}),
         pins: sortItemPins((pins as Array<Record<string, number>>).map((q) => ({ t: q.t, x: q.x, y: q.y }))),
       });
     }

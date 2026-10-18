@@ -57,7 +57,7 @@ import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor } from "./WalkItems";
-import { SoundEditor, WalkSound } from "./WalkSound";
+import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import { CutEditor } from "./WalkCut";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, storeOfScene, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
@@ -66,7 +66,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -228,6 +228,48 @@ function itemTexture(en: string): THREE.CanvasTexture {
   g.fillRect(160 - w / 2, 126, w, 50);
   g.fillStyle = "#fff";
   g.fillText(label, 160, 163);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/**
+ * An item ON SPECIAL on a 360° walk — a big red badge (founder, 2026-10-18:
+ * «SPECIAL + was/now price», English only): «SPECIAL», the name, the old
+ * price crossed out and the special price — drawn once.
+ */
+function specialTexture(en: string, was: string, now: string): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 560;
+  c.height = 330;
+  const g = c.getContext("2d")!;
+  const box = (x: number, y: number, w: number, h: number, r: number) => {
+    g.beginPath();
+    g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  };
+  box(8, 8, 544, 314, 34);
+  g.fillStyle = "rgba(214,20,36,0.94)";
+  g.fill();
+  g.lineWidth = 8;
+  g.strokeStyle = "#fff";
+  g.stroke();
+  g.textAlign = "center";
+  g.fillStyle = "#ffe14d";
+  g.font = "900 64px system-ui, sans-serif";
+  g.fillText("SPECIAL", 280, 84);
+  g.fillStyle = "#fff";
+  g.font = "700 40px system-ui, sans-serif";
+  g.fillText(en.length > 20 ? `${en.slice(0, 19)}…` : en, 280, 146);
+  // The old price, crossed out; the special price, big.
+  g.font = "600 44px system-ui, sans-serif";
+  g.fillStyle = "rgba(255,255,255,0.8)";
+  const wasW = g.measureText(was).width;
+  g.fillText(was, 280, 210);
+  g.fillRect(280 - wasW / 2 - 6, 194, wasW + 12, 5);
+  g.fillStyle = "#fff";
+  g.font = "900 84px system-ui, sans-serif";
+  g.fillText(now, 280, 298);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -678,6 +720,9 @@ export default function Walk360() {
     let onItem: ((item: WalkItem) => void) | null = null;
     const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem }>();
     const itemButtons = new Map<string, { el: HTMLButtonElement; item: WalkItem }>();
+    /** Specials in view a moment ago, and when each was last said aloud. */
+    let seen = new Set<string>();
+    const spokenAt = new Map<string, number>();
     /** Where a flat video's picture sits on the screen (it is shown «contain»). */
     function flatRect(v: HTMLVideoElement) {
       const W = flatEl.clientWidth, H = flatEl.clientHeight;
@@ -700,8 +745,21 @@ export default function Walk360() {
       }
       const wantSprites = new Set<string>();
       const wantButtons = new Set<string>();
+      // A special coming into view is said aloud, once a minute at most (not to the operator placing it).
+      for (const { item } of shown) {
+        const said = specialSay(item);
+        if (!said || item === itemPreview || itemPick) continue;
+        const key = `${current!.key}#${item.id}`;
+        const last = spokenAt.get(key) ?? -Infinity;
+        if (!seen.has(key) && performance.now() - last > 60_000) {
+          spokenAt.set(key, performance.now());
+          sayAloud(said);
+        }
+      }
+      seen = new Set(shown.map(({ item }) => `${current!.key}#${item.id}`));
       for (const { item, x, y } of shown) {
-        const id = `${current!.key}#${item.id}#${item.label.en}`;
+        const sp = item.special;
+        const id = `${current!.key}#${item.id}#${item.label.en}#${sp ? `${sp.was}>${sp.now}` : ""}`;
         if (flat) {
           wantButtons.add(id);
           let b = itemButtons.get(id);
@@ -710,8 +768,16 @@ export default function Walk360() {
             el.type = "button";
             el.style.zIndex = "2"; // above the video, which is put on screen after it on re-entry
             el.className = "pointer-events-auto absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1";
-            el.innerHTML = `<span class="flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-white bg-[#00B8C8]/90 text-[26px] font-bold leading-none text-white shadow-lg">+</span><span class="max-w-[14rem] truncate rounded-md bg-black/65 px-2 py-0.5 text-[12px] font-semibold text-white"></span>`;
-            (el.lastElementChild as HTMLElement).textContent = item.label.fa ? `${item.label.en} · ${item.label.fa}` : item.label.en;
+            if (sp) {
+              // On special: a big red badge, English only (founder).
+              el.innerHTML = `<span class="flex flex-col items-center rounded-2xl border-[3px] border-white bg-[#d61424]/95 px-4 py-2 text-center text-white shadow-xl"><span class="text-[18px] font-black tracking-wide text-[#ffe14d]">SPECIAL</span><span data-n class="max-w-[12rem] truncate text-[14px] font-bold"></span><span data-w class="text-[14px] text-white/80 line-through"></span><span data-p class="text-[26px] font-black leading-tight"></span></span>`;
+              (el.querySelector("[data-n]") as HTMLElement).textContent = item.label.en;
+              (el.querySelector("[data-w]") as HTMLElement).textContent = sp.was;
+              (el.querySelector("[data-p]") as HTMLElement).textContent = sp.now;
+            } else {
+              el.innerHTML = `<span class="flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-white bg-[#00B8C8]/90 text-[26px] font-bold leading-none text-white shadow-lg">+</span><span class="max-w-[14rem] truncate rounded-md bg-black/65 px-2 py-0.5 text-[12px] font-semibold text-white"></span>`;
+              (el.lastElementChild as HTMLElement).textContent = item.label.fa ? `${item.label.en} · ${item.label.fa}` : item.label.en;
+            }
             el.addEventListener("click", () => {
               const m = itemButtons.get(id);
               if (m && m.item !== itemPreview && !itemPick) onItem?.(m.item);
@@ -731,8 +797,10 @@ export default function Walk360() {
           wantSprites.add(id);
           let m = itemSprites.get(id);
           if (!m) {
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: itemTexture(item.label.en), depthTest: false, depthWrite: false, transparent: true }));
-            sprite.scale.set(3.6, 2.25, 1);
+            const map = sp ? specialTexture(item.label.en, sp.was, sp.now) : itemTexture(item.label.en);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map, depthTest: false, depthWrite: false, transparent: true }));
+            if (sp) sprite.scale.set(5.6, 3.3, 1);
+            else sprite.scale.set(3.6, 2.25, 1);
             sprite.renderOrder = 11;
             m = { sprite, item };
             itemSprites.set(id, m);
@@ -1472,7 +1540,10 @@ export default function Walk360() {
         </>
       )}
 
-      {phase !== "loading" && <WalkSound audioKey={walkOf(walks, view.key)?.audio ?? null} srcOf={soundSrc} />}
+      {phase !== "loading" && (
+        <WalkSound audioKey={walkOf(walks, view.key)?.audio ?? null} srcOf={soundSrc}
+          specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
+      )}
 
       {card && view.key && (
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => setCard(null)} />

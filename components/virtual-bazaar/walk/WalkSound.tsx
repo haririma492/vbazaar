@@ -28,6 +28,33 @@ function readOn(): boolean {
   }
 }
 
+/** Whether the shopper has sound on (the 🔊 / 🔇 key): the walk's loop and the specials' voice. */
+export const soundOn = () => typeof window !== "undefined" && readOn();
+
+/** An English woman's voice where the device has one (founder: "Robotic lady in english"). */
+function ladyVoice(): SpeechSynthesisVoice | null {
+  const all = window.speechSynthesis.getVoices().filter((v) => /^en(-|_|$)/i.test(v.lang));
+  const lady = /female|woman|samantha|victoria|karen|moira|tessa|fiona|serena|zira|aria|jenny|susan|hazel|libby|google us english|google uk english female/i;
+  return all.find((v) => lady.test(v.name)) ?? all.find((v) => /en-us/i.test(v.lang)) ?? all[0] ?? null;
+}
+
+/**
+ * Say a special aloud, in English, once (`specialSay`) — only with sound on,
+ * and never over another one still being said.
+ */
+export function sayAloud(text: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window) || !readOn()) return;
+  const synth = window.speechSynthesis;
+  if (synth.speaking || synth.pending) return;
+  const u = new SpeechSynthesisUtterance(text);
+  const voice = ladyVoice();
+  if (voice) u.voice = voice;
+  u.lang = voice?.lang ?? "en-US";
+  u.rate = 1;
+  u.pitch = 1.1;
+  synth.speak(u);
+}
+
 function writeOn(on: boolean) {
   try {
     window.localStorage.setItem(MUTE_KEY, on ? "on" : "off");
@@ -36,7 +63,12 @@ function writeOn(on: boolean) {
   }
 }
 
-export function WalkSound({ audioKey, srcOf }: { audioKey: string | null; srcOf: (key: string) => Promise<string | null> }) {
+export function WalkSound({ audioKey, srcOf, specials = false }: {
+  audioKey: string | null;
+  srcOf: (key: string) => Promise<string | null>;
+  /** The walk has items on special, which speak: the key is shown for them too. */
+  specials?: boolean;
+}) {
   const [on, setOn] = useState(true);
   const [waiting, setWaiting] = useState(false); // the browser wants a tap first
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -81,11 +113,12 @@ export function WalkSound({ audioKey, srcOf }: { audioKey: string | null; srcOf:
     });
   }
 
-  if (!audioKey) return null;
+  if (!audioKey && !specials) return null;
   const toggle = () => {
     const next = !on;
     setOn(next);
     writeOn(next);
+    if (!next && typeof window !== "undefined" && "speechSynthesis" in window) window.speechSynthesis.cancel();
     const el = audio.current;
     if (!el) return;
     if (next) start(el);
@@ -99,7 +132,7 @@ export function WalkSound({ audioKey, srcOf }: { audioKey: string | null; srcOf:
       aria-label={on ? "Sound off" : "Sound on"}
       className="absolute right-3 top-3 z-20 rounded-full border border-white/30 bg-black/60 px-3 py-1.5 text-[15px] text-white"
     >
-      {on ? (waiting ? "🔊 tap to hear" : "🔊") : "🔇"}
+      {on ? (waiting && audioKey ? "🔊 tap to hear" : "🔊") : "🔇"}
     </button>
   );
 }

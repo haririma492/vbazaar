@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, specialSay, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -338,4 +338,19 @@ test("a walk may have its own background sound, uploaded for walks", () => {
   const merged = walkOf(mergeWalks(emptyWalks(), w, theirs), K)!;
   assert.equal(merged.audio, SOUND);
   assert.equal(merged.projection, "eac");
+});
+
+test("an item on special: was and now, said aloud in English", () => {
+  const K = "scenes/minesouta2/axman-4k-h264.mp4";
+  let w = addItem(emptyWalks(), K, { label: { en: "Saw", fa: "اره" }, price: "$15.99", pins: [{ t: 3, x: 0.2, y: 0 }] });
+  const id = walkOf(w, K)!.items![0].id;
+  w = updateItem(w, K, id, { special: { was: "$15.99", now: "$12.99" } });
+  const item = walkOf(w, K)!.items![0];
+  assert.deepEqual(item.special, { was: "$15.99", now: "$12.99" });
+  assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
+  assert.equal(specialSay(item), "Special! Saw. Now 12 dollars 99, was 15 dollars 99.");
+  assert.equal(specialSay({ ...item, special: { was: "$6", now: "2/$5" } }), "Special! Saw. Now 2/$5, was $6.");
+  assert.equal(specialSay({ ...item, special: undefined }), null, "only specials speak");
+  assert.equal(walkOf(updateItem(w, K, id, { special: undefined }), K)!.items![0].special, undefined);
+  assert.equal(checkWalks({ walks: { [K]: { doors: [], items: [{ id: "a", label: { en: "A" }, pins: [], special: { now: "$1" } }] } } }).problems.length, 1);
 });
