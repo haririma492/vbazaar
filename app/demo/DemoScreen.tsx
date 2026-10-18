@@ -37,7 +37,7 @@ function useStore3d() {
 }
 
 /**
- * The pitch screen: three big keys, nothing else. The intro plays right here;
+ * The pitch screen: big keys, nothing else. The intro plays right here;
  * the walk and the 3D store open full screen («← Demo» is the browser's back).
  */
 const KEYS = [
@@ -63,6 +63,15 @@ const KEYS = [
     en: "Shop inside a store",
     note: "Walk the aisle, tap a product, add it to the basket",
     href: "/vca/walk?v=scenes%2Fchinastoreyoutube%2FBillstra-119-Hamburg-20539-Qm7OVO4braI-.mp4",
+  },
+  {
+    // The store with price tags on sticks and specials (founder, 2026-10-18).
+    id: "tags",
+    icon: "🏷️",
+    fa: "فروشگاه با برچسب قیمت و حراج",
+    en: "Store with price tags & specials",
+    note: "Price tags on the products, specials said aloud, add to the basket",
+    href: "/vca/walk?v=scenes%2Fminesouta2%2Faxman-4k-h264.mp4",
   },
   {
     id: "store",
