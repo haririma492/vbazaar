@@ -110,7 +110,12 @@ quality and choice to break away and enter in a shop. (period)"*
   (`followProduct360`): each step a small normal camera view is cut out of
   the 360° frame around where it was (`renderView` in `projection.ts`), the
   patch found again, the next step guessed from the last move — checked on a
-  synthetic walk: 12 s, 90° of sliding, within 0.9°.
+  synthetic walk: 12 s, 90° of sliding, within 0.9°. ⚠️ A tag with ONE tap
+  shows only ±0.3 s round it (`ITEM_SLACK`; it was 3 s, and on a moving
+  camera the tag "followed" the shopper while the product slid away —
+  founder: "funny and does not make any sense"); «Products» marks it «not
+  pinned to the product» with «📌 Pin to the product», which follows it from
+  that tap and saves (`isPinned`).
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

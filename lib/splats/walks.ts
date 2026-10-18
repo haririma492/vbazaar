@@ -484,12 +484,27 @@ export function sortItemPins(pins: ItemPin[]): ItemPin[] {
   return out;
 }
 
-/** A dot tapped once shows this long either side of its moment (s) — a door's 1.5 s was easy to walk past. */
-export const ITEM_SLACK = 3;
+/**
+ * A dot tapped once shows only this long either side of its moment (s).
+ * ⚠️ NOT LONGER (founder, 2026-10-18: "the special tag moves with us …
+ * why it follows us, is funny and does not make any sense"): one tap is one
+ * direction at one moment; held for 3 s while the camera walked on, the
+ * product slid away under a tag that stayed put. A product is pinned for
+ * longer by following it (`followProduct360` / `followProduct`), and the
+ * editor flags one that is not (`isPinned`).
+ */
+export const ITEM_SLACK = 0.3;
+/** Past its first and last pin, a followed dot is held only this long (s). */
+const ITEM_HOLD = 0.2;
+
+/** Whether an item's dot is pinned to the product over time (followed, or tapped at a few moments), not one tap. */
+export function isPinned(item: WalkItem): boolean {
+  return item.pins.length >= 3;
+}
 
 /**
  * Where an item's dot is at `t`, or null when it is not shown: between its
- * first and last pin (held half a second past either end), following the pins
+ * first and last pin (held `ITEM_HOLD` past either end), following the pins
  * linearly — `round` (a 360° walk) takes x the short way round — or within
  * ±`slack` s of a single pin.
  */
@@ -498,7 +513,7 @@ export function itemAt(item: WalkItem, t: number, round: boolean, slack = ITEM_S
   if (!p.length) return null;
   if (p.length === 1) return Math.abs(t - p[0].t) <= slack ? { x: p[0].x, y: p[0].y } : null;
   const a = p[0], z = p[p.length - 1];
-  if (t < a.t - 0.5 || t > z.t + 0.5) return null;
+  if (t < a.t - ITEM_HOLD || t > z.t + ITEM_HOLD) return null;
   if (t <= a.t) return { x: a.x, y: a.y };
   if (t >= z.t) return { x: z.x, y: z.y };
   let i = 0;

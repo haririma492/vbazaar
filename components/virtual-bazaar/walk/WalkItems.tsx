@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { followProduct, followProduct360 } from "./followProduct";
 import { basketAddHref, offerItemId, sarekoocheHref, type BasketLine } from "@/lib/sarekooche";
 import {
-  addItem, isSiteUrl, itemTime, removeItem, setTitle, sortItemPins, updateItem, walkOf,
+  addItem, isPinned, isSiteUrl, itemTime, removeItem, setTitle, sortItemPins, updateItem, walkOf,
   type ItemPin, type Walk, type WalkItem, type Walks,
 } from "@/lib/splats/walks";
 import {
@@ -241,6 +241,39 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
   const [draft, setDraft] = useState<Draft | null>(null);
   const [shopOpen, setShopOpen] = useState(false);
   const [sheet, setSheet] = useState<SheetImport | null>(null);
+  /** A tagged product being pinned to itself (its one tap followed through the video), and how far. */
+  const [pinning, setPinning] = useState<{ id: string; done: number; total: number } | null>(null);
+  const walksRef = useRef(walks);
+  walksRef.current = walks;
+  /**
+   * 📌 PIN TO THE PRODUCT (founder, 2026-10-18: "the special tag moves with
+   * us … why it follows us"): a product tagged with one tap — before
+   * following came to 360° walks, or when it failed — is followed from that
+   * tap and saved, without going through «Edit».
+   */
+  async function pinToProduct(it: WalkItem) {
+    const e = engine.current;
+    if (!e || !viewKey || pinning) return;
+    const src = e.video().currentSrc;
+    if (!src) return setStatus({ tone: "bad", text: "The video is not loaded yet: wait a moment and try again." });
+    const here = e.here();
+    const start = it.pins[it.pins.length >> 1];
+    const sig = { cancelled: false };
+    setPinning({ id: it.id, done: 0, total: 1 });
+    try {
+      const onProgress = (p: { done: number; total: number }) => setPinning({ id: it.id, ...p });
+      const pins = here.flat
+        ? await followProduct(src, start, onProgress, sig)
+        : await followProduct360(src, start, here.projection === "eac" ? "eac" : "equirect", onProgress, sig);
+      if (pins.length < 3) throw new Error("it was lost at once — tap it again where it is clearer, with «Edit»");
+      change(updateItem(walksRef.current, viewKey, it.id, { pins }));
+      setStatus({ tone: "ok", text: `📌 «${it.label.en}» is pinned to the product from ${mmss(pins[0].t)} to ${mmss(pins[pins.length - 1].t)} — saving…` });
+    } catch (err) {
+      setStatus({ tone: "bad", text: `Not pinned: ${(err as Error).message}. Use «Edit» and tap the product two or three times as the video moves.` });
+    } finally {
+      setPinning(null);
+    }
+  }
   /** The product being put on special: its two questions, one card each. */
   const [special, setSpecial] = useState<SpecialDraft | null>(null);
   const walk = walkOf(walks, viewKey);
@@ -446,9 +479,15 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
                 {it.special && <span className="ms-1 rounded bg-[#d61424] px-1 text-[11px] font-bold text-white">SPECIAL {it.special.now}</span>}
                 {it.n !== undefined && !p && <span className="text-rose-300"> · not in the list</span>}
                 {!it.pins.length && <span className="text-rose-300"> · no dot</span>}
+                {it.pins.length > 0 && !isPinned(it) && <span className="text-amber-300"> · not pinned to the product</span>}
               </div>
               <div className="mt-1 flex gap-1.5">
                 <button className={btn} onClick={() => engine.current?.seek(itemTime(it))}>Go to</button>
+                {it.pins.length > 0 && !isPinned(it) && (
+                  <button className={`${btn} border-amber-300/70`} disabled={Boolean(pinning || draft)} onClick={() => void pinToProduct(it)}>
+                    {pinning?.id === it.id ? `Pinning… ${Math.round((100 * pinning.done) / Math.max(1, pinning.total))}%` : "📌 Pin to the product"}
+                  </button>
+                )}
                 <button className={btn} disabled={Boolean(draft)} onClick={() => {
                   engine.current?.seek(itemTime(it));
                   const hand = !p || p.by === "hand" || !hasList;

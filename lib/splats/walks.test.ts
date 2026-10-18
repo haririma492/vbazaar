@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, specialSay, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -279,17 +279,19 @@ test("items you can pick up: kept with their pins in order, checked, merged", ()
 
 test("an item's dot follows its pins, and only while they last", () => {
   const item = { id: "tea", label: { en: "Tea" }, pins: [{ t: 10, x: 0.2, y: 0.5 }, { t: 14, x: 0.6, y: 0.3 }] };
-  assert.equal(itemAt(item, 9.4, false), null);
-  assert.deepEqual(itemAt(item, 9.6, false), { x: 0.2, y: 0.5 });
+  assert.equal(itemAt(item, 9.7, false), null);
+  assert.deepEqual(itemAt(item, 9.85, false), { x: 0.2, y: 0.5 });
   const mid = itemAt(item, 12, false)!;
   assert.ok(Math.abs(mid.x - 0.4) < 1e-12 && Math.abs(mid.y - 0.4) < 1e-12);
-  assert.equal(itemAt(item, 14.6, false), null);
+  assert.equal(itemAt(item, 14.3, false), null);
   // On a 360° walk, x is a direction: it goes the short way round.
   const round = { id: "r", label: { en: "R" }, pins: [{ t: 0, x: 3, y: 0 }, { t: 2, x: -3, y: 0 }] };
   assert.ok(Math.abs(Math.abs(itemAt(round, 1, true)!.x) - Math.PI) < 0.01);
-  // One pin: shown round its moment.
+  // ⚠️ One pin: shown only at its moment — held for seconds while the camera walked on, the product slid away under it.
   const one = { id: "o", label: { en: "O" }, pins: [{ t: 5, x: 0.5, y: 0.5 }] };
-  assert.ok(itemAt(one, 7.9, false) && !itemAt(one, 8.1, false));
+  assert.ok(itemAt(one, 5.25, false) && !itemAt(one, 5.4, false) && !itemAt(one, 7, false));
+  assert.equal(isPinned(one), false);
+  assert.equal(isPinned({ ...one, pins: [0, 0.2, 0.4].map((t) => ({ t, x: 0.5, y: 0.5 })) }), true);
   assert.deepEqual(itemsAt({ doors: [], items: [item, one] }, 12, false).map((a) => a.item.id), ["tea"]);
 });
 
