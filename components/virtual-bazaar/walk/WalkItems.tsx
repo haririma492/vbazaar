@@ -99,8 +99,8 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   catalogue: Catalogue | null;
   onClose: () => void;
 }) {
-  // A special opens in English (founder: "no farsi … only … english … when there is special").
-  const [lang, setLang] = useState<Lang>(item.special ? "en" : "fa");
+  // Opens in English (founder, 2026-10-18: «افزودن به سبد سرکوچه» → "make this label english"); «فارسی» switches.
+  const [lang, setLang] = useState<Lang>("en");
   const product = productOf(catalogue, item.n);
   const weighed = Boolean(product && byWeight(product.unit));
   const choices = product ? weightChoices(product.unit) : [1];
