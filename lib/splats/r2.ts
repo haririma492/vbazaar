@@ -31,14 +31,18 @@ import { contentTypeFor, type SignImageType, type SplatKind, type WalkAudioType 
 import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
 import { WALKS_KEY, emptyWalks, mergeConflicts, mergeWalks, parseWalks, type Walks } from "./walks";
 import { catalogueKey, checkCatalogue, type Catalogue } from "./catalogue";
+import { OFFLINE_BASE, offlineDir, offlineJson, offlineKeys } from "./offline";
 
 const env = (k: string) => (process.env[k] || "").trim();
 
 export function r2Config() {
   const account = env("R2_ACCOUNT_ID");
   const web = env("R2_BUCKET");
+  // The demo without internet (`offline.ts`): the folder stands in for the buckets.
+  if (offlineDir()) return { configured: true, offline: true, webBucket: web, mastersBucket: web, publicBase: OFFLINE_BASE };
   return {
     configured: Boolean(account && env("R2_ACCESS_KEY_ID") && env("R2_SECRET_ACCESS_KEY") && web),
+    offline: false,
     webBucket: web,
     mastersBucket: env("R2_MASTERS_BUCKET") || web,
     publicBase: env("NEXT_PUBLIC_SPLAT_BASE_URL").replace(/\/+$/, ""),
@@ -176,6 +180,11 @@ async function listPrefix(bucket: string, prefix: string, kind: SplatKind): Prom
 }
 
 export async function listSplats(): Promise<SplatObject[]> {
+  if (offlineDir()) {
+    return offlineKeys()
+      .filter((o) => /^(scenes|masters)\//.test(o.key))
+      .map((o) => ({ key: o.key, kind: o.key.startsWith("masters/") ? "master" as const : "web" as const, size: o.size, lastModified: null }));
+  }
   const { webBucket, mastersBucket } = r2Config();
   const [masters, scenes] = await Promise.all([
     listPrefix(mastersBucket, "masters/", "master"),
@@ -198,6 +207,7 @@ export async function readMaster(key: string): Promise<{ body: ReadableStream; s
 
 /** A time-limited download link — for a master, the way to hand it to the converter without a key. */
 export function downloadLink(kind: SplatKind, key: string): Promise<string> {
+  if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`); // relative: the caller makes it whole
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }), { expiresIn: LINK_SECONDS });
 }
 
@@ -332,6 +342,10 @@ export async function writeTour(tour: Tour, base?: Tour): Promise<Tour> {
 /** The walks as the bucket holds them; none before the first save. */
 /** A store's product list (`lib/splats/catalogue.ts`), or null when none was uploaded. Read with the S3 API: it is rewritten in place. */
 export async function readCatalogue(store: string): Promise<Catalogue | null> {
+  if (offlineDir()) {
+    const raw = offlineJson(catalogueKey(store));
+    return raw ? checkCatalogue(raw).catalogue : null;
+  }
   try {
     const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: catalogueKey(store) }));
     return checkCatalogue(JSON.parse((await out.Body?.transformToString()) || "{}")).catalogue;
@@ -368,6 +382,7 @@ export async function writeCatalogue(c: Catalogue): Promise<Catalogue> {
 }
 
 export async function readWalks(): Promise<Walks> {
+  if (offlineDir()) return parseWalks(offlineJson(WALKS_KEY) ?? {});
   try {
     const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().webBucket, Key: WALKS_KEY }));
     return parseWalks(JSON.parse((await out.Body?.transformToString()) || "{}"));
@@ -419,6 +434,7 @@ export async function writeWalks(walks: Walks, base?: Walks): Promise<{ walks: W
  * downloads the phone video from. It never gets a key.
  */
 export function presignGetAny(key: string, seconds: number): Promise<string> {
+  if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`); // relative: the caller makes it whole
   const bucket = /^(masters|training)\//.test(key) ? r2Config().mastersBucket : r2Config().webBucket;
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: seconds });
 }

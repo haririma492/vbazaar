@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
     const walks = await readWalks();
     const named = Object.values(walks.walks).some((w) => w.doors.some((d) => d.to === key));
     if (!named) return NextResponse.json({ ok: false, error: "No door leads to that video." }, { status: 404, headers: NO_STORE });
-    return NextResponse.redirect(await presignGetAny(key, LINK_SECONDS), { status: 302, headers: NO_STORE });
+    return NextResponse.redirect(new URL(await presignGetAny(key, LINK_SECONDS), req.url), { status: 302, headers: NO_STORE });
   } catch (e) {
     console.error("[splats/walks/video]", e);
     return NextResponse.json({ ok: false, error: `R2 refused: ${(e as Error).message}` }, { status: 500, headers: NO_STORE });

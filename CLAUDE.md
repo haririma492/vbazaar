@@ -21,6 +21,19 @@ app served by the root `server.js` at the paths it had on sarekooche.com:
   `/operator/splats` says it is not configured. The code stays as R&D; the
   splat notes below are history, not the path.
 
+- **The demo without internet** (founder, 2026-10-18: "where I am going to
+  demo there is no internet, how can I run a local version of
+  olgoo.com/demo"): `npm run offline:pack` (with internet; `scripts/
+  offline-pack.mjs`) fills `vca-app/offline/` from olgoo.com's PUBLIC
+  addresses only — the walks file, /demo's walks and every shop a door leads
+  into, a store's aisles, each walk's sound, the product lists, the intro and
+  the 3D store; a file already there whole is skipped, one that fails is said
+  and skipped. `npm run offline` (`scripts/offline.mjs`) builds once with
+  `NEXT_PUBLIC_OFFLINE=1` and serves with `OFFLINE_DIR`: `r2Config()` turns
+  every bucket read into the folder (`lib/splats/offline.ts`),
+  `/api/offline/<key>` serves its files with byte ranges, and «Add to basket»
+  keeps the line on the device. Saving is not offered offline.
+
 The notes below came with it from Sarekooche's CLAUDE.md, unchanged.
 
 ## Operator screens: one question at a time (founder, 2026-10-12)

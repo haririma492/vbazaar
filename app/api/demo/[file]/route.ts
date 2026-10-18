@@ -20,6 +20,7 @@
 import { NextResponse } from "next/server";
 import { downloadLink, listSplats, r2Config, readMaster } from "@/lib/splats/r2";
 import { startMasterStreamJob } from "@/lib/splats/stream-job";
+import { OFFLINE_BASE, offlinePath } from "@/lib/splats/offline";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,7 +29,7 @@ const PLY_KEY = "masters/worldonyonge-inside-1st-alley/point_cloud_last-2-.ply";
 /** Its streamed copy, in the public bucket — the /demo page is public too. */
 const RAD_KEY = "scenes/demo/world-on-yonge-lod.rad";
 
-export async function GET(_req: Request, ctx: { params: Promise<{ file: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ file: string }> }) {
   const { file } = await ctx.params;
   if (!r2Config().configured) return NextResponse.json({ ok: false, error: "R2 is not configured on this host." }, { status: 503 });
   try {
@@ -44,6 +45,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ file: string }
       });
     }
     if (file === "store-3d") {
+      // Offline (`offline.ts`): the streamed copy brought along, or say it was not.
+      if (r2Config().offline) {
+        const here = offlinePath(RAD_KEY);
+        return NextResponse.json(here
+          ? { ok: true, state: "done", url: `${OFFLINE_BASE}/${RAD_KEY}` }
+          : { ok: false, state: "failed", error: "The 3D store is not in the offline folder (run «npm run offline:pack» with internet first)." },
+          { headers: { "cache-control": "no-store" } });
+      }
       const job = startMasterStreamJob(PLY_KEY, RAD_KEY);
       const base = r2Config().publicBase;
       if (job.state === "done" && !base) {
@@ -57,7 +66,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ file: string }
     if (file === "intro") {
       const intro = await findIntro();
       if (!intro) return NextResponse.json({ ok: false, error: "No «vca-intro» video found in the buckets." }, { status: 404 });
-      return NextResponse.redirect(await downloadLink(intro.kind, intro.key), 302);
+      return NextResponse.redirect(new URL(await downloadLink(intro.kind, intro.key), req.url), 302);
     }
     return NextResponse.json({ ok: false, error: "Not a demo file." }, { status: 404 });
   } catch (e) {

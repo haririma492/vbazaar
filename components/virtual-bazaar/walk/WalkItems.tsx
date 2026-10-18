@@ -91,6 +91,21 @@ export function itemLine(item: WalkItem, walkKey: string, walk: Walk | null, lan
   };
 }
 
+/** The demo without internet (`npm run offline` builds with it): the basket is kept on this device. */
+const OFFLINE = process.env.NEXT_PUBLIC_OFFLINE === "1";
+
+/** A line added to the offline basket; how many lines it now holds. */
+function addOfflineLine(line: BasketLine): number {
+  try {
+    const all = JSON.parse(window.localStorage.getItem("offline-basket") ?? "[]") as BasketLine[];
+    all.push(line);
+    window.localStorage.setItem("offline-basket", JSON.stringify(all));
+    return all.length;
+  } catch {
+    return 1;
+  }
+}
+
 /** The card a tap on an item's dot opens: photo, name, price — a weight to choose for weighed goods — and «Add to Basket». */
 export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   item: WalkItem;
@@ -99,6 +114,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   catalogue: Catalogue | null;
   onClose: () => void;
 }) {
+  const [added, setAdded] = useState(0);
   // Opens in English (founder, 2026-10-18: «افزودن به سبد سرکوچه» → "make this label english"); «فارسی» switches.
   const [lang, setLang] = useState<Lang>("en");
   const product = productOf(catalogue, item.n);
@@ -120,7 +136,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
         <div className="flex items-start gap-3">
           {photo ? (
             // eslint-disable-next-line @next/next/no-img-element -- hot-linked, as basket lines are
-            <img src={photo} alt="" className="h-24 w-24 shrink-0 rounded-xl bg-white object-contain" />
+            <img src={photo} alt="" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} className="h-24 w-24 shrink-0 rounded-xl bg-white object-contain" />
           ) : (
             <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-white/10 text-[34px] text-white/60">🛒</div>
           )}
@@ -164,7 +180,17 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
           </div>
         )}
         {/* The basket is Sarekooche's, on its own site (`lib/sarekooche.ts`): a new
-            tab, so the walk stays where the shopper stood. */}
+            tab, so the walk stays where the shopper stood. Offline (the demo
+            without internet, `npm run offline`) there is no site to reach: the
+            line is kept on this device and the card says so. */}
+        {OFFLINE ? (
+          <button
+            onClick={() => setAdded(addOfflineLine(itemLine(item, walkKey, walk, lang, product, amount)))}
+            className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-full bg-[#00B8C8] px-4 text-[15px] font-bold text-[#06131c]"
+          >
+            {added ? `✓ Added — ${added} in the basket` : lang === "fa" ? "افزودن به سبد" : "Add to basket"}
+          </button>
+        ) : (
         <a
           href={basketAddHref(itemLine(item, walkKey, walk, lang, product, amount), typeof window !== "undefined" ? window.location.origin : "https://olgoo.com")}
           target="_blank"
@@ -173,8 +199,9 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
         >
           {lang === "fa" ? "افزودن به سبد" : "Add to basket"}
         </a>
+        )}
         <div className="mt-3 flex items-center justify-between text-[13px]">
-          <a href={sarekoocheHref("/basket")} target="_blank" rel="noopener" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>
+          {OFFLINE ? <span /> : <a href={sarekoocheHref("/basket")} target="_blank" rel="noopener" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>}
           <button className="text-white/55 underline" onClick={() => setLang(lang === "fa" ? "en" : "fa")}>{lang === "fa" ? "English" : "فارسی"}</button>
         </div>
       </div>

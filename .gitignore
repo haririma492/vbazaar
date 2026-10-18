@@ -8,3 +8,6 @@ next-env.d.ts
 *.sog
 *.ksplat
 *.splat
+
+# The demo without internet: the folder `npm run offline:pack` fills (videos, GBs)
+/offline/
