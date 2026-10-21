@@ -101,6 +101,16 @@ const MIN_PLAY_RATE = 0.25;
 const FADE_MS = 400;
 /** A door's sign floats this far out, in the direction its pins give (`signAt`). */
 const MARK_R = 20;
+/**
+ * ⚠️ THE OPERATOR UNDER THE CAMERA (founder, 2026-10-21: "remove my top of head
+ * (the photographer) from this view … filming is done, block that view now").
+ * The walks were filmed with the camera held over the head, so the head sits
+ * straight down. A dark cap covers the floor this many degrees round it on
+ * every 360° walk, solid inside `NADIR_SOLID` and fading out to the edge.
+ * `?nadir=<deg>` tries another size (0 = off).
+ */
+const NADIR_DEG = 30;
+const NADIR_SOLID = 0.7;
 const UP = new THREE.Vector3(0, 1, 0);
 /** `?v=` as it was always accepted (a little looser than `isWalkKey`). */
 const V_RE = /^scenes\/[a-z0-9-]+\/[A-Za-z0-9][A-Za-z0-9._-]*\.mp4$/;
@@ -414,6 +424,32 @@ export default function Walk360() {
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     const geometry = new THREE.SphereGeometry(50, 128, 64);
     geometry.scale(-1, 1, 1); // seen from inside
+
+    // The cap over the operator's head (`NADIR_DEG`): over the videos (0, 1),
+    // under the doors' signs and the price tags (10, 11).
+    const nadirParam = params.get("nadir");
+    const nadirDeg = nadirParam !== null && Number.isFinite(Number(nadirParam)) ? THREE.MathUtils.clamp(Number(nadirParam), 0, 90) : NADIR_DEG;
+    const nadirRad = THREE.MathUtils.degToRad(nadirDeg);
+    const nadirCanvas = document.createElement("canvas");
+    nadirCanvas.width = 1;
+    nadirCanvas.height = 64;
+    const nctx = nadirCanvas.getContext("2d")!;
+    // The canvas's top is the cap's edge, its bottom straight down.
+    const ngrad = nctx.createLinearGradient(0, 0, 0, 64);
+    ngrad.addColorStop(0, "rgba(22,22,24,0)");
+    ngrad.addColorStop(1 - NADIR_SOLID, "rgba(22,22,24,1)");
+    ngrad.addColorStop(1, "rgba(22,22,24,1)");
+    nctx.fillStyle = ngrad;
+    nctx.fillRect(0, 0, 1, 64);
+    const nadirTexture = new THREE.CanvasTexture(nadirCanvas);
+    nadirTexture.colorSpace = THREE.SRGBColorSpace;
+    const nadirGeometry = new THREE.SphereGeometry(45, 64, 8, 0, Math.PI * 2, Math.PI - Math.max(nadirRad, 1e-3), Math.max(nadirRad, 1e-3));
+    nadirGeometry.scale(-1, 1, 1);
+    const nadirMaterial = new THREE.MeshBasicMaterial({ map: nadirTexture, transparent: true, depthTest: false, depthWrite: false });
+    const nadir = new THREE.Mesh(nadirGeometry, nadirMaterial);
+    nadir.renderOrder = 5;
+    nadir.visible = false;
+    scene.add(nadir);
 
     let walksNow: Walks = emptyWalks();
     let current: Layer | null = null;
@@ -1296,6 +1332,7 @@ export default function Walk360() {
       readTurn();
       updateDoors();
       updateItems();
+      nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);
       renderer.render(scene, camera);
       report();
     });
@@ -1319,6 +1356,9 @@ export default function Walk360() {
         sprite.material.dispose();
       }
       geometry.dispose();
+      nadirGeometry.dispose();
+      nadirMaterial.dispose();
+      nadirTexture.dispose();
       renderer.dispose();
       canvas.remove();
     };
