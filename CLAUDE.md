@@ -1,7 +1,17 @@
-# VCA — the Virtual Bazaar (vca-app/)
+# V-Bazaar — the Virtual Bazaar (VCA), vbazaar.app
 
-Moved here from the Sarekooche repo on 2026-10-15 (history kept). A Next.js
-app served by the root `server.js` at the paths it had on sarekooche.com:
+**Its own repo and site since 2026-10-29** (owner: *"I have a new domain
+v-bazzar.com … first copying and then moving all the code there"*; then the
+same day: *"only vbazaar.app is mine"*, so the site is vbazaar.app). Copied out
+of `Olgoo-Inc/olgoo-com/vca-app` with its history (`git subtree split`); it
+runs on its own Railway service with `next start` (`Dockerfile`), and
+`middleware.ts` sends www to the bare domain and `/` to `/demo`. Until the
+move is finished, olgoo.com still serves the same app; after it, olgoo.com
+301s these paths here. Notes below that say "olgoo.com" or "the root
+`server.js`" describe that earlier home.
+
+Moved to olgoo.com from the Sarekooche repo on 2026-10-15 (history kept). A Next.js
+app served there by the root `server.js` at the paths it had on sarekooche.com:
 `/vca`, `/vca/walk`, `/vca/splat`, `/vca/ride`, `/vb/…`, `/vr`, `/chinastore`,
 `/demo`, `/operator/splats`, and its APIs under `/api/splats`,
 `/api/operator/splats`, `/api/operator/check`, `/api/demo`.
@@ -11,7 +21,7 @@ app served by the root `server.js` at the paths it had on sarekooche.com:
   line id is `offer:walk-…`, which Sarekooche's basket rules know.
 - **Checks before pushing:** in `vca-app/`, `npm run typecheck`, `npm test`,
   `npx next build`; then `node server.js` at the root and open `/vca/walk`.
-- **Env (Railway, the olgoo.com service):** `R2_ACCOUNT_ID`,
+- **Env (Railway, the v-bazzar service; same values as the olgoo.com service):** `R2_ACCOUNT_ID`,
   `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_MASTERS_BUCKET`,
   `ADMIN_TOKEN` (the operator's), and at build time
   `NEXT_PUBLIC_SPLAT_BASE_URL`, `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`.
@@ -35,6 +45,113 @@ app served by the root `server.js` at the paths it had on sarekooche.com:
   keeps the line on the device. Saving is not offered offline.
 
 The notes below came with it from Sarekooche's CLAUDE.md, unchanged.
+
+## ⚠️ LOOP OR ONE PROMPT? — evaluate EVERY task before doing it (operator, 2026-10-26)
+
+**Standing instruction for ALL of the operator's projects** — Nikoo.tv /
+RadioOlgooStart, olgoo-com, sarekooche, **and every new project they start**
+(a new repo copies these two sections into its own CLAUDE.md on day one). For every request, once you have
+understood it, ask one question before starting: **would this be done better
+by an agent running inside a loop than by answering one prompt at a time?**
+Then say which, in one line, and recommend the loop when it wins.
+
+A loop wins when the job has any of these shapes:
+- **A queue to drain** — many rows/files/pages/accounts, each processed the
+  same way (a batch, a backfill, a sweep, "do the next batch").
+- **Repeat until a condition holds** — fix-build-test until green, retry until
+  a deploy lands, re-check until CI passes, iterate until a measured target.
+- **Waiting on something external** — a build, CI, a deploy, a PR review, a
+  scheduled pipeline. Watch it (background task, Monitor, PR subscription,
+  scheduled check-in) instead of the operator asking "is it done yet?".
+- **Recurring work** — anything that should happen hourly/daily/weekly
+  (a scheduled task or /loop, not a reminder to press a button).
+- **Independent parallel parts** — the same job across several
+  directories/channels/sources at once (subagents in parallel).
+
+One prompt wins when it is a single edit, a question, a diagnosis, or a
+deliberate one-off slice the operator chose ("just do one", "dry run it").
+Then say so in ONE line and get on with it — do not turn an ordinary request
+into a report.
+
+When recommending a loop, state in the same breath: the **bounded slice**,
+the **stopping condition** (queue empty / two rounds with no progress /
+failures = attempts), and the **cost ceiling** if it spends money (paid APIs,
+LLM passes). A loop without a stopping condition is a new bug. Anything that
+spends money, is irreversible (deletes, purges, pushes to main), or touches a
+live broadcast still waits for the operator's yes. Otherwise recommend AND
+run it in the same turn — an offer the operator must accept is one more click.
+
+## ⚠️ WORK SMARTER (operator, 2026-10-26)
+
+**Standing instruction for ALL of the operator's projects** — Nikoo.tv /
+RadioOlgooStart, olgoo-com, sarekooche, **and every new project they start**
+(a new repo copies these two sections into its own CLAUDE.md on day one). Claude Code can now run agents:
+subagents that work in parallel, workflows that coordinate many of them, loops
+that keep going until a condition holds, scheduled tasks that wake on their
+own, monitors that watch a build or a PR, and separate cloud sessions that run
+a job end to end while the operator does something else. Use all of it, and
+**tell the operator when an old habit is costing them** — the operator would
+rather hear it than go on doing it the slow way.
+
+### When to raise it — NOT on every prompt
+
+Raise it when the conversation shows the operator reaching a goal the old way,
+one prompt at a time:
+- the same request a second and third time ("next batch", "do the same for
+  the next one", "check again", "is it done yet?");
+- pasting output back for Claude to read when Claude could have read it itself;
+- one job split by hand into many prompts, when its parts are independent;
+- waiting on something (a build, a deploy, CI, a PR, a nightly run) and
+  asking about it rather than being told;
+- a job that should happen every day or week, done by hand each time.
+
+A single edit, a question, a diagnosis, or a slice the operator chose on
+purpose ("just one", "dry run it") is NOT that. Say nothing and do the work.
+
+### How to raise it — always these five parts, short
+
+1. **By agents** — which agents, and what each one does.
+2. **In a loop or loops** — what repeats, the bounded slice per round, and the
+   **stopping condition** (queue empty / two rounds with no progress /
+   failures = attempts). A loop without a stopping condition is a new bug.
+3. **With this graph** — a small ASCII diagram of the flow, for example:
+
+       request ──► planner ──┬─► agent A (slice 1) ──┐
+                             ├─► agent B (slice 2) ──┼─► verifier ──► report
+                             └─► agent C (slice 3) ──┘       │
+                                       ▲                     │ not done
+                                       └─────── loop ◄───────┘
+
+4. **And Claude will harness it this way** — the real tool for each part:
+   `Agent` subagents (in parallel for independent parts), `Workflow` (many
+   agents in a fixed pipeline; only when the operator asks for it), `/loop` or
+   `ScheduleWakeup` (repeat until done), scheduled tasks (hourly / daily /
+   weekly), `Monitor` and PR subscriptions (wait on something external),
+   remote sessions via `create_session` + `send_message` (a whole job in its
+   own cloud session), and a background `Bash` run for long scripts.
+5. **And this is how Claude managed agents can do it** — what the operator
+   gets: the work runs without them watching or pressing anything, it keeps
+   per-item progress so it can pick up where it stopped, parts run at the same
+   time, and the operator gets one report at the end with counts and anything
+   that failed.
+
+Then **do it in the same turn**, unless it is one of the cases that waits for
+a yes: it **spends money** (paid APIs, LLM passes — name the ceiling in
+dollars or calls), it is **irreversible** (deletes, purges, pushes to main),
+it **touches a live broadcast**, or the operator asked for a **Workflow**
+(those spawn many agents and need the operator's own go-ahead).
+
+### The promise
+
+I will not let the operator do things the slow way when there is a better
+way. When I see a job being done one prompt at a time that agents, a loop, a
+schedule or a monitor would do better, I will say so, with the five parts
+above, and I will use these tools to the fullest rather than falling back on
+old habits. I will not use them to look busy: a simple request gets a simple
+answer.
+
+— Signed, Claude (Claude Code), 2026-10-26, for the operator, in all of their
+projects, current and future.
 
 ## Operator screens: one question at a time (founder, 2026-10-12)
 
