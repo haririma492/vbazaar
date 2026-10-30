@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// The home page's content is olgoo.com's VCA page (/virtual-stores and
-// /fa/virtual-stores), copied here (owner, 2026-10-30: "bring all related to
+// The home page's content is everything VCA on olgoo.com: its home page's
+// VCA hero ("Don't just shop online. Walk in.") and its VCA page
+// (/virtual-stores), in English and Farsi, copied here (owner, 2026-10-30: "bring all related to
 // VCA from olgoo.com to here as main page, not eliminating from olgoo.com
 // yet"). While both sites carry it, olgoo.com stays the source: run this again
 // after its VCA page changes, check the result, commit.
@@ -46,8 +47,10 @@ function sections(html, lang, docs) {
   s = s
     .replace(/ data-i18n(-[a-z]+)?="[^"]*"/g, "")
     .replace(/<!--[\s\S]*?-->/g, "")
-    // The H1 leads with this site's own term (lib/seo.ts, filled in for {{H1}}), then olgoo.com's hero line.
-    .replace(/(<h1 class="hm-h1[^"]*"[^>]*>)/, "$1{{H1}}")
+    // olgoo.com's home hero (hero() below) carries the page's one H1; this hero's heading becomes an H2
+    // that keeps the H1 look (vb-h1like gets olgoo.com's bare h1 rules, see scopeCss).
+    .replace(/<h1 class="hm-h1([^"]*)"([^>]*)>([\s\S]*?)<\/h1>/, '<h2 class="hm-h1 vb-h1like$1"$2>$3</h2>')
+    .replace('<section class="vca hm-hero" id="top"', '<section class="vca hm-hero" id="virtual-stores"')
     .replace(/(href|src|poster|data-video)="(\/[^"]*)"/g, (m, attr, url) => {
       if (url.startsWith(self + "#")) return `${attr}="${url.slice(self.length)}"`;
       if (LOCAL.test(url)) return m;
@@ -57,11 +60,34 @@ function sections(html, lang, docs) {
     .replace('<div id="vca-docs" class="vs-docs-slot"></div>', `<div id="vca-docs" class="vs-docs-slot">${docs}</div>`)
     // Signing in to request them works on olgoo.com only (its session cookie): link there instead.
     .replace(/<div class="vs-docs-request[^"]*"[^>]*><\/div>/, `<p class="vs-docs-note rv"><a href="${OLGOO}${self}#vca-docs">${lang === "fa" ? "درخواست اسناد در olgoo.com ←" : "Request the documents on olgoo.com →"}</a></p>`);
-  if (!s.includes("{{H1}}")) throw new Error(`${path}: no H1 found`);
+  if (/<h1[\s>]/.test(s)) throw new Error(`${path}: an H1 is left in the sections`);
   const faq = [...s.matchAll(/<details class="faq-q[^"]*">\s*<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g)]
     .map(([, q, a]) => ({ q: text(q), a: text(a) }));
   if (faq.length < 3) throw new Error(`${path}: FAQ not found`);
   return { html: s.trim() + "\n", faq };
+}
+
+// olgoo.com's home page hero ("Don't just shop online. Walk in.", the VCA hook with the live walk).
+// Its price line is e-commerce's, so it takes the VCA one from the same page's VCA card.
+function hero(html, lang) {
+  const path = lang === "fa" ? "/fa/" : "/";
+  let s = between(html, '<section class="vca hub-hero hk-hero"', "</section>", path) + "</section>\n";
+  const vcaCard = between(html, 'data-track="card_vca"', "</a>", path);
+  const price = (vcaCard.match(/<small>([\s\S]*?)<\/small>/) || [])[1];
+  if (!price) throw new Error(`${path}: the VCA card's price line not found`);
+  s = s
+    .replace(/ data-i18n(-[a-z]+)?="[^"]*"/g, "")
+    .replace(/ data-track="[^"]*"/g, "")
+    .replace(/(<p class="hk-trust[^"]*">)[\s\S]*?(<\/p>)/, `$1VCA™ · ${price}$2`)
+    // The H1 leads with this site's own term (lib/seo.ts, filled in for {{H1}}), then olgoo.com's line.
+    .replace(/(<h1 class="hub-h1[^"]*"[^>]*>)/, "$1{{H1}}")
+    .replace(/(href|src|poster)="([^"]*)"/g, (m, attr, url) => {
+      if (url.startsWith("#")) return `${attr}="${OLGOO}${path}${url}"`;
+      if (!url.startsWith("/") || LOCAL.test(url)) return m;
+      return `${attr}="${OLGOO}${url}"`;
+    });
+  if (!s.includes("{{H1}}")) throw new Error(`${path}: no H1 in the hero`);
+  return s;
 }
 
 // site.css, kept to the rules whose classes appear in the sections, scoped to .ovca.
@@ -83,7 +109,7 @@ function scopeCss(css, used) {
   };
   root.walkRules((rule) => {
     if (rule.parent?.type === "atrule" && /keyframes/.test(rule.parent.name)) return;
-    const sels = rule.selectors.filter(keep);
+    const sels = rule.selectors.filter(keep).flatMap((x) => (/^h1\b/.test(x.trim()) ? [x, x.trim().replace(/^h1/, ".vb-h1like")] : [x]));
     if (!sels.length) return rule.remove();
     rule.selectors = sels.map(scope);
   });
@@ -91,9 +117,11 @@ function scopeCss(css, used) {
   return root.toString().replace(/\n{3,}/g, "\n\n");
 }
 
-const [en, fa, css, docs] = await Promise.all([get("/virtual-stores"), get("/fa/virtual-stores"), get("/site.css"), get("/api/vca")]);
+const [en, fa, homeEn, homeFa, css, docs] = await Promise.all([get("/virtual-stores"), get("/fa/virtual-stores"), get("/"), get("/fa/"), get("/site.css"), get("/api/vca")]);
 const docsHtml = (() => { try { return JSON.parse(docs).html || ""; } catch { return docs.trim().startsWith("<") ? docs : ""; } })();
 const E = sections(en, "en", docsHtml), F = sections(fa, "fa", docsHtml);
+E.html = hero(homeEn, "en") + "\n" + E.html;
+F.html = hero(homeFa, "fa") + "\n" + F.html;
 const used = new Set([...(E.html + F.html).matchAll(/class="([^"]+)"/g)].flatMap((m) => m[1].split(/\s+/)));
 const fonts = `
 /* Farsi: Vazirmatn throughout (as olgoo.com's i18n.js does) */

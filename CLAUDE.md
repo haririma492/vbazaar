@@ -29,8 +29,10 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
 - **The home page is olgoo.com's VCA page** (owner, 2026-10-30: *"bring all
   related to VCA from olgoo.com to here as main page (not eliminating from
   olgoo.com yet)"*): Farsi at `/`, English at `/en`, hreflang between them.
-  `scripts/import-olgoo-vca.mjs` copies olgoo.com/virtual-stores' sections
-  into `content/olgoo-vca/` (HTML per language, the FAQ as JSON, its CSS scoped
+  `scripts/import-olgoo-vca.mjs` copies everything VCA on olgoo.com — its
+  home page's VCA hero ("Don't just shop online. Walk in.", with the live walk
+  and the VCA price line in place of e-commerce's) on top, then all of
+  /virtual-stores' sections — into `content/olgoo-vca/` (HTML per language, the FAQ as JSON, its CSS scoped
   under `.ovca`); `components/home/VcaHome.tsx` adds the header, footer, the
   H1 term («بازار مجازی» / Virtual Bazaar) and JSON-LD (Olgoo `#org`,
   Service with a CAD offer, FAQPage from the visible FAQ). olgoo.com stays the
