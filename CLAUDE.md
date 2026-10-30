@@ -73,8 +73,11 @@ plan and the Managed Agents decision are in
 - **A new store waits for «Publish».** Later changes go live by themselves.
   There is a $5 AI ceiling per store.
 - **Env on Railway (v-bazzar):** `ANTHROPIC_API_KEY` (the Photo matcher, the
-  Tagger and the Messages agent) and `STORE_SECRET` (signs owners' cookies;
-  it falls back to `ADMIN_TOKEN`). The image has ffmpeg (`Dockerfile`).
+  Tagger and the Messages agent). Each store has its own password; nothing
+  else is needed (owner, 2026-10-30: *"not needed ever store will have a
+  separate password"*). Owners' sign-in cookies are signed with
+  `ADMIN_TOKEN`, so changing that token signs them out; `STORE_SECRET`, if
+  ever set, is used instead. The image has ffmpeg (`Dockerfile`).
 
 Moved to olgoo.com from the Sarekooche repo on 2026-10-15 (history kept). A Next.js
 app served there by the root `server.js` at the paths it had on sarekooche.com:

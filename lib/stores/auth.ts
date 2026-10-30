@@ -7,8 +7,9 @@
  *                  hash; signing in sets a cookie for that store only
  *   the operator   the admin token (`x-admin-token`, the same as /operator)
  *
- * The cookie is `<slug>.<expiry>.<hmac>`, signed with STORE_SECRET (or, until
- * that is set, the admin token), so it cannot be made up and opens one store.
+ * The cookie is `<slug>.<expiry>.<hmac>`, signed with the admin token (or
+ * STORE_SECRET when set; the owner chose not to need one, 2026-10-30), so it
+ * cannot be made up and opens one store. Changing the token signs owners out.
  * Server only.
  */
 
