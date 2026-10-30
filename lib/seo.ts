@@ -30,29 +30,52 @@ export const PAGES = {
   },
   walk: {
     path: "/vca/walk",
+    h1: "قدم زدن ۳۶۰° در بازار مجازی — Virtual Bazaar 360° walk",
     title: "قدم زدن ۳۶۰° در بازار مجازی | Virtual Bazaar 360° walk",
     description: "خیابان واقعی را در ویدیوی ۳۶۰ درجه قدم بزنید، به اطراف نگاه کنید و از در هر مغازه وارد شوید. Walk a real street in 360°, look around and step into a shop.",
   },
   bazaar3d: {
     path: "/vca",
+    h1: "بازار مجازی سه‌بعدی: خیابان‌ها و مغازه‌ها — Virtual Bazaar in 3D",
     title: "بازار مجازی سه‌بعدی: خیابان و مغازه‌ها | Virtual Bazaar 3D",
     description: "بازار مجازی را سه‌بعدی ببینید: خیابان‌ها، مغازه‌ها و نشانی مجازی هر مغازه، با رفتن به داخل و خرید. See the Virtual Bazaar in 3D: its streets and its shops.",
   },
   address: {
     path: "/vb",
+    h1: "میدان بازار مجازی: نشانی مجازی مغازه‌ها — Virtual Bazaar square",
     description: "نشانی مجازی در بازار مجازی: در بازار قدم بزنید، جلوی هر مغازه بایستید و از مغازه‌ها خرید کنید. Your virtual address in the Virtual Bazaar — walk in and shop.",
   },
 } as const;
 
-/** Metadata for an indexed page: its own canonical, and the same text on share cards. */
+/** The site's 1200×630 share image, for every page that has none of its own. */
+export const SHARE_IMAGE = { url: "/media/og/vbazaar.jpg", width: 1200, height: 630, alt: `${SITE_NAME.fa} · ${SITE_NAME.en}` };
+
+/** Metadata for an indexed page: its own canonical, and the same text and picture on share cards. */
 export function indexable({ path, title, description }: { path: string; title: string; description: string }): Metadata {
   return {
     title: { absolute: title },
     description,
     alternates: { canonical: path },
-    openGraph: { type: "website", url: path, title, description, siteName: SITE_NAME.fa, locale: "fa_IR" },
-    twitter: { card: "summary", title, description },
+    openGraph: { type: "website", url: path, title, description, siteName: SITE_NAME.fa, locale: "fa_IR", images: [SHARE_IMAGE] },
+    twitter: { card: "summary_large_image", title, description, images: [SHARE_IMAGE.url] },
     robots: { index: true, follow: true },
+  };
+}
+
+/** One JSON-LD @graph for a page other than the home page: the business, the site, the page and its breadcrumb. */
+export function pageJsonLd({ path, title, description }: { path: string; title: string; description: string }) {
+  const url = `${SITE}${path}`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      ORG,
+      { "@type": "WebSite", "@id": `${SITE}/#website`, url: `${SITE}/`, name: SITE_NAME.fa, alternateName: SITE_NAME.en, inLanguage: ["fa", "en"], publisher: { "@id": ORG["@id"] } },
+      { "@type": "WebPage", "@id": `${url}#webpage`, url, name: title, description, isPartOf: { "@id": `${SITE}/#website` }, inLanguage: "fa", primaryImageOfPage: `${SITE}${SHARE_IMAGE.url}` },
+      { "@type": "BreadcrumbList", itemListElement: [
+        { "@type": "ListItem", position: 1, name: SITE_NAME.fa, item: `${SITE}/` },
+        { "@type": "ListItem", position: 2, name: title, item: url },
+      ] },
+    ],
   };
 }
 

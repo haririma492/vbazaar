@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import VirtualBazaar from "@/components/virtual-bazaar/VirtualBazaar";
 import { PAGES, indexable } from "@/lib/seo";
+import PageSeo from "@/components/seo/PageSeo";
 import {
   ADDRESS_LABEL, BAZAAR_NAME, addressPath, addressText, parseAddress, spotParam, streetAddressPath, type Spot,
 } from "@/lib/virtualBazaar/layout";
@@ -25,9 +26,8 @@ function spotFrom(params: Props["params"]): Spot | null | undefined {
   }
 }
 
-export function generateMetadata({ params }: Props): Metadata {
-  const spot = spotFrom(params);
-  if (spot === undefined) return {};
+/** The square's, a street's or a shop's title, description, address and H1. */
+function pageFor(spot: Spot | null) {
   let title = "میدان بازار مجازی: نشانی مجازی مغازه‌ها | Virtual Bazaar";
   let description: string = PAGES.address.description;
   let url = "/vb";
@@ -39,7 +39,15 @@ export function generateMetadata({ params }: Props): Metadata {
     title = `${spot.street.name} — ${BAZAAR_NAME.fa}`;
     url = streetAddressPath(spot.street) ?? url;
   }
-  // ⚠️ THE PREVIEW ON X, FACEBOOK AND WHATSAPP has no picture until the
+  const h1 = spot ? title : PAGES.address.h1;
+  return { title, description, url, h1 };
+}
+
+export function generateMetadata({ params }: Props): Metadata {
+  const spot = spotFrom(params);
+  if (spot === undefined) return {};
+  const { title, description, url } = pageFor(spot);
+  // The share picture is the site's (lib/seo.ts SHARE_IMAGE) until the
   // Virtual Bazaar logo arrives (owner, 2026-10-30: "will provide a logo").
   // Only the square is indexed: a street's or shop's address shows the same 3D
   // scene, so it is reachable (follow) but not a search page of its own.
@@ -50,5 +58,11 @@ export function generateMetadata({ params }: Props): Metadata {
 export default function VirtualAddressPage({ params }: Props) {
   const spot = spotFrom(params);
   if (spot === undefined) notFound();
-  return <VirtualBazaar initialSpot={spot ? spotParam(spot) : undefined} />;
+  const page = pageFor(spot);
+  return (
+    <>
+      <PageSeo h1={page.h1} path={page.url} title={page.title} description={page.description} />
+      <VirtualBazaar initialSpot={spot ? spotParam(spot) : undefined} />
+    </>
+  );
 }

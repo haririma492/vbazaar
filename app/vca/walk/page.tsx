@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PAGES, indexable } from "@/lib/seo";
+import PageSeo from "@/components/seo/PageSeo";
 import Walk360 from "@/components/virtual-bazaar/walk/Walk360";
 
 // `/vca/walk` — the Virtual Bazaar as the operator walked it: a 360° video
@@ -10,5 +11,10 @@ import Walk360 from "@/components/virtual-bazaar/walk/Walk360";
 export const metadata: Metadata = indexable(PAGES.walk);
 
 export default function WalkPage() {
-  return <Walk360 />;
+  return (
+    <>
+      <PageSeo {...PAGES.walk} />
+      <Walk360 />
+    </>
+  );
 }
