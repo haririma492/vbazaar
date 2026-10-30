@@ -5,7 +5,7 @@ v-bazzar.com … first copying and then moving all the code there"*; then the
 same day: *"only vbazaar.app is mine"*, so the site is vbazaar.app). Copied out
 of `Olgoo-Inc/olgoo-com/vca-app` with its history (`git subtree split`); it
 runs on its own Railway service with `next start` (`Dockerfile`), and
-`middleware.ts` sends www to the bare domain and `/` to `/demo`. Until the
+`middleware.ts` sends www to the bare domain (`/` is the demo screen). Until the
 move is finished, olgoo.com still serves the same app; after it, olgoo.com
 301s these paths here. Notes below that say "olgoo.com" or "the root
 `server.js`" describe that earlier home.
