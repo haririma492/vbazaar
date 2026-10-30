@@ -5,7 +5,8 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
   // Which commit a page was built from (the splat viewer's Info tab). Railway sets the SHA.
-  experimental: { serverComponentsExternalPackages: ["modal"] },
+  // instrumentationHook: `instrumentation.ts` wakes the Store Builder crew when the server starts.
+  experimental: { serverComponentsExternalPackages: ["modal"], instrumentationHook: true },
   env: { NEXT_PUBLIC_BUILD: (process.env.RAILWAY_GIT_COMMIT_SHA || "").slice(0, 7) || "local" },
   // The GPU kits in public/gpu are read by `curl … | bash` on a rented pod and
   // by a person in a browser: plain text, never stale after a fix.

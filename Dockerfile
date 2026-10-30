@@ -1,4 +1,7 @@
 FROM node:20-slim
+# ffmpeg: the Store Builder crew makes each 360° walk's web and phone copies and
+# cuts views for the Tagger (`lib/stores/media.ts`); the walk page's «Cut» uses it too.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci

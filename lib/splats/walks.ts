@@ -46,6 +46,8 @@ export const NEAR_DYAW = Math.PI / 3;
 export const PRELOAD_DT = 6;
 /** Where a door's sign sits when only its heading is known: a little below the horizon (radians, + up). */
 export const DEFAULT_PITCH = -0.08;
+/** A door photo's width at its moment when none is given (radians of view, ~30°). */
+export const DOOR_SIZE = 0.52;
 export const MAX_PINS = 24;
 /** An item's dot, followed through the video every 0.2 s for up to 15 s either way (`followProduct`). */
 export const MAX_ITEM_PINS = 200;
@@ -82,6 +84,16 @@ export type WalkDoor = {
    * shows from the first pin's moment to the last's.
    */
   pins?: SignPin[];
+  /**
+   * THE STORE'S REAL DOOR (owner, 2026-10-30: "the door of the store should
+   * be EXACTLY as the real door of each store, I can upload a separate photo
+   * of the door"): a photo (https) shown in place of the amber card, on the
+   * hallway wall where the door is, `size` radians wide at the door's moment
+   * (it grows as the camera comes closer). Put there by the Store Builder's
+   * Placer (`lib/stores/bazaar.ts`).
+   */
+  image?: string;
+  size?: number;
 };
 export type SignPin = { t: number; yaw: number; pitch: number };
 
@@ -173,6 +185,14 @@ export type Walk = {
    * `<file>?r=<rev>`.
    */
   rev?: number;
+  /**
+   * WHERE THE WALK CARRIES ON (owner, 2026-10-30: "the hallway and outside
+   * area of shopping center and probably the lobby … connect the area's
+   * nicely and seamlessly"): at the end of this walk the next one starts by
+   * itself, facing the same way — outside → lobby → hallway. Set from the
+   * order on `/stores/areas`.
+   */
+  next?: string;
 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -257,6 +277,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       if (Number.isSafeInteger(r.rev) && (r.rev as number) > 0) walk.rev = r.rev as number;
       else problems.push(`${key}: «rev» must be a whole number.`);
     }
+    if (r.next !== undefined && r.next !== null && r.next !== "") {
+      if (isWalkKey(r.next) && r.next !== key) walk.next = r.next;
+      else problems.push(`${key}: «next» must be another walk video.`);
+    }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
       else problems.push(`${key}: «audio» is not a sound uploaded for a walk.`);
@@ -309,12 +333,16 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         pins = sortPins((raw as Array<Record<string, number>>).map((q) => ({ t: q.t, yaw: wrapAngle(q.yaw), pitch: q.pitch })));
         if (!pins.length) pins = undefined;
       }
+      const hasImage = x.image !== undefined && x.image !== null && x.image !== "";
+      if (hasImage && !isSiteUrl(x.image)) { problems.push(`${where}: its door photo must be an https:// address.`); continue; }
+      const size = hasImage && finite(x.size) && x.size > 0.02 && x.size < 2.5 ? x.size : hasImage ? DOOR_SIZE : undefined;
       ids.add(id);
       walk.doors.push({
         id, t: x.t, yaw: wrapAngle(x.yaw), label: fa ? { en, fa } : { en },
         ...(hasTo ? { to: x.to as string } : {}), ...(hasUrl ? { url: x.url as string } : {}),
         ...(x.flat === true ? { flat: true } : {}), ...(back ? { back } : {}),
         ...(pitch !== undefined ? { pitch } : {}), ...(pins ? { pins } : {}),
+        ...(hasImage ? { image: x.image as string, size } : {}),
       });
     }
     walk.doors.sort((a, b) => a.t - b.t);
@@ -686,9 +714,11 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const projection = same(m.projection, bb.projection) ? t.projection : m.projection;
     const audio = same(m.audio, bb.audio) ? t.audio : m.audio;
     const rev = Math.max(m.rev ?? 0, t.rev ?? 0);
+    const next = same(m.next, bb.next) ? t.next : m.next;
     walks[k] = {
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
       ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
+      ...(next ? { next } : {}),
     };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;

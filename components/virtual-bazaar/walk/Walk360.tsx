@@ -65,7 +65,7 @@ import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTu
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
-  DEFAULT_PITCH, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
   itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -317,7 +317,7 @@ type Engine = {
   /** Cross-fade to another walk video from its start — the next or previous aisle of a store. */
   goToWalk: (key: string) => void;
   /** Where the visitor is, in the current video's own frame (the operator's «Door here»). */
-  here: () => { key: string | null; t: number; yaw: number; flat: boolean; projection: Projection | null };
+  here: () => { key: string | null; t: number; yaw: number; pitch: number; flat: boolean; projection: Projection | null };
   /** Jump to a door's moment and face it. */
   goTo: (door: WalkDoor) => void;
   /** Edit mode: the next tap on the picture is a sign pin (null: taps are a visitor's again). */
@@ -335,6 +335,26 @@ type Engine = {
   /** Jump to a moment of this video (stands there). */
   seek: (t: number) => void;
 };
+
+/**
+ * THE STORE'S REAL DOOR on the hallway wall (owner, 2026-10-30: "the door of
+ * the store should be EXACTLY as the real door of each store"): its photo,
+ * `door.size` radians wide (`DOOR_SIZE` when not given), its height from the
+ * photo's own shape once it has loaded. Until then it is a blank of a door's
+ * shape, so nothing jumps.
+ */
+function doorTexture(door: WalkDoor, setSize: (w: number, h: number) => void): THREE.Texture {
+  const w = 2 * MARK_R * Math.tan((door.size ?? DOOR_SIZE) / 2);
+  setSize(w, w * 1.6);
+  const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin("anonymous");
+  const t = loader.load(door.image!, (tex) => {
+    const img = tex.image as { width: number; height: number };
+    if (img?.width) setSize(w, (w * img.height) / img.width);
+  });
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 
 /** A door's sign — «Step inside · name» (and the Persian name) on an amber card — drawn once. */
 function signTexture(en: string, fa?: string, site = false): THREE.CanvasTexture {
@@ -394,6 +414,9 @@ export default function Walk360() {
   const [view, setView] = useState<View>({ key: null, inside: 0, flat: false, near: [], site: null, atEnd: false, busy: false });
   const [walks, setWalks] = useState<Walks>(emptyWalks());
   const [editing, setEditing] = useState(false);
+  /** ?spots=1 (the operator, from /stores/areas): «Door spot here» marks where a store's door can go on the hallway. */
+  const [spotMode, setSpotMode] = useState(false);
+  const [spotSaid, setSpotSaid] = useState<string | null>(null);
   /** ?edit=1 in a browser not signed in as operator: ask here, rather than show nothing. */
   const [needSignIn, setNeedSignIn] = useState(false);
   /** The walks as last read from (or saved to) the server: the `base` of a merged save. */
@@ -412,7 +435,8 @@ export default function Walk360() {
     // ⚠️ SAY SO (founder, 2026-10-12, on staging: "this does not have the panel …
     // although operator is logged in"). The sign-in is kept per site address;
     // without it the edit panel silently did not appear.
-    setNeedSignIn(params.get("edit") === "1" && !readAdminToken());
+    setNeedSignIn((params.get("edit") === "1" || params.get("spots") === "1") && !readAdminToken());
+    setSpotMode(params.get("spots") === "1" && Boolean(readAdminToken()));
     let disposed = false;
 
     const renderer = new THREE.WebGLRenderer({ antialias: false });
@@ -700,6 +724,37 @@ export default function Walk360() {
       report(true);
     }
 
+    /**
+     * THE WALKS JOINED (owner, 2026-10-30: "connect the area's nicely and
+     * seamlessly"): at the end of a walk whose `next` is set, the next one
+     * starts from its beginning with the same spin, so the visitor keeps
+     * facing the same way and walks on (outside → lobby → hallway).
+     */
+    let carrying = false;
+    async function carryOn(key: string) {
+      if (busy || carrying || !current || current.key === key) return;
+      carrying = true;
+      let to = pending && pending.key === key && pending.purpose === "main" ? pending : null;
+      pending = to ? null : pending;
+      if (!to) {
+        release(pending);
+        pending = null;
+        to = makeLayer({ key, t: 0, purpose: "main" });
+      }
+      const spin = current.spin;
+      const playing = rate > 0;
+      if (await switchTo(to, () => spin)) {
+        try {
+          const u = new URL(window.location.href);
+          u.searchParams.set("v", key);
+          window.history.replaceState(null, "", u.toString());
+        } catch { /* the address is a convenience */ }
+        if (playing) current?.video.play().catch(() => {});
+      }
+      carrying = false;
+      report(true);
+    }
+
     async function back() {
       const top = trail[trail.length - 1];
       if (busy || !top || !current) return;
@@ -729,6 +784,8 @@ export default function Walk360() {
       const walk = walkOf(walksNow, current?.key);
       const near = current && !busy && v && v.readyState >= 1 ? doorsNear(walk, v.currentTime, videoYaw(), current.flat ? { dyaw: 4 } : {}) : [];
       const atEnd = Boolean(v && trail.length && Number.isFinite(v.duration) && v.currentTime >= v.duration - 0.3);
+      const onward = !trail.length && walk?.next && v && Number.isFinite(v.duration) && v.currentTime >= v.duration - 0.15 ? walk.next : null;
+      if (onward && !busy) void carryOn(onward);
       const site = trail[trail.length - 1]?.door.url ?? null;
       const next: View = { key: current?.key ?? null, inside: trail.length, flat: current?.flat ?? false, near, site, atEnd, busy };
       if (debugOn && v) {
@@ -889,12 +946,12 @@ export default function Walk360() {
           const sign = signAt(d, t);
           if (!sign) continue;
           const site = isSiteOnlyDoor(d);
-          const id = `${current.key}#${d.id}#${d.label.en}#${d.label.fa ?? ""}#${site}`;
+          const id = `${current.key}#${d.id}#${d.label.en}#${d.label.fa ?? ""}#${site}#${d.image ?? ""}#${d.size ?? ""}`;
           want.add(id);
           let m = markers.get(id);
           if (!m) {
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: signTexture(d.label.en, d.label.fa, site), depthTest: false, depthWrite: false, transparent: true }));
-            sprite.scale.set(7.4, 3.45, 1);
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: d.image ? doorTexture(d, (w, h) => sprite.scale.set(w, h, 1)) : signTexture(d.label.en, d.label.fa, site), depthTest: false, depthWrite: false, transparent: true }));
+            if (!d.image) sprite.scale.set(7.4, 3.45, 1);
             sprite.renderOrder = 10;
             m = { sprite, door: d };
             markers.set(id, m);
@@ -922,6 +979,10 @@ export default function Walk360() {
       const ahead = around.find((d) => d.to);
       if (ahead?.to) wantKey = { key: ahead.to, t: 0, flat: isFlatDoor(ahead), purpose: "door" };
       const top = trail[trail.length - 1];
+      const onward = walk?.next;
+      if (!wantKey && !top && onward && v && Number.isFinite(v.duration) && v.duration - t < PRELOAD_DT) {
+        wantKey = { key: onward, t: 0, flat: false, purpose: "main" };
+      }
       if (!wantKey && top && v && Number.isFinite(v.duration) && v.duration - t < PRELOAD_DT) {
         wantKey = { key: top.key, t: returnPoint(top.door).t, flat: false, purpose: "back" };
       }
@@ -977,7 +1038,10 @@ export default function Walk360() {
       },
       back: () => void back(),
       goToWalk: (k) => void goToWalk(k),
-      here: () => ({ key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), flat: current?.flat ?? false, projection: current?.projection ?? null }),
+      here: () => {
+        camera.getWorldDirection(lookDir);
+        return { key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), pitch: Math.asin(Math.max(-1, Math.min(1, lookDir.y))), flat: current?.flat ?? false, projection: current?.projection ?? null };
+      },
       goTo(door) {
         if (!current || busy) return;
         current.video.pause();
@@ -1526,6 +1590,34 @@ export default function Walk360() {
               <span className="block text-[17px] font-bold">{isSiteOnlyDoor(door) ? "Visit website ↗" : "Step inside"} · {door.label.en}</span>
               {door.label.fa && <span dir="rtl" className="block text-right text-[15px] text-amber-100/90">{isSiteOnlyDoor(door) ? "وبسایت" : "ورود"} · {door.label.fa}</span>}
             </button>
+          )}
+
+          {/* The hallway's door spots (from /stores/areas): stand where a door should be, face the wall, press. */}
+          {spotMode && !view.busy && !view.flat && (
+            <div dir="ltr" className="absolute left-1/2 top-16 z-20 w-max max-w-[calc(100%-2rem)] -translate-x-1/2 text-center">
+              <button
+                onClick={async () => {
+                  const h = engine.current?.here();
+                  if (!h) return;
+                  setSpotSaid("…");
+                  try {
+                    const res = await fetch("/api/stores/areas", {
+                      method: "POST",
+                      headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
+                      body: JSON.stringify({ action: "spotAdd", t: Math.round(h.t * 100) / 100, yaw: Math.round(h.yaw * 1000) / 1000, pitch: Math.round(h.pitch * 1000) / 1000 }),
+                    });
+                    const out = await res.json().catch(() => ({}));
+                    setSpotSaid(res.ok && out.ok ? `✓ Spot ${out.bazaar?.spots?.length ?? ""} saved at ${mmss(h.t)} · ذخیره شد` : `Not saved: ${out.error || res.status}`);
+                  } catch (e) {
+                    setSpotSaid(`Not saved: ${(e as Error).message}`);
+                  }
+                }}
+                className="rounded-2xl border border-amber-300/80 bg-amber-300/30 px-5 py-3 text-[16px] font-bold text-amber-50 shadow-lg backdrop-blur-sm"
+              >
+                جای در اینجا · Door spot here
+              </button>
+              {spotSaid && <p className="mt-1 rounded-lg bg-black/60 px-2 py-1 text-[12px] text-white/85">{spotSaid}</p>}
+            </div>
           )}
 
           {/* Inside a shop: the way back, always. */}
