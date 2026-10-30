@@ -7,7 +7,7 @@ import SplatTour from "@/components/virtual-bazaar/splat/SplatTour";
 // untouched until this works on real phones. Scenes and the tour are managed
 // at `/operator/splats`.
 export const metadata: Metadata = {
-  title: "بازار مجازی (اسپلت) — سرکوچه",
+  title: "بازار مجازی (اسپلت)",
   robots: { index: false },
 };
 

@@ -20,8 +20,8 @@ test("units: one per shop, 1…12, odd on the left walking in", () => {
 test("Sarekooche's two shops have the addresses we print", () => {
   assert.equal(addressPath(shopById("sarekooche")!), "/vb/khoraki/5-sarekooche");
   assert.equal(addressPath(shopById("butcher")!), "/vb/khoraki/4-butcher");
-  assert.equal(addressText(shopById("sarekooche")!), "بازار سرکوچه · راسته خوراکی · حجرهٔ ۵ · سرکوچه");
-  assert.equal(addressText(shopById("sarekooche")!, "en"), "Sarekooche Bazaar · Food Street · Unit 5 · Sarekooche");
+  assert.equal(addressText(shopById("sarekooche")!), "بازار مجازی · راسته خوراکی · حجرهٔ ۵ · سرکوچه");
+  assert.equal(addressText(shopById("sarekooche")!, "en"), "Virtual Bazaar · Food Street · Unit 5 · Sarekooche");
 });
 
 test("a link lands in front of its shop, by number, whatever the name says", () => {

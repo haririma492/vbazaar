@@ -10,6 +10,25 @@ move is finished, olgoo.com still serves the same app; after it, olgoo.com
 301s these paths here. Notes below that say "olgoo.com" or "the root
 `server.js`" describe that earlier home.
 
+**Name and search (owner, 2026-10-30):** the site is **Virtual Bazaar**,
+Farsi «بازار مجازی» (*"should say Virtual Bazaar (bazaar-eh Majazi in farsi)"*;
+the logo is coming from the owner). The Sarekooche shop in the bazaar and the
+Sarekooche basket keep their name. *"I want all SEO indexing, strategy and
+Automatic agent optimization to be turned on on vbazaar.app as well"*:
+- `lib/seo.ts` holds every indexed page's title and description (olgoo-com's
+  "Masoud SEO standards": titles 50–65, descriptions 145–160). Pages are
+  noindex by default (`app/layout.tsx`); `indexable()` opts one in.
+- Indexed: `/` (the demo screen; `/demo` points its canonical here),
+  `/vca/walk`, `/vca`, `/vb`. Shop and street addresses are noindex,follow
+  (the same 3D scene); `/chinastore`, `/vr`, `/vca/ride`, `/vca/splat` and
+  `/operator/*` stay noindex. `app/sitemap.ts` lists exactly the indexed
+  pages; `app/robots.ts` blocks `/api/` and `/operator/`.
+- The site owns the shopper terms ("virtual bazaar", «بازار مجازی»);
+  "3D virtual store" / "virtual mall" are olgoo.com/virtual-stores'. olgoo.com's
+  copy of these pages stays up for now and is noindex there.
+- olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
+  Fixer may push here once the repo is attached to their session.
+
 Moved to olgoo.com from the Sarekooche repo on 2026-10-15 (history kept). A Next.js
 app served there by the root `server.js` at the paths it had on sarekooche.com:
 `/vca`, `/vca/walk`, `/vca/splat`, `/vca/ride`, `/vb/…`, `/vr`, `/chinastore`,

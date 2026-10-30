@@ -44,8 +44,8 @@ const KEYS = [
   {
     id: "intro",
     icon: "▶",
-    fa: "معرفی سرکوچه",
-    en: "Sarekooche — the idea",
+    fa: "معرفی بازار مجازی",
+    en: "Virtual Bazaar — the idea",
     note: "The short intro video",
   },
   {
@@ -90,8 +90,10 @@ export default function DemoScreen() {
     <main className="min-h-dvh bg-[#0b0f12] px-4 py-8 text-white">
       <div className="mx-auto flex max-w-xl flex-col gap-4">
         <header className="mb-2 text-center">
-          <div className="sk-font text-[34px] font-extrabold text-[#00B8C8]">سرکوچه</div>
-          <div className="text-[15px] text-white/70">Sarekooche · the Virtual Bazaar</div>
+          <h1 className="m-0 text-[34px] font-extrabold leading-tight text-[#00B8C8]">
+            <span className="sk-font block">بازار مجازی</span>
+            <span className="block text-[15px] font-normal text-white/70">Virtual Bazaar · Bazaar-e Majazi</span>
+          </h1>
         </header>
         {KEYS.map((k) => {
           const inner = (
@@ -118,7 +120,7 @@ export default function DemoScreen() {
             </button>
           );
         })}
-        <p className="mt-2 text-center text-[12px] text-white/35">sarekooche.com</p>
+        <p className="mt-2 text-center text-[12px] text-white/35">vbazaar.app</p>
       </div>
 
       {store.waiting && store.s?.state !== "done" && (

@@ -10,7 +10,7 @@ const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://vbazaar.app").replace
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
-  title: "V-Bazaar — Virtual Bazaar",
+  title: "بازار مجازی — Virtual Bazaar",
   robots: { index: false, follow: false },
 };
 

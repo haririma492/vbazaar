@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PAGES, indexable } from "@/lib/seo";
 import VirtualBazaar from "@/components/virtual-bazaar/VirtualBazaar";
 
 // `/vca` — the Virtual Bazaar: a Three.js square with six «راسته»s, the food
@@ -6,10 +7,7 @@ import VirtualBazaar from "@/components/virtual-bazaar/VirtualBazaar";
 // yet, and the home page is untouched. Earlier addresses, `/virtual-bazaar`
 // and then `/vbazaar` (both 2026-09-27), redirect here. A shop's own address
 // is `/vb/…` (`app/vb`).
-export const metadata: Metadata = {
-  title: "بازار مجازی — سرکوچه",
-  robots: { index: false },
-};
+export const metadata: Metadata = indexable(PAGES.bazaar3d);
 
 export default function VirtualBazaarPage() {
   return <VirtualBazaar />;

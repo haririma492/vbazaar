@@ -839,7 +839,7 @@ export default function SplatVR() {
             <div className="max-w-md rounded-2xl bg-black/60 px-5 py-4 text-center text-[13px] leading-relaxed text-white/85">
               <div className="mb-1 font-bold text-white">این صفحه را در مرورگر هدست باز کنید · Open this page in your headset</div>
               <div dir="ltr">
-                sarekooche.com/vr in Meta Quest Browser, Pico Browser, Safari on Apple Vision Pro, Wolvic — or Chrome / Edge on a PC with SteamVR
+                vbazaar.app/vr in Meta Quest Browser, Pico Browser, Safari on Apple Vision Pro, Wolvic — or Chrome / Edge on a PC with SteamVR
                 or Windows Mixed Reality. Here: drag to look, click the blue path or a marker to go there.
               </div>
               <a href={`/vca/splat${current ? `?scene=${current}` : ""}`} className="mt-2 inline-block text-amber-200 underline">

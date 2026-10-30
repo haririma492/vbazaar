@@ -8,7 +8,7 @@ import OperatorGate from "@/components/operator/OperatorGate";
 import SplatUploads from "@/components/operator/SplatUploads";
 
 export const metadata: Metadata = {
-  title: "صحنه‌های سه‌بعدی — اپراتور سرکوچه",
+  title: "صحنه‌های سه‌بعدی — اپراتور بازار مجازی",
   robots: { index: false, follow: false },
 };
 

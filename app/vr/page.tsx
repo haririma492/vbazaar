@@ -6,7 +6,7 @@ import SplatVR from "@/components/virtual-bazaar/splat/SplatVR";
 // exits and shop doors with a controller or a hand. The same tour, scenes and
 // paths as `/vca/splat` (managed at `/operator/splats`).
 export const metadata: Metadata = {
-  title: "بازار مجازی در واقعیت مجازی — سرکوچه",
+  title: "بازار مجازی در واقعیت مجازی — Virtual Bazaar VR",
   robots: { index: false },
 };
 

@@ -7,7 +7,7 @@ import VirtualRideDemo from "@/components/virtual-bazaar/VirtualRideDemo";
 // landing on the pavement outside to walk on in Street View.
 // `?to=world-on-yonge` preselects. Standalone like the rest of `/vca`.
 export const metadata: Metadata = {
-  title: "سفر مجازی — سرکوچه",
+  title: "سفر مجازی — بازار مجازی",
   robots: { index: false },
 };
 

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import VirtualBazaar from "@/components/virtual-bazaar/VirtualBazaar";
+import { PAGES, indexable } from "@/lib/seo";
 import {
   ADDRESS_LABEL, BAZAAR_NAME, addressPath, addressText, parseAddress, spotParam, streetAddressPath, type Spot,
 } from "@/lib/virtualBazaar/layout";
@@ -27,8 +28,8 @@ function spotFrom(params: Props["params"]): Spot | null | undefined {
 export function generateMetadata({ params }: Props): Metadata {
   const spot = spotFrom(params);
   if (spot === undefined) return {};
-  let title = BAZAAR_NAME.fa;
-  let description = "بازار مجازی سرکوچه — در بازار قدم بزنید و از مغازه‌ها خرید کنید.";
+  let title = "میدان بازار مجازی: نشانی مجازی مغازه‌ها | Virtual Bazaar";
+  let description: string = PAGES.address.description;
   let url = "/vb";
   if (spot?.kind === "shop") {
     title = `${spot.shop.name} — ${BAZAAR_NAME.fa}`;
@@ -38,17 +39,12 @@ export function generateMetadata({ params }: Props): Metadata {
     title = `${spot.street.name} — ${BAZAAR_NAME.fa}`;
     url = streetAddressPath(spot.street) ?? url;
   }
-  // ⚠️ THE PREVIEW ON X, FACEBOOK AND WHATSAPP. Until each shop has a photo of
-  // its front, the preview is Sarekooche's logo with the address under it.
-  const image = { url: "/sarekooche-logo-5.png", width: 600, height: 600, alt: title };
-  return {
-    title,
-    description,
-    alternates: { canonical: url },
-    openGraph: { type: "website", url, title, description, siteName: "سرکوچه", locale: "fa_IR", images: [image] },
-    twitter: { card: "summary", title, description, images: [image.url] },
-    robots: { index: false },
-  };
+  // ⚠️ THE PREVIEW ON X, FACEBOOK AND WHATSAPP has no picture until the
+  // Virtual Bazaar logo arrives (owner, 2026-10-30: "will provide a logo").
+  // Only the square is indexed: a street's or shop's address shows the same 3D
+  // scene, so it is reachable (follow) but not a search page of its own.
+  const meta = indexable({ path: url, title, description });
+  return spot ? { ...meta, robots: { index: false, follow: true } } : meta;
 }
 
 export default function VirtualAddressPage({ params }: Props) {

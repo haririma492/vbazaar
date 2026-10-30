@@ -352,7 +352,7 @@ export function poseForSpot(spot: Spot | null): Pose {
  */
 
 export const ADDRESS_PREFIX = "/vb";
-export const BAZAAR_NAME = { fa: "بازار سرکوچه", en: "Sarekooche Bazaar" };
+export const BAZAAR_NAME = { fa: "بازار مجازی", en: "Virtual Bazaar" };
 export const ADDRESS_LABEL = { fa: "نشانی مجازی", en: "Virtual Address" };
 
 /** The street's part of the link. Only open streets have addresses. */
