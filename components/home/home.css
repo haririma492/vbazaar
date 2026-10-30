@@ -1,0 +1,26 @@
+/* The home page's own frame around olgoo.com's VCA sections (content/olgoo-vca/vca.css). */
+.vb-home { background: var(--navy-deep); color: #fff; min-height: 100vh; }
+.vb-nav {
+  position: sticky; top: 0; z-index: 200; height: 64px; padding: 0 5%;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  background: rgba(13, 31, 60, 0.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(212, 168, 67, 0.18);
+}
+.vb-brand { font-family: "Cormorant Garamond", serif; font-size: 22px; font-weight: 700; color: #fff; white-space: nowrap; }
+.ovca[lang=fa] .vb-brand { font-size: 19px; font-weight: 700; }
+.vb-links { display: flex; gap: 22px; align-items: center; }
+.vb-links a { color: rgba(255, 255, 255, 0.72); font-size: 13px; letter-spacing: 0.3px; white-space: nowrap; }
+.vb-links a:hover { color: #fff; }
+.vb-links .vb-lang { border: 1px solid rgba(212, 168, 67, 0.45); border-radius: 4px; padding: 5px 10px; color: var(--gold-light); }
+.vb-h1-term { display: block; font-size: 0.42em; letter-spacing: 0.12em; color: var(--gold-light); margin-bottom: 0.5em; font-weight: 600; }
+.ovca[lang=fa] .vb-h1-term { letter-spacing: 0; }
+.vb-foot { padding: 36px 5% 44px; text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.55); border-top: 1px solid rgba(212, 168, 67, 0.18); display: grid; gap: 8px; }
+.vb-foot a { color: var(--gold-light); }
+@media (max-width: 560px) {
+  .vb-nav { padding: 0 16px; }
+  .vb-links { gap: 12px; }
+  .vb-links a { font-size: 12px; }
+  .vb-links a[href="/vca"] { display: none; }
+}
+.vs-docs-note { text-align: center; margin-top: 18px; font-size: 14px; }
+.vs-docs-note a { color: var(--gold-light); border-bottom: 1px solid rgba(212, 168, 67, 0.45); }

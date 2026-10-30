@@ -13,10 +13,20 @@ export const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://vbazaar.app").
 export const SITE_NAME = { fa: "بازار مجازی", en: "Virtual Bazaar" };
 
 export const PAGES = {
+  // The home page: olgoo.com's VCA page, carried here (owner, 2026-10-30), in
+  // Farsi at / and English at /en. It leads with this site's term; "3D virtual
+  // store" stays olgoo.com/virtual-stores' search term.
   home: {
     path: "/",
-    title: "بازار مجازی | Virtual Bazaar — قدم زدن ۳۶۰° در خیابان یانگ",
-    description: "در بازار مجازی، خیابان یانگ را ۳۶۰ درجه قدم بزنید، وارد مغازه‌ها شوید، قیمت‌ها و حراج‌ها را ببینید و به سبد اضافه کنید. Walk the Virtual Bazaar online.",
+    title: "بازار مجازی | مغازه و خیابانی که مشتری در آن قدم می‌زند و می‌خرد",
+    description: "بازار مجازی VCA™‎: مغازه، خیابان یا پاساژ شما آنلاین؛ مشتری در آن قدم می‌زند، می‌گردد و می‌خرد، بدون اپ و در هر مرورگر. تور مجازی فروشگاه از ۳٬۵۰۰ دلار کانادا.",
+    h1: "بازار مجازی",
+  },
+  homeEn: {
+    path: "/en",
+    title: "Virtual Bazaar: Walk-in Stores & Shopping Streets Online | VCA™",
+    description: "Virtual Bazaar by VCA™: your store, street or plaza online, where shoppers walk in, browse and buy in any browser. Virtual stores from $3,500 CAD.",
+    h1: "Virtual Bazaar",
   },
   walk: {
     path: "/vca/walk",
@@ -46,13 +56,33 @@ export function indexable({ path, title, description }: { path: string; title: s
   };
 }
 
-/** One JSON-LD @graph for the home page: the site and the page. */
-export function homeJsonLd() {
+/** The business, character for character as on its Google Business Profile (olgoo-com CLAUDE.md). */
+export const ORG = {
+  "@type": ["Organization", "ProfessionalService"],
+  "@id": "https://olgoo.com/#org",
+  name: "Olgoo",
+  url: "https://olgoo.com/",
+  telephone: "+1-416-800-1418",
+  address: { "@type": "PostalAddress", streetAddress: "238 Doris Ave", addressLocality: "North York", addressRegion: "ON", postalCode: "M2N 6W1", addressCountry: "CA" },
+};
+
+/** The home page's JSON-LD @graph, in its language. The FAQPage comes from the visible FAQ (content/olgoo-vca/faq.json). */
+export function homeJsonLd(lang: "fa" | "en", faq: { q: string; a: string }[]) {
+  const page = lang === "fa" ? PAGES.home : PAGES.homeEn;
+  const url = `${SITE}${page.path}`;
   return {
     "@context": "https://schema.org",
     "@graph": [
-      { "@type": "WebSite", "@id": `${SITE}/#website`, url: `${SITE}/`, name: SITE_NAME.fa, alternateName: SITE_NAME.en, inLanguage: "fa" },
-      { "@type": "WebPage", "@id": `${SITE}/#webpage`, url: `${SITE}/`, name: PAGES.home.title, description: PAGES.home.description, isPartOf: { "@id": `${SITE}/#website` }, inLanguage: "fa" },
+      ORG,
+      { "@type": "WebSite", "@id": `${SITE}/#website`, url: `${SITE}/`, name: SITE_NAME.fa, alternateName: SITE_NAME.en, inLanguage: ["fa", "en"], publisher: { "@id": ORG["@id"] } },
+      { "@type": "WebPage", "@id": `${url}#webpage`, url, name: page.title, description: page.description, isPartOf: { "@id": `${SITE}/#website` }, inLanguage: lang, about: { "@id": `${url}#service` } },
+      {
+        "@type": "Service", "@id": `${url}#service`, name: lang === "fa" ? "بازار مجازی VCA™‎ — تور مجازی فروشگاه" : "VCA™ Virtual Bazaar — walk-in virtual stores",
+        serviceType: lang === "fa" ? "فروشگاه مجازی" : "Virtual store", provider: { "@id": ORG["@id"] }, areaServed: { "@type": "Country", name: "Canada" },
+        offers: { "@type": "Offer", price: "3500", priceCurrency: "CAD", url: `${url}#packages` },
+      },
+      { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: lang === "fa" ? SITE_NAME.fa : SITE_NAME.en, item: url }] },
+      { "@type": "FAQPage", mainEntity: faq.map(({ q, a }) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) },
     ],
   };
 }

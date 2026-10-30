@@ -1,0 +1,86 @@
+{
+  "en": [
+    {
+      "q": "What is a 3D virtual store?",
+      "a": "A 3D copy of a store that shoppers can walk into online, browse and buy from. With VCA, each virtual store also sits on its real street or in its real mall, next to its neighbours."
+    },
+    {
+      "q": "Is this a virtual tour of my store?",
+      "a": "It starts like one: your store is captured in 360° and 3D, like a retail store virtual tour. The difference is that customers can shop it — tap a price tag, add to the basket and check out — and walk next door to the neighbouring stores."
+    },
+    {
+      "q": "What is a Virtual Commercial Address (VCA)?",
+      "a": "A destination in the digital world that corresponds to a real commercial place — a street, mall or store — so people can arrive online, walk through it, step into stores and buy."
+    },
+    {
+      "q": "How is VCA different from other virtual stores or a 360° tour?",
+      "a": "A tour shows one place, and most virtual stores stand alone; VCA connects places. Stores sit beside stores on real streets, and every product can be tapped and bought — it’s shopping, not just a view."
+    },
+    {
+      "q": "Do shoppers need an app or a VR headset?",
+      "a": "No. VCA runs in any modern browser on a computer, phone or tablet. VR headsets work too, and on a big screen it’s even better."
+    },
+    {
+      "q": "Who can join a VCA pilot?",
+      "a": "Store owners, business improvement areas (BIAs), landlords and mall operators. We’re choosing our first pilot districts now."
+    },
+    {
+      "q": "Is VCA patented?",
+      "a": "A patent application for VCA has been filed with the Canadian Intellectual Property Office (CIPO). VCA™ is a trademark of Olgoo Enterprise Services Inc."
+    },
+    {
+      "q": "How long does it take to set up a virtual store?",
+      "a": "About two weeks for a single store with VCA Storefront. A street, plaza or mall is planned with you as a pilot."
+    },
+    {
+      "q": "How much does a virtual store cost?",
+      "a": "A single walk-in virtual store (VCA Storefront) starts from $3,500. Streets, malls and founding districts are quoted with you, based on their size."
+    },
+    {
+      "q": "How do shoppers buy in a VCA virtual store?",
+      "a": "They walk in, tap a product’s price tag and add it to the basket, then check out online."
+    }
+  ],
+  "fa": [
+    {
+      "q": "تور مجازی فروشگاه چیست؟",
+      "a": "نسخهٔ مجازی یک فروشگاه واقعی که خریداران می‌توانند آنلاین واردش شوند، در آن بگردند و از آن بخرند. در VCA تور مجازی هر فروشگاه در خیابان یا مرکز خرید واقعی خودش، کنار همسایه‌هایش قرار دارد."
+    },
+    {
+      "q": "آیا این همان تور مجازی فروشگاه من است؟",
+      "a": "شروعش همان است: از فروشگاه شما تور مجازی ساخته می‌شود. فرقش این است که مشتری می‌تواند در آن خرید کند — برچسب قیمت را لمس کند، به سبد اضافه کند و پرداخت کند — و به فروشگاه‌های همسایه هم سر بزند."
+    },
+    {
+      "q": "نشانی تجاری مجازی (VCA) چیست؟",
+      "a": "مقصدی در دنیای دیجیتال متناظر با یک مکان تجاری واقعی — خیابان، مرکز خرید یا فروشگاه — تا مردم بتوانند آنلاین به آن برسند، در آن قدم بزنند، وارد فروشگاه‌ها شوند و خرید کنند."
+    },
+    {
+      "q": "VCA چه فرقی با یک تور مجازی معمولی دارد؟",
+      "a": "تور مجازی معمولی فقط یک مکان را نشان می‌دهد و فقط برای تماشاست؛ VCA مکان‌ها را به هم وصل می‌کند. فروشگاه‌ها در خیابان‌های واقعی کنار هم هستند و هر کالا را می‌توان لمس کرد و خرید — خرید است، نه فقط تماشا."
+    },
+    {
+      "q": "مشتری برای دیدنش باید برنامه یا عینک واقعیت مجازی داشته باشد؟",
+      "a": "نه. VCA در هر مرورگر به‌روزی روی کامپیوتر، گوشی یا تبلت کار می‌کند. هدست‌های واقعیت مجازی هم کار می‌کنند و روی صفحهٔ بزرگ حتی بهتر است."
+    },
+    {
+      "q": "چه کسانی می‌توانند در پایلوت VCA شرکت کنند؟",
+      "a": "صاحبان فروشگاه، انجمن‌های کسبه (BIA)، مالکان و مدیران مراکز خرید. اکنون نخستین مناطق آزمایشی را انتخاب می‌کنیم."
+    },
+    {
+      "q": "آیا VCA ثبت اختراع شده است؟",
+      "a": "درخواست ثبت اختراع VCA در ادارهٔ مالکیت فکری کانادا (CIPO) ثبت شده است. VCA™‎ علامت تجاری Olgoo Enterprise Services Inc. است."
+    },
+    {
+      "q": "راه‌اندازی تور مجازی یک فروشگاه چقدر طول می‌کشد؟",
+      "a": "حدود دو هفته برای یک فروشگاه با VCA Storefront. یک راسته، پاساژ یا مرکز خرید را به‌صورت پایلوت با شما برنامه‌ریزی می‌کنیم."
+    },
+    {
+      "q": "قیمت تور مجازی فروشگاه از چند شروع می‌شود؟",
+      "a": "تور مجازی یک فروشگاه (VCA Storefront) از ۳٬۵۰۰ دلار کانادا شروع می‌شود. قیمت راسته، پاساژ یا مرکز خرید را بسته به اندازه‌اش با شما تعیین می‌کنیم."
+    },
+    {
+      "q": "خریداران در تور مجازی VCA چطور خرید می‌کنند؟",
+      "a": "وارد می‌شوند، برچسب قیمت کالا را لمس می‌کنند و آن را به سبد اضافه می‌کنند، سپس آنلاین پرداخت می‌کنند."
+    }
+  ]
+}

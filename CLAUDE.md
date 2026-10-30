@@ -5,7 +5,7 @@ v-bazzar.com … first copying and then moving all the code there"*; then the
 same day: *"only vbazaar.app is mine"*, so the site is vbazaar.app). Copied out
 of `Olgoo-Inc/olgoo-com/vca-app` with its history (`git subtree split`); it
 runs on its own Railway service with `next start` (`Dockerfile`), and
-`middleware.ts` sends www to the bare domain (`/` is the demo screen). Until the
+`middleware.ts` sends www to the bare domain. Until the
 move is finished, olgoo.com still serves the same app; after it, olgoo.com
 301s these paths here. Notes below that say "olgoo.com" or "the root
 `server.js`" describe that earlier home.
@@ -18,14 +18,27 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
 - `lib/seo.ts` holds every indexed page's title and description (olgoo-com's
   "Masoud SEO standards": titles 50–65, descriptions 145–160). Pages are
   noindex by default (`app/layout.tsx`); `indexable()` opts one in.
-- Indexed: `/` (the demo screen; `/demo` points its canonical here),
-  `/vca/walk`, `/vca`, `/vb`. Shop and street addresses are noindex,follow
+- Indexed: `/` and `/en` (the home page, below), `/vca/walk`, `/vca`, `/vb`.
+  `/demo` (the pitch screen) is noindex,follow and linked from the home menu. Shop and street addresses are noindex,follow
   (the same 3D scene); `/chinastore`, `/vr`, `/vca/ride`, `/vca/splat` and
   `/operator/*` stay noindex. `app/sitemap.ts` lists exactly the indexed
   pages; `app/robots.ts` blocks `/api/` and `/operator/`.
 - The site owns the shopper terms ("virtual bazaar", «بازار مجازی»);
   "3D virtual store" / "virtual mall" are olgoo.com/virtual-stores'. olgoo.com's
   copy of these pages stays up for now and is noindex there.
+- **The home page is olgoo.com's VCA page** (owner, 2026-10-30: *"bring all
+  related to VCA from olgoo.com to here as main page (not eliminating from
+  olgoo.com yet)"*): Farsi at `/`, English at `/en`, hreflang between them.
+  `scripts/import-olgoo-vca.mjs` copies olgoo.com/virtual-stores' sections
+  into `content/olgoo-vca/` (HTML per language, the FAQ as JSON, its CSS scoped
+  under `.ovca`); `components/home/VcaHome.tsx` adds the header, footer, the
+  H1 term («بازار مجازی» / Virtual Bazaar) and JSON-LD (Olgoo `#org`,
+  Service with a CAD offer, FAQPage from the visible FAQ). olgoo.com stays the
+  source until the cutover: when its VCA page changes, run the import again,
+  look at `/` and `/en`, commit. Media are in `public/media/vca/`; the private
+  documents stay on olgoo.com (titles shown, access requested there). The
+  pilot form posts to `/api/lead`, which hands it to olgoo.com's `/api/lead`
+  (leads and their email stay olgoo.com's).
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
 
