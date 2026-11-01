@@ -68,9 +68,10 @@ const SAME = 0.25;
 export type Look = { t: number; heading: number; id: string };
 
 /** The moments and headings the tagger looks at, for a walk `seconds` long. */
-export function lookPlan(seconds: number): Array<{ t: number; looks: Look[] }> {
+export function lookPlan(seconds: number, from = 0): Array<{ t: number; looks: Look[] }> {
   const out: Array<{ t: number; looks: Look[] }> = [];
-  for (let t = Math.min(1, seconds / 2); t < seconds - 0.2; t += LOOK_EVERY) {
+  const start = from > 0 && from < seconds - 0.5 ? from + 0.5 : Math.min(1, seconds / 2);
+  for (let t = start; t < seconds - 0.2; t += LOOK_EVERY) {
     const tt = Math.round(t * 100) / 100;
     out.push({ t: tt, looks: HEADINGS.map((heading, i) => ({ t: tt, heading, id: `${tt}s-${i * 60}°` })) });
   }

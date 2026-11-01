@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, hideFacing, hideYawAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -371,4 +371,25 @@ test("hiding the photographer: kept, checked, merged, removed", () => {
   assert.deepEqual(walkOf(merged, STREET)!.hide, hide);
   assert.equal(walkOf(merged, STREET)!.doors.length, 1);
   w = setHide(w, STREET, null);
+});
+
+test("a walk that turns round: the hidden direction turns with the photographer", () => {
+  let h = hideFacing(null, 2, 3, 1.2, 0.3);
+  assert.equal(hideYawAt(h, 50), 3);
+  h = hideFacing(h, 20, 0, 1.2, 0.3);
+  assert.equal(hideYawAt(h, 0), 3);
+  assert.equal(hideYawAt(h, 30), 0);
+  // Halfway, by the short way round (3 → 0 passes through 1.5).
+  assert.ok(Math.abs(hideYawAt(h, 11) - 1.5) < 1e-9);
+  const w = parseWalks(JSON.parse(JSON.stringify(setHide(emptyWalks(), STREET, h))));
+  assert.deepEqual(walkOf(w, STREET)!.hide, h);
+});
+
+test("price tags only from a moment on", () => {
+  let w = addItem(emptyWalks(), STREET, { label: { en: "Baklava" }, pins: [{ t: 5, x: 0, y: 0 }, { t: 30, x: 0, y: 0 }] } as never);
+  w = setTagsFrom(w, STREET, 20);
+  w = parseWalks(JSON.parse(JSON.stringify(w)));
+  assert.equal(walkOf(w, STREET)!.tagsFrom, 20);
+  assert.equal(itemsAt(walkOf(w, STREET), 10, true).length, 0);
+  assert.equal(walkOf(setTagsFrom(w, STREET, null), STREET)!.tagsFrom, undefined);
 });

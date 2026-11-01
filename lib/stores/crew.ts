@@ -332,7 +332,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     await say("Downloading the walk…");
     await downloadToFile(phoneKeyOf(walkKey), src, "web");
     const { seconds } = await probe(src);
-    const plan = lookPlan(seconds);
+    const plan = lookPlan(seconds, (await readWalks()).walks[walkKey]?.tagsFrom ?? 0);
     const purse = purseOf(s);
     const sightings: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }> = [];
     let stopped = "";
@@ -461,7 +461,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     await say("Downloading the walk…");
     await downloadToFile(phoneKeyOf(walkKey), src, "web");
     const { seconds } = await probe(src);
-    const plan = lookPlan(seconds);
+    const plan = lookPlan(seconds, (await readWalks()).walks[walkKey]?.tagsFrom ?? 0);
     const purse = purseOf(s);
     const products: Array<{ n: number; en: string; fa: string }> = [];
     const best = new Map<number, Best>();

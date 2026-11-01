@@ -203,8 +203,44 @@ export type Walk = {
    * the whole walk. Set on the walk's edit page («Hide»).
    */
   hide?: WalkHide;
+  /**
+   * TAGS ONLY FROM HERE ON (owner, 2026-11-01: a small store is filmed as one
+   * take — forward at head height for the overall look, then a turn and back
+   * at 30 cm over the cabinets; "first half will not show tag for simplicity
+   * and optic aesthetic"). Seconds into the video: before it no price tag is
+   * shown, and the Tagger does not look there.
+   */
+  tagsFrom?: number;
 };
-export type WalkHide = { yaw: number; width: number; top: number };
+/**
+ * `yaw` alone: one direction for the whole walk. `at`: the direction at
+ * several moments (a walk that turns round — the photographer is behind the
+ * camera both ways), turned smoothly between them.
+ */
+export type WalkHide = { yaw: number; width: number; top: number; at?: Array<{ t: number; yaw: number }> };
+
+/** The hidden direction at moment `t` (video frame). */
+export function hideYawAt(h: WalkHide, t: number): number {
+  const at = h.at ?? [];
+  if (!at.length) return h.yaw;
+  if (t <= at[0].t) return at[0].yaw;
+  for (let i = 1; i < at.length; i++) {
+    if (t <= at[i].t) {
+      const a = at[i - 1], b = at[i];
+      const k = (t - a.t) / Math.max(1e-6, b.t - a.t);
+      return wrapAngle(a.yaw + angleDiff(b.yaw, a.yaw) * k);
+    }
+  }
+  return at[at.length - 1].yaw;
+}
+
+/** The hide with the direction at `t` set (a point within half a second of it is replaced). */
+export function hideFacing(h: WalkHide | null, t: number, yaw: number, width: number, top: number): WalkHide {
+  const old = h ? (h.at?.length ? h.at : [{ t: 0, yaw: h.yaw }]) : [];
+  const at = [...old.filter((p) => Math.abs(p.t - t) > 0.5), { t, yaw }].sort((a, b) => a.t - b.t);
+  const base = { width: h?.width ?? width, top: h?.top ?? top };
+  return { yaw: at[0].yaw, ...base, at };
+}
 export const HIDE_WIDTH = { min: (20 * Math.PI) / 180, max: (180 * Math.PI) / 180 };
 export const HIDE_TOP = { min: (-30 * Math.PI) / 180, max: (60 * Math.PI) / 180 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
@@ -299,7 +335,20 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       const ok = (v: unknown, lo: number, hi: number) => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
       if (ok(h.yaw, -Math.PI - 1e-6, Math.PI + 1e-6) && ok(h.width, HIDE_WIDTH.min - 1e-6, HIDE_WIDTH.max + 1e-6) && ok(h.top, HIDE_TOP.min - 1e-6, HIDE_TOP.max + 1e-6)) {
         walk.hide = { yaw: h.yaw as number, width: h.width as number, top: h.top as number };
+        if (Array.isArray(h.at)) {
+          const pts = h.at
+            .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
+            .filter((p) => typeof p.t === "number" && p.t >= 0 && Number.isFinite(p.t) && typeof p.yaw === "number" && Math.abs(p.yaw) <= Math.PI + 1e-6)
+            .map((p) => ({ t: p.t as number, yaw: p.yaw as number }))
+            .sort((a, b) => a.t - b.t)
+            .slice(0, 20);
+          if (pts.length) walk.hide.at = pts;
+        }
       } else problems.push(`${key}: «hide» needs yaw (−π…π), width (20°…180°) and top (−30°…60°) in radians.`);
+    }
+    if (r.tagsFrom !== undefined && r.tagsFrom !== null) {
+      if (typeof r.tagsFrom === "number" && Number.isFinite(r.tagsFrom) && r.tagsFrom > 0) walk.tagsFrom = r.tagsFrom;
+      else problems.push(`${key}: «tagsFrom» must be seconds into the video.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -582,6 +631,7 @@ export function itemTime(item: WalkItem): number {
 /** The items shown at `t` on a walk, with where. */
 export function itemsAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem; x: number; y: number }> {
   const out: Array<{ item: WalkItem; x: number; y: number }> = [];
+  if (walk?.tagsFrom && t < walk.tagsFrom) return out;
   for (const item of walk?.items ?? []) {
     const at = itemAt(item, t, round);
     if (at) out.push({ item, ...at });
@@ -653,6 +703,14 @@ export function setHide(w: Walks, key: string, hide: WalkHide | null): Walks {
   return withWalk(w, key, (walk) => {
     const { hide: _drop, ...rest } = walk;
     return hide ? { ...rest, hide } : rest;
+  });
+}
+
+/** Price tags only from `t` seconds on; null: all the way. */
+export function setTagsFrom(w: Walks, key: string, t: number | null): Walks {
+  return withWalk(w, key, (walk) => {
+    const { tagsFrom: _drop, ...rest } = walk;
+    return t && t > 0 ? { ...rest, tagsFrom: Math.round(t * 100) / 100 } : rest;
   });
 }
 
@@ -744,10 +802,11 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const rev = Math.max(m.rev ?? 0, t.rev ?? 0);
     const next = same(m.next, bb.next) ? t.next : m.next;
     const hide = same(m.hide, bb.hide) ? t.hide : m.hide;
+    const tagsFrom = same(m.tagsFrom, bb.tagsFrom) ? t.tagsFrom : m.tagsFrom;
     walks[k] = {
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
       ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
-      ...(next ? { next } : {}), ...(hide ? { hide } : {}),
+      ...(next ? { next } : {}), ...(hide ? { hide } : {}), ...(tagsFrom ? { tagsFrom } : {}),
     };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;

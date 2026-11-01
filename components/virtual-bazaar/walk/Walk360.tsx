@@ -66,7 +66,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, hideFacing, hideYawAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -524,7 +524,7 @@ export default function Walk360() {
         hideMesh.geometry = g;
       }
       // A direction `v` in the video is at `v − spin` in the world (as a door's sign).
-      hideMesh.rotation.y = -(h.yaw - current!.spin);
+      hideMesh.rotation.y = -(hideYawAt(h, current!.video.currentTime) - current!.spin);
       hideMesh.visible = true;
     };
 
@@ -1978,6 +1978,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           {tab === "hide" && <HideEditor engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "cut" && <CutEditor video={() => engine.current?.video() ?? null} viewKey={viewKey} />}
           {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
+          {tab === "items" && <TagsFromControl engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
 
           {tab === "doors" && !draft && (
@@ -2212,8 +2213,14 @@ function HideEditor({ engine, walks, viewKey, change }: {
   const facing = () => {
     const h = engine.current?.here();
     if (!h) return;
-    change(setHide(walks, viewKey, { yaw: h.yaw, width: hide?.width ?? rad(70), top: hide?.top ?? rad(15) }));
+    change(setHide(walks, viewKey, hideFacing(hide, h.t, h.yaw, rad(70), rad(15))));
   };
+  const dropPoint = (t: number) => {
+    if (!hide?.at) return;
+    const at = hide.at.filter((p) => p.t !== t);
+    change(setHide(walks, viewKey, at.length ? { ...hide, yaw: at[0].yaw, at } : null));
+  };
+  const mmssOf = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
   const set = (patch: Partial<{ width: number; top: number }>) => {
     if (!hide) return;
     change(setHide(walks, viewKey, {
@@ -2226,8 +2233,21 @@ function HideEditor({ engine, walks, viewKey, change }: {
     <div className="space-y-2">
       <p className="text-white/80">Turn the view until you face the photographer (behind the camera), then press:</p>
       <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} onClick={facing}>
-        {hide ? "Hide the direction I face now (move it here)" : "Hide the direction I face now"}
+        Hide the direction I face now
       </button>
+      <p className="text-[11px] text-white/60">
+        Did you turn round during the walk? Go to a moment after the turn, face yourself again and press again: the patch then turns with you.
+      </p>
+      {hide?.at && hide.at.length > 1 && (
+        <ul className="space-y-1">
+          {hide.at.map((p) => (
+            <li key={p.t} className="flex items-center justify-between gap-2 rounded-md bg-white/5 px-2 py-1">
+              <span>At {mmssOf(p.t)}: {deg(p.yaw)}°</span>
+              <button className={btn} onClick={() => dropPoint(p.t)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
       {hide && (<>
         <div className="flex items-center justify-between gap-2">
           <span>Width: {deg(hide.width)}°</span>
@@ -2246,6 +2266,33 @@ function HideEditor({ engine, walks, viewKey, change }: {
         <p className="text-[11px] text-white/60">The dark patch covers this direction for the whole walk. Walk on a little to check the photographer stays inside it.</p>
         <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove the patch</button>
       </>)}
+    </div>
+  );
+}
+
+/**
+ * In «Products»: price tags only from here on (`Walk.tagsFrom`) — the first
+ * part of a one-take store walk is the overall look, without tags.
+ */
+export function TagsFromControl({ engine, walks, viewKey, change }: {
+  engine: React.MutableRefObject<Engine | null>;
+  walks: Walks;
+  viewKey: string | null;
+  change: (w: Walks) => void;
+}) {
+  const from = walkOf(walks, viewKey)?.tagsFrom ?? null;
+  const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
+  if (!viewKey) return null;
+  const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  return (
+    <div className="space-y-1 rounded-md border border-white/15 p-2">
+      <div>{from ? `Price tags show from ${mmss(from)} on (none before).` : "Price tags show for the whole walk."}</div>
+      <div className="flex gap-1">
+        <button className={btn} onClick={() => { const h = engine.current?.here(); if (h) change(setTagsFrom(walks, viewKey, h.t)); }}>
+          Tags only from this moment on
+        </button>
+        {from && <button className={btn} onClick={() => change(setTagsFrom(walks, viewKey, null))}>Whole walk</button>}
+      </div>
     </div>
   );
 }
