@@ -159,6 +159,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
             ) : item.price ? (
               <div className="mt-1.5 text-[20px] font-extrabold text-amber-200">{item.price}</div>
             ) : null}
+            {product?.note && <p dir="auto" className="mt-1.5 whitespace-pre-line text-[13px] leading-snug text-white/75">{product.note}</p>}
           </div>
           <button className="rounded-full px-2 text-[20px] text-white/60" aria-label={lang === "fa" ? "بستن" : "Close"} onClick={onClose}>×</button>
         </div>
@@ -864,7 +865,7 @@ function TagCard({ draft, setDraft, onDone, follow, catalogue }: {
           {UNITS.map((u) => (
             <button key={u} onClick={() => go("price", { unit: u })}
               className={`rounded-xl border px-2 py-2.5 text-[15px] ${draft.unit === u ? "border-[#00B8C8] bg-[#00B8C8]/25 font-bold" : "border-white/25"}`}>
-              {u === "piece" ? "the piece" : u === "box" || u === "pack" ? `the ${u}` : `weight (${u})`}
+              {u === "piece" ? "the piece" : u === "box" || u === "pack" || u === "set" ? `the ${u}` : `weight (${u})`}
             </button>
           ))}
         </div>

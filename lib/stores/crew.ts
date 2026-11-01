@@ -26,12 +26,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, looksFlat, MAX_ITEMS, type Walks } from "@/lib/splats/walks";
-import type { Catalogue } from "@/lib/splats/catalogue";
+import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
-import { encode, grayFrames, jpegOf, probe, views } from "./media";
-import { findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
+import { cropJpeg, encode, grayFrames, jpegOf, probe, views } from "./media";
+import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, HEADINGS, LOOK_FOV, LOOK_N, LOOK_PITCH, aim, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
@@ -255,6 +255,7 @@ async function publishPhoto(slug: string, n: number, bytes: Uint8Array): Promise
 }
 
 async function stepCatalogue(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
+  if (!s.files.sheet) return productsFromVideo(s, say);
   await say("Reading the workbook…");
   const book = readBook(await readUpload(s.files.sheet!.key));
   const sheet = productSheet(book);
@@ -284,6 +285,7 @@ const PHOTO_SURE = 0.7;
 async function stepPhotos(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
   const c = await readCatalogue(sceneOf(s.slug));
   if (!c?.products.length) return "No products to match photos to.";
+  if (!s.files.sheet) return "No sheet: each product's photo was cut from the video.";
   const book = readBook(await readUpload(s.files.sheet!.key));
   const sheet = productSheet(book);
   const list = sheet ? photoList(book, c.products, sheet.sheet) : [];
@@ -321,6 +323,7 @@ async function stepPhotos(s: StoreRecord, say: (note: string) => Promise<void>):
 async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
   const walkKey = s.out.walk;
   if (!walkKey) throw new Error("The walk is not made yet.");
+  if (s.out.found === walkKey) return "The tags were pinned while the products were found in the video.";
   const c = await readCatalogue(sceneOf(s.slug));
   if (!c?.products.length) return "No products to tag.";
   const dir = mkdtempSync(join(tmpdir(), "tag-"));
@@ -377,6 +380,101 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     const notFound = c.products.map((p) => p.n).filter((n) => !tagged.has(n));
     await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, tagged: items.length, notFound } }));
     return `${items.length} tags pinned on ${tagged.size} of ${c.products.length} products${notFound.length ? `; not found in the video: #${notFound.slice(0, 20).join(", #")}${notFound.length > 20 ? "…" : ""}` : ""}.${stopped}`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── Product finder (no sheet) ───────────────────────────────────────────────
+
+/**
+ * NO SHEET, NO PHOTOS (owner, 2026-11-01): the store's products are found in
+ * its walk. At each look (`lookPlan`) Claude lists the products for sale in
+ * the views round the camera, naming one seen before by its # (`ai.ts`,
+ * `discoverInViews`). Each product's clearest sighting is cut out as its
+ * photo; its sightings are followed through the frames and pinned as tags, as
+ * the Tagger does. The list is the store's product list: names from Claude,
+ * «Price in store», sold by the piece, until the owner fills them in on the
+ * store's page. A list the owner has already filled in is kept: a new video
+ * only re-pins it (the Tagger).
+ */
+async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
+  const walkKey = s.out.walk;
+  if (!walkKey) throw new Error("The walk is not made yet.");
+  const existing = await readCatalogue(sceneOf(s.slug));
+  if (existing?.products.length) return `Keeping the product list (${existing.products.length} products); the Tagger pins them on the new video.`;
+  const dir = mkdtempSync(join(tmpdir(), "find-"));
+  try {
+    const src = join(dir, "phone.mp4");
+    await say("Downloading the walk…");
+    await downloadToFile(phoneKeyOf(walkKey), src, "web");
+    const { seconds } = await probe(src);
+    const plan = lookPlan(seconds);
+    const purse = purseOf(s);
+    const products: Array<{ n: number; en: string; fa: string; best: { jpeg: Uint8Array; box: [number, number, number, number]; score: number } }> = [];
+    const sightings: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }> = [];
+    let stopped = "";
+    for (const [i, moment] of plan.entries()) {
+      await say(`Finding products: moment ${i + 1} of ${plan.length}, ${products.length} found so far…`);
+      const jpegs = await views(src, moment.t, HEADINGS, LOOK_PITCH, LOOK_FOV, LOOK_N);
+      let seen;
+      try {
+        seen = await discoverInViews(purse, products.map((p) => ({ n: p.n, en: p.en })), moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
+      } catch (e) {
+        if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
+        throw e;
+      }
+      for (const f of seen) {
+        if (f.confidence < 0.6) continue;
+        const k = moment.looks.findIndex((l) => l.id === f.view);
+        const score = ((f.box[2] - f.box[0]) * (f.box[3] - f.box[1])) * f.confidence;
+        let p = f.same !== null ? products.find((x) => x.n === f.same) : undefined;
+        if (!p) {
+          if (products.length >= MAX_NUMBER) continue;
+          p = { n: products.length + 1, en: f.en, fa: f.fa, best: { jpeg: jpegs[k], box: f.box, score } };
+          products.push(p);
+        } else if (score > p.best.score) {
+          p.best = { jpeg: jpegs[k], box: f.box, score };
+          if (!p.fa && f.fa) p.fa = f.fa;
+        }
+        sightings.push({ look: moment.looks[k], n: p.n, box: f.box, confidence: f.confidence });
+      }
+    }
+    if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);
+    await say(`Cutting out ${products.length} product photos…`);
+    const listed: Product[] = [];
+    for (const p of products) {
+      let photo: string | undefined;
+      try { photo = await publishPhoto(s.slug, p.n, await cropJpeg(p.best.jpeg, p.best.box)); } catch (e) { console.error("[crew] crop", s.slug, p.n, e); }
+      listed.push({ n: p.n, en: p.en, ...(p.fa ? { fa: p.fa } : {}), unit: "piece", priceCents: null, by: "video", ...(photo ? { photo } : {}) });
+    }
+    await writeCatalogue({ store: sceneOf(s.slug), products: listed });
+    // Pinned as the Tagger pins: each sighting followed both ways through the frames.
+    const tracks: Track[] = [];
+    const moments = [...new Set(sightings.map((x) => x.look.t))];
+    for (const [i, t] of moments.entries()) {
+      await say(`Pinning tags to the products: ${i + 1} of ${moments.length}…`);
+      const start = Math.max(0, t - FOLLOW_SPAN);
+      const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2);
+      if (!frames.length) continue;
+      const grey = frames.map((f) => Float32Array.from(f));
+      const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
+      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)) });
+    }
+    const byN = new Map(listed.map((p) => [p.n, p]));
+    const count = new Map<number, number>();
+    const items = keepTracks(tracks).slice(0, MAX_ITEMS).map((t) => {
+      const k = count.get(t.n) ?? 0;
+      count.set(t.n, k + 1);
+      return itemOf(t, byN.get(t.n)!, k);
+    });
+    const walks = await readWalks();
+    const walk = walks.walks[walkKey] ?? { doors: [] };
+    const hand = (walk.items ?? []).filter((it) => !it.id.startsWith("auto-"));
+    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...walk, items: [...hand, ...items].slice(0, MAX_ITEMS) } } }, walks);
+    const tagged = new Set(items.map((it) => it.n!));
+    await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, found: walkKey, tagged: items.length, notFound: listed.map((p) => p.n).filter((n) => !tagged.has(n)) } }));
+    return `${products.length} products found in the video, ${items.length} tags pinned. Give each its price on this page («Products»).${stopped}`;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

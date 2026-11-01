@@ -22,13 +22,14 @@
  * Pure: imports nothing, so `node --test` runs it.
  */
 
-export type Unit = "kg" | "g" | "lb" | "piece" | "box" | "pack";
-export const UNITS: Unit[] = ["kg", "g", "lb", "piece", "box", "pack"];
+export type Unit = "kg" | "g" | "lb" | "piece" | "set" | "box" | "pack";
+export const UNITS: Unit[] = ["kg", "g", "lb", "piece", "set", "box", "pack"];
 export const UNIT_SAY: Record<Unit, { en: string; fa: string }> = {
   kg: { en: "kg", fa: "کیلو" },
   g: { en: "g", fa: "گرم" },
   lb: { en: "lb", fa: "پوند" },
   piece: { en: "piece", fa: "عدد" },
+  set: { en: "set", fa: "سِت" },
   box: { en: "box", fa: "جعبه" },
   pack: { en: "pack", fa: "بسته" },
 };
@@ -45,8 +46,10 @@ export type Product = {
   priceCents: number | null;
   /** https link to its photo. */
   photo?: string;
-  /** Added on the walk, not from the merchant's sheet. */
-  by?: "hand";
+  /** Added on the walk by hand («hand»), or found in the store's video by the crew («video»), not from the merchant's sheet. */
+  by?: "hand" | "video";
+  /** The owner's description, shown on the product's card (owner, 2026-11-01). */
+  note?: string;
 };
 
 export type Catalogue = { store: string; products: Product[]; updated?: string };
@@ -95,6 +98,7 @@ export function readUnit(raw: unknown): Unit | null {
   if (/^(g|gr|grs|gram|grams|gm|گرم)$/.test(s)) return "g";
   if (/^(lb|lbs|pound|pounds|پوند)$/.test(s)) return "lb";
   if (/^(piece|pieces|pc|pcs|each|ea|unit|item|عدد|دانه|تک)$/.test(s)) return "piece";
+  if (/^(set|sets|ست|سِت|دست)$/.test(s)) return "set";
   if (/^(box|boxes|case|جعبه|کارتن)$/.test(s)) return "box";
   if (/^(pack|packs|package|pkg|packet|bag|bottle|jar|can|بسته|پاکت|شیشه|قوطی)$/.test(s)) return "pack";
   return null;
@@ -237,8 +241,12 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
     if (Number.isNaN(price)) { problems.push(`Product #${n}: its price must be whole cents.`); continue; }
     const photo = typeof x.photo === "string" && isHttps(x.photo) ? x.photo : "";
     const sku = typeof x.sku === "string" ? x.sku.trim().slice(0, 40) : "";
+    const note = typeof x.note === "string" ? x.note.trim().slice(0, 600) : "";
     seen.add(n);
-    products.push({ n, unit, priceCents: price as number | null, ...(sku ? { sku } : {}), ...(en ? { en } : {}), ...(fa ? { fa } : {}), ...(photo ? { photo } : {}), ...(x.by === "hand" ? { by: "hand" as const } : {}) });
+    products.push({
+      n, unit, priceCents: price as number | null, ...(sku ? { sku } : {}), ...(en ? { en } : {}), ...(fa ? { fa } : {}), ...(photo ? { photo } : {}),
+      ...(x.by === "hand" || x.by === "video" ? { by: x.by } : {}), ...(note ? { note } : {}),
+    });
   }
   products.sort((a, b) => a.n - b.n);
   return { catalogue: { store, products, ...(typeof o.updated === "string" ? { updated: o.updated } : {}) }, problems };

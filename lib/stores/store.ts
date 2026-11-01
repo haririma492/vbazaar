@@ -113,6 +113,8 @@ export type StoreRecord = {
   out: {
     /** The store's walk, `scenes/store-<slug>/walk-<stamp>.mp4` (its phone copy beside it). */
     walk?: string;
+    /** The walk its products were found in (no sheet: the list came from the video, tags already pinned). */
+    found?: string;
     /** The door photo shoppers see on the hallway (public, web bucket). */
     doorImage?: string;
     /** The hallway spot the door is in (`bazaar.ts`). */
@@ -249,7 +251,8 @@ export function applyEdits(s: StoreRecord, edits: Partial<Record<Editable, strin
 /** Whether the inputs a step works from are there. */
 export function hasInputs(s: StoreRecord, step: StepName): boolean {
   if (step === "video") return Boolean(s.files.video);
-  if (step === "catalogue") return Boolean(s.files.sheet);
+  // No sheet: the products are found in the store's video, once its walk is made.
+  if (step === "catalogue") return Boolean(s.files.sheet) || s.steps.video.state === "done";
   return true;
 }
 

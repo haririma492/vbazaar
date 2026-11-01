@@ -19,6 +19,7 @@ import type { Product } from "@/lib/splats/catalogue";
 import { formatCents } from "@/lib/splats/catalogue";
 import { getJson, postJson, uploadInParts, uploadMusic } from "./upload";
 import { UPLOAD_CARDS } from "./Intake";
+import Products from "./Products";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread } from "./ui";
 
 type Page = {
@@ -219,24 +220,7 @@ export default function StorePage({ slug }: { slug: string }) {
         )}
       </Card>
 
-      {page.products.length > 0 && (
-        <Card>
-          <Bi fa="فهرست محصولات" en={`The product list — ${page.products.length}`} className="text-[15px] font-bold text-amber-100" />
-          <ul className="mt-3 max-h-[420px] divide-y divide-white/10 overflow-y-auto">
-            {page.products.map((p) => (
-              <li key={p.n} className="flex items-center gap-3 py-2">
-                {p.photo ? <img src={p.photo} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-white/5" />}
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[14px]">#{p.n} · {p.fa || p.en}</span>
-                  <span dir="ltr" className="block truncate text-left text-[12px] text-white/50">{p.en}{p.sku ? ` · ${p.sku}` : ""}</span>
-                </span>
-                <span dir="ltr" className="shrink-0 text-[14px]">{p.priceCents === null ? "—" : formatCents(p.priceCents)}</span>
-                {s.out.notFound?.includes(p.n) && <span className="shrink-0 text-[11px] text-rose-200">not in video</span>}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
+      {page.products.length > 0 && <Products api={api} products={page.products} reload={load} />}
 
       <Card><Details page={page} save={async (edits) => { await act({ action: "edit", edits }); }} /></Card>
 

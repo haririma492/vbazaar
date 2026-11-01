@@ -14,11 +14,15 @@
  *   POST { action: "password", password }       (a new password for the store)
  *   POST { action: "publish" | "unpublish" }    (operator: shoppers see the store, or not)
  *   POST { action: "redo", step }               (operator: run a step again)
+ *   POST { action: "product", n, unit?, price?, sku?, note?, en?, fa? }  a product's details, from the store's page
+ *   POST { action: "productDrop", n }           not a product: off the list and off the walk
+ *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
  *   PUT ?key&uploadId&partNumber                (a part through this server, when the browser may not PUT to R2)
  */
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
-import { r2Config, readCatalogue, readWalks, signImageHeaders, signImagePutUrl, writeWalks } from "@/lib/splats/r2";
+import { r2Config, readCatalogue, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
   type StepName, type UploadKind,
@@ -113,6 +117,56 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const walks = await readWalks();
     const w = walks.walks[s.out.walk] ?? { doors: [] };
     await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: { ...w, audio: key } } }, walks);
+    return ok();
+  }
+
+  // ── The products, as the owner fills them in (owner, 2026-11-01: unit, price, item #, description) ──
+  if (body.action === "product" || body.action === "productDrop" || body.action === "productSame") {
+    const c = await readCatalogue(sceneOf(s.slug));
+    const n = Number(body.n);
+    const p = c?.products.find((x) => x.n === n);
+    if (!c || !p) return fail(404, "No such product.");
+    if (body.action === "product") {
+      const next = { ...p };
+      if (body.unit !== undefined) {
+        if (!UNITS.includes(body.unit as Unit)) return fail(400, "Sold by: piece, set, pack, box, kg, g or lb.");
+        next.unit = body.unit as Unit;
+      }
+      if (body.price !== undefined) {
+        if (body.price === null || String(body.price).trim() === "") next.priceCents = null;
+        else {
+          const cents = readPrice(body.price);
+          if (cents === null) return fail(400, `«${String(body.price)}» is not a price (e.g. 12.99).`);
+          next.priceCents = cents;
+        }
+      }
+      for (const f of ["sku", "note", "en", "fa"] as const) {
+        if (body[f] === undefined) continue;
+        const v = String(body[f] ?? "").trim().slice(0, f === "note" ? 600 : f === "sku" ? 40 : 120);
+        if (v) next[f] = v;
+        else if (f === "en" && !next.fa) return fail(400, "A product needs a name.");
+        else delete next[f];
+      }
+      const saved = await writeCatalogue({ ...c, products: c.products.map((x) => (x.n === n ? next : x)) });
+      await updateStore(s.slug, (x) => redo(x, ["check"]));
+      kick();
+      return ok({ product: saved.products.find((x) => x.n === n) ?? next });
+    }
+    const into = Number(body.into);
+    if (body.action === "productSame" && (!c.products.some((x) => x.n === into) || into === n)) return fail(400, "Choose the product it is the same as.");
+    await writeCatalogue({ ...c, products: c.products.filter((x) => x.n !== n) });
+    if (s.out.walk) {
+      const walks = await readWalks();
+      const w = walks.walks[s.out.walk];
+      if (w?.items?.some((it) => it.n === n)) {
+        const items = body.action === "productDrop"
+          ? w.items.filter((it) => it.n !== n)
+          : w.items.map((it) => (it.n === n ? { ...it, n: into, id: `${it.id}-as-${into}` } : it));
+        await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: { ...w, items } } }, walks);
+      }
+    }
+    await updateStore(s.slug, (x) => redo(x, ["check"]));
+    kick();
     return ok();
   }
 

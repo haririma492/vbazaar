@@ -100,3 +100,15 @@ export async function jpegOf(bytes: Uint8Array, max: number): Promise<Uint8Array
     "-vf", `scale='min(${max},iw)':'min(${max},ih)':force_original_aspect_ratio=decrease`, "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
   ], { input: bytes }));
 }
+
+/** The part of a JPEG inside `box` ([left, top, right, bottom], thousandths), with a little margin, as a JPEG. */
+export async function cropJpeg(bytes: Uint8Array, box: [number, number, number, number], margin = 0.08): Promise<Uint8Array> {
+  const [l, t, r, b] = box.map((v) => Math.min(1000, Math.max(0, v)) / 1000);
+  const mx = (r - l) * margin, my = (b - t) * margin;
+  const x0 = Math.max(0, l - mx), y0 = Math.max(0, t - my), x1 = Math.min(1, r + mx), y1 = Math.min(1, b + my);
+  return new Uint8Array(await run("ffmpeg", [
+    "-v", "error", "-i", "pipe:0", "-frames:v", "1",
+    "-vf", `crop=iw*${(x1 - x0).toFixed(4)}:ih*${(y1 - y0).toFixed(4)}:iw*${x0.toFixed(4)}:ih*${y0.toFixed(4)}`,
+    "-q:v", "2", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
+  ], { input: bytes }));
+}
