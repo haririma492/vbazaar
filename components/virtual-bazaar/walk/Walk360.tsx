@@ -319,7 +319,7 @@ type Engine = {
   /** Cross-fade to another walk video from its start — the next or previous aisle of a store. */
   goToWalk: (key: string) => void;
   /** Where the visitor is, in the current video's own frame (the operator's «Door here»). */
-  here: () => { key: string | null; t: number; yaw: number; pitch: number; flat: boolean; projection: Projection | null };
+  here: () => { key: string | null; t: number; yaw: number; pitch: number; flat: boolean; projection: Projection | null; halfFov: number };
   /** The locked zone (`Walk.hide`) off, while the operator sets it. */
   setLockOff: (off: boolean) => void;
   /** Jump to a door's moment and face it. */
@@ -651,6 +651,8 @@ export default function Walk360() {
       return Math.atan2(lookDir.x, -lookDir.z);
     };
     const videoYaw = () => (current ? wrapAngle(heading() + current.spin) : 0);
+    /** Half the screen's width, as an angle: how far from the view's middle the screen's edge is. */
+    const halfFovNow = () => Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
 
     function crossFade(from: Layer, to: Layer): Promise<void> {
       // A flat video always lies over the sphere: going from flat back to a
@@ -1056,7 +1058,7 @@ export default function Walk360() {
       },
       here: () => {
         camera.getWorldDirection(lookDir);
-        return { key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), pitch: Math.asin(Math.max(-1, Math.min(1, lookDir.y))), flat: current?.flat ?? false, projection: current?.projection ?? null };
+        return { key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), pitch: Math.asin(Math.max(-1, Math.min(1, lookDir.y))), flat: current?.flat ?? false, projection: current?.projection ?? null, halfFov: halfFovNow() };
       },
       goTo(door) {
         if (!current || busy) return;
@@ -1357,8 +1359,9 @@ export default function Walk360() {
       // still turns freely, to find and set the zone.
       // Then (start lock / end lock): the zone is the arc the operator turned
       // the view's MIDDLE through, from their face first showing at one edge
-      // of the screen to its going off the other — so the view's middle may
-      // not enter it, and the screen's width is already counted in.
+      // of the screen to its going off the other. Stored as where the
+      // photographer is (the turn less the operator's screen width), so each
+      // shopper's own screen width is added back below.
       const tilt = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.tilt : undefined;
       if (tilt && !(gyroOn && gyroHave)) {
         // `pitch` is positive looking DOWN (the camera turns by −pitch); the limits are above the horizon.
@@ -1368,7 +1371,9 @@ export default function Walk360() {
       const hid = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
       if (hid) {
         const zone = hideAt(hid, current!.video.currentTime);
-        const lim = Math.min(Math.PI - 0.05, zone.width / 2);
+        // The zone is where the photographer IS; the view's middle stays half
+        // this screen's width clear of it, so on any screen they stay off it.
+        const lim = Math.min(Math.PI - 0.02, zone.width / 2 + halfFovNow() + 0.02);
         const d = angleDiff(videoYaw(), zone.yaw);
         if (Math.abs(d) < lim) {
           turnYaw += (d >= 0 ? 1 : -1) * (lim - Math.abs(d));
@@ -2192,7 +2197,8 @@ function HideEditor({ engine, walks, viewKey, change }: {
 }) {
   const walk = walkOf(walks, viewKey);
   const hide = walk?.hide ?? null;
-  const [start, setStart] = useState<{ t: number; yaw: number } | null>(null);
+  const [start, setStart] = useState<{ t: number; yaw: number; halfFov: number } | null>(null);
+  const [tooShort, setTooShort] = useState(false);
   const [swept, setSwept] = useState(0);
   const last = useRef(0);
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
@@ -2227,17 +2233,21 @@ function HideEditor({ engine, walks, viewKey, change }: {
     if (!h) return;
     engine.current?.video().pause();
     setSwept(0);
-    setStart({ t: h.t, yaw: h.yaw });
+    setStart({ t: h.t, yaw: h.yaw, halfFov: h.halfFov });
+    setTooShort(false);
   };
   const finish = () => {
     if (!start) return;
-    const width = Math.abs(swept);
-    if (width < HIDE_WIDTH.min || width > HIDE_WIDTH.max) {
+    // The turn spans the photographer AND one screen width (from appearing
+    // at one edge to leaving by the other): where they are is the rest.
+    const width = Math.abs(swept) - 2 * start.halfFov;
+    if (width < HIDE_WIDTH.min) {
+      setTooShort(true);
       setStart(null);
       return;
     }
     const middle = wrapAngle(start.yaw + swept / 2);
-    change(setHide(walks, viewKey, hideFacing(hide, start.t, middle, width, 0, width)));
+    change(setHide(walks, viewKey, hideFacing(hide, start.t, middle, Math.min(HIDE_WIDTH.max, width), 0, Math.min(HIDE_WIDTH.max, width))));
     setStart(null);
   };
   const dropPoint = (t: number) => {
@@ -2246,10 +2256,23 @@ function HideEditor({ engine, walks, viewKey, change }: {
     change(setHide(walks, viewKey, at.length ? { ...hide, yaw: at[0].yaw, at } : null));
   };
   const points = hide ? (hide.at?.length ? hide.at : [{ t: 0, yaw: hide.yaw, width: hide.width }]) : [];
+  /** One side of a lock out by 10° (`dir` −1: the left side, +1: the right). */
+  const widen = (t: number, dir: -1 | 1) => {
+    if (!hide) return;
+    const step = (10 * Math.PI) / 180;
+    const at = points.map((p) => {
+      if (p.t !== t) return p;
+      const w = p.width ?? hide.width;
+      if (w + step > HIDE_WIDTH.max) return p;
+      return { ...p, width: w + step, yaw: wrapAngle(p.yaw + (dir * step) / 2) };
+    });
+    change(setHide(walks, viewKey, { ...hide, yaw: at[0].yaw, at }));
+  };
 
   return (
     <div className="space-y-2">
       {!start ? (<>
+        {tooShort && <p className="text-rose-300">Not locked: End lock was pressed while you were still on the screen. Start again and keep turning until the last of you has gone off the other edge.</p>}
         <p className="text-white/80">Stop the walk. Turn the view slowly towards yourself. The moment the first part of you appears at the edge of the screen, press:</p>
         <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} onClick={begin}>
           Start lock
@@ -2268,8 +2291,12 @@ function HideEditor({ engine, walks, viewKey, change }: {
         <ul className="space-y-1">
           {points.map((p) => (
             <li key={p.t} className="flex items-center justify-between gap-2 rounded-md bg-white/5 px-2 py-1">
-              <span>At {mmss(p.t)}: {deg(p.width ?? hide!.width)}° locked</span>
-              <button className={btn} onClick={() => dropPoint(p.t)}>Remove</button>
+              <span>At {mmss(p.t)}: you take {deg(p.width ?? hide!.width)}°</span>
+              <span className="flex gap-1">
+                <button className={btn} title="Lock 10° more on the left" onClick={() => widen(p.t, -1)}>◀ +10°</button>
+                <button className={btn} title="Lock 10° more on the right" onClick={() => widen(p.t, 1)}>+10° ▶</button>
+                <button className={btn} onClick={() => dropPoint(p.t)}>Remove</button>
+              </span>
             </li>
           ))}
         </ul>
