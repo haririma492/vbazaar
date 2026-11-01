@@ -193,7 +193,20 @@ export type Walk = {
    * order on `/stores/areas`.
    */
   next?: string;
+  /**
+   * THE PHOTOGRAPHER, HIDDEN (owner, 2026-11-01: "hide every angle or video
+   * that show photographer" → "Behind the camera"). A 360° camera held in
+   * front of you films you behind it, so one direction of the walk is the
+   * operator. That direction — in the VIDEO's own frame (`yaw`, radians, the
+   * same as a door's), `width` radians wide, from straight down up to `top`
+   * radians above the horizon — is covered by a dark, soft-edged patch for
+   * the whole walk. Set on the walk's edit page («Hide»).
+   */
+  hide?: WalkHide;
 };
+export type WalkHide = { yaw: number; width: number; top: number };
+export const HIDE_WIDTH = { min: (20 * Math.PI) / 180, max: (180 * Math.PI) / 180 };
+export const HIDE_TOP = { min: (-30 * Math.PI) / 180, max: (60 * Math.PI) / 180 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
 // `keys.ts`'s rules, repeated (no imports): `scenes/<scene id>/<file name>.mp4`,
@@ -280,6 +293,13 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.next !== undefined && r.next !== null && r.next !== "") {
       if (isWalkKey(r.next) && r.next !== key) walk.next = r.next;
       else problems.push(`${key}: «next» must be another walk video.`);
+    }
+    if (r.hide !== undefined && r.hide !== null) {
+      const h = (typeof r.hide === "object" ? r.hide : {}) as Record<string, unknown>;
+      const ok = (v: unknown, lo: number, hi: number) => typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+      if (ok(h.yaw, -Math.PI - 1e-6, Math.PI + 1e-6) && ok(h.width, HIDE_WIDTH.min - 1e-6, HIDE_WIDTH.max + 1e-6) && ok(h.top, HIDE_TOP.min - 1e-6, HIDE_TOP.max + 1e-6)) {
+        walk.hide = { yaw: h.yaw as number, width: h.width as number, top: h.top as number };
+      } else problems.push(`${key}: «hide» needs yaw (−π…π), width (20°…180°) and top (−30°…60°) in radians.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -628,6 +648,14 @@ export function setProjection(w: Walks, key: string, projection: Walk["projectio
   });
 }
 
+/** The direction hidden over the photographer; null: none. */
+export function setHide(w: Walks, key: string, hide: WalkHide | null): Walks {
+  return withWalk(w, key, (walk) => {
+    const { hide: _drop, ...rest } = walk;
+    return hide ? { ...rest, hide } : rest;
+  });
+}
+
 /** A walk's background sound (a `walkAudioKey`); null: none. */
 export function setAudio(w: Walks, key: string, audio: string | null): Walks {
   return withWalk(w, key, (walk) => {
@@ -715,10 +743,11 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const audio = same(m.audio, bb.audio) ? t.audio : m.audio;
     const rev = Math.max(m.rev ?? 0, t.rev ?? 0);
     const next = same(m.next, bb.next) ? t.next : m.next;
+    const hide = same(m.hide, bb.hide) ? t.hide : m.hide;
     walks[k] = {
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
       ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
-      ...(next ? { next } : {}),
+      ...(next ? { next } : {}), ...(hide ? { hide } : {}),
     };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;

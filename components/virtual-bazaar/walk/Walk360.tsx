@@ -66,7 +66,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -478,6 +478,55 @@ export default function Walk360() {
     nadir.renderOrder = 5;
     nadir.visible = false;
     scene.add(nadir);
+
+    // The patch over the photographer (`Walk.hide`): a slice of a sphere from
+    // straight down up to the hide's top, soft at its three edges, between
+    // the video and the cap. Rebuilt only when the hide changes.
+    const hideCanvas = document.createElement("canvas");
+    hideCanvas.width = 64;
+    hideCanvas.height = 64;
+    {
+      const c = hideCanvas.getContext("2d")!;
+      const across = c.createLinearGradient(0, 0, 64, 0);
+      across.addColorStop(0, "rgba(22,22,24,0)");
+      across.addColorStop(0.22, "rgba(22,22,24,1)");
+      across.addColorStop(0.78, "rgba(22,22,24,1)");
+      across.addColorStop(1, "rgba(22,22,24,0)");
+      c.fillStyle = across;
+      c.fillRect(0, 0, 64, 64);
+      c.globalCompositeOperation = "destination-in";
+      const down = c.createLinearGradient(0, 0, 0, 64);
+      down.addColorStop(0, "rgba(0,0,0,0)");
+      down.addColorStop(0.18, "rgba(0,0,0,1)");
+      down.addColorStop(1, "rgba(0,0,0,1)");
+      c.fillStyle = down;
+      c.fillRect(0, 0, 64, 64);
+    }
+    const hideTexture = new THREE.CanvasTexture(hideCanvas);
+    hideTexture.colorSpace = THREE.SRGBColorSpace;
+    const hideMaterial = new THREE.MeshBasicMaterial({ map: hideTexture, transparent: true, depthTest: false, depthWrite: false });
+    const hideMesh = new THREE.Mesh(new THREE.BufferGeometry(), hideMaterial);
+    hideMesh.renderOrder = 4;
+    hideMesh.visible = false;
+    scene.add(hideMesh);
+    let hideShape = "";
+    const updateHide = () => {
+      const h = current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
+      if (!h) { hideMesh.visible = false; return; }
+      const shape = `${h.width}|${h.top}`;
+      if (shape !== hideShape) {
+        hideShape = shape;
+        const thetaStart = Math.PI / 2 - h.top;
+        // Centred on −Z (yaw 0); `scale(-1)` so it is seen from inside.
+        const g = new THREE.SphereGeometry(46, 48, 24, -Math.PI / 2 - h.width / 2, h.width, thetaStart, Math.PI - thetaStart);
+        g.scale(-1, 1, 1);
+        hideMesh.geometry.dispose();
+        hideMesh.geometry = g;
+      }
+      // A direction `v` in the video is at `v − spin` in the world (as a door's sign).
+      hideMesh.rotation.y = -(h.yaw - current!.spin);
+      hideMesh.visible = true;
+    };
 
     let walksNow: Walks = emptyWalks();
     let current: Layer | null = null;
@@ -1406,6 +1455,7 @@ export default function Walk360() {
       updateDoors();
       updateItems();
       nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);
+      updateHide();
       renderer.render(scene, camera);
       report();
     });
@@ -1429,6 +1479,9 @@ export default function Walk360() {
         sprite.material.dispose();
       }
       geometry.dispose();
+      hideMesh.geometry.dispose();
+      hideMaterial.dispose();
+      hideTexture.dispose();
       nadirGeometry.dispose();
       nadirMaterial.dispose();
       nadirTexture.dispose();
@@ -1773,7 +1826,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   const [listError, setListError] = useState<string | null>(null);
   type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
-  const [tab, setTab] = useState<"doors" | "items" | "sound" | "cut">("doors");
+  const [tab, setTab] = useState<"doors" | "items" | "sound" | "cut" | "hide">("doors");
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -1909,9 +1962,9 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
     <div dir="ltr" data-walk-editor className={`absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl ${tab === "items" && catalogue?.products.length ? PRODUCTS_PANEL_SHIFT : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1">
-          {(["doors", "items", "sound", "cut"] as const).map((k) => (
+          {(["doors", "items", "sound", "cut", "hide"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : "Cut"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : "Hide"}
             </button>
           ))}
         </div>
@@ -1922,6 +1975,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           <div className="truncate text-[11px] text-white/60">This walk: {shortKey(viewKey)}{walk?.doors.length ? ` · ${walk.doors.length} door(s)` : ""}</div>
           {listError && <div className="text-rose-300">{listError}</div>}
 
+          {tab === "hide" && <HideEditor engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "cut" && <CutEditor video={() => engine.current?.video() ?? null} viewKey={viewKey} />}
           {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
@@ -2134,5 +2188,64 @@ function OperatorSignIn({ onIn }: { onIn: () => void }) {
         Sign in · ورود
       </button>
     </form>
+  );
+}
+
+/**
+ * «Hide» on the walk's edit page: one question — turn the view to face the
+ * photographer and press — then the width and how high, each shown at once
+ * on the walk and saved by itself (the editor's own autosave).
+ */
+function HideEditor({ engine, walks, viewKey, change }: {
+  engine: React.MutableRefObject<Engine | null>;
+  walks: Walks;
+  viewKey: string | null;
+  change: (w: Walks) => void;
+}) {
+  const walk = walkOf(walks, viewKey);
+  const hide = walk?.hide ?? null;
+  const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
+  const deg = (r: number) => Math.round((r * 180) / Math.PI);
+  const rad = (d: number) => (d * Math.PI) / 180;
+  if (!viewKey) return <p className="text-white/70">Open a walk video from the bucket (?v=scenes/…) to hide a direction on it.</p>;
+  if (engine.current?.here().flat) return <p className="text-white/70">This is a flat video: there is no «behind the camera» to hide.</p>;
+  const facing = () => {
+    const h = engine.current?.here();
+    if (!h) return;
+    change(setHide(walks, viewKey, { yaw: h.yaw, width: hide?.width ?? rad(70), top: hide?.top ?? rad(15) }));
+  };
+  const set = (patch: Partial<{ width: number; top: number }>) => {
+    if (!hide) return;
+    change(setHide(walks, viewKey, {
+      ...hide,
+      width: Math.min(HIDE_WIDTH.max, Math.max(HIDE_WIDTH.min, patch.width ?? hide.width)),
+      top: Math.min(HIDE_TOP.max, Math.max(HIDE_TOP.min, patch.top ?? hide.top)),
+    }));
+  };
+  return (
+    <div className="space-y-2">
+      <p className="text-white/80">Turn the view until you face the photographer (behind the camera), then press:</p>
+      <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} onClick={facing}>
+        {hide ? "Hide the direction I face now (move it here)" : "Hide the direction I face now"}
+      </button>
+      {hide && (<>
+        <div className="flex items-center justify-between gap-2">
+          <span>Width: {deg(hide.width)}°</span>
+          <span className="flex gap-1">
+            <button className={btn} onClick={() => set({ width: hide.width - rad(10) })}>Narrower</button>
+            <button className={btn} onClick={() => set({ width: hide.width + rad(10) })}>Wider</button>
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <span>Up to: {deg(hide.top)}° {hide.top >= 0 ? "above" : "below"} the horizon</span>
+          <span className="flex gap-1">
+            <button className={btn} onClick={() => set({ top: hide.top - rad(5) })}>Lower</button>
+            <button className={btn} onClick={() => set({ top: hide.top + rad(5) })}>Higher</button>
+          </span>
+        </div>
+        <p className="text-[11px] text-white/60">The dark patch covers this direction for the whole walk. Walk on a little to check the photographer stays inside it.</p>
+        <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove the patch</button>
+      </>)}
+    </div>
   );
 }

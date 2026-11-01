@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -355,4 +355,20 @@ test("an item on special: was and now, said aloud in English", () => {
   assert.equal(specialSay({ ...item, special: undefined }), null, "only specials speak");
   assert.equal(walkOf(updateItem(w, K, id, { special: undefined }), K)!.items![0].special, undefined);
   assert.equal(checkWalks({ walks: { [K]: { doors: [], items: [{ id: "a", label: { en: "A" }, pins: [], special: { now: "$1" } }] } } }).problems.length, 1);
+});
+
+test("hiding the photographer: kept, checked, merged, removed", () => {
+  const hide = { yaw: Math.PI - 0.1, width: 1.2, top: 0.3 };
+  let w = setHide(emptyWalks(), STREET, hide);
+  assert.deepEqual(walkOf(parseWalks(JSON.parse(JSON.stringify(w))), STREET)!.hide, hide);
+  assert.equal(walkOf(setHide(w, STREET, null), STREET)!.hide, undefined);
+  // Out of range is refused, not clamped.
+  assert.ok(checkWalks({ walks: { [STREET]: { doors: [], hide: { yaw: 0, width: 5, top: 0 } } } }).problems.length > 0);
+  // Hidden here, a door added there: both kept.
+  const base = emptyWalks();
+  const theirs = addDoor(base, STREET, { t: 5, yaw: 0, label: { en: "Shop" }, to: BAKERY });
+  const merged = mergeWalks(base, w, theirs);
+  assert.deepEqual(walkOf(merged, STREET)!.hide, hide);
+  assert.equal(walkOf(merged, STREET)!.doors.length, 1);
+  w = setHide(w, STREET, null);
 });
