@@ -640,6 +640,58 @@ function SheetCard({ sheet, kept, onUse, onCancel }: { sheet: SheetImport; kept:
  */
 type Follow = { running: boolean; done: number; total: number; error?: string };
 
+/**
+ * THE STORE'S PRODUCTS AS PHOTOS (owner, 2026-11-01: "all photos in the store
+ * folder … in a dropdown list so for operator is easy to match the photo to
+ * the video when video is moving"). A list that opens under its key: each
+ * product's photo, number and name; a search box narrows it by name or
+ * number; a tap picks it (the number box follows). Products with no photo
+ * are listed too, with a 🛒, so none is unreachable.
+ */
+function ProductPicker({ catalogue, chosen, onPick }: {
+  catalogue: Catalogue | null;
+  chosen: number | null;
+  onPick: (n: number) => void;
+}) {
+  const products = catalogue?.products ?? [];
+  const [open, setOpen] = useState(products.length > 0);
+  const [q, setQ] = useState("");
+  if (!products.length) return null;
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? products.filter((p) => String(p.n) === needle || String(p.sku ?? "").toLowerCase().includes(needle)
+      || (p.en ?? "").toLowerCase().includes(needle) || (p.fa ?? "").includes(q.trim()))
+    : products;
+  const withPhoto = products.filter((p) => p.photo).length;
+  return (
+    <div className="rounded-xl border border-white/20 bg-black/40">
+      <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-between px-3 py-2 text-[14px] font-bold">
+        <span>Pick from the store&apos;s photos <span className="font-normal text-white/55">· {products.length} products, {withPhoto} with a photo</span></span>
+        <span aria-hidden>{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="border-t border-white/15 p-2">
+          <input className="mb-2 w-full rounded-lg border border-white/20 bg-black/50 px-2 py-1.5 text-[14px] text-white outline-none focus:border-[#00B8C8]"
+            placeholder="Search name or number…" value={q} onChange={(e) => setQ(e.target.value)} />
+          <div className="grid max-h-[40vh] grid-cols-3 gap-2 overflow-y-auto pe-1 sm:grid-cols-4">
+            {shown.map((p) => (
+              <button key={p.n} type="button" onClick={() => onPick(p.n)} title={productName(p, "en")}
+                className={`flex flex-col items-center gap-1 rounded-lg border p-1 text-center ${chosen === p.n ? "border-[#00B8C8] bg-[#00B8C8]/25" : "border-white/15 hover:border-white/40"}`}>
+                {p.photo ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- hot-linked
+                  <img src={p.photo} alt="" loading="lazy" className="aspect-square w-full rounded-md bg-white object-contain" />
+                ) : <div className="flex aspect-square w-full items-center justify-center rounded-md bg-white/10 text-[22px]">🛒</div>}
+                <span className="w-full truncate text-[11px] leading-tight"><b>#{p.n}</b> {productName(p, "en")}</span>
+              </button>
+            ))}
+            {!shown.length && <p className="col-span-full py-3 text-center text-[13px] text-white/55">Nothing matches «{q}».</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TagCard({ draft, setDraft, onDone, follow, catalogue }: {
   draft: Draft;
   setDraft: (d: Draft | null) => void;
@@ -678,9 +730,10 @@ function TagCard({ draft, setDraft, onDone, follow, catalogue }: {
       </>);
       break;
     case "number":
-      title = "Its number?";
+      title = "Which product is it?";
       body = (<>
-        <input autoFocus inputMode="numeric" className={`${big} text-center text-[26px] font-bold tracking-wider`} placeholder="1 – 999" value={draft.num}
+        <ProductPicker catalogue={catalogue} chosen={product?.n ?? null} onPick={(n) => setDraft({ ...draft, num: String(n) })} />
+        <input inputMode="numeric" className={`${big} text-center text-[26px] font-bold tracking-wider`} placeholder="or type its number, 1 – 999" value={draft.num}
           onChange={(e) => setDraft({ ...draft, num: e.target.value.replace(/\D/g, "").slice(0, 3) })} onKeyDown={onEnter(Boolean(product), next)} />
         {product ? (
           <div className="flex items-center gap-3 rounded-xl bg-white/5 p-2">
