@@ -451,7 +451,10 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
   const walkKey = s.out.walk;
   if (!walkKey) throw new Error("The walk is not made yet.");
   const existing = await readCatalogue(sceneOf(s.slug));
-  if (existing?.products.length) return `Keeping the product list (${existing.products.length} products); the Tagger pins them on the new video.`;
+  // A list the owner has touched (a price, a unit, an item #, a description, or one added by hand) is kept;
+  // one nobody has touched yet is found again, so a better finder reaches it (2026-11-01).
+  const touched = existing?.products.some((p) => p.by !== "video" || p.priceCents !== null || p.sku || p.note || p.unit !== "piece");
+  if (existing?.products.length && touched) return `Keeping the product list (${existing.products.length} products); the Tagger pins them on the new video.`;
   const dir = mkdtempSync(join(tmpdir(), "find-"));
   try {
     const src = join(dir, "phone.mp4");
