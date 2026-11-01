@@ -83,8 +83,10 @@ const PEDAL_RATE = 1;
  * (which ends the drive — the shop is looked round, not driven through).
  */
 const DRIVES = {
-  slow: { rate: 0.6, label: "▶ آهسته · Auto slow" },
+  slow: { rate: 0.4, label: "▶ آهسته · Auto slow" }, // 0.6 until 2026-11-01 (owner: "a bit slower")
   fast: { rate: 1.5, label: "▶▶ تند · Auto fast" },
+  // Walking back by itself (owner, 2026-11-01: "add a key under the steering wheel for going backward").
+  back: { rate: -0.6, label: "◀ عقب · Back" },
 } as const;
 type Drive = keyof typeof DRIVES;
 /** Full steering turns this fast (rad/s). */
@@ -1572,8 +1574,8 @@ export default function Walk360() {
             follow={() => engine.current?.turn() ?? 0}
           />
           {/* Self-drive, below the wheel. */}
-          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-40 gap-1.5">
-            {(Object.keys(DRIVES) as Drive[]).map((k) => (
+          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-56 gap-1.5">
+            {(["back", "slow", "fast"] as Drive[]).map((k) => (
               <button
                 key={k}
                 onClick={() => {

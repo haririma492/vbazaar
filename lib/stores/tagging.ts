@@ -34,7 +34,14 @@ export const LOOK_N = 768;
 
 /** Following: the step, how far either way, and the small view it is followed in (as on the walk page). */
 export const FOLLOW_FPS = 5;
-export const FOLLOW_SPAN = 6;
+/**
+ * ⚠️ HOW FAR A SIGHTING IS FOLLOWED, EITHER WAY (s). It was 6: long enough for
+ * a follow on a counter of look-alike trays to step onto the next tray, so one
+ * product's tag visited three (owner, 2026-11-01: "tag of product #3 … was at
+ * least on 3 different products … Tags do not move"). Claude looks every
+ * `LOOK_EVERY` s, so a little over half that joins one sighting to the next.
+ */
+export const FOLLOW_SPAN = 1.6;
 export const FOLLOW_W = 1024;
 const VIEW_FOV = (36 * Math.PI) / 180;
 const VIEW_N = 96;
@@ -52,7 +59,7 @@ export const MIN_PINS = 3;
  * up (`MAX_LAT`: no shelf is there, the mount and the ceiling lights are),
  * or when it jumps (`MAX_STEP`).
  */
-export const ANCHOR_MIN = 0.35;
+export const ANCHOR_MIN = 0.55;
 export const MAX_LAT = 1.05;
 export const MAX_STEP = 0.12;
 /** Two sightings of a product closer than this (radians, at the same moment) are the same one. */
@@ -134,7 +141,7 @@ function sameSpot(a: ItemPin[], b: ItemPin[]): boolean {
  * longest of them, at most two spots per product, and none shorter than
  * `MIN_PINS` (a sighting the follow lost at once is too uncertain to tag).
  */
-export function keepTracks(tracks: Track[], perProduct = 2): Track[] {
+export function keepTracks(tracks: Track[], perProduct = 12): Track[] {
   const byN = new Map<number, Track[]>();
   for (const t of tracks) if (t.pins.length >= MIN_PINS) byN.set(t.n, [...(byN.get(t.n) ?? []), t]);
   const out: Track[] = [];
