@@ -41,6 +41,6 @@
 .vb-dir-door { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
 .vb-dir-door-none { display: flex; align-items: center; justify-content: center; font-size: 40px; }
 
-/* The logo (owner, 2026-11-01): its own cream ground, as drawn, on the page's navy. */
+/* The logo (owner, 2026-11-01; new version the same day: sky, CN Tower, trees). A new file name per version, so no browser keeps the old one. */
 .vb-logo { padding: 28px 5% 0; display: flex; justify-content: center; }
 .vb-logo img { width: min(720px, 100%); height: auto; border-radius: 18px; background: #f8f4ec; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }
