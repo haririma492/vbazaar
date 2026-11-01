@@ -1604,7 +1604,7 @@ export default function Walk360() {
                     const res = await fetch("/api/stores/areas", {
                       method: "POST",
                       headers: { "content-type": "application/json", "x-admin-token": readAdminToken() },
-                      body: JSON.stringify({ action: "spotAdd", t: Math.round(h.t * 100) / 100, yaw: Math.round(h.yaw * 1000) / 1000, pitch: Math.round(h.pitch * 1000) / 1000 }),
+                      body: JSON.stringify({ action: "spotAdd", area: new URLSearchParams(window.location.search).get("area") || undefined, t: Math.round(h.t * 100) / 100, yaw: Math.round(h.yaw * 1000) / 1000, pitch: Math.round(h.pitch * 1000) / 1000 }),
                     });
                     const out = await res.json().catch(() => ({}));
                     setSpotSaid(res.ok && out.ok ? `✓ Spot ${out.bazaar?.spots?.length ?? ""} saved at ${mmss(h.t)} · ذخیره شد` : `Not saved: ${out.error || res.status}`);

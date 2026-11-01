@@ -9,7 +9,10 @@
  *   POST { action: "upload", id, ask, … }      the area's 360° walk, in parts (`lib/stores/http.ts`)
  *   POST { action: "message", id, text }       to the crew, answered on the screen
  *   POST { action: "music", id, type, size } → { key, url, headers };  { action: "musicDone", id, key }
- *   POST { action: "spotAdd", t, yaw, pitch, size }  a free door spot on the hallway
+ *   POST { action: "place", id, en, fa }       a place (shopping centre, plaza) added or renamed
+ *   POST { action: "areaSet", id, place?, next? }  an area's place; where its walk carries on (next: id, "" nowhere, null default)
+ *   POST { action: "spotAdd", area?, t, yaw, pitch, size }  a free door spot on an area's walk (default: the hallway)
+ *   POST { action: "spotLink", id, toArea }    the spot is a door into another area ("" frees it)
  *   POST { action: "spotRemove", id }
  *   POST { action: "moveStore", store, to }    a store into another spot (swapping with the one there)
  *   PUT ?id&key&uploadId&partNumber            a part through this server
@@ -17,7 +20,7 @@
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
 import { r2Config, readWalks, signImageHeaders, signImagePutUrl, writeWalks } from "@/lib/splats/r2";
-import { AREA_RE, areaScene, moveArea, moveStore, putArea } from "@/lib/stores/bazaar";
+import { AREA_RE, PLACE_RE, areaScene, linkSpot, moveArea, moveStore, putArea, putPlace, setArea } from "@/lib/stores/bazaar";
 import { checkUploadName, isUploadKeyOf, redo, uploadKey } from "@/lib/stores/store";
 import { readBazaar, readIndex, updateBazaar, updateStore } from "@/lib/stores/bucket";
 import { isOperator } from "@/lib/stores/auth";
@@ -66,7 +69,36 @@ export async function POST(req: NextRequest) {
       if (!AREA_RE.test(id)) return fail(400, "An area's id is lowercase letters, digits and hyphens (outside, lobby, hallway-2).");
       const en = String(body.en ?? "").trim().slice(0, 80), fa = String(body.fa ?? "").trim().slice(0, 80);
       if (!en) return fail(400, "Give the area an English name.");
-      return ok({ bazaar: await updateBazaar((b) => putArea(b, id, { en, fa })) });
+      const place = String(body.place ?? "");
+      const b = await updateBazaar((x) => {
+        const put = putArea(x, id, { en, fa });
+        return place ? setArea(put, id, { place }) : put;
+      });
+      await writeJoins(b);
+      return ok({ bazaar: b });
+    }
+    case "place": {
+      if (!PLACE_RE.test(id)) return fail(400, "A place's id is lowercase letters, digits and hyphens (world-on-yonge).");
+      const en = String(body.en ?? "").trim().slice(0, 80), fa = String(body.fa ?? "").trim().slice(0, 80);
+      if (!en) return fail(400, "Give the place an English name.");
+      return ok({ bazaar: await updateBazaar((b) => putPlace(b, id, { en, fa })) });
+    }
+    case "areaSet": {
+      if (needArea()) return needArea()!;
+      const patch: { place?: string; next?: string | null } = {};
+      if (typeof body.place === "string") patch.place = body.place;
+      if (body.next === null || typeof body.next === "string") patch.next = body.next as string | null;
+      const b = await updateBazaar((x) => setArea(x, id, patch));
+      await writeJoins(b);
+      return ok({ bazaar: b });
+    }
+    case "spotLink": {
+      const sid = String(body.id ?? ""), toArea = String(body.toArea ?? "");
+      const held = (await readBazaar()).spots.find((s) => s.id === sid)?.store;
+      const b = await updateBazaar((x) => linkSpot(x, sid, toArea));
+      await writeJoins(b);
+      if (held) await replaceDoors([held]);
+      return ok({ bazaar: b });
     }
     case "move": {
       const b = await updateBazaar((x) => moveArea(x, id, Number(body.by) < 0 ? -1 : 1));
@@ -129,10 +161,13 @@ export async function POST(req: NextRequest) {
     case "spotAdd": {
       const t = Number(body.t), yaw = Number(body.yaw), pitch = Number(body.pitch ?? -0.05), size = Number(body.size ?? 0.52);
       if (![t, yaw, pitch, size].every(Number.isFinite) || t < 0 || Math.abs(pitch) > 1.5 || size <= 0.02 || size >= 2.5) return fail(400, "A spot needs a moment (s), a direction and a size.");
+      const before = await readBazaar();
+      const on = String(body.area ?? "") || before.hallway || "";
+      if (!before.areas.some((a) => a.id === on)) return fail(400, "Which area is this spot on? Open «Mark door spots» from that area on /stores/areas.");
       const b = await updateBazaar((x) => {
         let n = x.spots.length + 1;
         while (x.spots.some((s) => s.id === `spot-${n}`)) n++;
-        return { ...x, spots: [...x.spots, { id: `spot-${n}`, t, yaw, pitch, size }].sort((a, b2) => a.t - b2.t) };
+        return { ...x, spots: [...x.spots, { id: `spot-${n}`, area: on, t, yaw, pitch, size }].sort((a, b2) => (a.area === b2.area ? a.t - b2.t : a.area < b2.area ? -1 : 1)) };
       });
       await replaceDoors();
       return ok({ bazaar: b });
@@ -141,6 +176,7 @@ export async function POST(req: NextRequest) {
       const sid = String(body.id ?? "");
       const held = (await readBazaar()).spots.find((s) => s.id === sid)?.store;
       const b = await updateBazaar((x) => ({ ...x, spots: x.spots.filter((s) => s.id !== sid) }));
+      await writeJoins(b);
       if (held) await replaceDoors([held]);
       return ok({ bazaar: b });
     }

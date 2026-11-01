@@ -29,9 +29,24 @@ export const AREA_RE = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
 /** The scene an area's walk is under. */
 export const areaScene = (id: string) => `area-${id}`;
 
+/**
+ * A PLACE (owner, 2026-11-01): a shopping centre or plaza, with its own areas
+ * (outside, lobby, hallways). Shoppers start a place from its first area
+ * with a walk. World on Yonge is the first; a plaza across town is another.
+ */
+export type Place = { id: string; name: Bi };
+
 export type Area = {
   id: string;
   name: Bi;
+  /** The place it belongs to (`Place.id`). */
+  place: string;
+  /**
+   * Where its walk carries on at its end: an area id, "" for nowhere, absent
+   * for the next area of the same place in the list (unless that one is
+   * entered by a door, `Spot.toArea`).
+   */
+  next?: string;
   files: { video?: Uploaded };
   /** Its walk once the Video agent made it, `scenes/area-<id>/walk-<stamp>.mp4`. */
   walk?: string;
@@ -41,7 +56,9 @@ export type Area = {
 
 export type Spot = {
   id: string;
-  /** The moment of the hallway walk, and the door's direction then (radians, + right / + up). */
+  /** The area whose walk it is on. */
+  area: string;
+  /** The moment of that area's walk, and the door's direction then (radians, + right / + up). */
   t: number;
   yaw: number;
   pitch: number;
@@ -49,10 +66,16 @@ export type Spot = {
   size: number;
   /** More moments, so the door stays on the wall as the camera walks past (like a sign's pins). */
   pins?: SignPin[];
+  /** The store whose door is here … */
   store?: string;
+  /** … or the area this door leads into (a lobby's door into a hallway). */
+  toArea?: string;
 };
 
-export type Bazaar = { areas: Area[]; hallway: string | null; spots: Spot[] };
+export type Bazaar = { places: Place[]; areas: Area[]; hallway: string | null; spots: Spot[] };
+
+export const PLACE_RE = AREA_RE;
+export const DEFAULT_PLACE: Place = { id: "world-on-yonge", name: { en: "World on Yonge", fa: "ورلد آن یانگ" } };
 
 export const SUGGESTED_AREAS: Array<{ id: string; name: Bi }> = [
   { id: "outside", name: { en: "Outside the shopping centre", fa: "بیرون مرکز خرید" } },
@@ -63,26 +86,89 @@ export const SUGGESTED_AREAS: Array<{ id: string; name: Bi }> = [
 const freshStep = (): Step => ({ state: "todo", tries: 0, note: "", at: null });
 
 export const emptyBazaar = (): Bazaar => ({
-  areas: SUGGESTED_AREAS.map((a) => ({ ...a, files: {}, video: freshStep(), thread: [] })),
+  places: [DEFAULT_PLACE],
+  areas: SUGGESTED_AREAS.map((a) => ({ ...a, place: DEFAULT_PLACE.id, files: {}, video: freshStep(), thread: [] })),
   hallway: "hallway",
   spots: [],
 });
 
 export function parseBazaar(raw: unknown): Bazaar {
-  const o = (raw && typeof raw === "object" ? raw : null) as Bazaar | null;
+  const o = (raw && typeof raw === "object" ? raw : null) as (Partial<Bazaar> & { areas?: Area[] }) | null;
   if (!o || !Array.isArray(o.areas)) return emptyBazaar();
+  // Before places (2026-11-01) the bazaar was one place: World on Yonge.
+  const places: Place[] = Array.isArray(o.places) && o.places.length
+    ? o.places.filter((p) => p && PLACE_RE.test(p.id)).map((p) => ({ id: p.id, name: { en: p.name?.en ?? p.id, fa: p.name?.fa ?? "" } }))
+    : [DEFAULT_PLACE];
+  const firstPlace = places[0]?.id ?? DEFAULT_PLACE.id;
+  const areas: Area[] = o.areas.filter((a) => a && AREA_RE.test(a.id)).map((a) => ({
+    id: a.id,
+    name: { en: a.name?.en ?? a.id, fa: a.name?.fa ?? "" },
+    place: places.some((p) => p.id === a.place) ? a.place : firstPlace,
+    ...(typeof a.next === "string" ? { next: a.next } : {}),
+    files: a.files ?? {},
+    ...(a.walk ? { walk: a.walk } : {}),
+    video: a.video && typeof a.video.state === "string" ? a.video : freshStep(),
+    thread: Array.isArray(a.thread) ? a.thread : [],
+  }));
+  const hallway = typeof o.hallway === "string" ? o.hallway : null;
+  const fallbackArea = hallway ?? areas[0]?.id ?? "hallway";
   return {
-    areas: o.areas.filter((a) => a && AREA_RE.test(a.id)).map((a) => ({
-      id: a.id,
-      name: { en: a.name?.en ?? a.id, fa: a.name?.fa ?? "" },
-      files: a.files ?? {},
-      ...(a.walk ? { walk: a.walk } : {}),
-      video: a.video && typeof a.video.state === "string" ? a.video : freshStep(),
-      thread: Array.isArray(a.thread) ? a.thread : [],
-    })),
-    hallway: typeof o.hallway === "string" ? o.hallway : null,
-    spots: Array.isArray(o.spots) ? o.spots.filter((s) => s && typeof s.id === "string" && Number.isFinite(s.t) && Number.isFinite(s.yaw)) : [],
+    places,
+    areas,
+    hallway,
+    // Before doors could go on any area, every spot was on the hallway.
+    spots: Array.isArray(o.spots)
+      ? o.spots.filter((s) => s && typeof s.id === "string" && Number.isFinite(s.t) && Number.isFinite(s.yaw))
+        .map((s) => ({ ...s, area: typeof s.area === "string" && s.area ? s.area : fallbackArea }))
+      : [],
   };
+}
+
+/** A place added (or renamed, when its id is there). */
+export function putPlace(b: Bazaar, id: string, name: Bi): Bazaar {
+  if (!PLACE_RE.test(id)) return b;
+  if (b.places.some((p) => p.id === id)) return { ...b, places: b.places.map((p) => (p.id === id ? { ...p, name } : p)) };
+  return { ...b, places: [...b.places, { id, name }] };
+}
+
+/** An area moved to another place, and/or where its walk carries on (`Area.next`; null: back to the default). */
+export function setArea(b: Bazaar, id: string, patch: { place?: string; next?: string | null }): Bazaar {
+  return {
+    ...b,
+    areas: b.areas.map((a) => {
+      if (a.id !== id) return a;
+      const out: Area = { ...a };
+      if (patch.place !== undefined && b.places.some((p) => p.id === patch.place)) out.place = patch.place;
+      if (patch.next === null) delete out.next;
+      else if (patch.next !== undefined && (patch.next === "" || (patch.next !== id && b.areas.some((x) => x.id === patch.next)))) out.next = patch.next;
+      return out;
+    }),
+  };
+}
+
+/** A door spot that leads into another area ("" clears it, so a store may take it). */
+export function linkSpot(b: Bazaar, spotId: string, toArea: string): Bazaar {
+  const ok = toArea === "" || b.areas.some((a) => a.id === toArea);
+  if (!ok) return b;
+  return {
+    ...b,
+    spots: b.spots.map((s) => {
+      if (s.id !== spotId) return s;
+      const { toArea: _old, store: _store, ...rest } = s;
+      return toArea ? { ...rest, toArea } : rest;
+    }),
+  };
+}
+
+/** The place a store's door is in (its spot's area's place), if it has one. */
+export function placeOfStore(b: Bazaar, slug: string): string | undefined {
+  const sp = b.spots.find((s) => s.store === slug);
+  return sp ? b.areas.find((a) => a.id === sp.area)?.place : undefined;
+}
+
+/** The place's first area with a walk: where its shoppers start. */
+export function startOf(b: Bazaar, place: string): Area | null {
+  return b.areas.find((a) => a.place === place && a.walk) ?? null;
 }
 
 /** The area added (or renamed, when its id is there). */
@@ -90,7 +176,7 @@ export function putArea(b: Bazaar, id: string, name: Bi): Bazaar {
   if (!AREA_RE.test(id)) return b;
   const i = b.areas.findIndex((a) => a.id === id);
   if (i >= 0) return { ...b, areas: b.areas.map((a) => (a.id === id ? { ...a, name } : a)) };
-  return { ...b, areas: [...b.areas, { id, name, files: {}, video: freshStep(), thread: [] }] };
+  return { ...b, areas: [...b.areas, { id, name, place: b.places[0]?.id ?? DEFAULT_PLACE.id, files: {}, video: freshStep(), thread: [] }] };
 }
 
 /** An area one place earlier (-1) or later (+1) in the walking order. */
@@ -104,7 +190,7 @@ export function moveArea(b: Bazaar, id: string, by: -1 | 1): Bazaar {
 
 /** The spot a store's door is in: the one it holds, else the first free one; null when none is free. */
 export function spotFor(b: Bazaar, store: string): Spot | null {
-  return b.spots.find((s) => s.store === store) ?? b.spots.find((s) => !s.store) ?? null;
+  return b.spots.find((s) => s.store === store) ?? b.spots.find((s) => !s.store && !s.toArea) ?? null;
 }
 
 export function takeSpot(b: Bazaar, spotId: string, store: string): Bazaar {
@@ -119,20 +205,48 @@ export function takeSpot(b: Bazaar, spotId: string, store: string): Bazaar {
 export function moveStore(b: Bazaar, store: string, to: string): Bazaar {
   const from = b.spots.find((s) => s.store === store);
   const target = b.spots.find((s) => s.id === to);
-  if (!target || from?.id === to) return b;
+  if (!target || target.toArea || from?.id === to) return b;
   return {
     ...b,
     spots: b.spots.map((s) => (s.id === to ? { ...s, store } : from && s.id === from.id ? { ...s, store: target.store } : s)),
   };
 }
 
-/** Where the walks join: each area's walk carries on into the next area that has one. */
+/**
+ * Where the walks join: an area's walk carries on into `next` when it is set
+ * ("" for nowhere); otherwise into the next area of the same place in the list
+ * that has a walk — unless that area is entered by a door (a lobby's doors
+ * into two hallways: the first hallway does not run on into the second).
+ */
 export function joins(b: Bazaar): Array<{ from: string; to: string }> {
-  const walks = b.areas.map((a) => a.walk).filter((w): w is string => Boolean(w));
-  return walks.slice(0, -1).map((from, i) => ({ from, to: walks[i + 1] }));
+  const byDoor = new Set(b.spots.map((s) => s.toArea).filter(Boolean) as string[]);
+  const out: Array<{ from: string; to: string }> = [];
+  b.areas.forEach((a, i) => {
+    if (!a.walk) return;
+    let to: Area | undefined;
+    if (a.next !== undefined) to = a.next ? b.areas.find((x) => x.id === a.next) : undefined;
+    else to = b.areas.slice(i + 1).find((x) => x.place === a.place && x.walk);
+    if (a.next === undefined && to && byDoor.has(to.id)) to = undefined;
+    if (to?.walk && to.walk !== a.walk) out.push({ from: a.walk, to: to.walk });
+  });
+  return out;
 }
 
-/** A store's door, as the hallway walk holds it. */
+/** A door from one area into another (a spot with `toArea`), as its area's walk holds it. */
+export function areaDoorOf(spot: Spot, to: Area): WalkDoor | null {
+  if (!to.walk) return null;
+  return {
+    id: `area-${to.id}`,
+    t: spot.t,
+    yaw: spot.yaw,
+    pitch: spot.pitch,
+    label: { en: to.name.en, ...(to.name.fa ? { fa: to.name.fa } : {}) },
+    to: to.walk,
+    ...(spot.pins?.length ? { pins: spot.pins } : {}),
+  };
+}
+
+/** A store's door, as its spot's area walk holds it. */
 export function doorOf(spot: Spot, store: { slug: string; name: Bi; walk: string; image?: string; website?: string }): WalkDoor {
   return {
     id: `store-${store.slug}`,

@@ -24,3 +24,19 @@
 }
 .vs-docs-note { text-align: center; margin-top: 18px; font-size: 14px; }
 .vs-docs-note a { color: var(--gold-light); border-bottom: 1px solid rgba(212, 168, 67, 0.45); }
+
+/* The places and stores, first on the page (components/home/BazaarDirectory.tsx). */
+.vb-dir { padding: 36px 5% 8px; max-width: 1200px; margin: 0 auto; }
+.vb-dir h2 { font-size: 26px; font-weight: 700; color: var(--gold-light); margin: 0 0 6px; }
+.vb-dir h2 + .vb-dir-grid { margin-top: 14px; }
+.vb-dir-sub { color: rgba(255, 255, 255, 0.65); margin: 0 0 16px; font-size: 15px; }
+.vb-dir-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin-bottom: 30px; }
+.vb-dir-places { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+.vb-dir-card { display: flex; flex-direction: column; gap: 6px; border: 1px solid rgba(212, 168, 67, 0.35); border-radius: 14px; padding: 14px; background: rgba(255, 255, 255, 0.04); color: #fff; transition: border-color .15s, background .15s; }
+.vb-dir-card:hover { border-color: var(--gold-light); background: rgba(212, 168, 67, 0.08); }
+.vb-dir-place { min-height: 120px; justify-content: space-between; background: linear-gradient(135deg, rgba(212, 168, 67, 0.16), rgba(255, 255, 255, 0.03)); }
+.vb-dir-name { font-size: 19px; font-weight: 700; }
+.vb-dir-meta { font-size: 13px; color: rgba(255, 255, 255, 0.6); }
+.vb-dir-go { font-size: 14px; color: var(--gold-light); font-weight: 600; }
+.vb-dir-door { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
+.vb-dir-door-none { display: flex; align-items: center; justify-content: center; font-size: 40px; }

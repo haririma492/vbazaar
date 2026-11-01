@@ -3,6 +3,8 @@ import { join } from "node:path";
 import type { Metadata } from "next";
 import { PAGES, SITE_NAME, homeJsonLd, indexable } from "@/lib/seo";
 import HomeBehaviour from "./HomeBehaviour";
+import BazaarDirectory from "./BazaarDirectory";
+import { readDirectory } from "@/lib/stores/directory";
 import "@/content/olgoo-vca/vca.css";
 import "./home.css";
 
@@ -44,7 +46,8 @@ export function homeMetadata(lang: Lang): Metadata {
   };
 }
 
-export default function VcaHome({ lang }: { lang: Lang }) {
+export default async function VcaHome({ lang }: { lang: Lang }) {
+  const directory = await readDirectory();
   const t = T[lang];
   const page = lang === "fa" ? PAGES.home : PAGES.homeEn;
   const body = BODY[lang].replace("{{H1}}", `<span class="vb-h1-term">${page.h1}</span>`);
@@ -62,6 +65,7 @@ export default function VcaHome({ lang }: { lang: Lang }) {
           <a href={t.otherHref} hrefLang={t.otherLang} lang={t.otherLang} className="vb-lang">{t.other}</a>
         </nav>
       </header>
+      <BazaarDirectory lang={lang} dir={directory} />
       <main dangerouslySetInnerHTML={{ __html: body }} />
       <footer className="vb-foot">
         <p><a href={t.olgoo}>{t.by}</a> · <a href={t.contact}>{t.contactL}</a></p>

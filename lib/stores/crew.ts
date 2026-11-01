@@ -29,7 +29,7 @@ import { phoneKeyOf, looksFlat, MAX_ITEMS, type Walks } from "@/lib/splats/walks
 import type { Catalogue } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
-import { areaScene, doorOf, joins, spotFor, takeSpot, type Bazaar } from "./bazaar";
+import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
 import { encode, grayFrames, jpegOf, probe, views } from "./media";
 import { findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
@@ -195,8 +195,9 @@ async function areaVideo(id: string) {
       ...x, areas: x.areas.map((a) => (a.id === id ? { ...a, walk: key, video: { state: "done", tries: 0, note: `The walk is ready: ${Math.round(seconds)} s.`, at: new Date().toISOString() } } : a)),
     }));
     await writeJoins(after);
-    // The hallway's doors belong to its old video's timeline: the stores are placed again.
-    if (after.hallway === id) for (const { slug } of await readIndex()) await updateStore(slug, (x) => redo(x, ["place", "check"]));
+    // Doors on this area belong to its old video's timeline: its stores are placed again.
+    const onIt = new Set(after.spots.filter((sp) => sp.area === id && sp.store).map((sp) => sp.store!));
+    for (const { slug } of await readIndex()) if (onIt.has(slug) || !after.spots.some((sp) => sp.store === slug)) await updateStore(slug, (x) => redo(x, ["place", "check"]));
   } catch (e) {
     const err = e as Error;
     await updateBazaar((x) => ({
@@ -205,15 +206,30 @@ async function areaVideo(id: string) {
   }
 }
 
-/** The areas joined in walking order (`Walk.next`), and the first one where shoppers start. */
+/**
+ * The areas joined (`Walk.next`, `joins`), the doors from one area into
+ * another (spots with `toArea`), and where shoppers start (the first place's
+ * first area with a walk).
+ */
 export async function writeJoins(b: Bazaar) {
   const walks = await readWalks();
   const next: Walks = { ...walks, walks: { ...walks.walks } };
   const areaWalks = new Set(b.areas.map((a) => a.walk).filter(Boolean) as string[]);
-  for (const [k, w] of Object.entries(next.walks)) if (areaWalks.has(k) && w.next) next.walks[k] = { ...w, next: undefined };
-  for (const j of joins(b)) next.walks[j.from] = { ...(next.walks[j.from] ?? { doors: [] }), next: j.to };
+  for (const [k, w] of Object.entries(next.walks)) {
+    if (!areaWalks.has(k)) continue;
+    next.walks[k] = { ...w, next: undefined, doors: w.doors.filter((d) => !d.id.startsWith("area-")) };
+  }
   for (const a of b.areas) if (a.walk && !next.walks[a.walk]) next.walks[a.walk] = { title: { en: a.name.en, fa: a.name.fa }, doors: [] };
-  const first = b.areas.find((a) => a.walk)?.walk;
+  for (const j of joins(b)) next.walks[j.from] = { ...(next.walks[j.from] ?? { doors: [] }), next: j.to };
+  for (const sp of b.spots) {
+    if (!sp.toArea) continue;
+    const from = b.areas.find((a) => a.id === sp.area), to = b.areas.find((a) => a.id === sp.toArea);
+    const door = to ? areaDoorOf(sp, to) : null;
+    if (!from?.walk || !door) continue;
+    const w = next.walks[from.walk] ?? { doors: [] };
+    next.walks[from.walk] = { ...w, doors: [...w.doors.filter((d) => d.id !== door.id), door] };
+  }
+  const first = b.places.map((p) => startOf(b, p.id)).find(Boolean)?.walk ?? b.areas.find((a) => a.walk)?.walk;
   if (first) next.start = first;
   await writeWalks(next, walks);
 }
@@ -370,10 +386,10 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
 
 async function stepPlace(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
   const b = await readBazaar();
-  const hallway = b.areas.find((a) => a.id === b.hallway);
-  if (!hallway?.walk) throw new NeedsYou("The hallway's video is not up yet: upload it on /stores/areas, then its free door spots are marked there. · ویدیوی راهرو هنوز بارگذاری نشده است.");
   const spot = spotFor(b, s.slug);
-  if (!spot) throw new NeedsYou("No free spot on the hallway: mark more door spots on /stores/areas (Hallway). · جای خالی در راهرو نیست.");
+  if (!spot) throw new NeedsYou("No free door spot for this store: on /stores/areas, upload an area's walk (the hallway, or outside if the store opens onto the street) and mark its door spots. · جای خالی برای در فروشگاه نیست.");
+  const area = b.areas.find((a) => a.id === spot.area);
+  if (!area?.walk) throw new NeedsYou(`The walk of «${area?.name.en ?? spot.area}», where this store's door spot is, is not up yet: upload it on /stores/areas. · ویدیوی این بخش هنوز بارگذاری نشده است.`);
   await updateBazaar((x) => takeSpot(x, spot.id, s.slug));
   let image = s.out.doorImage;
   if (s.files.door && !image?.includes(s.files.door.key.split("/").pop()!.slice(0, 15))) {
@@ -384,13 +400,20 @@ async function stepPlace(s: StoreRecord, say: (note: string) => Promise<void>): 
   }
   await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, spot: spot.id, ...(image ? { doorImage: image } : {}) } }));
   const walks = await readWalks();
-  const street = walks.walks[hallway.walk] ?? { doors: [] };
   const id = `store-${s.slug}`;
-  const others = street.doors.filter((d) => d.id !== id);
+  const next: Walks = { ...walks, walks: { ...walks.walks } };
+  // The door leaves every other area (the store may have moved from the hallway to outside).
+  for (const a of b.areas) {
+    const w = a.walk ? next.walks[a.walk] : undefined;
+    if (a.walk && w && a.walk !== area.walk && w.doors.some((d) => d.id === id)) next.walks[a.walk] = { ...w, doors: w.doors.filter((d) => d.id !== id) };
+  }
+  const here = next.walks[area.walk] ?? { doors: [] };
+  const others = here.doors.filter((d) => d.id !== id);
   // ⚠️ SHOPPERS SEE A NEW STORE ONLY AFTER «PUBLISH»: until then its spot is kept and no door is up.
   const doors = s.live && s.out.walk ? [...others, doorOf(spot, { slug: s.slug, name: s.name, walk: s.out.walk, image, website: s.website })] : others;
-  await writeWalks({ ...walks, walks: { ...walks.walks, [hallway.walk]: { ...street, doors } } }, walks);
-  return s.live ? `The door is up on the hallway, in spot «${spot.id}».` : `Spot «${spot.id}» is kept for this store; its door goes up on «Publish».`;
+  next.walks[area.walk] = { ...here, doors };
+  await writeWalks(next, walks);
+  return s.live ? `The door is up on «${area.name.en}», in spot «${spot.id}».` : `Spot «${spot.id}» on «${area.name.en}» is kept for this store; its door goes up on «Publish».`;
 }
 
 // ── Checker ─────────────────────────────────────────────────────────────────
