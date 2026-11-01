@@ -144,9 +144,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
         if (body[f] === undefined) continue;
         const v = String(body[f] ?? "").trim().slice(0, f === "note" ? 600 : f === "sku" ? 40 : 120);
         if (v) next[f] = v;
-        else if (f === "en" && !next.fa) return fail(400, "A product needs a name.");
         else delete next[f];
       }
+      if (!next.en && !next.fa && next.by !== "video") return fail(400, "A product needs a name.");
+      // A product found in the video keeps what the crew saw, to find it again in a new video (never shown).
+      if (next.by === "video" && !next.seen && (p.en || p.fa)) next.seen = p.en || p.fa;
       const saved = await writeCatalogue({ ...c, products: c.products.map((x) => (x.n === n ? next : x)) });
       await updateStore(s.slug, (x) => redo(x, ["check"]));
       kick();

@@ -50,6 +50,12 @@ export type Product = {
   by?: "hand" | "video";
   /** The owner's description, shown on the product's card (owner, 2026-11-01). */
   note?: string;
+  /**
+   * What the crew saw, for finding it again in a new video — NEVER shown
+   * (owner, 2026-11-01: "do not add title for each product, let owner do
+   * that"). A product found in the video has no name until its owner gives one.
+   */
+  seen?: string;
 };
 
 export type Catalogue = { store: string; products: Product[]; updated?: string };
@@ -236,16 +242,19 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
     const unit = UNITS.includes(x.unit as Unit) ? (x.unit as Unit) : null;
     const en = typeof x.en === "string" ? x.en.trim().slice(0, 120) : "";
     const fa = typeof x.fa === "string" ? x.fa.trim().slice(0, 120) : "";
-    if (!unit || (!en && !fa)) { problems.push(`Product #${n} needs a title and a unit.`); continue; }
+    const by = x.by === "hand" || x.by === "video" ? x.by : undefined;
+    // A product found in the video waits for its owner to name it; every other one has a title.
+    if (!unit || (!en && !fa && by !== "video")) { problems.push(`Product #${n} needs a title and a unit.`); continue; }
     const price = x.priceCents === null || x.priceCents === undefined ? null : typeof x.priceCents === "number" && Number.isInteger(x.priceCents) && x.priceCents >= 0 ? x.priceCents : NaN;
     if (Number.isNaN(price)) { problems.push(`Product #${n}: its price must be whole cents.`); continue; }
     const photo = typeof x.photo === "string" && isHttps(x.photo) ? x.photo : "";
     const sku = typeof x.sku === "string" ? x.sku.trim().slice(0, 40) : "";
     const note = typeof x.note === "string" ? x.note.trim().slice(0, 600) : "";
+    const sawAs = typeof x.seen === "string" ? x.seen.trim().slice(0, 160) : "";
     seen.add(n);
     products.push({
       n, unit, priceCents: price as number | null, ...(sku ? { sku } : {}), ...(en ? { en } : {}), ...(fa ? { fa } : {}), ...(photo ? { photo } : {}),
-      ...(x.by === "hand" || x.by === "video" ? { by: x.by } : {}), ...(note ? { note } : {}),
+      ...(by ? { by } : {}), ...(note ? { note } : {}), ...(sawAs ? { seen: sawAs } : {}),
     });
   }
   products.sort((a, b) => a.n - b.n);

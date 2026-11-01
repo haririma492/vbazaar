@@ -16,12 +16,14 @@ import { postJson } from "./upload";
 import PhotoZoom from "@/components/common/PhotoZoom";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
-type Step = "unit" | "price" | "sku" | "note" | "done";
-const ORDER: Step[] = ["unit", "price", "sku", "note", "done"];
+type Step = "name" | "unit" | "price" | "sku" | "note" | "done";
+const ORDER: Step[] = ["name", "unit", "price", "sku", "note", "done"];
 const UNIT_LABEL: Record<Unit, string> = { piece: "the piece", set: "the set", pack: "the pack", box: "the box", kg: "weight (kg)", g: "weight (g)", lb: "weight (lb)" };
 
-/** A product still waiting for the owner: no price yet. */
-const needsInfo = (p: Product) => p.priceCents === null;
+/** A product still waiting for the owner: no name or no price yet. */
+const needsInfo = (p: Product) => p.priceCents === null || (!p.en && !p.fa);
+/** The name the owner gave, or that it has none yet (the crew names nothing, owner 2026-11-01). */
+const nameOf = (p: Product) => p.fa || p.en || "بدون نام · no name yet";
 
 export default function Products({ api, products, reload }: { api: string; products: Product[]; reload: () => Promise<void> }) {
   const [open, setOpen] = useState<number | null>(null);
@@ -30,9 +32,9 @@ export default function Products({ api, products, reload }: { api: string; produ
   const current = products.find((p) => p.n === open) ?? null;
   return (
     <Card>
-      <Bi fa="محصولات" en={`Products — ${products.length}${waiting ? `, ${waiting} waiting for a price` : ""}`} className="text-[15px] font-bold text-amber-100" />
+      <Bi fa="محصولات" en={`Products — ${products.length}${waiting ? `, ${waiting} waiting for you (name or price)` : ""}`} className="text-[15px] font-bold text-amber-100" />
       <p dir="ltr" className="mt-1 text-left text-[12px] text-white/50">
-        {fromVideo ? "Found in the store's video. " : ""}Tap a product to give its unit, price, item # and description. Shoppers see them on its tag in the walk.
+        {fromVideo ? "Found in the store's video. " : ""}Tap a product to give its name, unit, price, item # and description. Shoppers see them on its tag in the walk.
       </p>
       {current && <ProductCard key={current.n} api={api} product={current} others={products.filter((p) => p.n !== current.n)} close={() => setOpen(null)} reload={reload} />}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -43,9 +45,9 @@ export default function Products({ api, products, reload }: { api: string; produ
               // eslint-disable-next-line @next/next/no-img-element -- cut from the walk
               ? <img src={p.photo} alt="" loading="lazy" className="aspect-square w-full rounded-lg bg-white object-contain" />
               : <span className="flex aspect-square w-full items-center justify-center rounded-lg bg-white/5 text-[28px]">🛒</span>}
-            <span dir="auto" className="truncate text-[13px] font-bold">#{p.n} · {p.fa || p.en}</span>
+            <span dir="auto" className={`truncate text-[13px] font-bold ${p.en || p.fa ? "" : "text-white/45"}`}>#{p.n} · {nameOf(p)}</span>
             <span dir="ltr" className={`text-left text-[12px] ${needsInfo(p) ? "text-rose-200" : "text-amber-200"}`}>
-              {needsInfo(p) ? "needs a price · قیمت؟" : `${formatCents(p.priceCents!)} / ${UNIT_SAY[p.unit].en}`}
+              {!p.en && !p.fa ? "needs a name · نام؟" : p.priceCents === null ? "needs a price · قیمت؟" : `${formatCents(p.priceCents)} / ${UNIT_SAY[p.unit].en}`}
             </span>
           </button>
         ))}
@@ -55,7 +57,9 @@ export default function Products({ api, products, reload }: { api: string; produ
 }
 
 function ProductCard({ api, product, others, close, reload }: { api: string; product: Product; others: Product[]; close: () => void; reload: () => Promise<void> }) {
-  const [step, setStep] = useState<Step>("unit");
+  const [step, setStep] = useState<Step>("name");
+  const [en, setEn] = useState(product.en ?? "");
+  const [fa, setFa] = useState(product.fa ?? "");
   const [price, setPrice] = useState(product.priceCents === null ? "" : (product.priceCents / 100).toFixed(2));
   const [sku, setSku] = useState(product.sku ?? "");
   const [note, setNote] = useState(product.note ?? "");
@@ -92,14 +96,21 @@ function ProductCard({ api, product, others, close, reload }: { api: string; pro
           ? <PhotoZoom src={product.photo} className="h-28 w-28 rounded-xl bg-white object-contain" />
           : <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-white/5 text-[32px]">🛒</span>}
         <div className="min-w-0 flex-1">
-          <div dir="auto" className="text-[16px] font-bold">#{product.n} · {product.fa || product.en}</div>
+          <div dir="auto" className="text-[16px] font-bold">#{product.n} · {nameOf(product)}</div>
           {product.fa && product.en && <div dir="ltr" className="text-left text-[13px] text-white/60">{product.en}</div>}
-          <div className="mt-1 text-[12px] text-white/45">{step === "done" ? "All saved." : `Question ${i + 1} of 4`}</div>
+          <div className="mt-1 text-[12px] text-white/45">{step === "done" ? "All saved." : `Question ${i + 1} of 5`}</div>
         </div>
         <button type="button" aria-label="Close" className="text-[20px] text-white/60" onClick={close}>✕</button>
       </div>
 
       <div className="mt-3 space-y-2">
+        {step === "name" && (<>
+          <Bi fa="نام این محصول؟" en="What is this product called? (as shoppers will read it)" className="text-[15px] font-bold" />
+          <input autoFocus dir="rtl" placeholder="نام به فارسی — مثلاً باقلوای پسته‌ای" value={fa} onChange={(e) => setFa(e.target.value)} className={FIELD} />
+          <input dir="ltr" placeholder="Name in English — e.g. Pistachio baklava" value={en} onChange={(e) => setEn(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && (en.trim() || fa.trim())) void save({ en, fa }, next); }} className={FIELD} />
+          <div className="flex flex-wrap gap-2"><button type="button" className={KEY} disabled={busy || (!en.trim() && !fa.trim())} onClick={() => void save({ en, fa }, next)}>Next · بعدی</button></div>
+        </>)}
         {step === "unit" && (<>
           <Bi fa="به چه صورت فروخته می‌شود؟" en="Sold by…?" className="text-[15px] font-bold" />
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -143,12 +154,12 @@ function ProductCard({ api, product, others, close, reload }: { api: string; pro
             <div className="grid max-h-56 grid-cols-3 gap-2 overflow-y-auto sm:grid-cols-5">
               {others.map((o) => (
                 <button key={o.n} type="button" className="flex flex-col gap-1 rounded-lg border border-white/15 p-1 text-start hover:border-amber-300"
-                  onClick={() => void remove({ action: "productSame", n: product.n, into: o.n }, `#${product.n} is the same as #${o.n} «${o.fa || o.en}»? Its tags move to #${o.n}.`)}>
+                  onClick={() => void remove({ action: "productSame", n: product.n, into: o.n }, `#${product.n} is the same as #${o.n}? Its tags move to #${o.n}.`)}>
                   {o.photo
                     // eslint-disable-next-line @next/next/no-img-element -- cut from the walk
                     ? <img src={o.photo} alt="" className="aspect-square w-full rounded-md bg-white/5 object-contain" />
                     : <span className="flex aspect-square w-full items-center justify-center rounded-md bg-white/5">🛒</span>}
-                  <span dir="auto" className="truncate text-[11px]">#{o.n} {o.fa || o.en}</span>
+                  <span dir="auto" className="truncate text-[11px]">#{o.n} {o.fa || o.en || ""}</span>
                 </button>
               ))}
             </div>

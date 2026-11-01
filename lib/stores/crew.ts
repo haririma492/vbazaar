@@ -453,7 +453,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
   const existing = await readCatalogue(sceneOf(s.slug));
   // A list the owner has touched (a price, a unit, an item #, a description, or one added by hand) is kept;
   // one nobody has touched yet is found again, so a better finder reaches it (2026-11-01).
-  const touched = existing?.products.some((p) => p.by !== "video" || p.priceCents !== null || p.sku || p.note || p.unit !== "piece");
+  const touched = existing?.products.some((p) => p.by !== "video" || p.priceCents !== null || p.sku || p.note || p.unit !== "piece" || ((p.en || p.fa) && p.seen));
   if (existing?.products.length && touched) return `Keeping the product list (${existing.products.length} products); the Tagger pins them on the new video.`;
   const dir = mkdtempSync(join(tmpdir(), "find-"));
   try {
@@ -493,7 +493,8 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     }
     if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);
     const photos = await cutPhotos(s, src, best, say);
-    const listed: Product[] = products.map((p) => ({ n: p.n, en: p.en, ...(p.fa ? { fa: p.fa } : {}), unit: "piece" as const, priceCents: null, by: "video" as const, ...(photos.has(p.n) ? { photo: photos.get(p.n)! } : {}) }));
+    // No name: the owner names each product (2026-11-01); what the crew saw is kept only to find it again.
+    const listed: Product[] = products.map((p) => ({ n: p.n, seen: p.en, unit: "piece" as const, priceCents: null, by: "video" as const, ...(photos.has(p.n) ? { photo: photos.get(p.n)! } : {}) }));
     await writeCatalogue({ store: sceneOf(s.slug), products: listed });
     // Pinned as the Tagger pins: each sighting followed both ways through the frames.
     const tracks: Track[] = [];

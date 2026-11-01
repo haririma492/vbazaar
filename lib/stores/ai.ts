@@ -48,7 +48,7 @@ export type Purse = { spent: () => number; limit: number; add: (cents: number) =
 
 /** The product list as Claude reads it: one line each. */
 export function productLines(products: Product[]): string {
-  return products.map((p) => `#${p.n} | ${p.en ?? ""} | ${p.fa ?? ""} | ${p.unit}${p.sku ? ` | code ${p.sku}` : ""}`).join("\n");
+  return products.map((p) => `#${p.n} | ${p.en || (p.fa ? "" : p.seen ?? "")} | ${p.fa ?? ""} | ${p.unit}${p.sku ? ` | code ${p.sku}` : ""}`).join("\n");
 }
 
 const jpeg = (bytes: Uint8Array): Anthropic.Beta.BetaImageBlockParam => ({

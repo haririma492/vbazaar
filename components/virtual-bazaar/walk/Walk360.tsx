@@ -332,6 +332,8 @@ type Engine = {
   setOnItem: (f: ((item: WalkItem) => void) | null) => void;
   /** What an item's tag says as its price: the store's list where it has one (`productOf`), else its own. */
   setPriceText: (f: (item: WalkItem) => string | undefined) => void;
+  /** What an item's tag says as its name: the store's list where it has one (the owner names products found in a video). */
+  setLabelOf: (f: (item: WalkItem) => WalkItem["label"]) => void;
   /** Jump to a moment of this video (stands there). */
   seek: (t: number) => void;
 };
@@ -818,6 +820,7 @@ export default function Walk360() {
     let itemPreview: WalkItem | null = null;
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
+    let labelOf: (item: WalkItem) => WalkItem["label"] = (item) => item.label;
     const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem }>();
     const itemButtons = new Map<string, { el: HTMLButtonElement; item: WalkItem }>();
     /** Specials in view a moment ago, and when each was last said aloud. */
@@ -860,7 +863,8 @@ export default function Walk360() {
       for (const { item, x, y } of shown) {
         const sp = item.special;
         const price = priceText(item);
-        const id = `${current!.key}#${item.id}#${item.label.en}#${price ?? ""}#${sp ? `${sp.was}>${sp.now}` : ""}`;
+        const label = labelOf(item);
+        const id = `${current!.key}#${item.id}#${label.en}#${price ?? ""}#${sp ? `${sp.was}>${sp.now}` : ""}`;
         if (flat) {
           wantButtons.add(id);
           let b = itemButtons.get(id);
@@ -883,7 +887,7 @@ export default function Walk360() {
               if (price) pr.textContent = price;
               else pr.remove();
             }
-            (el.querySelector("[data-n]") as HTMLElement).textContent = sp ? item.label.en : item.label.fa ? `${item.label.en} · ${item.label.fa}` : item.label.en;
+            (el.querySelector("[data-n]") as HTMLElement).textContent = sp ? label.en : label.fa ? `${label.en} · ${label.fa}` : label.en;
             el.addEventListener("click", () => {
               const m = itemButtons.get(id);
               if (m && m.item !== itemPreview && !itemPick) onItem?.(m.item);
@@ -904,7 +908,7 @@ export default function Walk360() {
           let m = itemSprites.get(id);
           if (!m) {
             // The tag on its stick, the stick's foot on the product's spot.
-            const tag = tagTexture(item, price);
+            const tag = tagTexture({ ...item, label }, price);
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag.texture, depthTest: false, depthWrite: false, transparent: true }));
             const width = sp ? 5.4 : 4.2;
             sprite.scale.set(width, width * tag.aspect, 1);
@@ -1029,6 +1033,9 @@ export default function Walk360() {
       },
       setPriceText(f) {
         priceText = f;
+      },
+      setLabelOf(f) {
+        labelOf = f;
       },
       seek(t) {
         if (!current || busy) return;
@@ -1469,6 +1476,12 @@ export default function Walk360() {
     engine.current?.setPriceText((item) => {
       const p = productOf(catalogue, item.n);
       return p && p.priceCents !== null ? unitPriceSay(p, "en") : item.price;
+    });
+    engine.current?.setLabelOf((item) => {
+      const p = productOf(catalogue, item.n);
+      if (!p) return item.label;
+      if (!p.en && !p.fa) return { en: `#${p.n}` };
+      return { en: p.en || p.fa!, ...(p.fa ? { fa: p.fa } : {}) };
     });
   }, [catalogue]);
 
