@@ -66,7 +66,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, hideFacing, hideYawAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -320,6 +320,8 @@ type Engine = {
   goToWalk: (key: string) => void;
   /** Where the visitor is, in the current video's own frame (the operator's «Door here»). */
   here: () => { key: string | null; t: number; yaw: number; pitch: number; flat: boolean; projection: Projection | null };
+  /** The locked zone (`Walk.hide`) off, while the operator sets it. */
+  setLockOff: (off: boolean) => void;
   /** Jump to a door's moment and face it. */
   goTo: (door: WalkDoor) => void;
   /** Edit mode: the next tap on the picture is a sign pin (null: taps are a visitor's again). */
@@ -455,7 +457,8 @@ export default function Walk360() {
 
     // The cap over the operator's head (`NADIR_DEG`): over the videos (0, 1),
     // under the doors' signs and the price tags (10, 11).
-    const editing = params.get("edit") === "1" || params.get("spots") === "1";
+    /** Edit mode, Lock tab open: the view turns freely, to find the photographer. */
+    let lockOff = false;
     const nadirParam = params.get("nadir");
     const nadirDeg = nadirParam !== null && Number.isFinite(Number(nadirParam)) ? THREE.MathUtils.clamp(Number(nadirParam), 0, 90) : NADIR_DEG;
     const nadirRad = THREE.MathUtils.degToRad(nadirDeg);
@@ -1048,6 +1051,9 @@ export default function Walk360() {
       },
       back: () => void back(),
       goToWalk: (k) => void goToWalk(k),
+      setLockOff(off) {
+        lockOff = off;
+      },
       here: () => {
         camera.getWorldDirection(lookDir);
         return { key: current?.key ?? null, t: current?.video.currentTime ?? 0, yaw: videoYaw(), pitch: Math.asin(Math.max(-1, Math.min(1, lookDir.y))), flat: current?.flat ?? false, projection: current?.projection ?? null };
@@ -1349,11 +1355,15 @@ export default function Walk360() {
       // stops where the zone would enter the picture, so the photographer is
       // never on screen and nothing is darkened. The operator (`?edit=1`)
       // still turns freely, to find and set the zone.
-      const hid = !editing && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
+      // Then (start lock / end lock): the zone is the arc the operator turned
+      // the view's MIDDLE through, from their face first showing at one edge
+      // of the screen to its going off the other — so the view's middle may
+      // not enter it, and the screen's width is already counted in.
+      const hid = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
       if (hid) {
-        const halfFov = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
-        const lim = Math.min(Math.PI - 0.05, hid.width / 2 + halfFov + 0.02);
-        const d = angleDiff(videoYaw(), hideYawAt(hid, current!.video.currentTime));
+        const zone = hideAt(hid, current!.video.currentTime);
+        const lim = Math.min(Math.PI - 0.05, zone.width / 2);
+        const d = angleDiff(videoYaw(), zone.yaw);
         if (Math.abs(d) < lim) {
           turnYaw += (d >= 0 ? 1 : -1) * (lim - Math.abs(d));
           velTurn = 0;
@@ -2162,9 +2172,11 @@ function OperatorSignIn({ onIn }: { onIn: () => void }) {
 }
 
 /**
- * «Hide» on the walk's edit page: one question — turn the view to face the
- * photographer and press — then the width and how high, each shown at once
- * on the walk and saved by itself (the editor's own autosave).
+ * «Lock» on the walk's edit page (owner, 2026-11-01): "I rotate the view
+ * until the first part of my face appears I press start lock and then when my
+ * face disappear I press end lock and then that angle should be locked". The
+ * arc the view's middle turned through between the two presses is locked at
+ * that moment; done again after a turn in the walk, the zone turns with it.
  */
 function HideEditor({ engine, walks, viewKey, change }: {
   engine: React.MutableRefObject<Engine | null>;
@@ -2174,60 +2186,90 @@ function HideEditor({ engine, walks, viewKey, change }: {
 }) {
   const walk = walkOf(walks, viewKey);
   const hide = walk?.hide ?? null;
+  const [start, setStart] = useState<{ t: number; yaw: number } | null>(null);
+  const [swept, setSwept] = useState(0);
+  const last = useRef(0);
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
   const deg = (r: number) => Math.round((r * 180) / Math.PI);
-  const rad = (d: number) => (d * Math.PI) / 180;
-  if (!viewKey) return <p className="text-white/70">Open a walk video from the bucket (?v=scenes/…) to hide a direction on it.</p>;
-  if (engine.current?.here().flat) return <p className="text-white/70">This is a flat video: there is no «behind the camera» to hide.</p>;
-  const facing = () => {
+  const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
+  // While this tab is open the view turns freely, so the operator can see themselves.
+  useEffect(() => {
+    engine.current?.setLockOff(true);
+    return () => engine.current?.setLockOff(false);
+  }, [engine]);
+
+  // Between the two presses: how far, and which way, the view has turned.
+  useEffect(() => {
+    if (!start) return;
+    last.current = start.yaw;
+    const id = window.setInterval(() => {
+      const h = engine.current?.here();
+      if (!h) return;
+      const step = wrapAngle(h.yaw - last.current);
+      last.current = h.yaw;
+      setSwept((s) => s + step);
+    }, 50);
+    return () => window.clearInterval(id);
+  }, [start, engine]);
+
+  if (!viewKey) return <p className="text-white/70">Open a walk video from the bucket (?v=scenes/…) to lock a direction on it.</p>;
+  if (engine.current?.here().flat) return <p className="text-white/70">This is a flat video: there is nothing behind the camera to lock.</p>;
+
+  const begin = () => {
     const h = engine.current?.here();
     if (!h) return;
-    change(setHide(walks, viewKey, hideFacing(hide, h.t, h.yaw, rad(70), rad(15))));
+    engine.current?.video().pause();
+    setSwept(0);
+    setStart({ t: h.t, yaw: h.yaw });
+  };
+  const finish = () => {
+    if (!start) return;
+    const width = Math.abs(swept);
+    if (width < HIDE_WIDTH.min || width > HIDE_WIDTH.max) {
+      setStart(null);
+      return;
+    }
+    const middle = wrapAngle(start.yaw + swept / 2);
+    change(setHide(walks, viewKey, hideFacing(hide, start.t, middle, width, 0, width)));
+    setStart(null);
   };
   const dropPoint = (t: number) => {
-    if (!hide?.at) return;
-    const at = hide.at.filter((p) => p.t !== t);
+    if (!hide) return;
+    const at = (hide.at ?? [{ t: 0, yaw: hide.yaw }]).filter((p) => p.t !== t);
     change(setHide(walks, viewKey, at.length ? { ...hide, yaw: at[0].yaw, at } : null));
   };
-  const mmssOf = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
-  const set = (patch: Partial<{ width: number; top: number }>) => {
-    if (!hide) return;
-    change(setHide(walks, viewKey, {
-      ...hide,
-      width: Math.min(HIDE_WIDTH.max, Math.max(HIDE_WIDTH.min, patch.width ?? hide.width)),
-      top: Math.min(HIDE_TOP.max, Math.max(HIDE_TOP.min, patch.top ?? hide.top)),
-    }));
-  };
+  const points = hide ? (hide.at?.length ? hide.at : [{ t: 0, yaw: hide.yaw, width: hide.width }]) : [];
+
   return (
     <div className="space-y-2">
-      <p className="text-white/80">Turn the view until you face the photographer (behind the camera), then press:</p>
-      <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} onClick={facing}>
-        Lock the direction I face now
-      </button>
+      {!start ? (<>
+        <p className="text-white/80">Stop the walk. Turn the view slowly towards yourself. The moment the first part of you appears at the edge of the screen, press:</p>
+        <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} onClick={begin}>
+          Start lock
+        </button>
+      </>) : (<>
+        <p className="text-white/80">Keep turning the same way, past yourself. When the last of you has gone off the other edge of the screen, press:</p>
+        <button className={`${btn} w-full border-emerald-300/60 bg-emerald-300/20 py-2 text-[13px] font-semibold`} onClick={finish}>
+          End lock ({Math.abs(deg(swept))}° so far)
+        </button>
+        <button className={`${btn} w-full`} onClick={() => setStart(null)}>Cancel</button>
+      </>)}
       <p className="text-[11px] text-white/60">
-        Did you turn round during the walk? Go to a moment after the turn, face yourself again and press again: the locked zone then turns with you.
+        Shoppers cannot turn the view into a locked angle. If you turn round during the walk, go to a moment after the turn and lock again: the lock then turns with you.
       </p>
-      {hide?.at && hide.at.length > 1 && (
+      {points.length > 0 && (
         <ul className="space-y-1">
-          {hide.at.map((p) => (
+          {points.map((p) => (
             <li key={p.t} className="flex items-center justify-between gap-2 rounded-md bg-white/5 px-2 py-1">
-              <span>At {mmssOf(p.t)}: {deg(p.yaw)}°</span>
+              <span>At {mmss(p.t)}: {deg(p.width ?? hide!.width)}° locked</span>
               <button className={btn} onClick={() => dropPoint(p.t)}>Remove</button>
             </li>
           ))}
         </ul>
       )}
-      {hide && (<>
-        <div className="flex items-center justify-between gap-2">
-          <span>Width: {deg(hide.width)}°</span>
-          <span className="flex gap-1">
-            <button className={btn} onClick={() => set({ width: hide.width - rad(10) })}>Narrower</button>
-            <button className={btn} onClick={() => set({ width: hide.width + rad(10) })}>Wider</button>
-          </span>
-        </div>
-        <p className="text-[11px] text-white/60">Shoppers cannot turn the view into this zone (nothing is darkened). Here in edit mode you still can: walk on a little to check you stay inside it, then open the walk without &edit=1 to try it.</p>
-        <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove the lock</button>
-      </>)}
+      {hide && <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove all locks</button>}
+      <p className="text-[11px] text-white/60">To try it, open the walk without &amp;edit=1 (here the view turns freely).</p>
     </div>
   );
 }

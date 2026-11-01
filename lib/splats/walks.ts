@@ -220,31 +220,36 @@ export type Walk = {
  * several moments (a walk that turns round — the photographer is behind the
  * camera both ways), turned smoothly between them.
  */
-export type WalkHide = { yaw: number; width: number; top: number; at?: Array<{ t: number; yaw: number }> };
+export type WalkHide = { yaw: number; width: number; top: number; at?: Array<{ t: number; yaw: number; width?: number }> };
 
-/** The hidden direction at moment `t` (video frame). */
-export function hideYawAt(h: WalkHide, t: number): number {
+/** The locked zone at moment `t` (video frame): its middle and its width. */
+export function hideAt(h: WalkHide, t: number): { yaw: number; width: number } {
   const at = h.at ?? [];
-  if (!at.length) return h.yaw;
-  if (t <= at[0].t) return at[0].yaw;
+  const w = (p: { width?: number }) => p.width ?? h.width;
+  if (!at.length) return { yaw: h.yaw, width: h.width };
+  if (t <= at[0].t) return { yaw: at[0].yaw, width: w(at[0]) };
   for (let i = 1; i < at.length; i++) {
     if (t <= at[i].t) {
       const a = at[i - 1], b = at[i];
       const k = (t - a.t) / Math.max(1e-6, b.t - a.t);
-      return wrapAngle(a.yaw + angleDiff(b.yaw, a.yaw) * k);
+      return { yaw: wrapAngle(a.yaw + angleDiff(b.yaw, a.yaw) * k), width: w(a) + (w(b) - w(a)) * k };
     }
   }
-  return at[at.length - 1].yaw;
+  const last = at[at.length - 1];
+  return { yaw: last.yaw, width: w(last) };
 }
 
+/** The locked zone's middle at moment `t`. */
+export const hideYawAt = (h: WalkHide, t: number) => hideAt(h, t).yaw;
+
 /** The hide with the direction at `t` set (a point within half a second of it is replaced). */
-export function hideFacing(h: WalkHide | null, t: number, yaw: number, width: number, top: number): WalkHide {
-  const old = h ? (h.at?.length ? h.at : [{ t: 0, yaw: h.yaw }]) : [];
-  const at = [...old.filter((p) => Math.abs(p.t - t) > 0.5), { t, yaw }].sort((a, b) => a.t - b.t);
+export function hideFacing(h: WalkHide | null, t: number, yaw: number, width: number, top: number, ownWidth?: number): WalkHide {
+  const old: NonNullable<WalkHide["at"]> = h ? (h.at?.length ? h.at : [{ t: 0, yaw: h.yaw }]) : [];
+  const at = [...old.filter((p) => Math.abs(p.t - t) > 0.5), { t, yaw, ...(ownWidth ? { width: ownWidth } : {}) }].sort((a, b) => a.t - b.t);
   const base = { width: h?.width ?? width, top: h?.top ?? top };
   return { yaw: at[0].yaw, ...base, at };
 }
-export const HIDE_WIDTH = { min: (20 * Math.PI) / 180, max: (180 * Math.PI) / 180 };
+export const HIDE_WIDTH = { min: (5 * Math.PI) / 180, max: (330 * Math.PI) / 180 };
 export const HIDE_TOP = { min: (-30 * Math.PI) / 180, max: (60 * Math.PI) / 180 };
 export type Walks = { start?: string; walks: Record<string, Walk> };
 
@@ -342,12 +347,15 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
           const pts = h.at
             .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
             .filter((p) => typeof p.t === "number" && p.t >= 0 && Number.isFinite(p.t) && typeof p.yaw === "number" && Math.abs(p.yaw) <= Math.PI + 1e-6)
-            .map((p) => ({ t: p.t as number, yaw: p.yaw as number }))
+            .map((p) => ({
+              t: p.t as number, yaw: p.yaw as number,
+              ...(typeof p.width === "number" && p.width >= HIDE_WIDTH.min - 1e-6 && p.width <= HIDE_WIDTH.max + 1e-6 ? { width: p.width } : {}),
+            }))
             .sort((a, b) => a.t - b.t)
             .slice(0, 20);
           if (pts.length) walk.hide.at = pts;
         }
-      } else problems.push(`${key}: «hide» needs yaw (−π…π), width (20°…180°) and top (−30°…60°) in radians.`);
+      } else problems.push(`${key}: «hide» needs yaw (−π…π), width (5°…330°) and top (−30°…60°) in radians.`);
     }
     if (r.tagsFrom !== undefined && r.tagsFrom !== null) {
       if (typeof r.tagsFrom === "number" && Number.isFinite(r.tagsFrom) && r.tagsFrom > 0) walk.tagsFrom = r.tagsFrom;

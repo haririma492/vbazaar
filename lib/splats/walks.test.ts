@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, hideFacing, hideYawAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -363,7 +363,7 @@ test("hiding the photographer: kept, checked, merged, removed", () => {
   assert.deepEqual(walkOf(parseWalks(JSON.parse(JSON.stringify(w))), STREET)!.hide, hide);
   assert.equal(walkOf(setHide(w, STREET, null), STREET)!.hide, undefined);
   // Out of range is refused, not clamped.
-  assert.ok(checkWalks({ walks: { [STREET]: { doors: [], hide: { yaw: 0, width: 5, top: 0 } } } }).problems.length > 0);
+  assert.ok(checkWalks({ walks: { [STREET]: { doors: [], hide: { yaw: 0, width: 6.2, top: 0 } } } }).problems.length > 0);
   // Hidden here, a door added there: both kept.
   const base = emptyWalks();
   const theirs = addDoor(base, STREET, { t: 5, yaw: 0, label: { en: "Shop" }, to: BAKERY });
@@ -392,4 +392,12 @@ test("price tags only from a moment on", () => {
   assert.equal(walkOf(w, STREET)!.tagsFrom, 20);
   assert.equal(itemsAt(walkOf(w, STREET), 10, true).length, 0);
   assert.equal(walkOf(setTagsFrom(w, STREET, null), STREET)!.tagsFrom, undefined);
+});
+
+test("a lock carries its own width, turned smoothly to the next", () => {
+  let h = hideFacing(null, 2, 1, 1, 0, 1);
+  h = hideFacing(h, 10, 1, 1, 0, 2);
+  assert.deepEqual(hideAt(h, 0), { yaw: 1, width: 1 });
+  assert.ok(Math.abs(hideAt(h, 6).width - 1.5) < 1e-9);
+  assert.deepEqual(walkOf(parseWalks(JSON.parse(JSON.stringify(setHide(emptyWalks(), STREET, h)))), STREET)!.hide, h);
 });
