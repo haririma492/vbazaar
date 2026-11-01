@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { followProduct, followProduct360 } from "./followProduct";
 import { basketAddHref, offerItemId, sarekoocheHref, type BasketLine } from "@/lib/sarekooche";
 import {
@@ -266,6 +267,10 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
   saveCatalogue: (c: Catalogue) => Promise<string | null>;
 }) {
   const [draft, setDraft] = useState<Draft | null>(null);
+  /** A product picked on the left panel before tapping: the next tap in the picture is it. */
+  const [armed, setArmed] = useState<number | null>(null);
+  const armedRef = useRef(armed);
+  armedRef.current = armed;
   const [shopOpen, setShopOpen] = useState(false);
   const [sheet, setSheet] = useState<SheetImport | null>(null);
   /** A tagged product being pinned to itself (its one tap followed through the video), and how far. */
@@ -360,10 +365,13 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
       const d = draftRef.current;
       const fresh = !d || d.step === "product";
       setDraft((cur) => {
+        const n = armedRef.current;
+        if (!cur && n !== null) return { path: "list", num: String(n), en: "", fa: "", unit: "", price: "", image: "", pins: [pin], step: "follow" };
         if (!cur) return { path: listRef.current ? "list" : "hand", num: "", en: "", fa: "", unit: "", price: "", image: "", pins: [pin], step: "product" };
         if (cur.step === "product") return { ...cur, pins: [pin] };
         return { ...cur, pins: sortItemPins([...cur.pins.filter((q) => Math.abs(q.t - pin.t) >= 0.05), pin]) };
       });
+      if (!d && armedRef.current !== null) setArmed(null);
       startFollow(pin, fresh);
     } : null);
     return () => e.setItemPick(null);
@@ -440,6 +448,23 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
     setStatus({ tone: "ok", text: `✓ ${sheet.products.length} products from «${sheet.file}»${hand.length ? ` (and ${hand.length} added by hand)` : ""} — tag them by number now.` });
   }
 
+  /** A product chosen on the left panel: names the product being tagged, or the next tap's. */
+  function pickFromPanel(n: number) {
+    const d = draftRef.current;
+    if (d && d.path === "list" && (d.step === "product" || d.step === "number")) {
+      setDraft({ ...d, num: String(n), step: "follow" });
+      return;
+    }
+    if (d) return setStatus({ tone: "warn", text: "Finish or close the product being tagged first." });
+    setArmed((a) => (a === n ? null : n));
+  }
+  const counts = new Map<number, number>();
+  for (const it of walk?.items ?? []) if (it.n !== undefined) counts.set(it.n, (counts.get(it.n) ?? 0) + 1);
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+  useEffect(() => { setHost(anchor.current?.closest<HTMLElement>("[data-walk-editor]")?.parentElement ?? null); }, []);
+  const armedProduct = armed !== null ? productOf(catalogue, armed) : undefined;
+
   const fileInput = useRef<HTMLInputElement>(null);
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
   const field = "w-full rounded-md border border-white/20 bg-black/50 px-2 py-1 text-[13px] text-white";
@@ -447,6 +472,16 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
 
   return (
     <div className="space-y-2">
+      <span ref={anchor} hidden />
+      {host && hasList && createPortal(
+        <ProductsPanel catalogue={catalogue!} counts={counts}
+          chosen={draft?.path === "list" && draft.num ? Number(draft.num) : armed} onPick={pickFromPanel} />, host)}
+      {armedProduct && !draft && (
+        <div className="flex items-center gap-2 rounded-lg border border-[#00B8C8] bg-[#00B8C8]/20 p-2 text-[13px]">
+          <span className="min-w-0 flex-1"><b>Now tap #{armedProduct.n} {productName(armedProduct, "en")}</b> in the picture.</span>
+          <button className={btn} onClick={() => setArmed(null)}>Cancel</button>
+        </div>
+      )}
       {/* The store's product list: the merchant's sheet. */}
       <div className="rounded-md bg-white/5 p-1.5 text-[12px]">
         <input ref={fileInput} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
@@ -485,9 +520,9 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
         )}
       </div>
 
-      {!draft && (
+      {!draft && !armedProduct && (
         <div className="rounded-lg border border-[#00B8C8]/60 bg-[#00B8C8]/15 p-2.5 text-[13px] leading-snug">
-          <b>Tap a product in the picture</b> to tag it.
+          <b>Tap a product in the picture</b> to tag it{hasList ? <>, or <b>pick its photo on the left</b> first, then tap it</> : null}.
           <div className="mt-0.5 text-[12px] text-white/65">Move the video (wheel ▲, or the time bar) until the product is in view, then tap it.</div>
         </div>
       )}
@@ -640,6 +675,60 @@ function SheetCard({ sheet, kept, onUse, onCancel }: { sheet: SheetImport; kept:
  */
 type Follow = { running: boolean; done: number; total: number; error?: string };
 
+/** Where the editor panel moves when the products panel takes the left edge (wide screens only). */
+export const PRODUCTS_PANEL_SHIFT = "sm:left-[15.5rem]";
+
+/**
+ * THE STORE'S PRODUCTS DOWN THE LEFT EDGE (owner, 2026-11-01: "lets have all
+ * products appear on a left panel so it is easy to connect points in shelves
+ * to photos"). Every product of the store's list as its photo, number and
+ * name, with a search box and how many dots it already has on this video.
+ * A click names the product being tagged, or — before any tap — the product
+ * the next tap in the picture is. Wide screens only; a phone keeps the list
+ * inside the card.
+ */
+function ProductsPanel({ catalogue, counts, chosen, onPick }: {
+  catalogue: Catalogue;
+  counts: Map<number, number>;
+  chosen: number | null;
+  onPick: (n: number) => void;
+}) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const shown = needle
+    ? catalogue.products.filter((p) => String(p.n) === needle || String(p.sku ?? "").toLowerCase().includes(needle)
+      || (p.en ?? "").toLowerCase().includes(needle) || (p.fa ?? "").includes(q.trim()))
+    : catalogue.products;
+  const tagged = catalogue.products.filter((p) => counts.has(p.n)).length;
+  return (
+    <div dir="ltr" className="absolute bottom-3 left-3 top-3 z-30 hidden w-[14rem] flex-col rounded-xl border border-white/20 bg-black/85 p-2 text-white shadow-xl sm:flex">
+      <div className="px-1 text-[13px] font-bold">Products <span className="font-normal text-white/55">· {tagged} of {catalogue.products.length} tagged here</span></div>
+      <input className="my-1.5 w-full rounded-lg border border-white/20 bg-black/50 px-2 py-1.5 text-[13px] text-white outline-none focus:border-[#00B8C8]"
+        placeholder="Search name or number…" value={q} onChange={(e) => setQ(e.target.value)} />
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pe-1">
+        {shown.map((p) => {
+          const c = counts.get(p.n) ?? 0;
+          return (
+            <button key={p.n} type="button" onClick={() => onPick(p.n)} title={productName(p, "en")}
+              className={`flex w-full items-center gap-2 rounded-lg border p-1 text-left ${chosen === p.n ? "border-[#00B8C8] bg-[#00B8C8]/25" : "border-white/10 hover:border-white/40"}`}>
+              {p.photo ? (
+                // eslint-disable-next-line @next/next/no-img-element -- hot-linked
+                <img src={p.photo} alt="" loading="lazy" className="h-14 w-14 shrink-0 rounded-md bg-white object-contain" />
+              ) : <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-white/10 text-[20px]">🛒</div>}
+              <span className="min-w-0 flex-1 text-[12px] leading-tight">
+                <span className="block truncate"><b className="text-[#00B8C8]">#{p.n}</b> {productName(p, "en")}</span>
+                {p.fa && p.en && <span dir="rtl" className="block truncate text-white/60">{p.fa}</span>}
+                <span className={`block ${c ? "text-emerald-300" : "text-white/40"}`}>{c ? `✓ ${c} on this video` : "not tagged yet"}</span>
+              </span>
+            </button>
+          );
+        })}
+        {!shown.length && <p className="py-3 text-center text-[12px] text-white/55">Nothing matches «{q}».</p>}
+      </div>
+    </div>
+  );
+}
+
 /**
  * THE STORE'S PRODUCTS AS PHOTOS (owner, 2026-11-01: "all photos in the store
  * folder … in a dropdown list so for operator is easy to match the photo to
@@ -732,7 +821,8 @@ function TagCard({ draft, setDraft, onDone, follow, catalogue }: {
     case "number":
       title = "Which product is it?";
       body = (<>
-        <ProductPicker catalogue={catalogue} chosen={product?.n ?? null} onPick={(n) => setDraft({ ...draft, num: String(n) })} />
+        <div className="sm:hidden"><ProductPicker catalogue={catalogue} chosen={product?.n ?? null} onPick={(n) => setDraft({ ...draft, num: String(n) })} /></div>
+        <p className="hidden text-[13px] text-white/65 sm:block">Pick its photo on the left, or type its number:</p>
         <input inputMode="numeric" className={`${big} text-center text-[26px] font-bold tracking-wider`} placeholder="or type its number, 1 – 999" value={draft.num}
           onChange={(e) => setDraft({ ...draft, num: e.target.value.replace(/\D/g, "").slice(0, 3) })} onKeyDown={onEnter(Boolean(product), next)} />
         {product ? (

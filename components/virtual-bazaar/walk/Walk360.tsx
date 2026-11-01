@@ -56,7 +56,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
-import { ItemCard, ItemsEditor } from "./WalkItems";
+import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import { CutEditor } from "./WalkCut";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
@@ -1891,7 +1891,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   return (<>
     {viewKey && <ProjectionCard engine={engine} viewKey={viewKey} projection={walk?.projection ?? null}
       onKeep={(p) => change(setProjection(walks, viewKey, p))} />}
-    <div dir="ltr" className="absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl">
+    <div dir="ltr" data-walk-editor className={`absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl ${tab === "items" && catalogue?.products.length ? PRODUCTS_PANEL_SHIFT : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1">
           {(["doors", "items", "sound", "cut"] as const).map((k) => (
