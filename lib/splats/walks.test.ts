@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -400,4 +400,13 @@ test("a lock carries its own width, turned smoothly to the next", () => {
   assert.deepEqual(hideAt(h, 0), { yaw: 1, width: 1 });
   assert.ok(Math.abs(hideAt(h, 6).width - 1.5) < 1e-9);
   assert.deepEqual(walkOf(parseWalks(JSON.parse(JSON.stringify(setHide(emptyWalks(), STREET, h)))), STREET)!.hide, h);
+});
+
+test("how far the view may tilt", () => {
+  let w = setTilt(emptyWalks(), STREET, "down", -0.4);
+  w = setTilt(w, STREET, "up", 0.6);
+  w = parseWalks(JSON.parse(JSON.stringify(w)));
+  assert.deepEqual(walkOf(w, STREET)!.tilt, { down: -0.4, up: 0.6 });
+  assert.deepEqual(walkOf(setTilt(w, STREET, "up", null), STREET)!.tilt, { down: -0.4 });
+  assert.equal(walkOf(setTilt(setTilt(w, STREET, "up", null), STREET, "down", null), STREET)!.tilt, undefined);
 });

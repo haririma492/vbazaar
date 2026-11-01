@@ -66,7 +66,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -1359,6 +1359,12 @@ export default function Walk360() {
       // the view's MIDDLE through, from their face first showing at one edge
       // of the screen to its going off the other — so the view's middle may
       // not enter it, and the screen's width is already counted in.
+      const tilt = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.tilt : undefined;
+      if (tilt && !(gyroOn && gyroHave)) {
+        // `pitch` is positive looking DOWN (the camera turns by −pitch); the limits are above the horizon.
+        const p = THREE.MathUtils.clamp(pitch, -(tilt.up ?? Math.PI / 2), -(tilt.down ?? -Math.PI / 2));
+        if (p !== pitch) { pitch = p; aim(); }
+      }
       const hid = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
       if (hid) {
         const zone = hideAt(hid, current!.video.currentTime);
@@ -2269,6 +2275,23 @@ function HideEditor({ engine, walks, viewKey, change }: {
         </ul>
       )}
       {hide && <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove all locks</button>}
+      <div className="space-y-1 border-t border-white/15 pt-2">
+        <p className="text-white/80">Up and down: tilt the view as far as shoppers may look, then press.</p>
+        {(["up", "down"] as const).map((side) => {
+          const v = walk?.tilt?.[side];
+          return (
+            <div key={side} className="flex items-center justify-between gap-2">
+              <span>{side === "up" ? "Up" : "Down"}: {v === undefined ? "free" : `${Math.abs(deg(v))}° ${side === "up" ? "above" : "below"} the horizon`}</span>
+              <span className="flex gap-1">
+                <button className={btn} onClick={() => { const h = engine.current?.here(); if (h) change(setTilt(walks, viewKey, side, h.pitch)); }}>
+                  {side === "up" ? "Highest here" : "Lowest here"}
+                </button>
+                {v !== undefined && <button className={btn} onClick={() => change(setTilt(walks, viewKey, side, null))}>Free</button>}
+              </span>
+            </div>
+          );
+        })}
+      </div>
       <p className="text-[11px] text-white/60">To try it, open the walk without &amp;edit=1 (here the view turns freely).</p>
     </div>
   );

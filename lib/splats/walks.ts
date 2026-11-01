@@ -214,6 +214,13 @@ export type Walk = {
    * shown, and the Tagger does not look there.
    */
   tagsFrom?: number;
+  /**
+   * HOW FAR SHOPPERS MAY TILT (owner, 2026-11-01: "when shoppers start
+   * rotating the view to see the floor or ceiling … shoppers never get to that
+   * zone"). Radians above the horizon: `up` the highest the view's middle may
+   * look, `down` the lowest (negative). Set on the edit page's «Lock» tab.
+   */
+  tilt?: { up?: number; down?: number };
 };
 /**
  * `yaw` alone: one direction for the whole walk. `at`: the direction at
@@ -356,6 +363,14 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
           if (pts.length) walk.hide.at = pts;
         }
       } else problems.push(`${key}: «hide» needs yaw (−π…π), width (5°…330°) and top (−30°…60°) in radians.`);
+    }
+    if (r.tilt !== undefined && r.tilt !== null) {
+      const tl = (typeof r.tilt === "object" ? r.tilt : {}) as Record<string, unknown>;
+      const tilt: { up?: number; down?: number } = {};
+      if (typeof tl.up === "number" && tl.up >= 0 && tl.up <= Math.PI / 2) tilt.up = tl.up;
+      if (typeof tl.down === "number" && tl.down <= 0 && tl.down >= -Math.PI / 2) tilt.down = tl.down;
+      if (tilt.up !== undefined || tilt.down !== undefined) walk.tilt = tilt;
+      else problems.push(`${key}: «tilt» needs up (0…90°) and/or down (−90…0°) in radians.`);
     }
     if (r.tagsFrom !== undefined && r.tagsFrom !== null) {
       if (typeof r.tagsFrom === "number" && Number.isFinite(r.tagsFrom) && r.tagsFrom > 0) walk.tagsFrom = r.tagsFrom;
@@ -717,6 +732,17 @@ export function setHide(w: Walks, key: string, hide: WalkHide | null): Walks {
   });
 }
 
+/** How far the view may tilt up or down; a side set to null is free. */
+export function setTilt(w: Walks, key: string, side: "up" | "down", pitch: number | null): Walks {
+  return withWalk(w, key, (walk) => {
+    const { tilt: old, ...rest } = walk;
+    const tilt = { ...(old ?? {}) };
+    if (pitch === null) delete tilt[side];
+    else tilt[side] = side === "up" ? Math.max(0, pitch) : Math.min(0, pitch);
+    return tilt.up !== undefined || tilt.down !== undefined ? { ...rest, tilt } : rest;
+  });
+}
+
 /** Price tags only from `t` seconds on; null: all the way. */
 export function setTagsFrom(w: Walks, key: string, t: number | null): Walks {
   return withWalk(w, key, (walk) => {
@@ -814,10 +840,11 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const next = same(m.next, bb.next) ? t.next : m.next;
     const hide = same(m.hide, bb.hide) ? t.hide : m.hide;
     const tagsFrom = same(m.tagsFrom, bb.tagsFrom) ? t.tagsFrom : m.tagsFrom;
+    const tilt = same(m.tilt, bb.tilt) ? t.tilt : m.tilt;
     walks[k] = {
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
       ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
-      ...(next ? { next } : {}), ...(hide ? { hide } : {}), ...(tagsFrom ? { tagsFrom } : {}),
+      ...(next ? { next } : {}), ...(hide ? { hide } : {}), ...(tagsFrom ? { tagsFrom } : {}), ...(tilt ? { tilt } : {}),
     };
   }
   const start = same(mine.start, base.start) ? theirs.start : mine.start;
