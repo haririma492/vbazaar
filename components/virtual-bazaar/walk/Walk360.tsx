@@ -455,6 +455,7 @@ export default function Walk360() {
 
     // The cap over the operator's head (`NADIR_DEG`): over the videos (0, 1),
     // under the doors' signs and the price tags (10, 11).
+    const editing = params.get("edit") === "1" || params.get("spots") === "1";
     const nadirParam = params.get("nadir");
     const nadirDeg = nadirParam !== null && Number.isFinite(Number(nadirParam)) ? THREE.MathUtils.clamp(Number(nadirParam), 0, 90) : NADIR_DEG;
     const nadirRad = THREE.MathUtils.degToRad(nadirDeg);
@@ -1385,8 +1386,27 @@ export default function Walk360() {
         camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
         turnYaw += angleDiff(wanted, heading());
       }
-      if (gyroOn && gyroHave) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
-      else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
+      const aim = () => {
+        if (gyroOn && gyroHave) camera.quaternion.copy(turnQ.setFromAxisAngle(UP, -turnYaw)).multiply(gyroQ);
+        else camera.quaternion.setFromEuler(look.set(-pitch, -(yaw + turnYaw), 0));
+      };
+      aim();
+      // ⚠️ THE VIEW STOPS SHORT OF THE PHOTOGRAPHER (owner, 2026-11-01: in a
+      // small store the dark patch "blackened a full side of the store").
+      // On a walk with a hidden direction the shopper cannot turn the view
+      // into it: they look round everywhere else, and the patch is seen at
+      // most at the edge of the picture. The operator (`?edit=1`) still can.
+      const hid = !editing && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
+      if (hid) {
+        const halfFov = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
+        const lim = Math.min(Math.PI - 0.05, hid.width / 2 + halfFov * 0.75);
+        const d = angleDiff(videoYaw(), hideYawAt(hid, current!.video.currentTime));
+        if (Math.abs(d) < lim) {
+          turnYaw += (d >= 0 ? 1 : -1) * (lim - Math.abs(d));
+          velTurn = 0;
+          aim();
+        }
+      }
 
       let wantRate = shape(-stickY);
       if (keys.has("w") || keys.has("arrowup")) wantRate = 1;
