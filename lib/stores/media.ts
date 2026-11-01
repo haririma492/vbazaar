@@ -60,13 +60,20 @@ export function encode(input: string, output: string, width: number, crf: number
   });
 }
 
+/**
+ * A heading (radians, any value) as the yaw ffmpeg's v360 accepts: degrees in −180…180.
+ * v360 refuses anything outside that range, and a heading of 240° stopped the Tagger with
+ * "Error initializing complex filters. Numerical result out of range".
+ */
+export const v360Yaw = (r: number) => ((((r * 180) / Math.PI) % 360) + 540) % 360 - 180;
+
 /** Normal camera views (`n`×`n`, JPEG) of the walk at `t` s, one per heading, all at `pitch` with `fov` (radians). */
 export async function views(input: string, t: number, yaws: number[], pitch: number, fov: number, n: number): Promise<Uint8Array[]> {
   const dir = mkdtempSync(join(tmpdir(), "views-"));
   try {
     const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
     const split = `[0:v]split=${yaws.length}${yaws.map((_, i) => `[s${i}]`).join("")}`;
-    const each = yaws.map((y, i) => `[s${i}]v360=input=e:output=flat:yaw=${deg(y)}:pitch=${deg(pitch)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}[o${i}]`);
+    const each = yaws.map((y, i) => `[s${i}]v360=input=e:output=flat:yaw=${v360Yaw(y).toFixed(3)}:pitch=${deg(pitch)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}[o${i}]`);
     await run("ffmpeg", [
       "-v", "error", "-y", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-filter_complex", [split, ...each].join(";"),
       ...yaws.flatMap((_, i) => ["-map", `[o${i}]`, "-frames:v", "1", "-q:v", "3", join(dir, `v${i}.jpg`)]),

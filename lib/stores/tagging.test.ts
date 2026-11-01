@@ -98,3 +98,15 @@ test("stores take the hallway's free spots in order; the operator moves them; th
   assert.equal(w.doors[0].size, 0.5);
   assert.ok(checkWalks({ walks: { "scenes/a/w.mp4": { doors: [{ ...door, image: "http://insecure" }] } } }).problems.length, "a door photo is https only");
 });
+
+test("every heading the Tagger looks along is a yaw ffmpeg's v360 accepts (−180…180°)", async () => {
+  const { v360Yaw } = await import("./media.ts");
+  const { HEADINGS } = await import("./tagging.ts");
+  for (const h of HEADINGS) {
+    const y = v360Yaw(h);
+    assert.ok(y >= -180 && y <= 180, `heading ${(h * 180) / Math.PI}° became ${y}`);
+  }
+  assert.equal(Math.round(v360Yaw((240 * Math.PI) / 180)), -120);
+  assert.equal(Math.round(v360Yaw((300 * Math.PI) / 180)), -60);
+  assert.equal(Math.round(v360Yaw((60 * Math.PI) / 180)), 60);
+});
