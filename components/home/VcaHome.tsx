@@ -65,6 +65,12 @@ export default async function VcaHome({ lang }: { lang: Lang }) {
           <a href={t.otherHref} hrefLang={t.otherLang} lang={t.otherLang} className="vb-lang">{t.other}</a>
         </nav>
       </header>
+      <div className="vb-logo">
+        {/* The bazaar's logo (owner, 2026-11-01): first thing on the page, above the places and stores. */}
+        <img src="/media/brand/vbazaar-logo-1000.webp" srcSet="/media/brand/vbazaar-logo-1000.webp 1000w, /media/brand/vbazaar-logo-2000.webp 2000w"
+          sizes="(max-width: 760px) 92vw, 720px" width={1000} height={734} fetchPriority="high"
+          alt={lang === "fa" ? "بازار مجازی تورنتو — vbazaar.app" : "Virtual Bazaar of Toronto — vbazaar.app"} />
+      </div>
       <BazaarDirectory lang={lang} dir={directory} />
       <main dangerouslySetInnerHTML={{ __html: body }} />
       <footer className="vb-foot">
