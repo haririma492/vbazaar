@@ -480,55 +480,6 @@ export default function Walk360() {
     nadir.visible = false;
     scene.add(nadir);
 
-    // The patch over the photographer (`Walk.hide`): a slice of a sphere from
-    // straight down up to the hide's top, soft at its three edges, between
-    // the video and the cap. Rebuilt only when the hide changes.
-    const hideCanvas = document.createElement("canvas");
-    hideCanvas.width = 64;
-    hideCanvas.height = 64;
-    {
-      const c = hideCanvas.getContext("2d")!;
-      const across = c.createLinearGradient(0, 0, 64, 0);
-      across.addColorStop(0, "rgba(22,22,24,0)");
-      across.addColorStop(0.22, "rgba(22,22,24,1)");
-      across.addColorStop(0.78, "rgba(22,22,24,1)");
-      across.addColorStop(1, "rgba(22,22,24,0)");
-      c.fillStyle = across;
-      c.fillRect(0, 0, 64, 64);
-      c.globalCompositeOperation = "destination-in";
-      const down = c.createLinearGradient(0, 0, 0, 64);
-      down.addColorStop(0, "rgba(0,0,0,0)");
-      down.addColorStop(0.18, "rgba(0,0,0,1)");
-      down.addColorStop(1, "rgba(0,0,0,1)");
-      c.fillStyle = down;
-      c.fillRect(0, 0, 64, 64);
-    }
-    const hideTexture = new THREE.CanvasTexture(hideCanvas);
-    hideTexture.colorSpace = THREE.SRGBColorSpace;
-    const hideMaterial = new THREE.MeshBasicMaterial({ map: hideTexture, transparent: true, depthTest: false, depthWrite: false });
-    const hideMesh = new THREE.Mesh(new THREE.BufferGeometry(), hideMaterial);
-    hideMesh.renderOrder = 4;
-    hideMesh.visible = false;
-    scene.add(hideMesh);
-    let hideShape = "";
-    const updateHide = () => {
-      const h = current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
-      if (!h) { hideMesh.visible = false; return; }
-      const shape = `${h.width}|${h.top}`;
-      if (shape !== hideShape) {
-        hideShape = shape;
-        const thetaStart = Math.PI / 2 - h.top;
-        // Centred on −Z (yaw 0); `scale(-1)` so it is seen from inside.
-        const g = new THREE.SphereGeometry(46, 48, 24, -Math.PI / 2 - h.width / 2, h.width, thetaStart, Math.PI - thetaStart);
-        g.scale(-1, 1, 1);
-        hideMesh.geometry.dispose();
-        hideMesh.geometry = g;
-      }
-      // A direction `v` in the video is at `v − spin` in the world (as a door's sign).
-      hideMesh.rotation.y = -(hideYawAt(h, current!.video.currentTime) - current!.spin);
-      hideMesh.visible = true;
-    };
-
     let walksNow: Walks = emptyWalks();
     let current: Layer | null = null;
     let pending: Layer | null = null;
@@ -1393,13 +1344,15 @@ export default function Walk360() {
       aim();
       // ⚠️ THE VIEW STOPS SHORT OF THE PHOTOGRAPHER (owner, 2026-11-01: in a
       // small store the dark patch "blackened a full side of the store").
-      // On a walk with a hidden direction the shopper cannot turn the view
-      // into it: they look round everywhere else, and the patch is seen at
-      // most at the edge of the picture. The operator (`?edit=1`) still can.
+      // Then: "lock the zone where I am visible INSTEAD of creating black cloud
+      // … remove all black cloud". The view turns on the horizontal plane and
+      // stops where the zone would enter the picture, so the photographer is
+      // never on screen and nothing is darkened. The operator (`?edit=1`)
+      // still turns freely, to find and set the zone.
       const hid = !editing && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
       if (hid) {
         const halfFov = Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * camera.aspect);
-        const lim = Math.min(Math.PI - 0.05, hid.width / 2 + halfFov * 0.75);
+        const lim = Math.min(Math.PI - 0.05, hid.width / 2 + halfFov + 0.02);
         const d = angleDiff(videoYaw(), hideYawAt(hid, current!.video.currentTime));
         if (Math.abs(d) < lim) {
           turnYaw += (d >= 0 ? 1 : -1) * (lim - Math.abs(d));
@@ -1475,7 +1428,6 @@ export default function Walk360() {
       updateDoors();
       updateItems();
       nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);
-      updateHide();
       renderer.render(scene, camera);
       report();
     });
@@ -1499,9 +1451,6 @@ export default function Walk360() {
         sprite.material.dispose();
       }
       geometry.dispose();
-      hideMesh.geometry.dispose();
-      hideMaterial.dispose();
-      hideTexture.dispose();
       nadirGeometry.dispose();
       nadirMaterial.dispose();
       nadirTexture.dispose();
@@ -1984,7 +1933,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
         <div className="flex gap-1">
           {(["doors", "items", "sound", "cut", "hide"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : "Hide"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : "Lock"}
             </button>
           ))}
         </div>
@@ -2253,10 +2202,10 @@ function HideEditor({ engine, walks, viewKey, change }: {
     <div className="space-y-2">
       <p className="text-white/80">Turn the view until you face the photographer (behind the camera), then press:</p>
       <button className={`${btn} w-full border-amber-300/60 bg-amber-300/20 py-2 text-[13px] font-semibold`} onClick={facing}>
-        Hide the direction I face now
+        Lock the direction I face now
       </button>
       <p className="text-[11px] text-white/60">
-        Did you turn round during the walk? Go to a moment after the turn, face yourself again and press again: the patch then turns with you.
+        Did you turn round during the walk? Go to a moment after the turn, face yourself again and press again: the locked zone then turns with you.
       </p>
       {hide?.at && hide.at.length > 1 && (
         <ul className="space-y-1">
@@ -2276,15 +2225,8 @@ function HideEditor({ engine, walks, viewKey, change }: {
             <button className={btn} onClick={() => set({ width: hide.width + rad(10) })}>Wider</button>
           </span>
         </div>
-        <div className="flex items-center justify-between gap-2">
-          <span>Up to: {deg(hide.top)}° {hide.top >= 0 ? "above" : "below"} the horizon</span>
-          <span className="flex gap-1">
-            <button className={btn} onClick={() => set({ top: hide.top - rad(5) })}>Lower</button>
-            <button className={btn} onClick={() => set({ top: hide.top + rad(5) })}>Higher</button>
-          </span>
-        </div>
-        <p className="text-[11px] text-white/60">The dark patch covers this direction for the whole walk. Walk on a little to check the photographer stays inside it.</p>
-        <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove the patch</button>
+        <p className="text-[11px] text-white/60">Shoppers cannot turn the view into this zone (nothing is darkened). Here in edit mode you still can: walk on a little to check you stay inside it, then open the walk without &edit=1 to try it.</p>
+        <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove the lock</button>
       </>)}
     </div>
   );

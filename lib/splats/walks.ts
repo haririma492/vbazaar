@@ -199,8 +199,11 @@ export type Walk = {
    * front of you films you behind it, so one direction of the walk is the
    * operator. That direction — in the VIDEO's own frame (`yaw`, radians, the
    * same as a door's), `width` radians wide, from straight down up to `top`
-   * radians above the horizon — is covered by a dark, soft-edged patch for
-   * the whole walk. Set on the walk's edit page («Hide»).
+   * radians above the horizon (kept, unused) — is a LOCKED ZONE: the
+   * shopper's view turns on the horizontal plane and stops before the zone
+   * enters the picture. Nothing is darkened (owner, 2026-11-01: "lock the zone
+   * where I am visible INSTEAD of creating black cloud"). Set on the walk's
+   * edit page («Lock»).
    */
   hide?: WalkHide;
   /**
