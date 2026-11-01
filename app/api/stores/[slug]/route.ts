@@ -200,7 +200,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "redo") {
     const step = String(body.step ?? "") as StepName;
     if (!STEPS.includes(step)) return fail(400, "Unknown step.");
-    const next = await updateStore(s.slug, (x) => redo(x, STEPS.slice(STEPS.indexOf(step))));
+    // Tagging again a walk whose products were found in it: the Tagger runs this time (re-pins, re-cuts photos).
+    const next = await updateStore(s.slug, (x) => {
+      const r = redo(x, STEPS.slice(STEPS.indexOf(step)));
+      return step === "tag" ? { ...r, out: { ...r.out, found: undefined } } : r;
+    });
     kick();
     return ok({ store: next ? forPage(next) : null });
   }

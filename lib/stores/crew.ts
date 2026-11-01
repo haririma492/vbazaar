@@ -24,7 +24,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, looksFlat, MAX_ITEMS, type Walks } from "@/lib/splats/walks";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
@@ -362,6 +362,15 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
       }
     }
     const kept = keepTracks(tracks).slice(0, MAX_ITEMS);
+    // Products found in the video (no merchant photo) get their photo cut again from this walk.
+    const best = new Map<number, Best>();
+    const fromVideo = new Set(c.products.filter((p) => p.by === "video").map((p) => p.n));
+    for (const x of sightings) if (fromVideo.has(x.n) && x.confidence >= 0.6) keepBest(best, x.n, x.look, x.box, x.confidence);
+    if (best.size) {
+      const photos = await cutPhotos(s, src, best, say);
+      const now = await readCatalogue(sceneOf(s.slug));
+      if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
+    }
     const byN = new Map(c.products.map((p) => [p.n, p]));
     const count = new Map<number, number>();
     const items = kept.map((t) => {
@@ -383,6 +392,46 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+// ── Product photos cut from the walk ────────────────────────────────────────
+
+/** The clearest sighting of a product: the look it was seen in and its box there. */
+type Best = { look: Look; box: [number, number, number, number]; score: number };
+const keepBest = (best: Map<number, Best>, n: number, look: Look, box: [number, number, number, number], confidence: number) => {
+  const score = (box[2] - box[0]) * (box[3] - box[1]) * confidence;
+  if (score > (best.get(n)?.score ?? -1)) best.set(n, { look, box, score });
+};
+
+/**
+ * ⚠️ A PRODUCT'S PHOTO IS A SQUARE VIEW AIMED AT IT, FROM THE FULL-SIZE VIDEO
+ * (owner, 2026-11-01: "make the photo properly in the frame not a narrow
+ * banner"). Cutting the box out of a 768 px look gave 52×44 px and 346×56 px
+ * strips; this points a camera at the product's middle with a field of view a
+ * little wider than it, and renders 640 px square from the upload itself (8K)
+ * when it is still there, else the walk's own copy.
+ */
+async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Best>, say: (note: string) => Promise<void>): Promise<Map<number, string>> {
+  let input = localCopy;
+  try { if (s.files.video) input = await presignGet(s.files.video.key, "master", 3600); } catch { /* the walk's copy will do */ }
+  const out = new Map<number, string>();
+  let i = 0;
+  for (const [n, b] of best) {
+    i++;
+    if (i % 5 === 1) await say(`Cutting product photos: ${i} of ${best.size}…`);
+    const dir = aim(b.look, b.box);
+    const size = Math.max(b.box[2] - b.box[0], b.box[3] - b.box[1]) / 1000 * LOOK_FOV;
+    const fov = Math.min(0.8, Math.max(0.1, size * 1.5));
+    try {
+      let jpeg: Uint8Array;
+      try { [jpeg] = await views(input, b.look.t, [dir.lon], dir.lat, fov, 640); }
+      catch { [jpeg] = await views(localCopy, b.look.t, [dir.lon], dir.lat, fov, 640); }
+      out.set(n, await publishPhoto(s.slug, n, jpeg));
+    } catch (e) {
+      console.error("[crew] photo", s.slug, n, e);
+    }
+  }
+  return out;
 }
 
 // ── Product finder (no sheet) ───────────────────────────────────────────────
@@ -411,7 +460,8 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     const { seconds } = await probe(src);
     const plan = lookPlan(seconds);
     const purse = purseOf(s);
-    const products: Array<{ n: number; en: string; fa: string; best: { jpeg: Uint8Array; box: [number, number, number, number]; score: number } }> = [];
+    const products: Array<{ n: number; en: string; fa: string }> = [];
+    const best = new Map<number, Best>();
     const sightings: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }> = [];
     let stopped = "";
     for (const [i, moment] of plan.entries()) {
@@ -426,28 +476,21 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
       }
       for (const f of seen) {
         if (f.confidence < 0.6) continue;
-        const k = moment.looks.findIndex((l) => l.id === f.view);
-        const score = ((f.box[2] - f.box[0]) * (f.box[3] - f.box[1])) * f.confidence;
+        const look = moment.looks.find((l) => l.id === f.view);
+        if (!look) continue;
         let p = f.same !== null ? products.find((x) => x.n === f.same) : undefined;
         if (!p) {
           if (products.length >= MAX_NUMBER) continue;
-          p = { n: products.length + 1, en: f.en, fa: f.fa, best: { jpeg: jpegs[k], box: f.box, score } };
+          p = { n: products.length + 1, en: f.en, fa: f.fa };
           products.push(p);
-        } else if (score > p.best.score) {
-          p.best = { jpeg: jpegs[k], box: f.box, score };
-          if (!p.fa && f.fa) p.fa = f.fa;
-        }
-        sightings.push({ look: moment.looks[k], n: p.n, box: f.box, confidence: f.confidence });
+        } else if (!p.fa && f.fa) p.fa = f.fa;
+        keepBest(best, p.n, look, f.box, f.confidence);
+        sightings.push({ look, n: p.n, box: f.box, confidence: f.confidence });
       }
     }
     if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);
-    await say(`Cutting out ${products.length} product photos…`);
-    const listed: Product[] = [];
-    for (const p of products) {
-      let photo: string | undefined;
-      try { photo = await publishPhoto(s.slug, p.n, await cropJpeg(p.best.jpeg, p.best.box)); } catch (e) { console.error("[crew] crop", s.slug, p.n, e); }
-      listed.push({ n: p.n, en: p.en, ...(p.fa ? { fa: p.fa } : {}), unit: "piece", priceCents: null, by: "video", ...(photo ? { photo } : {}) });
-    }
+    const photos = await cutPhotos(s, src, best, say);
+    const listed: Product[] = products.map((p) => ({ n: p.n, en: p.en, ...(p.fa ? { fa: p.fa } : {}), unit: "piece" as const, priceCents: null, by: "video" as const, ...(photos.has(p.n) ? { photo: photos.get(p.n)! } : {}) }));
     await writeCatalogue({ store: sceneOf(s.slug), products: listed });
     // Pinned as the Tagger pins: each sighting followed both ways through the frames.
     const tracks: Track[] = [];

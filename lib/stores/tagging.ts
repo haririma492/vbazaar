@@ -19,7 +19,7 @@
  * Pure: `node --test` runs it.
  */
 
-import { followStep, patchAt } from "../splats/track";
+import { followStep, matchPatch, patchAt } from "../splats/track";
 import { renderView, viewDir } from "../splats/projection";
 import type { ItemPin, WalkItem } from "../splats/walks";
 import type { Product } from "../splats/catalogue";
@@ -42,6 +42,19 @@ const VIEW_PATCH = 15;
 const VIEW_RADIUS = 20;
 /** A follow shorter than this many pins is not kept on its own (one sighting, seen once). */
 export const MIN_PINS = 3;
+/**
+ * ⚠️ A FOLLOW STOPS WHEN IT HAS LEFT ITS PRODUCT (owner, 2026-11-01: "the tags
+ * on the items should be stationary why they move with camera?"). On the
+ * first real store, follows slid off a glass case onto whatever moves with
+ * the camera — down to the camera's own mount, straight below — and the tag
+ * went with them. A step is refused when what it found no longer looks like
+ * the product as first seen (`ANCHOR_MIN`), when it is near straight down or
+ * up (`MAX_LAT`: no shelf is there, the mount and the ceiling lights are),
+ * or when it jumps (`MAX_STEP`).
+ */
+export const ANCHOR_MIN = 0.35;
+export const MAX_LAT = 1.05;
+export const MAX_STEP = 0.12;
 /** Two sightings of a product closer than this (radians, at the same moment) are the same one. */
 const SAME = 0.25;
 
@@ -79,10 +92,14 @@ export function follow(frames: Float32Array[], W: number, H: number, t0: number,
     let at = at0, move = { lon: 0, lat: 0 }, template = template0;
     for (let i = i0 + dir; i >= 0 && i < frames.length && Math.abs(i - i0) <= FOLLOW_SPAN * FOLLOW_FPS; i += dir) {
       const guess = { lon: at.lon + move.lon, lat: at.lat + move.lat };
-      const r = followStep(view(i, guess), VIEW_N, VIEW_N, template, VIEW_PATCH, { x: c, y: c }, VIEW_RADIUS);
+      const frameView = view(i, guess);
+      const r = followStep(frameView, VIEW_N, VIEW_N, template, VIEW_PATCH, { x: c, y: c }, VIEW_RADIUS);
       if (!r) break;
+      if (matchPatch(frameView, VIEW_N, VIEW_N, template0, VIEW_PATCH, r.x, r.y, 0).score < ANCHOR_MIN) break;
       const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, r.x, r.y);
-      move = { lon: Math.atan2(Math.sin(next.lon - at.lon), Math.cos(next.lon - at.lon)), lat: next.lat - at.lat };
+      const step = { lon: Math.atan2(Math.sin(next.lon - at.lon), Math.cos(next.lon - at.lon)), lat: next.lat - at.lat };
+      if (Math.abs(next.lat) > MAX_LAT || Math.hypot(step.lon * Math.cos(at.lat), step.lat) > MAX_STEP) break;
+      move = step;
       at = next;
       template = r.template;
       pins.push({ t: tOf(i), x: r3(at.lon), y: r3(at.lat) });

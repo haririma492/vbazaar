@@ -439,6 +439,12 @@ export function presignGetAny(key: string, seconds: number): Promise<string> {
   return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: seconds });
 }
 
+/** A GET link for a key in the web or the masters bucket, as `downloadToFile` reads it. */
+export function presignGet(key: string, kind: SplatKind, seconds: number): Promise<string> {
+  if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`);
+  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }), { expiresIn: seconds });
+}
+
 /**
  * A PUT link into the masters bucket (private) — where the GPU machine writes
  * its status, log, cameras and the trained .ply. Signed WITHOUT a content

@@ -13,6 +13,7 @@
 import { useState } from "react";
 import { UNITS, UNIT_SAY, formatCents, type Product, type Unit } from "@/lib/splats/catalogue";
 import { postJson } from "./upload";
+import PhotoZoom from "@/components/common/PhotoZoom";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
 type Step = "unit" | "price" | "sku" | "note" | "done";
@@ -40,7 +41,7 @@ export default function Products({ api, products, reload }: { api: string; produ
             className={`flex flex-col gap-1 rounded-xl border p-1.5 text-start ${open === p.n ? "border-amber-300 bg-amber-300/10" : needsInfo(p) ? "border-rose-300/40" : "border-white/10 hover:border-white/30"}`}>
             {p.photo
               // eslint-disable-next-line @next/next/no-img-element -- cut from the walk
-              ? <img src={p.photo} alt="" loading="lazy" className="aspect-square w-full rounded-lg bg-white/5 object-contain" />
+              ? <img src={p.photo} alt="" loading="lazy" className="aspect-square w-full rounded-lg bg-white object-contain" />
               : <span className="flex aspect-square w-full items-center justify-center rounded-lg bg-white/5 text-[28px]">🛒</span>}
             <span dir="auto" className="truncate text-[13px] font-bold">#{p.n} · {p.fa || p.en}</span>
             <span dir="ltr" className={`text-left text-[12px] ${needsInfo(p) ? "text-rose-200" : "text-amber-200"}`}>
@@ -88,8 +89,7 @@ function ProductCard({ api, product, others, close, reload }: { api: string; pro
     <div className="mt-3 rounded-2xl border border-amber-300/50 bg-black/40 p-3">
       <div className="flex items-start gap-3">
         {product.photo
-          // eslint-disable-next-line @next/next/no-img-element -- cut from the walk
-          ? <img src={product.photo} alt="" className="h-24 w-24 shrink-0 rounded-xl bg-white/5 object-contain" />
+          ? <PhotoZoom src={product.photo} className="h-28 w-28 rounded-xl bg-white object-contain" />
           : <span className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-white/5 text-[32px]">🛒</span>}
         <div className="min-w-0 flex-1">
           <div dir="auto" className="text-[16px] font-bold">#{product.n} · {product.fa || product.en}</div>

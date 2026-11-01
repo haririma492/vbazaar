@@ -16,6 +16,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { followProduct, followProduct360 } from "./followProduct";
+import PhotoZoom from "@/components/common/PhotoZoom";
 import { basketAddHref, offerItemId, sarekoocheHref, type BasketLine } from "@/lib/sarekooche";
 import {
   addItem, isPinned, isSiteUrl, itemTime, removeItem, setTitle, sortItemPins, updateItem, walkOf,
@@ -136,8 +137,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
       >
         <div className="flex items-start gap-3">
           {photo ? (
-            // eslint-disable-next-line @next/next/no-img-element -- hot-linked, as basket lines are
-            <img src={photo} alt="" onError={(e) => { e.currentTarget.style.visibility = "hidden"; }} className="h-24 w-24 shrink-0 rounded-xl bg-white object-contain" />
+            <PhotoZoom src={photo} className="h-24 w-24 rounded-xl bg-white object-contain" />
           ) : (
             <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-white/10 text-[34px] text-white/60">🛒</div>
           )}
