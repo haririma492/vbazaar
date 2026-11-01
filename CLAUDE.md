@@ -10,6 +10,16 @@ move is finished, olgoo.com still serves the same app; after it, olgoo.com
 301s these paths here. Notes below that say "olgoo.com" or "the root
 `server.js`" describe that earlier home.
 
+**Pushing to main (owner, 2026-11-01, permanent):** asked whether "push to
+main" must be said for every change (*"do we need to say push to main for
+changes to agents? the code is on your server not on my repo!"*), the owner
+answered **yes** to a standing permission. A session whose Claude Code account
+is the owner's (naser.teimourtash@gmail.com, any capitalisation) pushes to
+`main` without asking, once `npm run typecheck`, `npm test` and `npx next
+build` pass — vbazaar.app (Railway) deploys `main` on its own — then watches
+the deploy land and says what went live. Pushes are fast-forward only, never
+forced. Every other account works on a branch and asks first.
+
 **Name and search (owner, 2026-10-30):** the site is **Virtual Bazaar**,
 Farsi «بازار مجازی» (*"should say Virtual Bazaar (bazaar-eh Majazi in farsi)"*;
 the logo is coming from the owner). The Sarekooche shop in the bazaar and the
