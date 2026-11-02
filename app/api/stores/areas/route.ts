@@ -10,6 +10,8 @@
  *   POST { action: "message", id, text }       to the crew, answered on the screen
  *   POST { action: "music", id, type, size } → { key, url, headers };  { action: "musicDone", id, key }
  *   POST { action: "place", id, en, fa }       a place (shopping centre, plaza) added or renamed
+ *   POST { action: "lockWalk", key }           the Lock agent on any walk already made (runs behind the answer;
+ *                                              the walk's `hide`/`tilt` appear in walks.json when done)
  *   POST { action: "areaSet", id, place?, next? }  an area's place; where its walk carries on (next: id, "" nowhere, null default)
  *   POST { action: "spotAdd", area?, t, yaw, pitch, size }  a free door spot on an area's walk (default: the hallway)
  *   POST { action: "spotLink", id, toArea }    the spot is a door into another area ("" frees it)
@@ -26,6 +28,7 @@ import { readBazaar, readIndex, updateBazaar, updateStore } from "@/lib/stores/b
 import { isOperator } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, writeJoins } from "@/lib/stores/crew";
+import { autoLock } from "@/lib/stores/lock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,6 +85,16 @@ export async function POST(req: NextRequest) {
       const en = String(body.en ?? "").trim().slice(0, 80), fa = String(body.fa ?? "").trim().slice(0, 80);
       if (!en) return fail(400, "Give the place an English name.");
       return ok({ bazaar: await updateBazaar((b) => putPlace(b, id, { en, fa })) });
+    }
+    case "lockWalk": {
+      const key = String(body.key ?? "");
+      if (!(await readWalks()).walks[key]) return fail(404, "No such walk.");
+      let spent = 0;
+      const purse = { spent: () => spent, limit: 100, add: async (c: number) => { spent += c; } };
+      void autoLock(key, purse, async () => {})
+        .then((note) => console.log("[lockWalk]", key, note))
+        .catch((e) => console.error("[lockWalk]", key, e));
+      return ok({ started: key });
     }
     case "areaSet": {
       if (needArea()) return needArea()!;
