@@ -15,7 +15,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, readWalks, writeWalks } from "@/lib/splats/r2";
+import { downloadToFile, presignGet, readWalks, webObjectExists, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
 import { ZONE_H, ZONE_W, columnHistograms, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
 import { probe, run } from "./media";
@@ -44,9 +44,15 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
     : null;
   const dir = mkdtempSync(join(tmpdir(), "lock-"));
   try {
-    const src = join(dir, "phone.mp4");
-    await say("Downloading the walk…");
-    await downloadToFile(phoneKeyOf(walkKey), src, "web");
+    // The phone copy, downloaded; a walk without one (made before phone copies)
+    // is read straight from the bucket, only the frames needed.
+    let src = join(dir, "phone.mp4");
+    if (await webObjectExists(phoneKeyOf(walkKey))) {
+      await say("Downloading the walk…");
+      await downloadToFile(phoneKeyOf(walkKey), src, "web");
+    } else {
+      src = await presignGet(walkKey, "web", 6 * 3600);
+    }
     const { seconds } = await probe(src);
     const fps = Math.min(FPS, MAX_FRAMES / Math.max(1, seconds));
     const dt = 1 / fps;
