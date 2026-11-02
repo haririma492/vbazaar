@@ -37,7 +37,11 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
   const before = (await readWalks()).walks[walkKey];
   if (!before) return "No walk to lock.";
   if (before.projection === "flat" || before.projection === "eac") return "Not a 360° panorama: nothing to lock.";
-  if (before.hide && !before.hide.auto) return "Kept the locks set by hand.";
+  // Locks set by hand are kept and become the starting points: the agent
+  // follows the operator from them through every frame (no looking needed).
+  const handLocks: ZoneLock[] | null = before.hide && !before.hide.auto
+    ? (before.hide.locks?.length ? before.hide.locks : (before.hide.at ?? []).slice(0, 50).map((p) => ({ t: p.t, yaw: p.yaw, width: p.width ?? before.hide!.width })))
+    : null;
   const dir = mkdtempSync(join(tmpdir(), "lock-"));
   try {
     const src = join(dir, "phone.mp4");
@@ -47,10 +51,10 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
     const fps = Math.min(FPS, MAX_FRAMES / Math.max(1, seconds));
     const dt = 1 / fps;
 
-    await say("Looking for the person carrying the camera…");
-    const locks: ZoneLock[] = [];
+    await say(handLocks ? "Starting from the locks set by hand…" : "Looking for the person carrying the camera…");
+    const locks: ZoneLock[] = handLocks ? [...handLocks] : [];
     let armsLat = -90;
-    for (const f of SEEDS) {
+    for (const f of handLocks ? [] : SEEDS) {
       const t = Math.min(seconds - 0.1, Math.max(0, f * seconds));
       const jpeg = new Uint8Array(await run("ffmpeg", [
         "-v", "error", "-ss", t.toFixed(2), "-i", src, "-frames:v", "1", "-vf", `scale=${SEED_W}:${SEED_H}`, "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
@@ -80,13 +84,15 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
     const down = armsLat > -90 ? Math.min(-25, Math.max(-40, armsLat + HALF_VFOV + 5)) : -35;
     const tilt = { up: rad(45), down: rad(down) };
 
-    const hide: WalkHide = { yaw: locks[0].yaw, width: locks[0].width, top: 0, locks, at, auto: true };
+    const hide: WalkHide = { yaw: locks[0].yaw, width: locks[0].width, top: 0, locks, at, ...(handLocks ? {} : { auto: true }) };
     const walks = await readWalks();
     const w = walks.walks[walkKey];
     if (!w) return "The walk is gone.";
-    if (w.hide && !w.hide.auto) return "Kept the locks set by hand meanwhile.";
+    if (w.hide && !w.hide.auto && !handLocks) return "Kept the locks set by hand meanwhile.";
+    if (handLocks && JSON.stringify(w.hide?.locks ?? null) !== JSON.stringify(before.hide?.locks ?? null)) return "The locks were changed by hand meanwhile: run again.";
     await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, hide, tilt: !w.tilt || w.hide?.auto ? tilt : w.tilt } } }, walks);
-    return `Locked the camera operator in all ${at.length} frames (found by eye at ${locks.length} moments); shoppers look down to ${Math.round(down)}° and up to 45°.`;
+    const from = handLocks ? `from your ${locks.length} locks` : `found by eye at ${locks.length} moments`;
+    return `Locked the camera operator in all ${at.length} frames (${from}); shoppers look down to ${Math.round(w.tilt && !w.hide?.auto && handLocks ? (w.tilt.down ?? rad(down)) * 180 / Math.PI : down)}° and up to 45°.`;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
