@@ -64,6 +64,7 @@ import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type A
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
+import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
   itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
@@ -2199,6 +2200,11 @@ function HideEditor({ engine, walks, viewKey, change }: {
   const hide = walk?.hide ?? null;
   const [start, setStart] = useState<{ t: number; yaw: number; halfFov: number } | null>(null);
   const [tooShort, setTooShort] = useState(false);
+  const [following, setFollowing] = useState<{ done: number; total: number } | null>(null);
+  const [followError, setFollowError] = useState<string | null>(null);
+  const follow = useRef({ cancelled: false });
+  const walksRef = useRef(walks);
+  walksRef.current = walks;
   const [swept, setSwept] = useState(0);
   const last = useRef(0);
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
@@ -2236,6 +2242,30 @@ function HideEditor({ engine, walks, viewKey, change }: {
     setStart({ t: h.t, yaw: h.yaw, halfFov: h.halfFov });
     setTooShort(false);
   };
+  /** Save the operator's locks, then follow them through the whole walk. */
+  const saveLocks = async (locks: Array<{ t: number; yaw: number; width: number }>) => {
+    if (!viewKey) return;
+    if (!locks.length) { change(setHide(walksRef.current, viewKey, null)); return; }
+    const base = { yaw: locks[0].yaw, width: locks[0].width, top: 0, locks };
+    change(setHide(walksRef.current, viewKey, { ...base, at: locks }));
+    const video = engine.current?.video();
+    const here = engine.current?.here();
+    if (!video || !here || here.projection === "eac") return;
+    const sig = { cancelled: false };
+    follow.current.cancelled = true;
+    follow.current = sig;
+    setFollowing({ done: 0, total: 1 });
+    setFollowError(null);
+    try {
+      const at = await followZoneThroughWalk(video.currentSrc, locks, (p) => { if (!sig.cancelled) setFollowing(p); }, sig);
+      if (sig.cancelled) return;
+      change(setHide(walksRef.current, viewKey, { ...base, at }));
+    } catch (e) {
+      if (!sig.cancelled) setFollowError(`Could not follow you through the walk (${e instanceof Error ? e.message : String(e)}); the lock holds only near the moments you locked.`);
+    } finally {
+      if (!sig.cancelled) setFollowing(null);
+    }
+  };
   const finish = () => {
     if (!start) return;
     // The turn spans the photographer AND one screen width (from appearing
@@ -2247,27 +2277,18 @@ function HideEditor({ engine, walks, viewKey, change }: {
       return;
     }
     const middle = wrapAngle(start.yaw + swept / 2);
-    change(setHide(walks, viewKey, hideFacing(hide, start.t, middle, Math.min(HIDE_WIDTH.max, width), 0, Math.min(HIDE_WIDTH.max, width))));
+    const lock = { t: start.t, yaw: middle, width: Math.min(HIDE_WIDTH.max, width) };
     setStart(null);
+    void saveLocks([...locks.filter((p) => Math.abs(p.t - lock.t) > 0.5), lock].sort((x, y) => x.t - y.t));
   };
-  const dropPoint = (t: number) => {
-    if (!hide) return;
-    const at = (hide.at ?? [{ t: 0, yaw: hide.yaw }]).filter((p) => p.t !== t);
-    change(setHide(walks, viewKey, at.length ? { ...hide, yaw: at[0].yaw, at } : null));
-  };
-  const points = hide ? (hide.at?.length ? hide.at : [{ t: 0, yaw: hide.yaw, width: hide.width }]) : [];
+  const locks = hide ? (hide.locks?.length ? hide.locks : (hide.at?.length && hide.at.length <= 50 ? hide.at.map((p) => ({ t: p.t, yaw: p.yaw, width: p.width ?? hide.width })) : [{ t: 0, yaw: hide.yaw, width: hide.width }])) : [];
+  const dropPoint = (t: number) => void saveLocks(locks.filter((p) => p.t !== t));
   /** One side of a lock out by 10° (`dir` −1: the left side, +1: the right). */
   const widen = (t: number, dir: -1 | 1) => {
-    if (!hide) return;
     const step = (10 * Math.PI) / 180;
-    const at = points.map((p) => {
-      if (p.t !== t) return p;
-      const w = p.width ?? hide.width;
-      if (w + step > HIDE_WIDTH.max) return p;
-      return { ...p, width: w + step, yaw: wrapAngle(p.yaw + (dir * step) / 2) };
-    });
-    change(setHide(walks, viewKey, { ...hide, yaw: at[0].yaw, at }));
+    void saveLocks(locks.map((p) => (p.t !== t || p.width + step > HIDE_WIDTH.max ? p : { ...p, width: p.width + step, yaw: wrapAngle(p.yaw + (dir * step) / 2) })));
   };
+  const points = locks;
 
   return (
     <div className="space-y-2">
@@ -2285,7 +2306,7 @@ function HideEditor({ engine, walks, viewKey, change }: {
         <button className={`${btn} w-full`} onClick={() => setStart(null)}>Cancel</button>
       </>)}
       <p className="text-[11px] text-white/60">
-        Shoppers cannot turn the view into a locked angle. If you turn round during the walk, go to a moment after the turn and lock again: the lock then turns with you.
+        Shoppers cannot turn the view into the locked zone. After a lock, the zone follows you through the whole walk by itself. If it loses you somewhere (try it as a shopper), lock again at that moment.
       </p>
       {points.length > 0 && (
         <ul className="space-y-1">
@@ -2301,7 +2322,10 @@ function HideEditor({ engine, walks, viewKey, change }: {
           ))}
         </ul>
       )}
-      {hide && <button className={`${btn} w-full`} onClick={() => change(setHide(walks, viewKey, null))}>Remove all locks</button>}
+      {following && <p className="text-amber-200">Following you through the walk… {Math.round((100 * following.done) / Math.max(1, following.total))}%</p>}
+      {followError && <p className="text-rose-300">{followError}</p>}
+      {!following && hide?.at && hide.at.length > locks.length && <p className="text-emerald-300">✓ The lock follows you through the whole walk.</p>}
+      {hide && <button className={`${btn} w-full`} onClick={() => { follow.current.cancelled = true; setFollowing(null); change(setHide(walks, viewKey, null)); }}>Remove all locks</button>}
       <div className="space-y-1 border-t border-white/15 pt-2">
         <p className="text-white/80">Up and down: tilt the view as far as shoppers may look, then press.</p>
         {(["up", "down"] as const).map((side) => {

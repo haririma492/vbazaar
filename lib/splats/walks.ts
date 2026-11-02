@@ -227,7 +227,13 @@ export type Walk = {
  * several moments (a walk that turns round — the photographer is behind the
  * camera both ways), turned smoothly between them.
  */
-export type WalkHide = { yaw: number; width: number; top: number; at?: Array<{ t: number; yaw: number; width?: number }> };
+export type WalkHide = {
+  yaw: number; width: number; top: number;
+  /** The zone through the walk: set by hand, or followed from `locks` (`trackZone.ts`). */
+  at?: Array<{ t: number; yaw: number; width?: number }>;
+  /** The operator's own locks, the zone is followed from (kept to follow again). */
+  locks?: Array<{ t: number; yaw: number; width: number }>;
+};
 
 /** The locked zone at moment `t` (video frame): its middle and its width. */
 export function hideAt(h: WalkHide, t: number): { yaw: number; width: number } {
@@ -359,8 +365,18 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
               ...(typeof p.width === "number" && p.width >= HIDE_WIDTH.min - 1e-6 && p.width <= HIDE_WIDTH.max + 1e-6 ? { width: p.width } : {}),
             }))
             .sort((a, b) => a.t - b.t)
-            .slice(0, 20);
+            .slice(0, 6000);
           if (pts.length) walk.hide.at = pts;
+        }
+        if (Array.isArray(h.locks)) {
+          const ls = h.locks
+            .map((p) => (p && typeof p === "object" ? (p as Record<string, unknown>) : {}))
+            .filter((p) => typeof p.t === "number" && p.t >= 0 && Number.isFinite(p.t) && typeof p.yaw === "number" && Math.abs(p.yaw) <= Math.PI + 1e-6
+              && typeof p.width === "number" && p.width >= HIDE_WIDTH.min - 1e-6 && p.width <= HIDE_WIDTH.max + 1e-6)
+            .map((p) => ({ t: p.t as number, yaw: p.yaw as number, width: p.width as number }))
+            .sort((a, b) => a.t - b.t)
+            .slice(0, 50);
+          if (ls.length) walk.hide.locks = ls;
         }
       } else problems.push(`${key}: «hide» needs yaw (−π…π), width (5°…330°) and top (−30°…60°) in radians.`);
     }
