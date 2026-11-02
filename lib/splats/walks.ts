@@ -233,6 +233,8 @@ export type WalkHide = {
   at?: Array<{ t: number; yaw: number; width?: number }>;
   /** The operator's own locks, the zone is followed from (kept to follow again). */
   locks?: Array<{ t: number; yaw: number; width: number }>;
+  /** Set by the Lock agent (`lib/stores/lock.ts`), not by hand: the agent may redo it. */
+  auto?: boolean;
 };
 
 /** The locked zone at moment `t` (video frame): its middle and its width. */
@@ -378,6 +380,7 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
             .slice(0, 50);
           if (ls.length) walk.hide.locks = ls;
         }
+        if (h.auto === true) walk.hide.auto = true;
       } else problems.push(`${key}: «hide» needs yaw (−π…π), width (5°…330°) and top (−30°…60°) in radians.`);
     }
     if (r.tilt !== undefined && r.tilt !== null) {

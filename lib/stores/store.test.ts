@@ -61,7 +61,7 @@ test("the crew runs in order: nothing before the uploads, the video and the list
   assert.equal(nextStep(s), null, "three tries, then it waits for a person");
   assert.equal(statusOf(s).tone, "you");
   s = addUpload(s, "video", file("walk-2.mp4"));
-  for (const n of ["video", "tag", "place"] as const) {
+  for (const n of ["video", "lock", "tag", "place"] as const) {
     assert.equal(nextStep(s), n);
     s = setStep(s, n, "done", "", now);
   }

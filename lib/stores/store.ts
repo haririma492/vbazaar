@@ -40,14 +40,15 @@ export type Bi = { en: string; fa: string };
 export type UploadKind = "video" | "sheet" | "photo" | "door";
 export type Uploaded = { key: string; name: string; size: number; at: string };
 
-export type StepName = "video" | "catalogue" | "photos" | "tag" | "place" | "check";
-export const STEPS: StepName[] = ["video", "catalogue", "photos", "tag", "place", "check"];
+export type StepName = "video" | "lock" | "catalogue" | "photos" | "tag" | "place" | "check";
+export const STEPS: StepName[] = ["video", "lock", "catalogue", "photos", "tag", "place", "check"];
 export type StepState = "todo" | "working" | "done" | "failed" | "needs-you";
 export type Step = { state: StepState; tries: number; note: string; at: string | null };
 
 /** What each agent is called on the page. */
 export const STEP_SAY: Record<StepName, Bi> = {
   video: { en: "Video agent — web and phone copies", fa: "ویدیو — نسخه وب و موبایل" },
+  lock: { en: "Lock agent — keeps the camera operator out of view", fa: "قفل زاویهٔ فیلم‌بردار" },
   catalogue: { en: "Catalogue agent — the product list", fa: "فهرست محصولات" },
   photos: { en: "Photo matcher — each photo to its product", fa: "تطبیق عکس‌ها با محصولات" },
   tag: { en: "Tagger — price tags on the products in the video", fa: "برچسب قیمت روی محصولات" },
@@ -58,6 +59,7 @@ export const STEP_SAY: Record<StepName, Bi> = {
 /** The steps each one waits for. */
 export const NEEDS: Record<StepName, StepName[]> = {
   video: [],
+  lock: ["video"],
   catalogue: [],
   photos: ["catalogue"],
   tag: ["video", "photos"],
@@ -67,7 +69,7 @@ export const NEEDS: Record<StepName, StepName[]> = {
 
 /** A new upload of this kind sends these steps back to do (and nothing else). */
 export const REDO: Record<UploadKind, StepName[]> = {
-  video: ["video", "tag", "place", "check"],
+  video: ["video", "lock", "tag", "place", "check"],
   sheet: ["catalogue", "photos", "tag", "check"],
   photo: ["photos", "tag", "check"],
   door: ["place", "check"],

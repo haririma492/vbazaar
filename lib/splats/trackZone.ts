@@ -20,11 +20,11 @@ const BINS = 64;
 const MAX_STEP = 20;
 
 /** Per column, how many band pixels fall in each colour bin: ZONE_W × BINS. */
-export function columnHistograms(rgba: ArrayLike<number>): Float32Array {
+export function columnHistograms(rgba: ArrayLike<number>, channels = 4): Float32Array {
   const out = new Float32Array(ZONE_W * BINS);
   for (let y = ROW0; y < ROW1; y++) {
     for (let x = 0; x < ZONE_W; x++) {
-      const p = (y * ZONE_W + x) * 4;
+      const p = (y * ZONE_W + x) * channels;
       const bin = ((rgba[p] >> 6) << 4) | ((rgba[p + 1] >> 6) << 2) | (rgba[p + 2] >> 6);
       out[x * BINS + bin]++;
     }

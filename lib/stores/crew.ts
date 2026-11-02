@@ -14,7 +14,7 @@
  *   money     every Claude request is priced and added to the store's
  *             spending; at $5 the AI steps stop and say so (`ai.ts`).
  *
- * The steps: `video` → `catalogue` → `photos` → `tag` → `place` → `check`
+ * The steps: `video` → `lock` → `catalogue` → `photos` → `tag` → `place` → `check`
  * (store.ts says what each waits for). Areas' videos (outside, lobby,
  * hallway) go through the same Video agent (`areaVideo`).
  * Messages to the crew on a store's page are answered here too (`messages.ts`).
@@ -35,6 +35,7 @@ import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, HEADINGS, LOOK_FOV, LOOK_N, LOOK_PITCH, aim, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
+import { autoLock } from "./lock";
 
 /** A step that needs a person: the note says what. */
 export class NeedsYou extends Error {}
@@ -93,6 +94,7 @@ async function loop() {
 
 const STEP_RUN: Record<StepName, (s: StoreRecord, say: (note: string) => Promise<void>) => Promise<string>> = {
   video: stepVideo,
+  lock: stepLock,
   catalogue: stepCatalogue,
   photos: stepPhotos,
   tag: stepTag,
@@ -180,6 +182,13 @@ async function stepVideo(s: StoreRecord, say: (note: string) => Promise<void>): 
   return `The walk is ready: ${Math.round(seconds)} s, web and phone copies.`;
 }
 
+// ── Lock agent ──────────────────────────────────────────────────────────────
+
+async function stepLock(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
+  if (!s.out.walk) throw new Error("The walk is not made yet.");
+  return autoLock(s.out.walk, purseOf(s), say);
+}
+
 /** An area's walk (outside, lobby, hallway), then the joins between areas. */
 async function areaVideo(id: string) {
   const say = async (note: string) => {
@@ -195,6 +204,15 @@ async function areaVideo(id: string) {
       ...x, areas: x.areas.map((a) => (a.id === id ? { ...a, walk: key, video: { state: "done", tries: 0, note: `The walk is ready: ${Math.round(seconds)} s.`, at: new Date().toISOString() } } : a)),
     }));
     await writeJoins(after);
+    // The camera operator, locked out of view here too (best effort: the walk is ready either way).
+    let spent = 0;
+    const purse: Purse = { spent: () => spent, limit: 100, add: async (c) => { spent += c; } };
+    try {
+      await say(await autoLock(key, purse, say));
+    } catch (e) {
+      console.error("[crew] area lock", id, e);
+    }
+    await updateBazaar((x) => ({ ...x, areas: x.areas.map((a) => (a.id === id ? { ...a, video: { ...a.video, state: "done" } } : a)) }));
     // Doors on this area belong to its old video's timeline: its stores are placed again.
     const onIt = new Set(after.spots.filter((sp) => sp.area === id && sp.store).map((sp) => sp.store!));
     for (const { slug } of await readIndex()) if (onIt.has(slug) || !after.spots.some((sp) => sp.store === slug)) await updateStore(slug, (x) => redo(x, ["place", "check"]));
