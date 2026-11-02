@@ -27,6 +27,7 @@ import { formatCents } from "@/lib/splats/catalogue";
 import { getJson, postJson, uploadInParts, uploadMusic } from "./upload";
 import { UPLOAD_CARDS } from "./Intake";
 import Products from "./Products";
+import WalkFrame from "./WalkFrame";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread } from "./ui";
 
 type Page = {
@@ -171,6 +172,8 @@ export default function StorePage({ slug }: { slug: string }) {
           </button>
         )}
       </header>
+
+      {!op && page.walkUrl && <WalkFrame url={page.walkUrl} />}
 
       <Card><Details page={page} save={async (edits) => { await act({ action: "edit", edits }); }} /></Card>
 
