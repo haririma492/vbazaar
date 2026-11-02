@@ -76,7 +76,8 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
 
     // Down: the view's middle stays high enough that the screen's bottom edge
     // is above the operator's arms; up: no further than the ceiling's edge.
-    const down = armsLat > -90 ? Math.min(-10, Math.max(-45, armsLat + HALF_VFOV + 5)) : -35;
+    // Never above −25°: shoppers must still look down into a cabinet or onto a counter.
+    const down = armsLat > -90 ? Math.min(-25, Math.max(-40, armsLat + HALF_VFOV + 5)) : -35;
     const tilt = { up: rad(45), down: rad(down) };
 
     const hide: WalkHide = { yaw: locks[0].yaw, width: locks[0].width, top: 0, locks, at, auto: true };
@@ -84,7 +85,7 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
     const w = walks.walks[walkKey];
     if (!w) return "The walk is gone.";
     if (w.hide && !w.hide.auto) return "Kept the locks set by hand meanwhile.";
-    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, hide, tilt: w.tilt ?? tilt } } }, walks);
+    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, hide, tilt: !w.tilt || w.hide?.auto ? tilt : w.tilt } } }, walks);
     return `Locked the camera operator in all ${at.length} frames (found by eye at ${locks.length} moments); shoppers look down to ${Math.round(down)}° and up to 45°.`;
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -204,7 +204,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (!STEPS.includes(step)) return fail(400, "Unknown step.");
     // Tagging again a walk whose products were found in it: the Tagger runs this time (re-pins, re-cuts photos).
     const next = await updateStore(s.slug, (x) => {
-      const r = redo(x, STEPS.slice(STEPS.indexOf(step)));
+      // The Lock agent touches only the walk's locks: nothing after it needs doing again.
+      const r = redo(x, step === "lock" ? ["lock"] : STEPS.slice(STEPS.indexOf(step)));
       return step === "tag" ? { ...r, out: { ...r.out, found: undefined } } : r;
     });
     kick();
