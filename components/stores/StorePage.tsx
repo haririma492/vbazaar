@@ -11,6 +11,12 @@
  * doing, the report, the walk to look at, the uploads (the video for the
  * operator only), the store's details, music for the walk, the message box
  * to the crew, and for the operator «Publish».
+ *
+ * The store's details come first, for both. The owner (owner, 2026-11-02:
+ * "Publish Store and other unnecessary items are not visible to store owner")
+ * does not see Publish, the crew's steps and «Run again», the report, the
+ * AI spending or the video upload; the operator can look at the page as the
+ * owner sees it («View as the store owner»).
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -110,6 +116,8 @@ export default function StorePage({ slug }: { slug: string }) {
   const [page, setPage] = useState<Page | null>(null);
   const [state, setState] = useState<"loading" | "out" | "in" | "missing" | "error">("loading");
   const [err, setErr] = useState<string | null>(null);
+  /** The operator looking at the page as the store's owner sees it. */
+  const [asOwner, setAsOwner] = useState(false);
   const api = `/api/stores/${slug}`;
 
   const load = useCallback(async () => {
@@ -144,7 +152,7 @@ export default function StorePage({ slug }: { slug: string }) {
   if (!page) return <Said text={err} />;
 
   const s = page.store;
-  const op = page.who === "operator";
+  const op = page.who === "operator" && !asOwner;
   const act = async (body: object) => {
     await postJson(api, body);
     await load();
@@ -156,7 +164,14 @@ export default function StorePage({ slug }: { slug: string }) {
         <p dir="ltr" className="text-left text-[14px] text-white/60">{s.name.en} · vbazaar.app/stores/{s.slug}</p>
         <p className={`mt-2 text-[15px] font-bold ${TONE[page.status.tone] ?? ""}`}>{page.status.fa} · {page.status.en}</p>
         {err && <Said text={err} />}
+        {page.who === "operator" && (
+          <button type="button" className={`${QUIET} mt-2`} onClick={() => setAsOwner(!asOwner)}>
+            {asOwner ? "Back to the operator's view" : "View as the store owner · نمای صاحب فروشگاه"}
+          </button>
+        )}
       </header>
+
+      <Card><Details page={page} save={async (edits) => { await act({ action: "edit", edits }); }} /></Card>
 
       <Card>
         <div className="flex flex-wrap items-center gap-2">
@@ -168,10 +183,10 @@ export default function StorePage({ slug }: { slug: string }) {
           )}
           {op && s.live && <button type="button" className={QUIET} onClick={() => void act({ action: "unpublish" })}>برداشتن از بازار · Unpublish</button>}
         </div>
-        <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of $5.00</p>
+        {op && <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of $5.00</p>}
       </Card>
 
-      <Card>
+      {op && <Card>
         <Bi fa="کار تیم ساخت" en="What the crew is doing" className="mb-3 text-[15px] font-bold text-amber-100" />
         <Steps steps={STEPS.map((n) => [n, s.steps[n]])} say={STEP_SAY} />
         {op && (
@@ -181,7 +196,7 @@ export default function StorePage({ slug }: { slug: string }) {
             ))}
           </div>
         )}
-      </Card>
+      </Card>}
 
       <Card>
         <Thread
@@ -191,7 +206,7 @@ export default function StorePage({ slug }: { slug: string }) {
         />
       </Card>
 
-      {s.report && (
+      {op && s.report && (
         <Card>
           <Bi fa="گزارش" en={`The report — ${new Date(s.report.at).toLocaleString()}`} className="text-[15px] font-bold text-amber-100" />
           <ul dir="ltr" className="mt-3 space-y-1 text-left text-[14px]">
@@ -222,11 +237,9 @@ export default function StorePage({ slug }: { slug: string }) {
 
       {page.products.length > 0 && <Products api={api} products={page.products} reload={load} />}
 
-      <Card><Details page={page} save={async (edits) => { await act({ action: "edit", edits }); }} /></Card>
-
       <Card>
         <ChangePassword api={api} />
-        {!op && <button type="button" className={`${QUIET} mt-4`} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
+        {page.who === "owner" && <button type="button" className={`${QUIET} mt-4`} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
       </Card>
     </div>
   );
