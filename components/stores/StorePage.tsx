@@ -12,10 +12,11 @@
  * operator only), the store's details, music for the walk, the message box
  * to the crew, and for the operator «Publish».
  *
- * The store's details come first, for both. The owner (owner, 2026-11-02:
- * "Publish Store and other unnecessary items are not visible to store owner")
- * does not see Publish, the crew's steps and «Run again», the report, the
- * AI spending or the video upload; the operator can look at the page as the
+ * The owner sees two things only (owner, 2026-11-02: "Owners's view is for
+ * two things only: 1) list of product photos … price and name to be added
+ * 2) مشخصات فروشگاه"): the store's details and the products. Everything else
+ * — walk link, Publish, the crew, the report, messages, uploads, music, the
+ * password — is the operator's; the operator can look at the page as the
  * owner sees it («View as the store owner»).
  */
 
@@ -173,7 +174,7 @@ export default function StorePage({ slug }: { slug: string }) {
 
       <Card><Details page={page} save={async (edits) => { await act({ action: "edit", edits }); }} /></Card>
 
-      <Card>
+      {op && <Card>
         <div className="flex flex-wrap items-center gap-2">
           {page.walkUrl ? <a href={page.walkUrl} target="_blank" rel="noreferrer" className={KEY + " inline-flex items-center"}>قدم زدن در فروشگاه · Walk the store ↗</a>
             : <p className="text-[13px] text-white/55">The walk appears here once the Video agent has made it. · پس از آماده شدن ویدیو</p>}
@@ -183,8 +184,8 @@ export default function StorePage({ slug }: { slug: string }) {
           )}
           {op && s.live && <button type="button" className={QUIET} onClick={() => void act({ action: "unpublish" })}>برداشتن از بازار · Unpublish</button>}
         </div>
-        {op && <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of $5.00</p>}
-      </Card>
+        <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of $5.00</p>
+      </Card>}
 
       {op && <Card>
         <Bi fa="کار تیم ساخت" en="What the crew is doing" className="mb-3 text-[15px] font-bold text-amber-100" />
@@ -198,13 +199,13 @@ export default function StorePage({ slug }: { slug: string }) {
         )}
       </Card>}
 
-      <Card>
+      {op && <Card>
         <Thread
           entries={s.thread}
           hint={op ? "e.g. «price of #112 is $8.99» · «cut 1:20 to 1:45 out» · «tag on saffron is on the wrong jar»" : "مثلاً: «قیمت شماره ۱۱۲ را ۸٫۹۹ دلار کنید» · «price of #112 is $8.99»"}
           send={async (text) => { await act({ action: "message", text }); }}
         />
-      </Card>
+      </Card>}
 
       {op && s.report && (
         <Card>
@@ -217,7 +218,7 @@ export default function StorePage({ slug }: { slug: string }) {
         </Card>
       )}
 
-      <Card className="space-y-6">
+      {op && <Card className="space-y-6">
         {UPLOAD_CARDS.filter((c) => op || c.kind !== "video").map((c) => (
           <FilePick
             key={c.kind}
@@ -233,14 +234,12 @@ export default function StorePage({ slug }: { slug: string }) {
             send={async (file) => { await uploadMusic(api, {}, file); await load(); }}
           />
         )}
-      </Card>
+      </Card>}
 
       {page.products.length > 0 && <Products api={api} products={page.products} reload={load} />}
 
-      <Card>
-        <ChangePassword api={api} />
-        {page.who === "owner" && <button type="button" className={`${QUIET} mt-4`} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
-      </Card>
+      {op && <Card><ChangePassword api={api} /></Card>}
+      {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
     </div>
   );
 }
