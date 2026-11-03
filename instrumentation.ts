@@ -14,5 +14,8 @@ export async function register() {
     // Walks still waiting for their walking speed (`lib/stores/lock.ts`).
     const { drainPace } = await import("./lib/stores/lock");
     setTimeout(() => void drainPace().catch((e) => console.error("[pace] resume", e)), 25_000);
+    // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
+    const { drainReverse } = await import("./lib/stores/reverse");
+    setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);
   }
 }

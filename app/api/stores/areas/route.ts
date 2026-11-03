@@ -10,6 +10,7 @@
  *   POST { action: "message", id, text }       to the crew, answered on the screen
  *   POST { action: "music", id, type, size } → { key, url, headers };  { action: "musicDone", id, key }
  *   POST { action: "place", id, en, fa }       a place (shopping centre, plaza) added or renamed
+ *   POST { action: "reverseWalk", key | "all" } the reversed copy Back plays, made (again) behind the answer
  *   POST { action: "paceWalk", key | "all" }  the walk's filmed speed measured (free), so Slow/Fast are standard
  *   POST { action: "lockWalk", key }           the Lock agent on any walk already made (runs behind the answer;
  *                                              the walk's `hide`/`tilt` appear in walks.json when done)
@@ -30,6 +31,7 @@ import { isOperator } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, writeJoins } from "@/lib/stores/crew";
 import { autoLock, queuePace } from "@/lib/stores/lock";
+import { queueReverse } from "@/lib/stores/reverse";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -95,6 +97,15 @@ export async function POST(req: NextRequest) {
       const keys = key === "all" ? Object.keys(all).filter((k) => !all[k].pace && all[k].projection !== "flat" && all[k].projection !== "eac") : all[key] ? [key] : [];
       if (!keys.length) return fail(404, key === "all" ? "Every walk is measured already." : "No such walk.");
       await queuePace(keys); // kept in the bucket: a restart carries on with the rest
+      return ok({ started: keys });
+    }
+    case "reverseWalk": {
+      // The reversed copy «Back» plays (`lib/stores/reverse.ts`), for one walk or every 360° walk.
+      const key = String(body.key ?? "");
+      const all = (await readWalks()).walks;
+      const keys = key === "all" ? Object.keys(all).filter((k) => all[k].projection !== "flat") : all[key] ? [key] : [];
+      if (!keys.length) return fail(404, "No such walk.");
+      await queueReverse(keys);
       return ok({ started: keys });
     }
     case "lockWalk": {

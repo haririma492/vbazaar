@@ -208,6 +208,8 @@ export async function softenReflections(walkKey: string, purse: Purse, say: (not
     const cost = `$${(purse.spent() / 100).toFixed(2)}`;
     const done = `Softened ${seen.length} sightings of the operator's reflection${partly}; ${still.length ? `still recognisable at ${still.length} of ${checkAt.length} checked moments after 2 rounds` : "the check found none left"} (${cost} spent). «Undo» puts the walk back as it was.`;
     await state("done", done);
+    // The reversed copy «Back» plays is made again from the softened copy.
+    void import("./reverse").then((m) => m.queueReverse([walkKey])).catch((e) => console.error("[shadow] reverse", e));
     return done;
   } catch (e) {
     await saveState({ key: walkKey, phase: "failed", note: e instanceof Error ? e.message : String(e), at: "", seen: [], looked: 0, spent: purse.spent(), resumes: 0 });
@@ -225,6 +227,7 @@ export async function undoReflections(walkKey: string): Promise<string> {
     if (await webObjectExists(beforeKeyOf(f))) { await copyWebObject(beforeKeyOf(f), f, "video/mp4"); n++; }
   }
   if (!n) return "Nothing to undo: the Shadow agent never changed this walk.";
+  void import("./reverse").then((m) => m.queueReverse([walkKey])).catch((e) => console.error("[shadow] reverse", e));
   const walks = await readWalks();
   const w = walks.walks[walkKey];
   if (w) await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, rev: (w.rev ?? 0) + 1 } } }, walks);

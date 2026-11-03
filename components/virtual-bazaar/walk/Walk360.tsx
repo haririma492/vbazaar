@@ -68,7 +68,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
-  DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, isPhoneVideoKey, isVideoKey, isWalkKey,
   itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -226,6 +226,10 @@ type Layer = {
   purpose: "main" | "door" | "back";
   /** How it holds its picture when its shape does not say (its walk's `projection`, or ?proj= to try one). */
   projection: Projection | null;
+  /** The walk played backwards (`-reverse.mp4`), which «Back» plays instead of seeking (`lib/stores/reverse.ts`). */
+  rev?: { video: HTMLVideoElement; texture: THREE.VideoTexture | null; on: boolean };
+  /** Switched to the lighter 4K copy (Fast on a computer). */
+  light?: boolean;
 };
 
 /**
@@ -321,6 +325,8 @@ type Engine = {
   setGyro: (on: boolean) => void;
   /** Self-drive at this standard speed, or null: only the wheel's pedals and the keys walk. */
   setDrive: (speed: Drive | null) => void;
+  /** The bar: `exact` when the finger is lifted; while dragging, one seek at a time. */
+  seekTo: (t: number, exact: boolean) => void;
   /** Inside a tap: start the video, so a phone that refuses play() without one lets it walk on. */
   kick: () => void;
   /** The photographer's turn at this moment of the walk (rad/s, + right), read from the picture. */
@@ -445,6 +451,8 @@ export default function Walk360() {
     const flatEl = flatHost.current;
     if (!el || !flatEl) return;
     const params = new URLSearchParams(window.location.search);
+    /** The operator's pages read the walk's own video: no reversed twin there. */
+    const noReverse = params.get("edit") === "1" || params.get("spots") === "1";
     const debugOn = params.get("debug") === "1";
     setDebug(debugOn);
     // ?debug=1&fade=<ms>: a slower cross-fade, to look at it (and screenshot it).
@@ -606,13 +614,7 @@ export default function Walk360() {
         flatEl!.appendChild(l.video);
         return;
       }
-      const texture = new THREE.VideoTexture(l.video);
-      texture.colorSpace = THREE.SRGBColorSpace;
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.generateMipmaps = false;
-      texture.anisotropy = maxAniso;
-      texture.needsUpdate = true; // the paused frame, before any new one is presented
+      const texture = videoTexture(l.video);
       const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, opacity, depthTest: false, depthWrite: false });
       // ⚠️ YOUTUBE'S CUBE MAP: the sphere keeps its panorama uv, and each pixel
       // looks itself up in the 3×2 cube-map frame instead (`EAC_GLSL`), so the
@@ -639,6 +641,72 @@ export default function Walk360() {
       mesh.rotation.y = -Math.PI / 2 + l.spin;
       Object.assign(l, { texture, material, mesh });
       scene.add(mesh);
+      if (!noReverse && l.key && isWalkKey(l.key)) void attachReverse(l);
+    }
+
+    function videoTexture(v: HTMLVideoElement): THREE.VideoTexture {
+      const texture = new THREE.VideoTexture(v);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.generateMipmaps = false;
+      texture.anisotropy = maxAniso;
+      texture.needsUpdate = true; // the paused frame, before any new one is presented
+      return texture;
+    }
+
+    /**
+     * ⚠️ «BACK» PLAYS THE WALK'S REVERSED COPY (owner, 2026-11-03: "the
+     * movement … gets stuck"). A video only plays forwards, so walking back
+     * was a stream of seeks, and each seek in a heavy 360° video stalled. When
+     * `-reverse.mp4` is there (the server makes it, `lib/stores/reverse.ts`),
+     * walking back PLAYS it on the same sphere; the walk's own video is kept in
+     * step every half second, and takes over again the moment the walk goes on.
+     * Not while editing: the operator's tools read the walk's own video.
+     */
+    async function attachReverse(l: Layer) {
+      const base = await sceneBase();
+      if (!base || !l.key || l.released) return;
+      const r = walkOf(walksNow, l.key)?.rev;
+      const url = `${base}/${reverseKeyOf(l.key)}${r ? `?r=${r}` : ""}`;
+      if (!(await hasPhoneCopy(url)) || l.released) return;
+      const v = document.createElement("video");
+      v.crossOrigin = "anonymous";
+      v.muted = true;
+      v.playsInline = true;
+      v.setAttribute("playsinline", "");
+      v.preload = "auto";
+      v.src = url;
+      l.rev = { video: v, texture: null, on: false };
+    }
+
+    /**
+     * FAST ON A COMPUTER PLAYS THE 4K COPY (owner's «yes», 2026-11-03): the
+     * 5.7K copy could not stream at 1.5× and stalled. The phone copy is the
+     * same walk, same trim; once switched, the walk stays on it.
+     */
+    async function lighten(l: Layer) {
+      if (l.light || l.flat || !l.key || isTouch() || isPhoneCopy(l.key) || l.released) return;
+      const base = await sceneBase();
+      if (!base) return;
+      const r = walkOf(walksNow, l.key)?.rev;
+      const url = `${base}/${phoneKeyOf(l.key)}${r ? `?r=${r}` : ""}`;
+      if (!(await hasPhoneCopy(url)) || l.released || l.light) return;
+      l.light = true;
+      const v = l.video;
+      const t = v.currentTime, playing = !v.paused;
+      v.addEventListener("loadedmetadata", () => {
+        v.currentTime = Math.min(t, Math.max(0, v.duration - 0.05));
+        if (l.material && !l.rev?.on) {
+          const old = l.texture;
+          l.texture = videoTexture(v);
+          l.material.map = l.texture;
+          old?.dispose();
+        }
+        if (playing) void v.play().catch(() => {});
+      }, { once: true });
+      v.src = url;
+      v.load();
     }
 
     /** Let go of a video entirely — its download and its decoder memory. */
@@ -646,6 +714,12 @@ export default function Walk360() {
       if (!l || l.released) return;
       l.released = true;
       l.fail("released");
+      if (l.rev) {
+        l.rev.video.pause();
+        l.rev.video.removeAttribute("src");
+        l.rev.video.load();
+        l.rev.texture?.dispose();
+      }
       l.video.pause();
       l.video.removeAttribute("src");
       l.video.load();
@@ -1029,6 +1103,26 @@ export default function Walk360() {
       },
       setDrive(speed) {
         driveSpeed = speed;
+        if (speed === "fast" && current) void lighten(current);
+      },
+      seekTo(t, exact) {
+        const v = current?.video;
+        if (!v || !Number.isFinite(v.duration)) return;
+        const to = Math.max(0, Math.min(v.duration, t));
+        // While walking back on the reversed copy, the bar moves that one.
+        const rv = current?.rev;
+        if (rv?.on && Number.isFinite(rv.video.duration)) rv.video.currentTime = rv.video.duration * (1 - to / v.duration);
+        // Dragging: one seek at a time, to the nearest quick frame; letting go: exactly there.
+        if (!exact && v.seeking) { pendingSeek = to; return; }
+        if (!exact && typeof (v as HTMLVideoElement & { fastSeek?: (t: number) => void }).fastSeek === "function") (v as HTMLVideoElement & { fastSeek: (t: number) => void }).fastSeek(to);
+        else v.currentTime = to;
+        pendingSeek = null;
+        if (!seekHooked.has(v)) {
+          seekHooked.add(v);
+          v.addEventListener("seeked", () => {
+            if (pendingSeek !== null && v === current?.video) { const p = pendingSeek; pendingSeek = null; v.currentTime = p; }
+          });
+        }
       },
       kick,
       turn: () => turnNow,
@@ -1141,6 +1235,8 @@ export default function Walk360() {
     let stickY = 0;
     const maxRate = PEDAL_RATE;
     let driveSpeed: Drive | null = null;
+    let pendingSeek: number | null = null;
+    const seekHooked = new WeakSet<HTMLVideoElement>();
     /** The self-drive rate on the walk now playing: its standard speed over the walk's own pace. */
     const driveNow = (): number | null =>
       driveSpeed ? driveRate(driveSpeed, current && !current.flat ? walkOf(walksNow, current.key)?.pace : null, DRIVES[driveSpeed].rate) : null;
@@ -1427,16 +1523,42 @@ export default function Walk360() {
       rate += (target - rate) * ease;
 
       const video = current?.video;
+      const rv = current?.rev;
+      const twinOk = Boolean(rv && video && current?.material && !current.flat && !busy && rv.video.readyState >= 2
+        && Number.isFinite(rv.video.duration) && Number.isFinite(video.duration) && Math.abs(rv.video.duration - video.duration) < 1);
+      const backward = twinOk && rate < -DEAD;
+      if (backward && rv && video && current?.material) {
+        const D = video.duration, R = rv.video.duration;
+        if (!rv.on) {
+          rv.video.currentTime = Math.max(0, Math.min(R, R * (1 - video.currentTime / D)));
+          rv.texture ??= videoTexture(rv.video);
+          current.material.map = rv.texture;
+          if (!video.paused) video.pause();
+          rv.on = true;
+          stepDebt = 0;
+        }
+        rv.video.playbackRate = Math.min(4, Math.max(0.0625, -rate));
+        if (rv.video.paused && rv.video.currentTime < R - 0.05) void rv.video.play().catch(() => {});
+        const t = D * (1 - rv.video.currentTime / R);
+        if (!video.seeking && Math.abs(video.currentTime - t) > 0.5) video.currentTime = Math.max(0, t);
+      } else if (rv?.on && video && current) {
+        // Back stopped: the walk's own video takes over where the reversed one is.
+        rv.video.pause();
+        const D = video.duration, R = rv.video.duration;
+        if (Number.isFinite(D) && Number.isFinite(R) && R > 0) video.currentTime = Math.max(0, Math.min(D, D * (1 - rv.video.currentTime / R)));
+        if (current.material && current.texture) current.material.map = current.texture;
+        rv.on = false;
+      }
       // ⚠️ WALKING BACK KEEPS ITS SPEED WHILE A SEEK LOADS (owner, 2026-11-03:
       // "going back is very slow almost does not work in helogolab"). Back is
       // stepped, one seek at a time, and after each seek the video is briefly
       // not ready (readyState < 2). The time owed was only counted while it
       // WAS ready, so every seek lost time and back crawled on a heavy video.
       // It is counted now whatever the video's state; the next seek catches up.
-      if (video && !busy && Number.isFinite(video.duration) && video.readyState < 2 && (rate < MIN_PLAY_RATE || video === playRefused) && Math.abs(rate) > DEAD) {
+      if (!backward && video && !busy && Number.isFinite(video.duration) && video.readyState < 2 && (rate < MIN_PLAY_RATE || video === playRefused) && Math.abs(rate) > DEAD) {
         stepDebt = THREE.MathUtils.clamp(stepDebt + rate * dt, -2, 2);
       }
-      if (video && !busy && video.readyState >= 2 && Number.isFinite(video.duration)) {
+      if (!backward && video && !busy && video.readyState >= 2 && Number.isFinite(video.duration)) {
         if (rate >= MIN_PLAY_RATE && video !== playRefused) {
           // Walking on at a pace a browser plays smoothly: let it play.
           video.playbackRate = Math.min(4, rate);
@@ -1783,10 +1905,9 @@ export default function Walk360() {
               max={Number.isFinite(time.total) ? time.total : 0}
               step={0.1}
               value={time.now}
-              onChange={(e) => {
-                const v = engine.current?.video();
-                if (v) v.currentTime = Number(e.target.value);
-              }}
+              onChange={(e) => engine.current?.seekTo(Number(e.target.value), false)}
+              onPointerUp={(e) => engine.current?.seekTo(Number((e.target as HTMLInputElement).value), true)}
+              onKeyUp={(e) => engine.current?.seekTo(Number((e.target as HTMLInputElement).value), true)}
               aria-label="Where along the walk"
               className="h-8 flex-1 accent-amber-300"
             />
@@ -1868,7 +1989,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
         if (!json.ok) throw new Error(json.error || `HTTP ${res.status}`);
         const list: VideoChoice[] = [];
         for (const o of json.objects as Array<{ key: string; kind: string }>) {
-          if (o.kind === "web" && isWalkKey(o.key) && !isPhoneCopy(o.key)) list.push({ key: o.key, label: `${shortKey(o.key)} (360°)` });
+          if (o.kind === "web" && isWalkKey(o.key) && !isPhoneCopy(o.key) && !isReverseCopy(o.key)) list.push({ key: o.key, label: `${shortKey(o.key)} (360°)` });
           else if (o.kind === "master" && isPhoneVideoKey(o.key)) list.push({ key: o.key, label: `${shortKey(o.key)} (phone video, flat)` });
         }
         list.sort((a, b) => a.key.localeCompare(b.key));

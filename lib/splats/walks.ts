@@ -312,6 +312,9 @@ export const isVideoKey = (v: unknown): v is string => isWalkKey(v) || isPhoneVi
 /** The lighter copy a phone plays, when uploaded next to the original: `walk-v1.mp4` → `walk-v1-phone.mp4`. */
 export const phoneKeyOf = (key: string) => key.replace(/\.mp4$/i, "-phone.mp4");
 export const isPhoneCopy = (key: string) => /-phone\.mp4$/i.test(key);
+/** The walk played backwards, which «Back» plays (`lib/stores/reverse.ts`): `walk-v1.mp4` → `walk-v1-reverse.mp4`. */
+export const reverseKeyOf = (key: string) => key.replace(/\.mp4$/i, "-reverse.mp4");
+export const isReverseCopy = (key: string) => /-reverse\.mp4$/i.test(key);
 
 /** An angle in (−π, π]. */
 export function wrapAngle(a: number): number {

@@ -36,6 +36,7 @@ import { matchFileName, photoList, picturesByProduct, productSheet, readBook } f
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, HEADINGS, LOOK_FOV, LOOK_N, LOOK_PITCH, aim, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
 import { autoLock } from "./lock";
+import { queueReverse } from "./reverse";
 
 /** A step that needs a person: the note says what. */
 export class NeedsYou extends Error {}
@@ -167,6 +168,8 @@ async function makeWalk(masterKey: string, scene: string, say: (note: string) =>
     await say("Saving the copies…");
     await uploadFile(key, web, "video/mp4");
     await uploadFile(phoneKeyOf(key), phone, "video/mp4");
+    // «Back» plays the walk's reversed copy, made behind (`reverse.ts`).
+    void queueReverse([key]).catch((e) => console.error("[crew] reverse", e));
     return { key, seconds: info.seconds };
   } finally {
     rmSync(dir, { recursive: true, force: true });

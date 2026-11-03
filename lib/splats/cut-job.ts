@@ -146,6 +146,8 @@ export function startCutJob(key: string, rawParts: unknown): CutJob {
         return { ...r.walk, rev: (w.rev ?? 0) + 1 };
       });
       await writeMastersJson(backupKeyOf(key), { walk: record.walk, parts } satisfies CutRecord);
+      // The reversed copy «Back» plays must match the new length (`lib/stores/reverse.ts`).
+      void import("@/lib/stores/reverse").then((m) => m.queueReverse([key])).catch((e) => console.error("[cut] reverse", e));
       Object.assign(job, { state: "done", step: "done", percent: 100, dropped, seconds: total, finishedAt: Date.now() });
     } catch (e) {
       Object.assign(job, { state: "failed", error: (e as Error).message, finishedAt: Date.now() });
@@ -187,6 +189,7 @@ export function startRestoreJob(key: string): CutJob {
       await saveWalk(key, (w) => ({
         ...w, ...(before ? { doors: before.doors, ...(before.items ? { items: before.items } : {}) } : {}), rev: (w.rev ?? 0) + 1,
       }));
+      void import("@/lib/stores/reverse").then((m) => m.queueReverse([key])).catch((e) => console.error("[cut] reverse", e));
       Object.assign(job, { state: "done", step: "done", percent: 100, finishedAt: Date.now() });
     } catch (e) {
       Object.assign(job, { state: "failed", error: (e as Error).message, finishedAt: Date.now() });
