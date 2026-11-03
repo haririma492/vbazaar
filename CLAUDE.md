@@ -81,6 +81,16 @@ plan and the Managed Agents decision are in
   upload need not play on the merchant's computer. An `.insv` is refused and
   told to pick the exported `.mp4`. A store's walk starts outside its real door. The
   hallway shows the store's door photo (`WalkDoor.image`).
+- **The Shadow agent** (owner, 2026-11-03: *"recognize the shadow of the
+  walking photographer everywhere mostly on glasses … and sometimes on
+  stainless steel fridges"*; *"activate when during the ?edit=1 the operator
+  ask for it"*): «Shadow» on a walk's `?edit=1`. Claude looks at the horizon
+  band 3 moments a look, one moment every 2 s, boxes the operator's
+  reflections; ffmpeg softens them in the web and phone copies under a mask
+  carried between looks; Claude checks, a second wider round if still
+  recognisable. At most $0.30 a scene. The copies are kept as
+  `<file>.before-reflections` (every run starts from them; «Undo» restores).
+  `lib/stores/reflect.ts`, `reflectRules.ts`, `walk/WalkShadow.tsx`.
 - **The basket** (`/basket`, the bazaar's own, on the device) is the end of
   the cycle; no payment yet.
 - **A new store waits for «Publish».** Later changes go live by themselves.

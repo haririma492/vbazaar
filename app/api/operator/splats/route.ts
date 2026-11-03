@@ -39,6 +39,8 @@ import { TOUR_KEY } from "@/lib/splats/tour";
 import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { checkCatalogue } from "@/lib/splats/catalogue";
 import { cutInfo, cutJob, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
+import { REFLECT_CENTS, beforeKeyOf, shadowStatus, startShadowAgent, undoReflections } from "@/lib/stores/reflect";
+import { webObjectExists as shadowKept } from "@/lib/splats/r2";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
@@ -229,6 +231,24 @@ export async function POST(req: NextRequest) {
       } catch (e) {
         return fail(409, (e as Error).message);
       }
+    }
+
+    // THE SHADOW AGENT (owner, 2026-11-03: "let to activate when during the
+    // ?edit=1 the operator ask for it"): the operator's reflections in shop
+    // windows and steel, found and softened (`lib/stores/reflect.ts`), at most
+    // $0.30 a scene. Runs behind the answer; the page asks after it.
+    if (action === "shadow" || action === "shadowUndo" || action === "shadowStatus") {
+      const key = String(body.key ?? "");
+      if (!/^scenes\/[^/]+\/[^/]+\.mp4$/.test(key)) return fail(400, "Not a walk video from the bucket.");
+      if (action === "shadowStatus") {
+        const st = shadowStatus();
+        return ok({ status: st && st.key === key ? st : null, kept: await shadowKept(beforeKeyOf(key)), ceiling: REFLECT_CENTS });
+      }
+      if (action === "shadowUndo") {
+        return ok({ note: await undoReflections(key) });
+      }
+      const refused = startShadowAgent(key);
+      return refused ? fail(409, refused) : ok({ started: key });
     }
 
     // A store's product list (`lib/splats/catalogue.ts`): merchant on-boarding.

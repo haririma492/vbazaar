@@ -59,6 +59,7 @@ import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import { CutEditor } from "./WalkCut";
+import { ShadowEditor } from "./WalkShadow";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
@@ -1846,7 +1847,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   const [listError, setListError] = useState<string | null>(null);
   type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
-  const [tab, setTab] = useState<"doors" | "items" | "sound" | "cut" | "hide">("doors");
+  const [tab, setTab] = useState<"doors" | "items" | "sound" | "cut" | "hide" | "shadow">("doors");
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -1981,10 +1982,10 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
       onKeep={(p) => change(setProjection(walks, viewKey, p))} />}
     <div dir="ltr" data-walk-editor className={`absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl ${tab === "items" && catalogue?.products.length ? PRODUCTS_PANEL_SHIFT : ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-1">
-          {(["doors", "items", "sound", "cut", "hide"] as const).map((k) => (
+        <div className="flex flex-wrap gap-1">
+          {(["doors", "items", "sound", "cut", "hide", "shadow"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : "Lock"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : k === "hide" ? "Lock" : "Shadow"}
             </button>
           ))}
         </div>
@@ -1997,6 +1998,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
 
           {tab === "hide" && <HideEditor engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "cut" && <CutEditor video={() => engine.current?.video() ?? null} viewKey={viewKey} />}
+          {tab === "shadow" && <ShadowEditor viewKey={viewKey} />}
           {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "items" && <TagsFromControl engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
