@@ -68,7 +68,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
-  DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
   itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -329,6 +329,8 @@ type Engine = {
   seekTo: (t: number, exact: boolean) => void;
   /** Inside a tap: start the video, so a phone that refuses play() without one lets it walk on. */
   kick: () => void;
+  /** Hold the walk still for `ms` (the door photo is on screen). */
+  hold: (ms: number) => void;
   /** The photographer's turn at this moment of the walk (rad/s, + right), read from the picture. */
   turn: () => number;
   setWalks: (w: Walks) => void;
@@ -424,6 +426,9 @@ export default function Walk360() {
   const [phase, setPhase] = useState<"loading" | "ready" | "walking" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** The store's door photo, up for its first 4 s (owner, 2026-11-03). */
+  const [doorPhoto, setDoorPhoto] = useState<{ url: string; out: boolean } | null>(null);
+  const doorShown = useRef<string | null>(null);
   const [time, setTime] = useState({ now: 0, total: 0 });
   const [drive, setDrive] = useState<Drive | null>(null);
   /** The item whose card is open (a tap on its dot). */
@@ -1101,6 +1106,9 @@ export default function Walk360() {
       setGyro(on) {
         gyroOn = on;
       },
+      hold(ms) {
+        holdUntil = performance.now() + ms;
+      },
       setDrive(speed) {
         driveSpeed = speed;
         if (speed === "fast" && current) void lighten(current);
@@ -1264,6 +1272,7 @@ export default function Walk360() {
     let turnYaw = 0;
     let velTurn = 0;
     let rate = 0; // eased walk rate: + forward, − back, in "times as filmed"
+    let holdUntil = 0; // the door photo is up: the walk waits
     let stepDebt = 0; // seconds of stepping owed while a seek was in flight
 
     // ── Looking: finger, wheel/pinch, phone ───────────────────────────────
@@ -1520,6 +1529,7 @@ export default function Walk360() {
       } else facingBack = false;
       if (facingBack) target = -target;
       if (busy) target = 0;
+      if (performance.now() < holdUntil) { target = 0; rate = 0; }
       rate += (target - rate) * ease;
 
       const video = current?.video;
@@ -1729,6 +1739,27 @@ export default function Walk360() {
     }
   }
 
+  // ⚠️ THE DOOR PHOTO OPENS EVERY STORE WALK (owner, 2026-11-03: "always add
+  // the photo of the door of the store for 4 sec to the beginning of the
+  // walk"): over the walk, which waits; it fades in its last half second.
+  // Once each time the walk is entered; not while editing.
+  const photoNow = doorPhotoOf(walks, view.key);
+  useEffect(() => {
+    if (phase !== "walking" || editing || spotMode || !view.key || !photoNow) return;
+    if (doorShown.current === view.key) return;
+    doorShown.current = view.key;
+    engine.current?.hold(4000);
+    setDoorPhoto({ url: photoNow, out: false });
+    const fade = setTimeout(() => setDoorPhoto((d) => (d ? { ...d, out: true } : d)), 3500);
+    const done = setTimeout(() => setDoorPhoto(null), 4000);
+    return () => { clearTimeout(fade); clearTimeout(done); };
+  }, [phase, editing, spotMode, view.key, photoNow]);
+  useEffect(() => {
+    // Out of the store: the photo goes, and comes back the next time it is entered.
+    if (view.key !== doorShown.current) setDoorPhoto(null);
+    if (!photoNow) doorShown.current = null;
+  }, [view.key, photoNow]);
+
   const door = view.near[0];
   const aisleAt = view.key ? aisles.findIndex((a) => a.key === view.key) : -1;
   /** An aisle's name, from its shelf id: «Aisle 3a» (the walk's title is the shop's name, the same on every aisle). */
@@ -1737,6 +1768,15 @@ export default function Walk360() {
   return (
     <div className="fixed inset-0 bg-black">
       <div ref={host} className="absolute inset-0" />
+      {doorPhoto && (
+        <div
+          className={`pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black transition-opacity duration-500 ${doorPhoto.out ? "opacity-0" : "opacity-100"}`}
+          aria-hidden="true"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={doorPhoto.url} alt="" className="max-h-full max-w-full object-contain" />
+        </div>
+      )}
       {/* A flat (phone) video of a shop is shown here, over the sphere. */}
       <div ref={flatHost} className="pointer-events-none absolute inset-0" />
 

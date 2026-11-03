@@ -578,6 +578,8 @@ async function stepPlace(s: StoreRecord, say: (note: string) => Promise<void>): 
   // ⚠️ SHOPPERS SEE A NEW STORE ONLY AFTER «PUBLISH»: until then its spot is kept and no door is up.
   const doors = s.live && s.out.walk ? [...others, doorOf(spot, { slug: s.slug, name: s.name, walk: s.out.walk, image, website: s.website })] : others;
   next.walks[area.walk] = { ...here, doors };
+  // The store's own walk opens on its door photo (4 s, Walk360.tsx).
+  if (image && s.out.walk && next.walks[s.out.walk] && next.walks[s.out.walk].doorPhoto !== image) next.walks[s.out.walk] = { ...next.walks[s.out.walk], doorPhoto: image };
   await writeWalks(next, walks);
   return s.live ? `The door is up on «${area.name.en}», in spot «${spot.id}».` : `Spot «${spot.id}» on «${area.name.en}» is kept for this store; its door goes up on «Publish».`;
 }

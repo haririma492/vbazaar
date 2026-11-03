@@ -226,7 +226,28 @@ export type Walk = {
    * (`lib/splats/pace.ts`): Slow and Fast play at standard speeds from it.
    */
   pace?: number;
+  /**
+   * THE STORE'S DOOR PHOTO, SHOWN FOR 4 s AS ITS WALK BEGINS (owner,
+   * 2026-11-03: "always add the photo of the door of the store for 4 sec to
+   * the beginning of the walk"). Set by the Store Builder's Placer; https only.
+   */
+  doorPhoto?: string;
 };
+/**
+ * The door photo shown as this walk begins: its own `doorPhoto`, else the
+ * photo on any door that leads into it (a store placed before the field
+ * existed). Undefined for a walk that is not a store's.
+ */
+export function doorPhotoOf(walks: Walks, key: string | null): string | undefined {
+  if (!key) return undefined;
+  const own = walks.walks[key]?.doorPhoto;
+  if (own) return own;
+  for (const w of Object.values(walks.walks)) {
+    const d = w.doors.find((x) => x.to === key && x.image);
+    if (d?.image) return d.image;
+  }
+  return undefined;
+}
 /**
  * `yaw` alone: one direction for the whole walk. `at`: the direction at
  * several moments (a walk that turns round — the photographer is behind the
@@ -402,6 +423,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.pace !== undefined && r.pace !== null) {
       if (typeof r.pace === "number" && r.pace >= 0.1 && r.pace <= 5) walk.pace = r.pace;
       else problems.push(`${key}: «pace» must be the walking speed in m/s (0.1…5).`);
+    }
+    if (r.doorPhoto !== undefined && r.doorPhoto !== null && r.doorPhoto !== "") {
+      if (isSiteUrl(r.doorPhoto)) walk.doorPhoto = r.doorPhoto as string;
+      else problems.push(`${key}: «doorPhoto» must be an https:// address.`);
     }
     if (r.tagsFrom !== undefined && r.tagsFrom !== null) {
       if (typeof r.tagsFrom === "number" && Number.isFinite(r.tagsFrom) && r.tagsFrom > 0) walk.tagsFrom = r.tagsFrom;

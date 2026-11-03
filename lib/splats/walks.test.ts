@@ -6,6 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  doorPhotoOf,
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
   isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
@@ -421,4 +422,18 @@ test("a save keeps fields the merge does not name, such as the walking speed (pa
   assert.equal(out.walks[k].rev, 2);
   const mine2 = parseWalks({ walks: { [k]: { doors: [], pace: 1.2 } } });
   assert.equal(mergeWalks(base, mine2, theirs).walks[k].pace, 1.2, "changed here: this page's value");
+});
+
+test("a store walk opens on its own door photo, else the photo on a door leading in", () => {
+  const W = "scenes/store-a/walk.mp4", H = "scenes/hall/walk.mp4";
+  const walks = parseWalks({ version: 1, walks: {
+    [H]: { doors: [{ id: "store-a", t: 3, yaw: 0, label: { en: "A", fa: "A" }, to: W, image: "https://x.test/door.jpg" }] },
+    [W]: { doors: [] },
+  } });
+  assert.equal(doorPhotoOf(walks, W), "https://x.test/door.jpg");
+  assert.equal(doorPhotoOf(walks, H), undefined);
+  const own = parseWalks({ version: 1, walks: { [W]: { doors: [], doorPhoto: "https://x.test/own.jpg" } } });
+  assert.equal(doorPhotoOf(own, W), "https://x.test/own.jpg");
+  const bad = parseWalks({ version: 1, walks: { [W]: { doors: [], doorPhoto: "javascript:alert(1)" } } });
+  assert.equal(doorPhotoOf(bad, W), undefined);
 });
