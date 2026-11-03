@@ -10,6 +10,7 @@
  *   POST { action: "message", id, text }       to the crew, answered on the screen
  *   POST { action: "music", id, type, size } → { key, url, headers };  { action: "musicDone", id, key }
  *   POST { action: "place", id, en, fa }       a place (shopping centre, plaza) added or renamed
+ *   POST { action: "paceWalk", key | "all" }  the walk's filmed speed measured (free), so Slow/Fast are standard
  *   POST { action: "lockWalk", key }           the Lock agent on any walk already made (runs behind the answer;
  *                                              the walk's `hide`/`tilt` appear in walks.json when done)
  *   POST { action: "areaSet", id, place?, next? }  an area's place; where its walk carries on (next: id, "" nowhere, null default)
@@ -28,7 +29,7 @@ import { readBazaar, readIndex, updateBazaar, updateStore } from "@/lib/stores/b
 import { isOperator } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, writeJoins } from "@/lib/stores/crew";
-import { autoLock } from "@/lib/stores/lock";
+import { autoLock, measurePace } from "@/lib/stores/lock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,6 +86,21 @@ export async function POST(req: NextRequest) {
       const en = String(body.en ?? "").trim().slice(0, 80), fa = String(body.fa ?? "").trim().slice(0, 80);
       if (!en) return fail(400, "Give the place an English name.");
       return ok({ bazaar: await updateBazaar((b) => putPlace(b, id, { en, fa })) });
+    }
+    case "paceWalk": {
+      // The lock agent's speed half alone, on one walk or ("all") every 360° walk
+      // not measured yet: free (no AI), so Slow and Fast are standard everywhere.
+      const key = String(body.key ?? "");
+      const all = (await readWalks()).walks;
+      const keys = key === "all" ? Object.keys(all).filter((k) => !all[k].pace && all[k].projection !== "flat" && all[k].projection !== "eac") : all[key] ? [key] : [];
+      if (!keys.length) return fail(404, key === "all" ? "Every walk is measured already." : "No such walk.");
+      void (async () => {
+        for (const k of keys) {
+          try { console.log("[paceWalk]", k, await measurePace(k, async () => {})); }
+          catch (e) { console.error("[paceWalk]", k, e); }
+        }
+      })();
+      return ok({ started: keys });
     }
     case "lockWalk": {
       const key = String(body.key ?? "");

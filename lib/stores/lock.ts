@@ -20,6 +20,7 @@ import { phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
 import { ZONE_H, ZONE_W, columnHistograms, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
 import { probe, run } from "./media";
 import { findPhotographer, type Purse } from "./ai";
+import { PACE_FPS, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, frameShift, groundMove, paceOf } from "@/lib/splats/pace";
 
 /** Frames a second the zone is followed at (fewer on a long walk: at most `MAX_FRAMES`). */
 const FPS = 3;
@@ -33,7 +34,66 @@ const MARGIN = 12;
 const HALF_VFOV = 37.5;
 const rad = (d: number) => (d * Math.PI) / 180;
 
+/**
+ * The lock agent's run on a walk: the operator locked out of view, then the
+ * photographer's walking speed measured (`measurePace`), so Slow and Fast are
+ * the same speed on every walk. The pace is measured even when nobody was
+ * found to lock; a failure there never undoes the lock.
+ */
 export async function autoLock(walkKey: string, purse: Purse, say: (note: string) => Promise<void>): Promise<string> {
+  const locked = await lockOperator(walkKey, purse, say);
+  let paced: string;
+  try {
+    paced = await measurePace(walkKey, say);
+  } catch (e) {
+    paced = `Walking speed not measured (${e instanceof Error ? e.message : String(e)}).`;
+  }
+  return `${locked} ${paced}`;
+}
+
+/** Pairs of frames measured at most (spread over the walk). */
+const PACE_PAIRS = 240;
+
+/**
+ * How fast the photographer walked (m/s), read off the floor in four views 45°
+ * down (`lib/splats/pace.ts`), written as `Walk.pace`. No AI, nothing spent.
+ */
+export async function measurePace(walkKey: string, say: (note: string) => Promise<void>): Promise<string> {
+  const before = (await readWalks()).walks[walkKey];
+  if (!before) return "";
+  if (before.projection === "flat" || before.projection === "eac") return "";
+  const src = (await webObjectExists(phoneKeyOf(walkKey))) ? await presignGet(phoneKeyOf(walkKey), "web", 3600) : await presignGet(walkKey, "web", 3600);
+  await say("Measuring how fast the walk was filmed…");
+  const deg = (r: number) => ((r * 180) / Math.PI).toFixed(2);
+  const views = VIEW_YAWS.map((y, i) => `[s${i}]v360=e:flat:yaw=${y}:pitch=-${deg(VIEW_PITCH)}:h_fov=${deg(VIEW_FOV)}:v_fov=${deg((VIEW_FOV * VIEW_H) / VIEW_W)}:w=${VIEW_W}:h=${VIEW_H},format=gray[v${i}]`).join(";");
+  const graph = `[0:v]fps=${PACE_FPS},split=${VIEW_YAWS.length}${VIEW_YAWS.map((_, i) => `[s${i}]`).join("")};${views};${VIEW_YAWS.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${VIEW_YAWS.length}`;
+  const raw = await run("ffmpeg", ["-v", "error", "-i", src, "-filter_complex", graph, "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]);
+  const W = VIEW_W * VIEW_YAWS.length, size = W * VIEW_H;
+  const n = Math.floor(raw.length / size);
+  if (n < 12) return "Walking speed not measured: the walk is too short.";
+  const viewOf = (f: number, i: number) => {
+    const out = new Uint8Array(VIEW_W * VIEW_H);
+    for (let y = 0; y < VIEW_H; y++) out.set(raw.subarray(f * size + y * W + i * VIEW_W, f * size + y * W + (i + 1) * VIEW_W), y * VIEW_W);
+    return out;
+  };
+  const every = Math.max(1, Math.floor((n - 1) / PACE_PAIRS));
+  const pairs: { move: number; score: number }[][] = [];
+  for (let f = 0; f + 1 < n; f += every) {
+    pairs.push(VIEW_YAWS.map((_, i) => {
+      const s = frameShift(viewOf(f, i), viewOf(f + 1, i), VIEW_W, VIEW_H);
+      return { move: groundMove(s.dx, s.dy), score: s.score };
+    }));
+  }
+  const pace = paceOf(pairs, 1 / PACE_FPS);
+  if (pace === null) return "Walking speed not measured (the floor gave too little to go on): Slow and Fast use the old speeds on this walk.";
+  const walks = await readWalks();
+  const w = walks.walks[walkKey];
+  if (!w) return "";
+  await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, pace } } }, walks);
+  return `Filmed at ${pace.toFixed(2)} m/s: Slow and Fast now play at the standard speeds.`;
+}
+
+async function lockOperator(walkKey: string, purse: Purse, say: (note: string) => Promise<void>): Promise<string> {
   const before = (await readWalks()).walks[walkKey];
   if (!before) return "No walk to lock.";
   if (before.projection === "flat" || before.projection === "eac") return "Not a 360° panorama: nothing to lock.";

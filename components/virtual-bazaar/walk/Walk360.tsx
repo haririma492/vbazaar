@@ -62,6 +62,7 @@ import { CutEditor } from "./WalkCut";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
+import { driveRate } from "@/lib/splats/pace";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
@@ -83,8 +84,16 @@ const PEDAL_RATE = 1;
  * keys still work over it, and a tap on a door's sign still steps inside
  * (which ends the drive — the shop is looked round, not driven through).
  */
+/**
+ * ⚠️ THE SAME SPEED ON EVERY WALK (owner, 2026-11-03: "Slow and Fast … work
+ * regardless of the speed of walk of photographer and is always standard";
+ * "current Slow needs to be slower"). Each speed is a real walking speed,
+ * `STANDARD` in `lib/splats/pace.ts` (Slow 0.3 m/s, Fast 1.4 m/s), turned into a
+ * rate from the walk's measured `pace` (the lock agent measures it). `rate` is
+ * only the fallback for a walk not measured yet.
+ */
 const DRIVES = {
-  slow: { rate: 0.4, label: "▶ آهسته · Auto slow" }, // 0.6 until 2026-11-01 (owner: "a bit slower")
+  slow: { rate: 0.3, label: "▶ آهسته · Auto slow" }, // 0.6 → 0.4 (2026-11-01) → 0.3 and standard (2026-11-03)
   fast: { rate: 1.5, label: "▶▶ تند · Auto fast" },
   // Walking back by itself (owner, 2026-11-01: "add a key under the steering wheel for going backward").
   back: { rate: -0.6, label: "◀ عقب · Back" },
@@ -308,8 +317,8 @@ type Engine = {
   video: () => HTMLVideoElement;
   setMove: (x: number, y: number) => void;
   setGyro: (on: boolean) => void;
-  /** Self-drive at this rate (times as filmed), or null: only the wheel's pedals and the keys walk. */
-  setDrive: (rate: number | null) => void;
+  /** Self-drive at this standard speed, or null: only the wheel's pedals and the keys walk. */
+  setDrive: (speed: Drive | null) => void;
   /** Inside a tap: start the video, so a phone that refuses play() without one lets it walk on. */
   kick: () => void;
   /** The photographer's turn at this moment of the walk (rad/s, + right), read from the picture. */
@@ -800,7 +809,7 @@ export default function Walk360() {
       const site = trail[trail.length - 1]?.door.url ?? null;
       const next: View = { key: current?.key ?? null, inside: trail.length, flat: current?.flat ?? false, near, site, atEnd, busy };
       if (debugOn && v) {
-        setDiag(`rate ${rate.toFixed(2)} → ${(drive ?? 0).toFixed(1)} · ${facingBack ? "facing back" : "facing on"} · yaw ${Math.round((videoYaw() * 180) / Math.PI)}° · ${v.paused ? "paused" : `playing ×${v.playbackRate.toFixed(2)}`}${playRefused === v ? " · play refused" : ""}${gyroOn && gyroHave ? " · phone motion" : ""} · ready ${v.readyState}` +
+        setDiag(`rate ${rate.toFixed(2)} → ${(driveNow() ?? 0).toFixed(2)} · ${facingBack ? "facing back" : "facing on"} · yaw ${Math.round((videoYaw() * 180) / Math.PI)}° · ${v.paused ? "paused" : `playing ×${v.playbackRate.toFixed(2)}`}${playRefused === v ? " · play refused" : ""}${gyroOn && gyroHave ? " · phone motion" : ""} · ready ${v.readyState}` +
           // The items on this walk: how many, which are on screen now, and when each one's dot shows.
           ` · ${current?.flat ? "flat" : "360°"} · items ${(walk?.items ?? []).length}` +
           `${(walk?.items ?? []).map((it) => ` [${it.label.en}: ${it.pins.length ? `${it.pins[0].t.toFixed(1)}–${it.pins[it.pins.length - 1].t.toFixed(1)}s` : "no dot"}]`).join("")}` +
@@ -1016,8 +1025,8 @@ export default function Walk360() {
       setGyro(on) {
         gyroOn = on;
       },
-      setDrive(r) {
-        drive = r;
+      setDrive(speed) {
+        driveSpeed = speed;
       },
       kick,
       turn: () => turnNow,
@@ -1129,7 +1138,10 @@ export default function Walk360() {
     let stickX = 0;
     let stickY = 0;
     const maxRate = PEDAL_RATE;
-    let drive: number | null = null;
+    let driveSpeed: Drive | null = null;
+    /** The self-drive rate on the walk now playing: its standard speed over the walk's own pace. */
+    const driveNow = (): number | null =>
+      driveSpeed ? driveRate(driveSpeed, current && !current.flat ? walkOf(walksNow, current.key)?.pace : null, DRIVES[driveSpeed].rate) : null;
     let playRefused: HTMLVideoElement | null = null;
     function kick() {
       const v = current?.video;
@@ -1165,8 +1177,13 @@ export default function Walk360() {
     };
     const canvas = renderer.domElement;
     canvas.style.touchAction = "none";
+    // The open hand says "drag to look round" (owner, 2026-11-03: "make the
+    // cursor on the walk to be a hand (standard as in other apps)"); it closes
+    // while dragging, as in maps and other 360° viewers.
+    canvas.style.cursor = "grab";
     let tapFrom: { x: number; y: number; at: number } | null = null;
     const onDown = (e: PointerEvent) => {
+      canvas.style.cursor = "grabbing";
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       tapFrom = pointers.size === 1 ? { x: e.clientX, y: e.clientY, at: performance.now() } : null;
@@ -1236,6 +1253,7 @@ export default function Walk360() {
     };
     const onUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
+      if (!pointers.size) canvas.style.cursor = "grab";
       pinch = 0;
       if (tapFrom && e.type === "pointerup" && Math.hypot(e.clientX - tapFrom.x, e.clientY - tapFrom.y) < 8 && performance.now() - tapFrom.at < 500) onTap(e.clientX, e.clientY);
       tapFrom = null;
@@ -1387,6 +1405,7 @@ export default function Walk360() {
       if (keys.has("w") || keys.has("arrowup")) wantRate = 1;
       if (keys.has("s") || keys.has("arrowdown")) wantRate = -1;
       // Self-drive walks on unless the pedals or the keys say otherwise.
+      const drive = driveNow();
       let target = wantRate !== 0 || drive === null ? wantRate * maxRate : drive;
       // ⚠️ "ON" IS THE WAY THE VISITOR FACES (founder, 2026-10-10: "when we use
       // the wheel to turn the view backward then forward key should move the
@@ -1482,7 +1501,7 @@ export default function Walk360() {
   }, []);
 
   useEffect(() => {
-    engine.current?.setDrive(drive ? DRIVES[drive].rate : null);
+    engine.current?.setDrive(drive);
   }, [drive]);
   // The store's product list: what the cards show, and what the operator tags by number.
   const store = view.key ? storeOfScene(view.key) : "";

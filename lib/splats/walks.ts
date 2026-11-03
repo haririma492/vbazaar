@@ -221,6 +221,11 @@ export type Walk = {
    * look, `down` the lowest (negative). Set on the edit page's «Lock» tab.
    */
   tilt?: { up?: number; down?: number };
+  /**
+   * HOW FAST THE PHOTOGRAPHER WALKED (m/s), measured by the lock agent
+   * (`lib/splats/pace.ts`): Slow and Fast play at standard speeds from it.
+   */
+  pace?: number;
 };
 /**
  * `yaw` alone: one direction for the whole walk. `at`: the direction at
@@ -390,6 +395,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       if (typeof tl.down === "number" && tl.down <= 0 && tl.down >= -Math.PI / 2) tilt.down = tl.down;
       if (tilt.up !== undefined || tilt.down !== undefined) walk.tilt = tilt;
       else problems.push(`${key}: «tilt» needs up (0…90°) and/or down (−90…0°) in radians.`);
+    }
+    if (r.pace !== undefined && r.pace !== null) {
+      if (typeof r.pace === "number" && r.pace >= 0.1 && r.pace <= 5) walk.pace = r.pace;
+      else problems.push(`${key}: «pace» must be the walking speed in m/s (0.1…5).`);
     }
     if (r.tagsFrom !== undefined && r.tagsFrom !== null) {
       if (typeof r.tagsFrom === "number" && Number.isFinite(r.tagsFrom) && r.tagsFrom > 0) walk.tagsFrom = r.tagsFrom;
