@@ -29,6 +29,9 @@ function readOn(): boolean {
 }
 
 /** Whether the shopper has sound on (the 🔊 / 🔇 key): the walk's loop and the specials' voice. */
+/** The walk's background music, by default. Was 0.6; owner asked for 25% less. */
+const WALK_MUSIC_VOLUME = 0.45;
+
 export const soundOn = () => typeof window !== "undefined" && readOn();
 
 /** An English woman's voice where the device has one (founder: "Robotic lady in english"). */
@@ -82,7 +85,8 @@ export function WalkSound({ audioKey, srcOf, specials = false }: {
     const el = new Audio();
     el.loop = true;
     el.preload = "auto";
-    el.volume = 0.6;
+    // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
+    el.volume = WALK_MUSIC_VOLUME;
     audio.current = el;
     void srcOf(audioKey).then((src) => {
       if (gone || !src) return;
