@@ -66,6 +66,12 @@ export default async function VcaHome({ lang }: { lang: Lang }) {
         </nav>
       </header>
       <div className="vb-logo">
+        {/* Beside the logo (owner, 2026-11-03): registration is open, the first alley (راسته) opens soon.
+            The line leads to the page's own sign-up form (#pilot). */}
+        <a href="#pilot" className="vb-news" dir={lang === "fa" ? "rtl" : "ltr"}>
+          <b>{lang === "fa" ? "ثبت‌نام آغاز شد" : "Registration has begun"}</b>
+          <span>{lang === "fa" ? "به‌زودی نخستین راسته باز می‌شود" : "Soon the first alley — Raasteh — opens"}</span>
+        </a>
         {/* The bazaar's logo (owner, 2026-11-01): first thing on the page, above the places and stores. */}
         <img src="/media/brand/vbazaar-logo-v2-1000.webp" srcSet="/media/brand/vbazaar-logo-v2-1000.webp 1000w, /media/brand/vbazaar-logo-v2-2000.webp 2000w"
           sizes="(max-width: 760px) 46vw, 360px" width={1000} height={734} fetchPriority="high"
