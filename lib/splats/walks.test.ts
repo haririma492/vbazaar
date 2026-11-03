@@ -410,3 +410,15 @@ test("how far the view may tilt", () => {
   assert.deepEqual(walkOf(setTilt(w, STREET, "up", null), STREET)!.tilt, { down: -0.4 });
   assert.equal(walkOf(setTilt(setTilt(w, STREET, "up", null), STREET, "down", null), STREET)!.tilt, undefined);
 });
+
+test("a save keeps fields the merge does not name, such as the walking speed (pace)", () => {
+  const k = "scenes/a/walk.mp4";
+  const base = parseWalks({ walks: { [k]: { doors: [] } } });
+  const theirs = parseWalks({ walks: { [k]: { doors: [], pace: 0.94 } } });
+  const mine = parseWalks({ walks: { [k]: { doors: [], rev: 2 } } });
+  const out = mergeWalks(base, mine, theirs);
+  assert.equal(out.walks[k].pace, 0.94, "set elsewhere, untouched here: kept");
+  assert.equal(out.walks[k].rev, 2);
+  const mine2 = parseWalks({ walks: { [k]: { doors: [], pace: 1.2 } } });
+  assert.equal(mergeWalks(base, mine2, theirs).walks[k].pace, 1.2, "changed here: this page's value");
+});

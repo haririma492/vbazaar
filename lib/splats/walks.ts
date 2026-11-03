@@ -869,7 +869,21 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     const hide = same(m.hide, bb.hide) ? t.hide : m.hide;
     const tagsFrom = same(m.tagsFrom, bb.tagsFrom) ? t.tagsFrom : m.tagsFrom;
     const tilt = same(m.tilt, bb.tilt) ? t.tilt : m.tilt;
+    // ⚠️ EVERY OTHER FIELD MERGES THE SAME WAY (2026-11-03): a field missing
+    // from this list was dropped by every save — the walking speed (`pace`)
+    // vanished from all 8 walks the next time anything saved. Whatever is not
+    // merged by hand above takes this page's value if it changed it here, else
+    // the stored one; a field added later is kept without touching this code.
+    const handled = new Set(["title", "doors", "items", "projection", "audio", "rev", "next", "hide", "tagsFrom", "tilt"]);
+    const rest: Record<string, unknown> = {};
+    for (const f of new Set([...Object.keys(m), ...Object.keys(t), ...Object.keys(bb)])) {
+      if (handled.has(f)) continue;
+      const mv = (m as Record<string, unknown>)[f], bv = (bb as Record<string, unknown>)[f], tv = (t as Record<string, unknown>)[f];
+      const v = same(mv, bv) ? tv : mv;
+      if (v !== undefined) rest[f] = v;
+    }
     walks[k] = {
+      ...rest,
       ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
       ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
       ...(next ? { next } : {}), ...(hide ? { hide } : {}), ...(tagsFrom ? { tagsFrom } : {}), ...(tilt ? { tilt } : {}),
