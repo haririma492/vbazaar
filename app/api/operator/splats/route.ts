@@ -39,7 +39,7 @@ import { TOUR_KEY } from "@/lib/splats/tour";
 import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { checkCatalogue } from "@/lib/splats/catalogue";
 import { cutInfo, cutJob, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
-import { REFLECT_CENTS, beforeKeyOf, shadowStatus, startShadowAgent, undoReflections } from "@/lib/stores/reflect";
+import { REFLECT_CENTS, beforeKeyOf, shadowStatusOf, startShadowAgent, undoReflections } from "@/lib/stores/reflect";
 import { webObjectExists as shadowKept } from "@/lib/splats/r2";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
@@ -241,8 +241,7 @@ export async function POST(req: NextRequest) {
       const key = String(body.key ?? "");
       if (!/^scenes\/[^/]+\/[^/]+\.mp4$/.test(key)) return fail(400, "Not a walk video from the bucket.");
       if (action === "shadowStatus") {
-        const st = shadowStatus();
-        return ok({ status: st && st.key === key ? st : null, kept: await shadowKept(beforeKeyOf(key)), ceiling: REFLECT_CENTS });
+        return ok({ status: await shadowStatusOf(key), kept: await shadowKept(beforeKeyOf(key)), ceiling: REFLECT_CENTS });
       }
       if (action === "shadowUndo") {
         return ok({ note: await undoReflections(key) });

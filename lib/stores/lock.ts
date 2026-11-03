@@ -15,7 +15,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, presignGet, readWalks, webObjectExists, writeWalks } from "@/lib/splats/r2";
+import { downloadToFile, presignGet, readMastersText, readWalks, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
 import { ZONE_H, ZONE_W, columnHistograms, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
 import { probe, run } from "./media";
@@ -50,6 +50,37 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
     paced = `Walking speed not measured (${e instanceof Error ? e.message : String(e)}).`;
   }
   return `${locked} ${paced}`;
+}
+
+/**
+ * Walks still to measure, kept in the masters bucket so a restart (every push
+ * to main redeploys) does not lose the list: each is taken off as it is done,
+ * measured or not, and the server carries on with the rest when it starts.
+ */
+const PACE_PENDING = "pace/pending.json";
+let pacing = false;
+export async function queuePace(keys: string[]): Promise<void> {
+  const old = await readPending();
+  await writeMastersJson(PACE_PENDING, [...new Set([...old, ...keys])]);
+  void drainPace();
+}
+async function readPending(): Promise<string[]> {
+  try { const t = await readMastersText(PACE_PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
+}
+/** Measure the queued walks one by one (also called when the server starts). */
+export async function drainPace(): Promise<void> {
+  if (pacing) return;
+  pacing = true;
+  try {
+    for (;;) {
+      const [key, ...rest] = await readPending();
+      if (!key) return;
+      try { console.log("[pace]", key, await measurePace(key, async () => {})); } catch (e) { console.error("[pace]", key, e); }
+      await writeMastersJson(PACE_PENDING, rest);
+    }
+  } finally {
+    pacing = false;
+  }
 }
 
 /** Pairs of frames measured at most (spread over the walk). */

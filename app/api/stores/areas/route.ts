@@ -29,7 +29,7 @@ import { readBazaar, readIndex, updateBazaar, updateStore } from "@/lib/stores/b
 import { isOperator } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, writeJoins } from "@/lib/stores/crew";
-import { autoLock, measurePace } from "@/lib/stores/lock";
+import { autoLock, queuePace } from "@/lib/stores/lock";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,12 +94,7 @@ export async function POST(req: NextRequest) {
       const all = (await readWalks()).walks;
       const keys = key === "all" ? Object.keys(all).filter((k) => !all[k].pace && all[k].projection !== "flat" && all[k].projection !== "eac") : all[key] ? [key] : [];
       if (!keys.length) return fail(404, key === "all" ? "Every walk is measured already." : "No such walk.");
-      void (async () => {
-        for (const k of keys) {
-          try { console.log("[paceWalk]", k, await measurePace(k, async () => {})); }
-          catch (e) { console.error("[paceWalk]", k, e); }
-        }
-      })();
+      await queuePace(keys); // kept in the bucket: a restart carries on with the rest
       return ok({ started: keys });
     }
     case "lockWalk": {

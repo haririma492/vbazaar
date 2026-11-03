@@ -18,7 +18,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { copyWebObject, presignGetAny, readWalks, uploadFile, webObjectExists, writeWalks } from "@/lib/splats/r2";
+import { copyWebObject, presignGetAny, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf } from "@/lib/splats/walks";
 import { probe, run } from "./media";
 import { findReflections, stillReflected, type Purse } from "./ai";
@@ -33,19 +33,46 @@ const BEFORE = ".before-reflections";
 export const beforeKeyOf = (key: string) => `${key}${BEFORE}`;
 
 let running = false;
+
+/**
+ * THE JOB SURVIVES A RESTART (2026-11-03). Every push to main redeploys the
+ * site and restarts the server, and other sessions push often: the first two
+ * runs on area-outside were wiped mid-way. So the job's progress is written
+ * to the masters bucket after every look (what was seen, how many looks done,
+ * what was spent) and the server picks it up again when it starts
+ * (`instrumentation.ts` -> `resumeShadowAgent`), without paying twice.
+ */
+const STATE_KEY = "shadow/current.json";
+export type JobState = {
+  key: string; phase: "finding" | "softening" | "done" | "failed"; note: string; at: string;
+  seen: Seen[]; looked: number; spent: number; resumes: number;
+};
+async function saveState(st: JobState) {
+  try { await writeMastersJson(STATE_KEY, { ...st, at: new Date().toISOString() }); } catch (e) { console.error("[shadow] state", e); }
+}
+async function readState(): Promise<JobState | null> {
+  try { const t = await readMastersText(STATE_KEY); return t ? (JSON.parse(t) as JobState) : null; } catch { return null; }
+}
 /** What the Shadow agent is doing, for the edit page to show (one walk at a time). */
 export type ShadowStatus = { key: string; state: "working" | "done" | "failed"; note: string; at: string } | null;
 let status: ShadowStatus = null;
+export async function shadowStatusOf(key: string): Promise<ShadowStatus> {
+  if (status && status.key === key) return status;
+  const st = await readState();
+  if (!st || st.key !== key) return null;
+  const working = st.phase === "finding" || st.phase === "softening";
+  return { key, state: working ? "working" : st.phase === "done" ? "done" : "failed", note: working ? `${st.note} (picking up after a server restart)` : st.note, at: st.at };
+}
 export const shadowStatus = () => status;
 
 /** Start the Shadow agent on a walk, behind the answer; its progress is `shadowStatus()`. */
-export function startShadowAgent(walkKey: string, limitCents = REFLECT_CENTS): string | null {
+export function startShadowAgent(walkKey: string, limitCents = REFLECT_CENTS, resume: JobState | null = null): string | null {
   if (running) return "The Shadow agent is busy with another walk: try again in a few minutes.";
-  let spent = 0;
+  let spent = resume?.spent ?? 0;
   const purse: Purse = { spent: () => spent, limit: limitCents, add: async (c) => { spent += c; } };
   const set = (state: "working" | "done" | "failed", note: string) => { status = { key: walkKey, state, note, at: new Date().toISOString() }; };
   set("working", "Starting…");
-  void softenReflections(walkKey, purse, async (note) => set("working", note))
+  void softenReflections(walkKey, purse, async (note) => set("working", note), resume)
     .then((note) => set("done", note))
     .catch((e) => set("failed", e instanceof Error ? e.message : String(e)));
   return null;
@@ -91,7 +118,19 @@ async function soften(srcUrl: string, out: string, mask: Uint8Array, width: numb
 }
 
 /** Find the operator's reflections in a 360° walk and soften them. Returns what it did, in a sentence. */
-export async function softenReflections(walkKey: string, purse: Purse, say: (note: string) => Promise<void>): Promise<string> {
+/** On the server's start: a Shadow job a restart cut off carries on (at most 4 restarts, within 6 hours). */
+export async function resumeShadowAgent(): Promise<void> {
+  const st = await readState();
+  if (!st || (st.phase !== "finding" && st.phase !== "softening")) return;
+  if (Date.now() - Date.parse(st.at) > 6 * 3600_000 || st.resumes >= 4) {
+    await saveState({ ...st, phase: "failed", note: "Stopped: the server restarted too many times while it worked. Run it again." });
+    return;
+  }
+  console.log("[shadow] resuming", st.key, st.phase, `${st.looked} looks done`);
+  startShadowAgent(st.key, REFLECT_CENTS, { ...st, resumes: st.resumes + 1 });
+}
+
+export async function softenReflections(walkKey: string, purse: Purse, say: (note: string) => Promise<void>, resume: JobState | null = null): Promise<string> {
   if (running) return "The Shadow agent is busy with another walk: try again in a few minutes.";
   running = true;
   const dir = mkdtempSync(join(tmpdir(), "reflect-"));
@@ -111,9 +150,13 @@ export async function softenReflections(walkKey: string, purse: Purse, say: (not
 
     // Finder.
     const groups = looks(seconds);
-    const seen: Seen[] = [];
-    let looked = 0;
-    for (const ts of groups) {
+    const mine = resume?.key === walkKey;
+    const seen: Seen[] = mine ? [...resume!.seen] : [];
+    let looked = mine ? resume!.looked : 0;
+    const resumes = resume?.resumes ?? 0;
+    const state = (phase: JobState["phase"], note: string) => saveState({ key: walkKey, phase, note, at: "", seen, looked, spent: purse.spent(), resumes });
+    await state("finding", "Looking for the operator's reflection...");
+    for (const ts of groups.slice(looked)) {
       if (purse.spent() >= purse.limit - CHECK_RESERVE) break;
       await say(`Looking for the operator's reflection… ${Math.round((looked / groups.length) * 100)}%`);
       const found = await findReflections(purse, await strips(src, ts), ts.length, STRIP_W, STRIP_H);
@@ -123,10 +166,16 @@ export async function softenReflections(walkKey: string, purse: Purse, say: (not
         if (s) seen.push(s);
       }
       looked++;
+      await state("finding", `Looking for the operator's reflection... ${Math.round((looked / groups.length) * 100)}%`);
     }
     seen.sort((a, b) => a.t - b.t);
     const partly = looked < groups.length ? ` (the $${(purse.limit / 100).toFixed(2)} ceiling stopped the looking at ${Math.round((looked / groups.length) * 100)}% of the walk)` : "";
-    if (!seen.length) return `No reflection of the operator found${partly}.`;
+    if (!seen.length) {
+      const none = `No reflection of the operator found${partly}.`;
+      await state("done", none);
+      return none;
+    }
+    await state("softening", `Softening ${seen.length} reflections...`);
 
     // Fixer, then Checker; a second, wider and harder round where the person still shows.
     let margin = 0.35, blur = 6, still: number[] = [];
@@ -157,7 +206,12 @@ export async function softenReflections(walkKey: string, purse: Purse, say: (not
     const w = walks.walks[walkKey];
     if (w) await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, rev: (w.rev ?? 0) + 1 } } }, walks);
     const cost = `$${(purse.spent() / 100).toFixed(2)}`;
-    return `Softened ${seen.length} sightings of the operator's reflection${partly}; ${still.length ? `still recognisable at ${still.length} of ${checkAt.length} checked moments after 2 rounds` : "the check found none left"} (${cost} spent). «Undo» puts the walk back as it was.`;
+    const done = `Softened ${seen.length} sightings of the operator's reflection${partly}; ${still.length ? `still recognisable at ${still.length} of ${checkAt.length} checked moments after 2 rounds` : "the check found none left"} (${cost} spent). «Undo» puts the walk back as it was.`;
+    await state("done", done);
+    return done;
+  } catch (e) {
+    await saveState({ key: walkKey, phase: "failed", note: e instanceof Error ? e.message : String(e), at: "", seen: [], looked: 0, spent: purse.spent(), resumes: 0 });
+    throw e;
   } finally {
     running = false;
     rmSync(dir, { recursive: true, force: true });
