@@ -5,7 +5,7 @@ import "./globals.css";
 // olgoo-com/vca-app on 2026-10-29; before that olgoo.com, and Sarekooche until
 // 2026-10-15). Same paths as there (/vca, /vca/walk, /vb/…, /vr, /chinastore,
 // /demo, /operator/splats), so a redirect from either site lands on the same
-// page. The basket stays Sarekooche's (`lib/sarekooche.ts`).
+// page. The basket is the bazaar's own (`lib/basket.ts`, `/basket`).
 const SITE = (process.env.NEXT_PUBLIC_SITE_URL || "https://vbazaar.app").replace(/\/+$/, "");
 
 export const metadata: Metadata = {

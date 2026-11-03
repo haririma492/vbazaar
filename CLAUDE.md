@@ -75,11 +75,14 @@ plan and the Managed Agents decision are in
   - `/stores/areas` covers outside, the lobby and the hallway in walking
     order (each walk carries on into the next, `Walk.next`), plus the
     hallway's door spots, marked on its walk with `?spots=1`.
-- **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (8K, maximum
-  bitrate, H.265, Anti-Flicker). An `.insv` is refused with those steps, since
-  only Studio stitches well. A store's walk starts outside its real door. The
+- **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,
+  3840×1920 or larger, 25 fps, 8-bit, H.264 or H.265; owner's laptop could not
+  export 8K, 2026-11-03). The crew makes its own web and phone copies, so the
+  upload need not play on the merchant's computer. An `.insv` is refused and
+  told to pick the exported `.mp4`. A store's walk starts outside its real door. The
   hallway shows the store's door photo (`WalkDoor.image`).
-- **The basket** is the end of the cycle; no payment yet.
+- **The basket** (`/basket`, the bazaar's own, on the device) is the end of
+  the cycle; no payment yet.
 - **A new store waits for «Publish».** Later changes go live by themselves.
   There is a $5 AI ceiling per store.
 - **Env on Railway (v-bazzar):** `ANTHROPIC_API_KEY` (the Photo matcher, the
@@ -95,9 +98,13 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
 `/demo`, `/operator/splats`, and its APIs under `/api/splats`,
 `/api/operator/splats`, `/api/operator/check`, `/api/demo`.
 
-- **The basket stays Sarekooche's.** «Add to Sarekooche basket» on a walk's
-  product opens `sarekooche.com/basket?add=<line>` (`lib/sarekooche.ts`); the
-  line id is `offer:walk-…`, which Sarekooche's basket rules know.
+- **The bazaar has its own basket** (owner, 2026-11-03: *"when adding to
+  basket, create a vbazaar.app basket, now it goes to sarekooche"*). «Add to
+  basket» on a walk's product keeps the line on the device (`lib/basket.ts`,
+  `components/basket/useBasket.ts`; the same id adds to its count) and
+  `/basket` lists it by store with each store's total. No payment yet: the
+  page says so. `lib/sarekooche.ts`'s `basketAddHref` is no longer used by
+  the walk.
 - **Checks before pushing:** in `vca-app/`, `npm run typecheck`, `npm test`,
   `npx next build`; then `node server.js` at the root and open `/vca/walk`.
 - **Env (Railway, the v-bazzar service; same values as the olgoo.com service):** `R2_ACCOUNT_ID`,

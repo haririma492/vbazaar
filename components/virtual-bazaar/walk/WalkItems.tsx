@@ -8,16 +8,16 @@
  * The dots themselves are drawn by the walk's engine (`Walk360.tsx`); the
  * items live with the doors in `scenes/walks.json` (`lib/splats/walks.ts`).
  *
- * ⚠️ THE SAME BASKET AS THE REST OF THE SITE: the card's key is
- * `AddToListKey`, so a walk's item obeys the basket's own rules (meat first,
- * the toggle, the limit) and shows up on /basket under the shop's name.
+ * The card's «Add to basket» puts the item in the bazaar's own basket
+ * (`lib/basket.ts`, on the device), listed on /basket under the shop's name.
  */
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { followProduct, followProduct360 } from "./followProduct";
 import PhotoZoom from "@/components/common/PhotoZoom";
-import { basketAddHref, offerItemId, sarekoocheHref, type BasketLine } from "@/lib/sarekooche";
+import { offerItemId, type BasketLine } from "@/lib/sarekooche";
+import { addToBasket } from "@/components/basket/useBasket";
 import {
   addItem, isPinned, isSiteUrl, itemTime, removeItem, setTitle, sortItemPins, updateItem, walkOf,
   type ItemPin, type Walk, type WalkItem, type Walks,
@@ -93,21 +93,6 @@ export function itemLine(item: WalkItem, walkKey: string, walk: Walk | null, lan
   };
 }
 
-/** The demo without internet (`npm run offline` builds with it): the basket is kept on this device. */
-const OFFLINE = process.env.NEXT_PUBLIC_OFFLINE === "1";
-
-/** A line added to the offline basket; how many lines it now holds. */
-function addOfflineLine(line: BasketLine): number {
-  try {
-    const all = JSON.parse(window.localStorage.getItem("offline-basket") ?? "[]") as BasketLine[];
-    all.push(line);
-    window.localStorage.setItem("offline-basket", JSON.stringify(all));
-    return all.length;
-  } catch {
-    return 1;
-  }
-}
-
 /** The card a tap on an item's dot opens: photo, name, price — a weight to choose for weighed goods — and «Add to Basket». */
 export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   item: WalkItem;
@@ -181,29 +166,17 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
             )}
           </div>
         )}
-        {/* The basket is Sarekooche's, on its own site (`lib/sarekooche.ts`): a new
-            tab, so the walk stays where the shopper stood. Offline (the demo
-            without internet, `npm run offline`) there is no site to reach: the
-            line is kept on this device and the card says so. */}
-        {OFFLINE ? (
-          <button
-            onClick={() => setAdded(addOfflineLine(itemLine(item, walkKey, walk, lang, product, amount)))}
-            className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-full bg-[#00B8C8] px-4 text-[15px] font-bold text-[#06131c]"
-          >
-            {added ? `✓ Added — ${added} in the basket` : lang === "fa" ? "افزودن به سبد" : "Add to basket"}
-          </button>
-        ) : (
-        <a
-          href={basketAddHref(itemLine(item, walkKey, walk, lang, product, amount), typeof window !== "undefined" ? window.location.origin : "https://olgoo.com")}
-          target="_blank"
-          rel="noopener"
+        {/* THE BAZAAR'S OWN BASKET (owner, 2026-11-03: "create a vbazaar.app
+            basket, now it goes to sarekooche"): the line is kept on this device
+            (`lib/basket.ts`) and listed on /basket by store; the walk stays put. */}
+        <button
+          onClick={() => setAdded(addToBasket(itemLine(item, walkKey, walk, lang, product, amount)))}
           className="mt-4 flex min-h-[44px] w-full items-center justify-center rounded-full bg-[#00B8C8] px-4 text-[15px] font-bold text-[#06131c]"
         >
-          {lang === "fa" ? "افزودن به سبد" : "Add to basket"}
-        </a>
-        )}
+          {added ? (lang === "fa" ? `✓ افزوده شد · ${added} قلم در سبد` : `✓ Added — ${added} in the basket`) : lang === "fa" ? "افزودن به سبد" : "Add to basket"}
+        </button>
         <div className="mt-3 flex items-center justify-between text-[13px]">
-          {OFFLINE ? <span /> : <a href={sarekoocheHref("/basket")} target="_blank" rel="noopener" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>}
+          <a href="/basket" target="_blank" rel="noopener" className="text-[#00B8C8] underline">{lang === "fa" ? "سبد خرید ←" : "Basket →"}</a>
           <button className="text-white/55 underline" onClick={() => setLang(lang === "fa" ? "en" : "fa")}>{lang === "fa" ? "English" : "فارسی"}</button>
         </div>
       </div>
