@@ -67,8 +67,9 @@ export async function measurePace(walkKey: string, say: (note: string) => Promis
   await say("Measuring how fast the walk was filmed…");
   const deg = (r: number) => ((r * 180) / Math.PI).toFixed(2);
   const views = VIEW_YAWS.map((y, i) => `[s${i}]v360=e:flat:yaw=${y}:pitch=-${deg(VIEW_PITCH)}:h_fov=${deg(VIEW_FOV)}:v_fov=${deg((VIEW_FOV * VIEW_H) / VIEW_W)}:w=${VIEW_W}:h=${VIEW_H},format=gray[v${i}]`).join(";");
-  const graph = `[0:v]fps=${PACE_FPS},split=${VIEW_YAWS.length}${VIEW_YAWS.map((_, i) => `[s${i}]`).join("")};${views};${VIEW_YAWS.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${VIEW_YAWS.length}`;
-  const raw = await run("ffmpeg", ["-v", "error", "-i", src, "-filter_complex", graph, "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]);
+  // Shrunk first (the views are 160 px) and at most the first 3 minutes: an 8K walk read whole took too long.
+  const graph = `[0:v]fps=${PACE_FPS},scale=1920:960,split=${VIEW_YAWS.length}${VIEW_YAWS.map((_, i) => `[s${i}]`).join("")};${views};${VIEW_YAWS.map((_, i) => `[v${i}]`).join("")}hstack=inputs=${VIEW_YAWS.length}`;
+  const raw = await run("ffmpeg", ["-v", "error", "-t", "180", "-i", src, "-filter_complex", graph, "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"]);
   const W = VIEW_W * VIEW_YAWS.length, size = W * VIEW_H;
   const n = Math.floor(raw.length / size);
   if (n < 12) return "Walking speed not measured: the walk is too short.";

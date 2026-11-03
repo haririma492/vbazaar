@@ -95,8 +95,9 @@ const PEDAL_RATE = 1;
 const DRIVES = {
   slow: { rate: 0.3, label: "▶ آهسته · Auto slow" }, // 0.6 → 0.4 (2026-11-01) → 0.3 and standard (2026-11-03)
   fast: { rate: 1.5, label: "▶▶ تند · Auto fast" },
-  // Walking back by itself (owner, 2026-11-01: "add a key under the steering wheel for going backward").
-  back: { rate: -0.6, label: "◀ عقب · Back" },
+  // Walking back by itself (owner, 2026-11-01: "add a key under the steering wheel for going backward");
+  // as fast as Slow, always (owner, 2026-11-03: "it should go back with the same speed as 'Slow'").
+  back: { rate: -0.3, label: "◀ عقب · Back" },
 } as const;
 type Drive = keyof typeof DRIVES;
 /** Full steering turns this fast (rad/s). */
@@ -1425,6 +1426,15 @@ export default function Walk360() {
       rate += (target - rate) * ease;
 
       const video = current?.video;
+      // ⚠️ WALKING BACK KEEPS ITS SPEED WHILE A SEEK LOADS (owner, 2026-11-03:
+      // "going back is very slow almost does not work in helogolab"). Back is
+      // stepped, one seek at a time, and after each seek the video is briefly
+      // not ready (readyState < 2). The time owed was only counted while it
+      // WAS ready, so every seek lost time and back crawled on a heavy video.
+      // It is counted now whatever the video's state; the next seek catches up.
+      if (video && !busy && Number.isFinite(video.duration) && video.readyState < 2 && (rate < MIN_PLAY_RATE || video === playRefused) && Math.abs(rate) > DEAD) {
+        stepDebt = THREE.MathUtils.clamp(stepDebt + rate * dt, -2, 2);
+      }
       if (video && !busy && video.readyState >= 2 && Number.isFinite(video.duration)) {
         if (rate >= MIN_PLAY_RATE && video !== playRefused) {
           // Walking on at a pace a browser plays smoothly: let it play.
@@ -1442,7 +1452,7 @@ export default function Walk360() {
           if (!video.paused) video.pause();
           if (Math.abs(rate) > DEAD) {
             // Walking back, creeping on, or a phone that won't play: step the time, one seek in flight at a time.
-            stepDebt += rate * dt;
+            stepDebt = THREE.MathUtils.clamp(stepDebt + rate * dt, -2, 2);
             if (!video.seeking && Math.abs(stepDebt) >= 1 / 60) {
               const to = THREE.MathUtils.clamp(video.currentTime + stepDebt, 0, video.duration);
               stepDebt = 0;

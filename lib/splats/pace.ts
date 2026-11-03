@@ -21,7 +21,8 @@
  */
 
 /** Metres a second the self-drive speeds walk at, on every walk. */
-export const STANDARD = { slow: 0.3, fast: 1.4, back: 0.5 } as const;
+/** Back is as fast as Slow (owner, 2026-11-03: "it should go back with the same speed as 'Slow'"). */
+export const STANDARD = { slow: 0.3, fast: 1.4, back: 0.3 } as const;
 /** How high the camera is held above the floor (m): over the head, as filming asks. */
 export const CAMERA_HEIGHT = 2.0;
 /** The views look this far down (rad): 45°, where the floor is close and the operator is not. */
