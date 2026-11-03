@@ -1597,6 +1597,14 @@ export default function Walk360() {
     engine.current?.setGyro(ok);
     await warm;
     setPhase("walking");
+    // «Start walking» starts walking (owner, 2026-11-03: "on all scene and
+    // stores when shopper press on Start walking the Slow key should starts
+    // automatically"): Slow is on, as if pressed; Stop or any pedal takes over.
+    // Not while editing: the operator places doors and products standing still.
+    if (!editing && !spotMode) {
+      engine.current?.kick();
+      setDrive("slow");
+    }
   }
 
   const door = view.near[0];
