@@ -31,6 +31,10 @@ export function run(bin: string, args: string[], opts: { input?: Uint8Array; onL
     p.stderr.on("data", (b: Buffer) => { tail = (tail + b.toString()).slice(-1500); });
     p.on("error", (e) => reject(new Error(`${bin} is not on this server (${e.message})`)));
     p.on("close", (code) => (code === 0 ? resolve(Buffer.concat(out)) : reject(new Error(`${bin} stopped (${code}): ${tail.trim().split("\n").slice(-2).join(" ")}`))));
+    // ⚠️ A tool that stops early closes its input: without this handler the
+    // write's EPIPE is an uncaught error and takes the whole server down
+    // (the Shadow agent's first run, 2026-11-03). The exit code reports it.
+    p.stdin.on("error", () => {});
     if (opts.input) p.stdin.end(Buffer.from(opts.input));
     else p.stdin.end();
   });

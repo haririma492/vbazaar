@@ -69,16 +69,23 @@ function maskVideo(seen: Seen[], seconds: number, margin: number): Uint8Array {
   return out;
 }
 
-/** One copy re-made from its kept original with the spots under the mask blurred. */
-async function soften(srcUrl: string, out: string, mask: Uint8Array, crf: number, blur: number): Promise<void> {
+/**
+ * One copy re-made from its kept original with the spots under the mask
+ * blurred. Kept light for the server: the mask is feathered while it is small
+ * and only then stretched to the video's size (known from `probe`, so no
+ * scale2ref), the blur is done at an eighth of the size, and x264 looks ahead
+ * only 10 frames on 2 threads.
+ */
+async function soften(srcUrl: string, out: string, mask: Uint8Array, width: number, height: number, crf: number, blur: number): Promise<void> {
+  const w8 = Math.max(2, Math.round(width / 16) * 2), h8 = Math.max(2, Math.round(height / 16) * 2);
   await run("ffmpeg", [
-    "-v", "error", "-y", "-i", srcUrl,
+    "-v", "error", "-y", "-threads", "2", "-i", srcUrl,
     "-f", "rawvideo", "-pix_fmt", "gray", "-s", `${MASK_W}x${MASK_H}`, "-r", String(MASK_FPS), "-i", "pipe:0",
     "-filter_complex",
-    `[0:v]split[a][b];[b]scale=iw/8:ih/8,boxblur=${blur}:2,scale=iw*8:ih*8[bl];` +
-      `[1:v][a]scale2ref=flags=bilinear[m][a2];[m]gblur=sigma=12,format=gray[mf];` +
-      `[bl][mf]alphamerge[blm];[a2][blm]overlay=eof_action=repeat:format=auto[v]`,
-    "-map", "[v]", "-c:v", "libx264", "-preset", "medium", "-crf", String(crf), "-g", "10", "-pix_fmt", "yuv420p",
+    `[0:v]format=yuv420p,split[a][b];[b]scale=${w8}:${h8},boxblur=${blur}:2,scale=${width}:${height},format=yuva420p[bl];` +
+      `[1:v]boxblur=3:2,scale=${width}:${height}:flags=bilinear,format=gray[mf];` +
+      `[bl][mf]alphamerge[blm];[a][blm]overlay=eof_action=repeat:shortest=0[v]`,
+    "-map", "[v]", "-c:v", "libx264", "-preset", "medium", "-x264-params", "rc-lookahead=10", "-threads", "2", "-crf", String(crf), "-g", "10", "-pix_fmt", "yuv420p",
     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-an", "-movflags", "+faststart", out,
   ], { input: mask });
 }
@@ -131,7 +138,9 @@ export async function softenReflections(walkKey: string, purse: Purse, say: (not
       for (const f of have) {
         await say(`Softening ${seen.length} reflections in the ${f === walkKey ? "web" : "phone"} copy (round ${rounds})…`);
         const out = join(dir, `${rounds}-${f === walkKey ? "web" : "phone"}.mp4`);
-        await soften(await presignGetAny(beforeKeyOf(f), 6 * 3600), out, mask, f === walkKey ? 18 : 21, blur);
+        const url = await presignGetAny(beforeKeyOf(f), 6 * 3600);
+        const size = await probe(url);
+        await soften(url, out, mask, size.width, size.height, f === walkKey ? 18 : 21, blur);
         outs.push(out);
       }
       for (let i = 0; i < have.length; i++) await uploadFile(have[i], outs[i], "video/mp4");
