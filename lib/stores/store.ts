@@ -309,7 +309,7 @@ export function checkUploadName(kind: UploadKind, name: string): string | null {
   const ext = (/\.([a-z0-9]+)$/i.exec(name)?.[1] ?? "").toLowerCase();
   if (kind === "video") {
     if (ext === "insv") {
-      return "This is the camera's raw file (.insv). Open it in Insta360 Studio, Imaging → Adjust, then Export → 360 Video, 8K, maximum bitrate, H.265, Anti-Flicker on, and upload that .mp4. · این فایل خام دوربین است؛ در Insta360 Studio خروجی ‎.mp4 بگیرید.";
+      return "This is the camera's raw file (.insv). Choose the .mp4 you exported from it instead (in the folder you exported to). Not exported yet? In Insta360 Studio: Export → 360 Video, 3840×1920 (4K) or larger, 25 fps, Rec.709 8-bit, H.264 or H.265. · این فایل خام دوربین است؛ فایل ‎.mp4 خروجی را انتخاب کنید.";
     }
     return ext === "mp4" ? null : "The 360° walk is an .mp4 exported from Insta360 Studio. · ویدیوی ۳۶۰ باید ‎.mp4 باشد.";
   }

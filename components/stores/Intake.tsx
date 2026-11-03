@@ -23,7 +23,7 @@ const EMPTY: Answers = { nameEn: "", nameFa: "", category: "", contact: "", phon
 
 export const UPLOAD_CARDS = [
   { kind: "video", fa: "ویدیوی ۳۶۰ درجه فروشگاه (Insta360)", en: "The store's 360° walk (Insta360)", accept: ".mp4,.insv,video/mp4",
-    hint: "Start filming outside, at the store's real door, then walk in slowly. Export from Insta360 Studio: 360 Video, 8K, maximum bitrate, H.265, Anti-Flicker on (.mp4).", skip: false },
+    hint: "Start filming outside, at the store's real door, then walk in slowly. Export from Insta360 Studio: 360 Video, 3840×1920 (4K) or larger, 25 fps, Rec.709 8-bit, H.264 or H.265 (.mp4). It need not play on your computer; we make the copies browsers play.", skip: false },
   { kind: "sheet", fa: "فهرست محصولات (اکسل)", en: "The product workbook (.xlsx)", accept: ".xlsx",
     hint: "Product number, title_en, title_fa, unit, unit price — photos may be in it (placed on a product's row, or on a second sheet of product number → photo).", skip: false },
   { kind: "photo", fa: "عکس محصولات (اختیاری)", en: "Product photos (optional)", accept: "image/jpeg,image/png,image/webp", multiple: true,
