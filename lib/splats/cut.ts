@@ -148,10 +148,10 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
 /** Where the original is kept by the first cut. */
 export const originalKeyOf = (key: string) => `${key}.original`;
 
-/** How a walk wants its video: H.264, a keyframe every second (quick stepping back), no sound (`Walk.audio` is its sound). */
+/** How a walk wants its video: H.264, a keyframe every 0.4 s (quick seeks), no sound (`Walk.audio` is its sound). */
 const ENCODE = [
   "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
-  "-force_key_frames", "expr:gte(t,n_forced*1)",
+  "-force_key_frames", "expr:gte(t,n_forced*0.4)", // a keyframe every 0.4 s: seeks (the bar, stepping back) land quickly
 ];
 
 /**

@@ -18,12 +18,20 @@ import { probe, run } from "./media";
 
 /** The reversed copy of a video file: 1-second pieces, each reversed, joined last-first. */
 export async function reverseVideo(input: string, output: string, seconds: number, dir: string): Promise<void> {
+  // ⚠️ EXACTLY ONE SECOND'S FRAMES PER PIECE (2026-11-03): cut by time alone
+  // each piece took a frame extra, and area-outside's reversed copy came out
+  // 1.7 s longer than the walk — so Back would not use it (the player checks
+  // the two agree). Each piece now holds exactly `fps` frames, re-timed from 0.
+  const fpsText = (await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", input])).toString().trim();
+  const [num, den] = fpsText.split("/").map(Number);
+  const fps = num > 0 && den > 0 ? num / den : 25;
+  const perPiece = Math.max(1, Math.round(fps));
   const pieces: string[] = [];
   for (let i = 0; i * 1 < seconds; i++) {
     const out = join(dir, `r${String(i).padStart(5, "0")}.mp4`);
     await run("ffmpeg", [
-      "-v", "error", "-y", "-ss", String(i), "-t", "1", "-i", input,
-      "-vf", "scale=2880:1440:flags=bicubic,reverse", "-threads", "2",
+      "-v", "error", "-y", "-ss", String(i), "-t", "1.2", "-i", input,
+      "-vf", `trim=end_frame=${perPiece},scale=2880:1440:flags=bicubic,reverse,setpts=N/(${fps}*TB)`, "-r", String(fps), "-threads", "2",
       "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-g", "10", "-pix_fmt", "yuv420p",
       "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-an", out,
     ]);
