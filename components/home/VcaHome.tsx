@@ -57,7 +57,7 @@ export default async function VcaHome({ lang }: { lang: Lang }) {
       {lang === "fa" && <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(homeJsonLd(lang, FAQ[lang])) }} />
       <header className="vb-nav">
-        <a href={page.path} className="vb-brand">{lang === "fa" ? SITE_NAME.fa : SITE_NAME.en}</a>
+        <a href={page.path} className="vb-brand">{lang === "fa" ? `${SITE_NAME.fa} تورنتو` : `${SITE_NAME.en} Toronto`}</a>
         <nav className="vb-links" aria-label={lang === "fa" ? "منو" : "Menu"}>
           <a href="/vca/walk">{t.walk}</a>
           <a href="/vca">{t.bazaar3d}</a>
