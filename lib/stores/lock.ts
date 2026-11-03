@@ -20,6 +20,7 @@ import { phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
 import { ZONE_H, ZONE_W, columnHistograms, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
 import { probe, run } from "./media";
 import { findPhotographer, type Purse } from "./ai";
+import { downForHead, isUnderCamera, type Seen } from "./lockRules";
 import { PACE_FPS, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, frameShift, groundMove, paceOf } from "@/lib/splats/pace";
 
 /** Frames a second the zone is followed at (fewer on a long walk: at most `MAX_FRAMES`). */
@@ -120,6 +121,7 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
     await say(handLocks ? "Starting from the locks set by hand…" : "Looking for the person carrying the camera…");
     const locks: ZoneLock[] = handLocks ? [...handLocks] : [];
     let armsLat = -90;
+    const seen: Seen[] = [];
     for (const f of handLocks ? [] : SEEDS) {
       const t = Math.min(seconds - 0.1, Math.max(0, f * seconds));
       const jpeg = new Uint8Array(await run("ffmpeg", [
@@ -129,11 +131,25 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
       if (!p.found) continue;
       const d1 = (p.x1 / SEED_W) * 360 - 180, d2 = (p.x2 / SEED_W) * 360 - 180;
       const span = d1 <= d2 ? d2 - d1 : 360 - (d1 - d2);
+      seen.push({ span, headLat: 90 - (Math.min(SEED_H, Math.max(0, p.headY)) / SEED_H) * 180 });
       if (span < 5 || span > 300) continue;
       const mid = d1 + span / 2;
       const width = Math.min(330, span + 2 * MARGIN);
       locks.push({ t: Math.round(t * 100) / 100, yaw: rad(((mid + 540) % 360) - 180), width: rad(width) });
       if (p.armsY < SEED_H) armsLat = Math.max(armsLat, 90 - (p.armsY / SEED_H) * 180);
+    }
+    // The camera held just over the head: the head fills the bottom of the
+    // picture all the way round, so a slice of directions cannot hide it.
+    // Only how far down shoppers may look can (`lockRules.ts`).
+    if (!handLocks && isUnderCamera(seen)) {
+      const downDeg = downForHead(seen, HALF_VFOV);
+      const walks = await readWalks();
+      const w = walks.walks[walkKey];
+      if (!w) return "The walk is gone.";
+      if (w.hide && !w.hide.auto) return "Kept the locks set by hand meanwhile.";
+      const { hide: _old, ...rest } = w;
+      await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...rest, tilt: { up: rad(45), down: rad(downDeg) } } } }, walks);
+      return `The camera was held over the operator's head: shoppers look down to ${downDeg}° (the head stays out of view) and up to 45°; no directions blocked.`;
     }
     if (!locks.length) return "Could not find the person carrying the camera: nothing locked.";
 
