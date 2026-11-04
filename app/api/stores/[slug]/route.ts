@@ -32,6 +32,7 @@ import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
+import { buildTour, readTour } from "@/lib/stores/tourJob";
 import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
@@ -222,6 +223,21 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const limit = Number(body.limit) > 0 ? Math.floor(Number(body.limit)) : undefined;
     void readTitles(s.slug, limit).then((note) => console.log("[titles]", s.slug, note)).catch((e) => console.error("[titles]", s.slug, e));
     return ok({ started: true, limit: limit ?? "all" });
+  }
+  if (body.action === "tourBuild") {
+    // Operator: the Shelf tour builder (free: ffmpeg on the sightings already found). Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    void buildTour(s.slug).then((note) => console.log("[tour]", s.slug, note)).catch((e) => console.error("[tour]", s.slug, e));
+    return ok({ started: true });
+  }
+  if (body.action === "tour") {
+    const r = await readTour(s.slug);
+    const job = await readJob("tour");
+    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    return ok({
+      tour: r ? { made: r.made, seconds: r.seconds, shelves: r.clips.length, products: r.items.length, video: r.video, walk: r.walk } : null,
+      working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
+    });
   }
   if (body.action === "rawLinks") {
     // Operator: the store's raw .insv upload(s), each with a private link good for 6 h (the agents' test of

@@ -29,6 +29,7 @@ import { UPLOAD_CARDS } from "./Intake";
 import Products from "./Products";
 import RouteCard from "./RouteCard";
 import PhotosCard from "./PhotosCard";
+import TourCard from "./TourCard";
 import WalkFrame from "./WalkFrame";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
@@ -253,6 +254,7 @@ export default function StorePage({ slug }: { slug: string }) {
 
       {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
+      {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
 
       {op && <Card><ChangePassword api={api} /></Card>}
       {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
@@ -288,6 +290,7 @@ function ChangePassword({ api }: { api: string }) {
 const AGENT_SAY: Record<string, { en: string; fa: string }> = {
   photosImprover: { en: "Photo improver — each product's photo at the moment the finder saw it, at its sharpest", fa: "بهبود عکس محصولات" },
   routeOptimizer: { en: "Route optimizer — a smooth forward walk, no back and forth", fa: "مسیر بهینه" },
+  shelfTour: { en: "Shelf Tour builder — the camera on each shelf in turn, tap to add to basket", fa: "گشت قفسه‌به‌قفسه" },
 };
 function useAgentRows(api: string): Array<[string, StepView]> {
   const [rows, setRows] = useState<Array<[string, StepView]>>([]);
@@ -295,9 +298,10 @@ function useAgentRows(api: string): Array<[string, StepView]> {
     let gone = false;
     const load = async () => {
       try {
-        const [ph, rt] = await Promise.all([
+        const [ph, rt, tr] = await Promise.all([
           postJson<{ photos: { state: string; done: number; total: number; at: string | null } }>(api, { action: "photos" }),
           postJson<{ route: { kept: number; seconds: number; parts: unknown[]; joins: Array<{ smooth: boolean }>; lost: number[]; made: string; applied?: boolean; cutting?: boolean } | null; working: boolean; note: string }>(api, { action: "route" }),
+          postJson<{ tour: { made: string; seconds: number; shelves: number; products: number } | null; working: boolean; note: string }>(api, { action: "tour" }),
         ]);
         const p = ph.photos, r = rt.route;
         const mm = (x: number) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
@@ -315,7 +319,12 @@ function useAgentRows(api: string): Array<[string, StepView]> {
           : r
             ? { state: "needs-you", tries: 0, at: r.made, note: `Planned: keeps ${mm(r.kept)} of ${mm(r.seconds)} in ${r.parts.length} parts, ${r.lost.length ? `${r.lost.length} products would be lost` : "every product still shown"}; ${r.joins.filter((j) => j.smooth).length} seamless joins, ${r.joins.filter((j) => !j.smooth).length} with a short dip. Watch the preview below («Route optimizer»), then say yes to cut — or plan again.` }
             : { state: "todo", tries: 0, at: null, note: "Not planned yet: «Plan the route» below." };
-        if (!gone) setRows([["photosImprover", photo], ["routeOptimizer", route]]);
+        const t = tr.tour;
+        const tour: StepView = tr.working
+          ? { state: "working", tries: 0, at: null, note: `Building: ${tr.note || "…"}` }
+          : t ? { state: "done", tries: 0, at: t.made, note: `Made: ${t.shelves} shelves, ${mm(t.seconds)}, ${t.products} products lit. Watch it below («Shelf Tour»).` }
+            : { state: "todo", tries: 0, at: null, note: "Not built yet: «Build the Shelf Tour» below." };
+        if (!gone) setRows([["photosImprover", photo], ["routeOptimizer", route], ["shelfTour", tour]]);
       } catch { /* the list shows the crew alone */ }
     };
     void load();

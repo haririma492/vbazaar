@@ -571,6 +571,23 @@ quality and choice to break away and enter in a shop. (period)"*
     X6 upright on the stick and turned SIDE-ON to the walk, one lens facing
     each shelf: the books then sit in the middle of a lens, its sharpest part.
   The upload stays (`files.raw`, kind `raw`, operator only) for later tests.
+- **The Shelf Tour** (owner, 2026-11-05, IMPORTANT: *"a new route that Camera
+  moves logically well zoomed in on each shelf then to the next shelf … does
+  not need to be seamless … we need to always construct a perfect route using
+  code from the raw recording"*; *"fine as long as shoppers can add to the
+  basket"*; the name: *"Shelf-Tour is fine"*). `/vca/tour?s=<store>`: a flat
+  16:9 video, a clip a shelf, built by the Shelf Tour builder
+  (`lib/stores/tour.ts` plans, `tourJob.ts` renders; free, no AI): the
+  finder's sightings grouped into shelves in walking order (one direction, no
+  gap over 3 s); a shelf seen again keeps its closest visit; 3–6 s round the
+  moment its products look biggest; a virtual camera (ffmpeg v360 with
+  `sendcmd`) aimed at the middle of its products, smoothed over 1.5 s, zoomed
+  to fit (50–95°), from the original upload; each clip fades in and out. Every
+  product's place on screen is in `scenes/store-<slug>/tour.json` (served by
+  `/api/tour/<slug>`), so the green lights sit on the products and a tap opens
+  the walk's own card (`ItemCard`) with «Add to basket». A product with no
+  light moves with its shelf's followed products. The 360° walk stays, linked
+  from the tour. «Build the Shelf Tour» on the store's page (operator).
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.
