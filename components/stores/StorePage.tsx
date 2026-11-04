@@ -286,7 +286,7 @@ function ChangePassword({ api }: { api: string }) {
  * cut waits for the owner's yes, so a plan ready reads «needs you»).
  */
 const AGENT_SAY: Record<string, { en: string; fa: string }> = {
-  photosImprover: { en: "Photo improver — each product's photo from several frames, at its sharpest", fa: "بهبود عکس محصولات" },
+  photosImprover: { en: "Photo improver — each product's photo at the moment the finder saw it, at its sharpest", fa: "بهبود عکس محصولات" },
   routeOptimizer: { en: "Route optimizer — a smooth forward walk, no back and forth", fa: "مسیر بهینه" },
 };
 function useAgentRows(api: string): Array<[string, StepView]> {
@@ -304,7 +304,7 @@ function useAgentRows(api: string): Array<[string, StepView]> {
         const photo: StepView = {
           state: p.state === "working" ? "working" : p.state === "waiting" ? "todo" : p.total && p.done >= p.total ? "done" : "todo",
           tries: 0, at: p.at,
-          note: `${p.done} of ${p.total} photos made from several frames.${p.state === "working" ? " Working now, about 30 s a product." : p.state === "waiting" ? " Waiting its turn." : p.done < p.total ? " Runs by itself; «Run it now» below to start it." : ""}`,
+          note: `${p.done} of ${p.total} photos made, each where the finder saw it.${p.state === "working" ? " Working now, about 40 s a product." : p.state === "waiting" ? " Waiting its turn." : p.done < p.total ? " Runs by itself; «Run it now» below to start it." : ""}`,
         };
         const route: StepView = rt.working
           ? { state: "working", tries: 0, at: null, note: `Planning: ${rt.note || "…"}` }

@@ -23,7 +23,7 @@ export default function PhotosCard({ api, operator }: { api: string; operator: b
   const pct = p && p.total ? Math.round((p.done / p.total) * 100) : 0;
   return (
     <Card>
-      <Bi fa="بهبود عکس محصولات" en="Photo improver — each product's photo from several frames, at its sharpest" className="text-[15px] font-bold text-amber-100" />
+      <Bi fa="بهبود عکس محصولات" en="Photo improver — each product's photo at the moment the finder saw it, at its sharpest" className="text-[15px] font-bold text-amber-100" />
       {p && (
         <div dir="ltr" className="mt-2 space-y-1.5 text-left text-[13px]">
           <p>
@@ -31,8 +31,8 @@ export default function PhotosCard({ api, operator }: { api: string; operator: b
             {p.state === "working" ? "Working on this store now." : p.state === "waiting" ? "Waiting its turn (another store first)." : p.done >= p.total && p.total ? "Done: every product's photo is improved." : p.done ? "Stopped part-way: run it again to finish." : "Not run on this store's walk yet."}
           </p>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10"><div className="h-full bg-emerald-400/80" style={{ width: `${pct}%` }} /></div>
-          <p className="text-white/60">{p.done} of {p.total} photos made from several frames ({pct}%){p.at ? ` · last saved ${new Date(p.at).toLocaleTimeString()}` : ""}. About 30 s a product; it carries on by itself after a restart.</p>
-          <p className="text-white/45">How: 8 moments of each product are measured for sharpness; the frames just round the sharpest are lined up and combined inside the product&apos;s yellow box. Real detail only — nothing is invented.</p>
+          <p className="text-white/60">{p.done} of {p.total} photos made ({pct}%){p.at ? ` · last saved ${new Date(p.at).toLocaleTimeString()}` : ""}. About 40 s a product; it carries on by itself after a restart.</p>
+          <p className="text-white/45">How: the moment the finder saw the product closest (its yellow box fits there), the sharpest frame within 0.2 s of it, cut from the original upload and enlarged once. Real detail only — nothing is invented.</p>
         </div>
       )}
       {operator && p && p.state === "idle" && (

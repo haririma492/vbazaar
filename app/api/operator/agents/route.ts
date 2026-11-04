@@ -57,7 +57,7 @@ export async function GET(req: NextRequest) {
     { id: "pace", name: "Walking speed (lock agent's half)", what: "Measures how fast each walk was filmed, so the speed bar is a real speed. Free.", ...(pace ?? { busy: false, waiting: [] }) },
     { id: "repin", name: "Light keeper", what: "Keeps each product's light on it while it is in view: follows it again, checks it stays on the same product, joins its lights. Free.", ...(repin ?? { busy: false, waiting: [] }) },
     { id: "reverse", name: "Reversed copies", what: "Makes the copy «◀ Back» plays. Free.", ...(reverse ?? { busy: false, waiting: [] }) },
-    { id: "photos", name: "Photo improver", what: "Makes each product's photo from several frames at its sharpest moment, for every store. Free.", ...(photos ?? { busy: false, waiting: [] }) },
+    { id: "photos", name: "Photo improver", what: "Cuts each product's photo where the finder saw it closest, at the sharpest frame, from the original upload, for every store. Free.", ...(photos ?? { busy: false, waiting: [] }) },
     { id: "route", name: "Route optimizer", what: "Plans a smooth forward route through a store's walk (no walking back, no second passes); nothing is cut without a yes. Free.", busy: Boolean(route?.busy), waiting: [], ...(route?.busy && route.key ? { current: route.key } : {}), ...(route?.note ? { note: route.note } : {}) },
   ];
   const shadowJob = shadow ? { key: shadow.key, phase: shadow.phase, note: shadow.note, at: shadow.at, looked: shadow.looked, spentCents: shadow.spent } : null;
