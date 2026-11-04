@@ -21,7 +21,7 @@
  */
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
-import { r2Config, readCatalogue, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { presignGet, r2Config, readCatalogue, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
@@ -222,6 +222,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const limit = Number(body.limit) > 0 ? Math.floor(Number(body.limit)) : undefined;
     void readTitles(s.slug, limit).then((note) => console.log("[titles]", s.slug, note)).catch((e) => console.error("[titles]", s.slug, e));
     return ok({ started: true, limit: limit ?? "all" });
+  }
+  if (body.action === "rawLinks") {
+    // Operator: the store's raw .insv upload(s), each with a private link good for 6 h (the agents' test of
+    // the camera's gyro and picture, owner 2026-11-05). Reads only; nothing changes.
+    if (who !== "operator") return fail(403, "The operator only.");
+    const raw = s.files.raw ?? [];
+    return ok({ raw: await Promise.all(raw.map(async (f) => ({ ...f, url: await presignGet(f.key, "master", 6 * 3600) }))) });
   }
   if (body.action === "titles") {
     // The titles read so far (owner or operator).
