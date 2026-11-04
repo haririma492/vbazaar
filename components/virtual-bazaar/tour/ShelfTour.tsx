@@ -125,7 +125,12 @@ export default function ShelfTour() {
       <div className="flex items-center justify-between gap-2 px-3 py-2 text-[14px]">
         <div className="min-w-0 truncate"><b>{name}</b>{title?.fa ? <span className="text-white/60"> · {title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
         <div className="flex shrink-0 items-center gap-3">
-          {tour && <a className="text-[#00B8C8] underline" href={`/vca/walk?v=${encodeURIComponent(tour.walk)}`}>Walk it in 360° ↗</a>}
+          {tour && (
+            <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
+              <span className="rounded-full bg-[#00B8C8] px-3 py-1 text-[#06131c]">🛒 Shelf Tour</span>
+              <a className="rounded-full px-3 py-1 text-white/80" href={`/vca/walk?v=${encodeURIComponent(tour.walk)}`}>👣 Free Tour</a>
+            </span>
+          )}
           <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
         </div>
       </div>

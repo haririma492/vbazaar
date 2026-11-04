@@ -586,8 +586,15 @@ quality and choice to break away and enter in a shop. (period)"*
   product's place on screen is in `scenes/store-<slug>/tour.json` (served by
   `/api/tour/<slug>`), so the green lights sit on the products and a tap opens
   the walk's own card (`ItemCard`) with «Add to basket». A product with no
-  light moves with its shelf's followed products. The 360° walk stays, linked
-  from the tour. «Build the Shelf Tour» on the store's page (operator).
+  light moves with its shelf's followed products. «Build the Shelf Tour» on the
+  store's page (operator).
+- **Two ways round a store: «🛒 Shelf Tour | 👣 Free Tour»** (owner,
+  2026-11-05: *"1) The Shelf Tour (that is perfectly choreographed for
+  shopping result) & 2) The Free Tour (that gives shopper feeling of walking
+  in and seeing around before get serious and engage in selecting and
+  buying)"*). The Free Tour is the 360° walk. The switch is at the top of both
+  screens, shown on a store's walk once its Shelf Tour exists
+  (`/api/tour/<slug>`); both add to the same basket.
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

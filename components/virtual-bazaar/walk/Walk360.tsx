@@ -521,6 +521,8 @@ export default function Walk360() {
   const [ownerCard, setOwnerCard] = useState<number | null>(null);
   /** The store's aisles (its shelf videos, in order), for Next / Previous. */
   const [aisles, setAisles] = useState<Aisle[]>([]);
+  /** The store whose Shelf Tour exists (its slug), for the «Shelf Tour | Free Tour» switch. */
+  const [tourOf, setTourOf] = useState<string | null>(null);
   const [debug, setDebug] = useState(false);
   const [info, setInfo] = useState("");
   const [diag, setDiag] = useState("");
@@ -1915,6 +1917,17 @@ export default function Walk360() {
   }, [speed]);
   // The store's product list: what the cards show, and what the operator tags by number.
   const store = view.key ? storeOfScene(view.key) : "";
+  // ⚠️ TWO WAYS ROUND A STORE (owner, 2026-11-05: "shoppers then can switch between: 1) The Shelf Tour
+  // (that is perfectly choreographed for shopping result) & 2) The Free Tour (that gives shopper feeling of
+  // walking in and seeing around …)"): this walk is the Free Tour; with a Shelf Tour, the switch shows.
+  useEffect(() => {
+    setTourOf(null);
+    const slug = /^store-([a-z0-9-]+)$/.exec(store)?.[1];
+    if (!slug) return;
+    let gone = false;
+    void fetch(`/api/tour/${slug}`, { cache: "no-store" }).then((r) => r.json()).then((j) => { if (!gone && j?.ok) setTourOf(slug); }).catch(() => {});
+    return () => { gone = true; };
+  }, [store]);
   useEffect(() => {
     setCatalogue(null);
     setAisles([]);
@@ -2221,6 +2234,12 @@ export default function Walk360() {
             >
               ← Back to the street · بازگشت به خیابان
             </button>
+          )}
+          {tourOf && !view.busy && !editing && (
+            <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-white/25 bg-black/70 p-1 text-[14px] font-semibold text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
+              <a href={`/vca/tour?s=${tourOf}`} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
+              <span className="rounded-full bg-[#00B8C8] px-4 py-1.5 text-[#06131c]">👣 Free Tour</span>
+            </div>
           )}
           {/* A store's aisles: «‹ Aisle 2 · Aisle 3 of 6 · Aisle 4 ›» (founder, 2026-10-12: "map later, simple next previous now"). */}
           {aisleAt >= 0 && aisles.length > 1 && !view.busy && (
