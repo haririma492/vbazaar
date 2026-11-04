@@ -588,6 +588,15 @@ quality and choice to break away and enter in a shop. (period)"*
   the walk's own card (`ItemCard`) with «Add to basket». A product with no
   light moves with its shelf's followed products. «Build the Shelf Tour» on the
   store's page (operator).
+  ⚠️ Owner, 2026-11-05: *"jumping all over the place even it goes out to
+  hallway of other stores … it jumps every 2 sec"* (25 clips of 3–6 s, left
+  and right alternating, the first nine outside the door, 95° room shots, the
+  photographer in two). Now: only after the store's door (`entryOf`, in the
+  original's times); wide shelves (~50°, gaps to 5 s, at least 6 products);
+  6–12 s each; ONE steady eased pan per shelf (never the per-moment middle);
+  at most 70°; ordered so the camera keeps to one side; and the camera
+  operator (the Lock agent's `hide`) never in view: the clip turns away from
+  them up to 35°, else it is dropped. Bookshop: 7 shelves, 53 s, 90 products.
 - **The Shelf finder** (owner, 2026-11-05: *"the Shelf Tour itself I guess will
   lead to discovery and identification of many more new books"*; *"yes"* to
   about $2–3). `lib/stores/shelfFinder.ts`, «Find more products on these

@@ -15,12 +15,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { presignGet, r2Config, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson } from "@/lib/splats/r2";
 import { cutParts } from "@/lib/splats/cut-job";
+import { entryOf, hideAt } from "@/lib/splats/walks";
+
+/** Original time → the cut walk's time, or null when that moment was cut out. */
+export function cutTimeOf(parts: Array<{ from: number; to: number }>, t: number): number | null {
+  if (!parts.length) return t;
+  let at = 0;
+  for (const p of parts) {
+    if (t >= p.from && t <= p.to) return at + (t - p.from);
+    at += p.to - p.from;
+  }
+  return null;
+}
 import { originalKeyOf } from "@/lib/splats/cut";
 import { readStore } from "./bucket";
 import { probe, run } from "./media";
 import { originalTime } from "./photoSharp";
 import { setJob } from "./jobState";
-import { aimCommands, ASPECT, FADE, planTour, type Seen, type TourPlan, type Track } from "./tour";
+import { aimCommands, ASPECT, FADE, planTour, type OperatorAt, type Seen, type TourPlan, type Track } from "./tour";
 
 export const TOUR_W = 1280, TOUR_H = Math.round(TOUR_W / ASPECT);
 export type TourManifest = Omit<TourPlan, "clips"> & {
@@ -46,8 +58,8 @@ export async function buildTour(slug: string): Promise<string> {
     await setJob("tour", { busy: true, key: walkKey, note: "reading the sightings" });
     const inp = await tourInputs(slug);
     if (typeof inp === "string") return inp;
-    const { seen, tracks, src, end } = inp;
-    const plan = planTour(seen, [...tracks.values()], end);
+    const { seen, tracks, src, end, entry, operator } = inp;
+    const plan = planTour(seen, [...tracks.values()], end, entry, operator);
     if (!plan.clips.length) return "No shelves found.";
     const files: string[] = [];
     for (const [i, c] of plan.clips.entries()) {
@@ -97,7 +109,7 @@ export const shelfSightingsKey = (slug: string) => `stores/${slug}/shelf-sightin
  * What a tour (and the Shelf finder) is made from: the sightings (the finder's, else each light's middle,
  * plus the Shelf finder's), every product's path, the source in the sightings' times and its length.
  */
-export async function tourInputs(slug: string): Promise<string | { s: NonNullable<Awaited<ReturnType<typeof readStore>>>; walkKey: string; seen: Seen[]; tracks: Map<number, Track>; src: string; end: number; parts: Array<{ from: number; to: number }> }> {
+export async function tourInputs(slug: string): Promise<string | { s: NonNullable<Awaited<ReturnType<typeof readStore>>>; walkKey: string; seen: Seen[]; tracks: Map<number, Track>; src: string; end: number; parts: Array<{ from: number; to: number }>; entry: number; operator: OperatorAt }> {
     const s = await readStore(slug);
     const walkKey = s?.out.walk;
     if (!s || !walkKey) return "No walk.";
@@ -134,7 +146,12 @@ export async function tourInputs(slug: string): Promise<string | { s: NonNullabl
       src = await presignGet(parts.length && (await webObjectExists(orig)) ? orig : walkKey, "web", 6 * 3600);
     }
     const end = (await probe(src)).seconds || Math.max(...seen.map((x) => x.t)) + 1;
-    return { s, walkKey, seen, tracks, src, end, parts };
+    // The store's door, in the original's times: the tour stays inside (owner, 2026-11-05).
+    const entry = back(entryOf(walk ?? null));
+    // The operator, from the Lock agent (in the walk's times): the tour never aims at them.
+    const hide = walk?.hide;
+    const operator = (t: number) => { if (!hide) return null; const ct = cutTimeOf(parts, t); return ct === null ? null : hideAt(hide, ct); };
+    return { s, walkKey, seen, tracks, src, end, parts, entry, operator };
 }
 
 /** The store's latest tour (the private record), or null. */

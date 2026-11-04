@@ -54,10 +54,10 @@ export async function findShelves(slug: string): Promise<string> {
   try {
     const inp = await tourInputs(slug);
     if (typeof inp === "string") return inp;
-    const { s, walkKey, seen, tracks, src, end, parts } = inp;
+    const { s, walkKey, seen, tracks, src, end, parts, entry, operator } = inp;
     const c = await readCatalogue(sceneOf(slug));
     if (!c) return "No product list.";
-    const plan = planTour(seen, [...tracks.values()], end);
+    const plan = planTour(seen, [...tracks.values()], end, entry, operator);
     const purse = purseOf(s);
     const before = purse.spent();
     // Where each product of the list is at t (its light; else a sighting within a second).

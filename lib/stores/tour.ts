@@ -33,8 +33,13 @@ export type Clip = {
 export type OnScreen = { n: number; t: number[]; x: number[]; y: number[] };
 export type TourPlan = { clips: Clip[]; items: OnScreen[]; seconds: number };
 
-export const STEP = 0.2, SHELF_SPREAD = 0.6, SHELF_GAP = 3, SHELF_MIN = 3, MERGE_SPREAD = 1.0, CLIP_MIN = 3, CLIP_MAX = 6, AIM_SMOOTH = 1.5;
-export const FOV_MIN = (50 * Math.PI) / 180, FOV_MAX = (95 * Math.PI) / 180, ASPECT = 16 / 9, FADE = 0.25;
+// ⚠️ WHOLE BOOKCASES, NOT SECTIONS (owner, 2026-11-05: "shelf tour is jumping all over the place even it goes
+// out to hallway of other stores … it jumps every 2 sec"): 25 clips of 3–6 s alternating left and right, and the
+// first ones outside the door. Now: only inside (`entry`), wide shelves (`SHELF_SPREAD` ~50°, gaps to 5 s), at
+// least `SHELF_MIN` products, 6–12 s each, one steady pan, ordered so the camera keeps to one side at a time.
+export const STEP = 0.2, SHELF_SPREAD = 0.9, SHELF_GAP = 5, SHELF_MIN = 6, MERGE_SPREAD = 1.3, CLIP_MIN = 6, CLIP_MAX = 12, AIM_SMOOTH = 1.5;
+// At most 70° (2026-11-05: at 95° a "shelf" was the whole room, desks and all).
+export const FOV_MIN = (50 * Math.PI) / 180, FOV_MAX = (70 * Math.PI) / 180, ASPECT = 16 / 9, FADE = 0.25;
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[s.length >> 1] : 0; };
@@ -138,12 +143,30 @@ export function unproject(x: number, y: number, yaw: number, pitch: number, hfov
 }
 
 /** 3–5: the whole tour. `end` is the recording's length. */
-export function planTour(seen: Seen[], trackList: Track[], end: number): TourPlan {
+/** Where the camera operator is at a moment (the Lock agent's `hide`, in the original's times): never in a clip. */
+/** The furthest a clip is turned away from the operator (rad, ~35°). */
+export const DODGE_MAX = 0.6;
+export type OperatorAt = (t: number) => { yaw: number; width: number } | null;
+export function planTour(seenAll: Seen[], trackList: Track[], end: number, entry = 0, operator: OperatorAt = () => null): TourPlan {
+  const seen = seenAll.filter((x) => x.t >= entry);
   const tracks = new Map(trackList.map((t) => [t.n, t]));
   const clips: Clip[] = [];
   const items = new Map<number, OnScreen>();
   let at = 0;
-  for (const [k, g] of shelvesOf(seen).entries()) {
+  // The order: from the earliest shelf, the next is the one starting soon after that turns the camera least.
+  const left = shelvesOf(seen);
+  const ordered: Seen[][] = [];
+  let heading: number | null = null;
+  while (left.length) {
+    left.sort((a, b) => a[0].t - b[0].t);
+    const soon = left.filter((g) => g[0].t <= left[0][0].t + 6);
+    const dir = (g: Seen[]) => midAngle(g.map((x) => x.lon));
+    const pick = heading === null ? soon[0] : soon.reduce((a, b) => (Math.abs(wrap(dir(b) - heading!)) < Math.abs(wrap(dir(a) - heading!)) ? b : a));
+    ordered.push(pick);
+    heading = dir(pick);
+    left.splice(left.indexOf(pick), 1);
+  }
+  for (const [k, g] of ordered.entries()) {
     const products = [...new Set(g.map((s) => s.n))];
     if (products.length < 1) continue;
     // 3. Round the moment the products looked biggest.
@@ -167,18 +190,40 @@ export function planTour(seen: Seen[], trackList: Track[], end: number): TourPla
       return ps.length ? { yaw: midAngle(ps.map((p) => p.x)), pitch: median(ps.map((p) => p.y)), xs: ps.map((p) => p.x) } : null;
     });
     const fallback = { yaw: midAngle(g.map((s) => s.lon)), pitch: median(g.map((s) => s.lat)) };
-    const r = Math.round(AIM_SMOOTH / 2 / STEP);
+    // ONE STEADY PAN: from the products' middle over the first third to their middle over the last third,
+    // eased in and out; the height held. Never the per-moment middle (it wobbled as products came and went).
+    const third = Math.max(1, Math.floor(raw.length / 3));
+    const yawsOf = (xs: typeof raw) => xs.filter((x): x is NonNullable<typeof x> => Boolean(x)).map((x) => x.yaw);
+    const y0s = yawsOf(raw.slice(0, third)), y1s = yawsOf(raw.slice(-third));
+    const yaw0 = y0s.length ? midAngle(y0s) : fallback.yaw, yaw1 = y1s.length ? midAngle(y1s) : yaw0;
+    const pitches = raw.filter((x): x is NonNullable<typeof x> => Boolean(x)).map((x) => x.pitch);
+    const pitch = Math.max(-0.6, Math.min(0.6, pitches.length ? median(pitches) : fallback.pitch));
+    const turn = wrap(yaw1 - yaw0);
     const aim: Aim[] = steps.map((t, i) => {
-      const win = raw.slice(Math.max(0, i - r), i + r + 1).filter((x): x is NonNullable<typeof x> => Boolean(x));
-      const yaw = win.length ? midAngle(win.map((w) => w.yaw)) : fallback.yaw;
-      const pitch = win.length ? win.reduce((s, w) => s + w.pitch, 0) / win.length : fallback.pitch;
-      return { t, yaw, pitch: Math.max(-0.6, Math.min(0.6, pitch)) };
+      const u = steps.length > 1 ? i / (steps.length - 1) : 0, e = u * u * (3 - 2 * u);
+      return { t, yaw: wrap(yaw0 + turn * e), pitch };
     });
+    void AIM_SMOOTH;
     // The zoom: the products' spread round the aim (10th–90th), plus room; within FOV_MIN…FOV_MAX.
     const offs = raw.flatMap((x, i) => (x ? x.xs.map((v) => Math.abs(wrap(v - aim[i].yaw))) : [])).sort((a, b) => a - b);
     const spread = offs.length ? offs[Math.floor(offs.length * 0.9)] : 0.4;
     const hfov = Math.max(FOV_MIN, Math.min(FOV_MAX, 2 * spread * 1.25 + 0.15));
     const vfov = 2 * Math.atan(Math.tan(hfov / 2) / ASPECT);
+    // ⚠️ THE OPERATOR STAYS OUT (2026-11-05: the photographer filled two clips). A clip whose camera would have
+    // the operator in view for more than a fifth of it is dropped; the shelf is seen in another or not at all.
+    // Turned away from them just enough (at most `DODGE_MAX`), the same way all through the clip; dropped only
+    // if that is not enough.
+    const clear = (yaw: number, t: number) => { const o = operator(t); return !o || Math.abs(wrap(yaw - o.yaw)) >= hfov / 2 + o.width / 2 + 0.05; };
+    let shift = 0;
+    if (!aim.every((a) => clear(a.yaw, a.t))) {
+      shift = NaN;
+      for (let d = 0.05; d <= DODGE_MAX + 1e-9; d += 0.05) {
+        if (aim.every((a) => clear(a.yaw + d, a.t))) { shift = d; break; }
+        if (aim.every((a) => clear(a.yaw - d, a.t))) { shift = -d; break; }
+      }
+      if (Number.isNaN(shift)) continue;
+      for (const a of aim) a.yaw = wrap(a.yaw + shift);
+    }
     clips.push({ shelf: k + 1, from, to, hfov, vfov, aim, products });
     // 5. Each product's place on screen through the clip, in the tour's times.
     for (const n of products) {
