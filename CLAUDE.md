@@ -588,6 +588,22 @@ quality and choice to break away and enter in a shop. (period)"*
   the walk's own card (`ItemCard`) with «Add to basket». A product with no
   light moves with its shelf's followed products. «Build the Shelf Tour» on the
   store's page (operator).
+- **The Shelf finder** (owner, 2026-11-05: *"the Shelf Tour itself I guess will
+  lead to discovery and identification of many more new books"*; *"yes"* to
+  about $2–3). `lib/stores/shelfFinder.ts`, «Find more products on these
+  shelves» on the Shelf Tour card (operator, AI from the store's budget). For
+  each shelf of the tour, one steady square-on picture at its closest moment
+  (1568×882, from the original upload), Claude boxes every product
+  (`findOnShelf`); each box goes back to its place in the recording
+  (`unproject`): a listed product already there keeps its number (and title
+  reading) and gets the sighting; otherwise it is new, numbered after the
+  list, with a photo and a light followed through the cut walk. Sightings in
+  `stores/<slug>/shelf-sightings.json` (used by the tour and the Photo
+  improver). Then the photos and the tour are made again. The lights cap is
+  500 (it was 250: the bookshop's 250 lights covered only 145 products).
+- **Saraye Bamdad was found before sightings were saved** (2026-11-04), so it
+  has no `sightings.json`: its tour and photos stand on its lights (145
+  products); the other 157 found then have no place recorded.
 - **Two ways round a store: «🛒 Shelf Tour | 👣 Free Tour»** (owner,
   2026-11-05: *"1) The Shelf Tour (that is perfectly choreographed for
   shopping result) & 2) The Free Tour (that gives shopper feeling of walking

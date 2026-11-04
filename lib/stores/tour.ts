@@ -128,6 +128,15 @@ export function project(lon: number, lat: number, yaw: number, pitch: number, hf
   return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
 }
 
+/** The inverse of `project`: a point on the screen (fractions) → its direction (lon, lat). */
+export function unproject(x: number, y: number, yaw: number, pitch: number, hfov: number, vfov: number): { lon: number; lat: number } {
+  const X = (x - 0.5) * 2 * Math.tan(hfov / 2), y1 = (0.5 - y) * 2 * Math.tan(vfov / 2), z1 = 1;
+  // Undo the pitch: y1 = Y cos p − Z sin p; z1 = Z cos p + Y sin p.
+  const Y = y1 * Math.cos(pitch) + z1 * Math.sin(pitch), Z = z1 * Math.cos(pitch) - y1 * Math.sin(pitch);
+  const r = Math.hypot(X, Y, Z);
+  return { lon: wrap(yaw + Math.atan2(X, Z)), lat: Math.asin(Y / r) };
+}
+
 /** 3–5: the whole tour. `end` is the recording's length. */
 export function planTour(seen: Seen[], trackList: Track[], end: number): TourPlan {
   const tracks = new Map(trackList.map((t) => [t.n, t]));

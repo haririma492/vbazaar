@@ -49,9 +49,9 @@ export async function GET(req: NextRequest) {
   }
   stores.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
 
-  const [pace, repin, reverse, shadow, walksFile, photos, route, tour] = await Promise.all([
+  const [pace, repin, reverse, shadow, walksFile, photos, route, tour, shelfFind] = await Promise.all([
     paceStatus().catch(() => null), repinStatus().catch(() => null), reverseStatus().catch(() => null), shadowState().catch(() => null), readWalks().catch(() => null),
-    photosStatus().catch(() => null), readJob("route").catch(() => null), readJob("tour").catch(() => null),
+    photosStatus().catch(() => null), readJob("route").catch(() => null), readJob("tour").catch(() => null), readJob("shelfFind").catch(() => null),
   ]);
   const jobs = [
     { id: "pace", name: "Walking speed (lock agent's half)", what: "Measures how fast each walk was filmed, so the speed bar is a real speed. Free.", ...(pace ?? { busy: false, waiting: [] }) },
@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
     { id: "photos", name: "Photo improver", what: "Cuts each product's photo where the finder saw it closest, at the sharpest frame, from the original upload, for every store. Free.", ...(photos ?? { busy: false, waiting: [] }) },
     { id: "route", name: "Route optimizer", what: "Plans a smooth forward route through a store's walk (no walking back, no second passes); nothing is cut without a yes. Free.", busy: Boolean(route?.busy), waiting: [], ...(route?.busy && route.key ? { current: route.key } : {}), ...(route?.note ? { note: route.note } : {}) },
     { id: "tour", name: "Shelf Tour builder", what: "Makes a store's Shelf Tour: the camera on each shelf in turn, zoomed to fit, cut from the original upload; shoppers tap a light to add to basket. Free.", busy: Boolean(tour?.busy), waiting: [], ...(tour?.busy && tour.key ? { current: tour.key } : {}), ...(tour?.note ? { note: tour.note } : {}) },
+    { id: "shelfFind", name: "Shelf finder", what: "Looks again at each shelf of a store's Shelf Tour, in one steady picture from the original upload, and adds the products not in the list yet (with a light and a photo). AI, from the store's budget, on the owner's yes.", busy: Boolean(shelfFind?.busy), waiting: [], ...(shelfFind?.busy && shelfFind.key ? { current: shelfFind.key } : {}), ...(shelfFind?.note ? { note: shelfFind.note } : {}) },
   ];
   const shadowJob = shadow ? { key: shadow.key, phase: shadow.phase, note: shadow.note, at: shadow.at, looked: shadow.looked, spentCents: shadow.spent } : null;
   if (shadow?.phase === "failed") needsYou.push({ what: `Shadow agent: ${shadow.note}`, where: shadow.key });

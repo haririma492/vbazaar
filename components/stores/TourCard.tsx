@@ -24,6 +24,15 @@ export default function TourCard({ api, operator }: { api: string; operator: boo
     } catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
   }, [api]);
   useEffect(() => { void load(); const id = setInterval(load, 15000); return () => clearInterval(id); }, [load]);
+  const [finding, setFinding] = useState<string | null>(null);
+  useEffect(() => {
+    const f = async () => { try { const j = await postJson<{ working: boolean; note: string }>(api, { action: "shelfFindState" }); setFinding(j.working ? j.note || "working…" : null); } catch { /* shown by the card */ } };
+    void f(); const id = setInterval(f, 15000); return () => clearInterval(id);
+  }, [api]);
+  async function find() {
+    try { await postJson(api, { action: "shelfFind" }); setSaid({ ok: true, text: "The Shelf finder is looking at each shelf… about 10 minutes; then the photos and the tour are made again. · در حال جست‌وجوی قفسه‌ها…" }); }
+    catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
+  }
   async function build() {
     try { await postJson(api, { action: "tourBuild" }); setSaid({ ok: true, text: "Building the Shelf Tour… a few minutes; this card updates by itself. · در حال ساخت…" }); void load(); }
     catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
@@ -43,9 +52,11 @@ export default function TourCard({ api, operator }: { api: string; operator: boo
           ) : <p className="text-white/60">Not built yet.</p>}
         <p className="text-white/45">How: the finder&apos;s sightings grouped into shelves in walking order; a shelf seen twice keeps its closest visit; for each, 3–6 s round the moment its products are biggest, a camera aimed at them and zoomed to fit, cut from the original upload. Free.</p>
       </div>
-      {operator && !working && (
+      {finding && <p dir="ltr" className="mt-2 text-left text-[14px] text-amber-200">Shelf finder: {finding}</p>}
+      {operator && !working && !finding && (
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className={tour ? QUIET : KEY} onClick={() => void build()}>{tour ? "Build again · دوباره" : "Build the Shelf Tour · ساخت"}</button>
+          {tour && <button type="button" className={QUIET} onClick={() => void find()}>Find more products on these shelves (AI, about $2–3) · یافتن محصولات بیشتر</button>}
         </div>
       )}
       {said && <Said ok={said.ok} text={said.text} />}

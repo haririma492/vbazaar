@@ -33,6 +33,7 @@ import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/ht
 import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { buildTour, readTour } from "@/lib/stores/tourJob";
+import { findShelves } from "@/lib/stores/shelfFinder";
 import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
@@ -229,6 +230,16 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (who !== "operator") return fail(403, "The operator only.");
     void buildTour(s.slug).then((note) => console.log("[tour]", s.slug, note)).catch((e) => console.error("[tour]", s.slug, e));
     return ok({ started: true });
+  }
+  if (body.action === "shelfFind") {
+    // Operator, on the owner's yes (it spends from the store's AI budget): the Shelf finder. Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    void findShelves(s.slug).then((note) => console.log("[shelf-find]", s.slug, note)).catch((e) => console.error("[shelf-find]", s.slug, e));
+    return ok({ started: true });
+  }
+  if (body.action === "shelfFindState") {
+    const job = await readJob("shelfFind");
+    return ok({ working: Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000), note: job?.note ?? "" });
   }
   if (body.action === "tour") {
     const r = await readTour(s.slug);

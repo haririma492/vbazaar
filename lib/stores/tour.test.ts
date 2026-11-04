@@ -34,3 +34,12 @@ test("the tour: a clip a shelf, every product on screen at some moment", () => {
   assert.ok(Math.abs(p.seconds - p.clips.reduce((x, c) => x + c.to - c.from, 0)) < 0.02);
   assert.match(aimCommands(p.clips[0]), /^0\.000 v360@cam yaw /);
 });
+
+test("a point on the screen goes back to the direction it came from", async () => {
+  const { unproject } = await import("./tour.ts");
+  for (const [lon, lat] of [[0.5, 0.1], [0.9, -0.3], [0.2, 0.25]]) {
+    const p = project(lon, lat, 0.6, -0.1, 1.4, 0.85)!;
+    const d = unproject(p.x, p.y, 0.6, -0.1, 1.4, 0.85);
+    assert.ok(Math.abs(d.lon - lon) < 1e-9 && Math.abs(d.lat - lat) < 1e-9, `${lon},${lat} → ${d.lon},${d.lat}`);
+  }
+});

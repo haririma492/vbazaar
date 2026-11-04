@@ -648,7 +648,9 @@ export async function recutPhotos(slug: string): Promise<string> {
   // original's times (the upload's), where its box fits exactly; the closest (largest) is used. Products
   // without one (a sheet store's) fall back to the sharpest moment along their light.
   const closest = new Map<number, Seen>();
-  for (const x of (await readSightingsOf(slug)) ?? []) {
+  // The finder's sightings, and the Shelf finder's (`shelfFinder.ts`, a steady shelf picture: often the closest).
+  const shelfSeen = await readMastersText(`stores/${slug}/shelf-sightings.json`).then((t) => (t ? (JSON.parse(t) as Sighting[]) : [])).catch(() => [] as Sighting[]);
+  for (const x of [...((await readSightingsOf(slug)) ?? []), ...shelfSeen]) {
     const had = closest.get(x.n);
     if (!had || x.size.w * x.size.h > had.size.w * had.size.h) closest.set(x.n, { t: x.t, lon: x.lon, lat: x.lat, size: x.size });
   }

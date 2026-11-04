@@ -154,7 +154,8 @@ export type WalkItem = {
   size?: { w: number; h: number };
 };
 /** At most this many products on one walk (owner, 2026-11-04: "make the 150 to be 250"). */
-export const MAX_ITEMS = 250;
+// 500 (owner 2026-11-05, the Shelf finder: every product found gets its light; it was 250, then 150 before that).
+export const MAX_ITEMS = 500;
 
 /** What the walk says aloud as the shopper passes an item on special — English only (founder). */
 export function specialSay(item: WalkItem, name = item.label.en): string | null {

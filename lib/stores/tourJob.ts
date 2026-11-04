@@ -44,36 +44,9 @@ export async function buildTour(slug: string): Promise<string> {
     const walkKey = s?.out.walk;
     if (!s || !walkKey) return "No walk.";
     await setJob("tour", { busy: true, key: walkKey, note: "reading the sightings" });
-    const t = await readMastersText(`stores/${slug}/sightings.json`).catch(() => null);
-    let seen = (t ? (JSON.parse(t) as Seen[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size);
-    // The lights, in the original's times.
-    const parts = await cutParts(walkKey).catch(() => []);
-    const back = (v: number) => (parts.length ? originalTime(parts, v) : v);
-    const walk = (await readWalks()).walks[walkKey];
-    const tracks = new Map<number, Track>();
-    const longest = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number } }>();
-    for (const it of walk?.items ?? []) {
-      if (!it.n || !it.pins.length) continue;
-      const pins = it.pins.map((p) => ({ t: back(p.t), x: p.x, y: p.y }));
-      const tr = tracks.get(it.n) ?? { n: it.n, pins: [] };
-      tr.pins.push(...pins);
-      tracks.set(it.n, tr);
-      if (it.size && pins.length > (longest.get(it.n)?.pins.length ?? 0)) longest.set(it.n, { pins, size: it.size });
-    }
-    // ⚠️ A STORE FOUND BEFORE SIGHTINGS WERE KEPT (the bookshop, found 2026-11-04 before «sightings.json»
-    // existed): each light's middle moment stands in for its sighting, at the size the finder boxed.
-    if (!seen.length) {
-      seen = [...longest.entries()].map(([n, l]) => { const p = l.pins[l.pins.length >> 1]; return { n, t: p.t, lon: p.x, lat: p.y, size: l.size }; });
-    }
-    if (!seen.length) return "No sightings and no lights: the finder has not looked at this store's walk yet.";
-    // The source in the sightings' times: the upload; else the walk before any cut.
-    let src: string;
-    if (s.files.video) src = await presignGet(s.files.video.key, "master", 6 * 3600);
-    else {
-      const orig = originalKeyOf(walkKey);
-      src = await presignGet(parts.length && (await webObjectExists(orig)) ? orig : walkKey, "web", 6 * 3600);
-    }
-    const end = (await probe(src)).seconds || Math.max(...seen.map((x) => x.t)) + 1;
+    const inp = await tourInputs(slug);
+    if (typeof inp === "string") return inp;
+    const { seen, tracks, src, end } = inp;
     const plan = planTour(seen, [...tracks.values()], end);
     if (!plan.clips.length) return "No shelves found.";
     const files: string[] = [];
@@ -116,6 +89,52 @@ export async function buildTour(slug: string): Promise<string> {
     rmSync(dir, { recursive: true, force: true });
     await setJob("tour", { busy: false, key: null });
   }
+}
+
+export const shelfSightingsKey = (slug: string) => `stores/${slug}/shelf-sightings.json`;
+
+/**
+ * What a tour (and the Shelf finder) is made from: the sightings (the finder's, else each light's middle,
+ * plus the Shelf finder's), every product's path, the source in the sightings' times and its length.
+ */
+export async function tourInputs(slug: string): Promise<string | { s: NonNullable<Awaited<ReturnType<typeof readStore>>>; walkKey: string; seen: Seen[]; tracks: Map<number, Track>; src: string; end: number; parts: Array<{ from: number; to: number }> }> {
+    const s = await readStore(slug);
+    const walkKey = s?.out.walk;
+    if (!s || !walkKey) return "No walk.";
+    const t = await readMastersText(`stores/${slug}/sightings.json`).catch(() => null);
+    let seen = (t ? (JSON.parse(t) as Seen[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size);
+    // The lights, in the original's times.
+    const parts = await cutParts(walkKey).catch(() => []);
+    const back = (v: number) => (parts.length ? originalTime(parts, v) : v);
+    const walk = (await readWalks()).walks[walkKey];
+    const tracks = new Map<number, Track>();
+    const longest = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number } }>();
+    for (const it of walk?.items ?? []) {
+      if (!it.n || !it.pins.length) continue;
+      const pins = it.pins.map((p) => ({ t: back(p.t), x: p.x, y: p.y }));
+      const tr = tracks.get(it.n) ?? { n: it.n, pins: [] };
+      tr.pins.push(...pins);
+      tracks.set(it.n, tr);
+      if (it.size && pins.length > (longest.get(it.n)?.pins.length ?? 0)) longest.set(it.n, { pins, size: it.size });
+    }
+    // ⚠️ A STORE FOUND BEFORE SIGHTINGS WERE KEPT (the bookshop, found 2026-11-04 before «sightings.json»
+    // existed): each light's middle moment stands in for its sighting, at the size the finder boxed.
+    if (!seen.length) {
+      seen = [...longest.entries()].map(([n, l]) => { const p = l.pins[l.pins.length >> 1]; return { n, t: p.t, lon: p.x, lat: p.y, size: l.size }; });
+    }
+    // The Shelf finder's sightings (`shelfFinder.ts`), in the same times.
+    const sh = await readMastersText(shelfSightingsKey(slug)).catch(() => null);
+    if (sh) seen = seen.concat((JSON.parse(sh) as Seen[]).filter((x) => x && Number.isFinite(x.t) && x.size));
+    if (!seen.length) return "No sightings and no lights: the finder has not looked at this store's walk yet.";
+    // The source in the sightings' times: the upload; else the walk before any cut.
+    let src: string;
+    if (s.files.video) src = await presignGet(s.files.video.key, "master", 6 * 3600);
+    else {
+      const orig = originalKeyOf(walkKey);
+      src = await presignGet(parts.length && (await webObjectExists(orig)) ? orig : walkKey, "web", 6 * 3600);
+    }
+    const end = (await probe(src)).seconds || Math.max(...seen.map((x) => x.t)) + 1;
+    return { s, walkKey, seen, tracks, src, end, parts };
 }
 
 /** The store's latest tour (the private record), or null. */
