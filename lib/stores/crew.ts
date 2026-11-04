@@ -30,7 +30,7 @@ import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
-import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
+import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, sharpnessAt, views } from "./media";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, capTracks, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
@@ -535,6 +535,8 @@ async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Be
  * nothing spent (owner, 2026-11-04: "the photo is misleading because is not
  * zoomed enough"). Products with no light, or no outline, keep their photo.
  */
+/** Moments measured for sharpness before a product's photo is cut. */
+const PHOTO_CANDIDATES = 8;
 export async function recutPhotos(slug: string): Promise<string> {
   const s = await readStore(slug);
   if (!s?.out.walk) return "No walk.";
@@ -542,20 +544,33 @@ export async function recutPhotos(slug: string): Promise<string> {
   const c = await readCatalogue(sceneOf(slug));
   if (!c?.products.length) return "No products.";
   const walk = (await readWalks()).walks[walkKey];
-  const input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600));
-  const { seconds } = await probe(input);
-  const looks = lookPlan(seconds, walk?.tagsFrom ?? 0).map((m) => m.t);
-  const firstLight = new Map<number, WalkItem>();
-  for (const it of walk?.items ?? []) if (it.n && it.size && !firstLight.has(it.n)) firstLight.set(it.n, it);
+  // The sharpest source there is: the upload itself (an 8K SDK export stays 8K there), else the full-size walk.
+  let input: string;
+  try { input = s.files.video ? await presignGet(s.files.video.key, "master", 6 * 3600) : ((await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600))); }
+  catch { input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600)); }
+  const lights = new Map<number, WalkItem[]>();
+  for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length) lights.set(it.n, [...(lights.get(it.n) ?? []), it]);
   const photos = new Map<number, string>();
-  for (const [n, it] of firstLight) {
-    const seed = seedOf(it.pins, looks);
-    try { photos.set(n, await publishPhoto(slug, n, await productPhoto(input, seed.t, seed.x, seed.y, it.size!))); }
+  for (const [n, its] of lights) {
+    // ⚠️ THE SHARPEST MOMENT (owner, 2026-11-04: "improve the pixels of the product photos so when shoppers
+    // click on them they see a fully improved and readable version"): up to `PHOTO_CANDIDATES` moments
+    // along the product's lights are measured (`sharpnessAt`: blur and motion smear score low), and the
+    // photo is cut at the sharpest. Nothing is invented: no upscaling that would make up letters.
+    const pins = its.flatMap((it) => it.pins.map((q) => ({ q, size: it.size! })));
+    const step = Math.max(1, Math.floor(pins.length / PHOTO_CANDIDATES));
+    let best = pins[Math.floor(pins.length / 2)], bestScore = -1;
+    for (const c of pins.filter((_, i) => i % step === 0).slice(0, PHOTO_CANDIDATES)) {
+      try {
+        const score = await sharpnessAt(input, c.q.t, c.q.x, c.q.y, c.size);
+        if (score > bestScore) { bestScore = score; best = c; }
+      } catch { /* that moment is skipped */ }
+    }
+    try { photos.set(n, await publishPhoto(slug, n, await productPhoto(input, best.q.t, best.q.x, best.q.y, best.size, 1024))); }
     catch (e) { console.error("[crew] recut", slug, n, e); }
   }
   const now = await readCatalogue(sceneOf(slug));
   if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
-  return `${photos.size} of ${c.products.length} product photos cut again, framed on the product.`;
+  return `${photos.size} of ${c.products.length} product photos cut again, framed on the product, each at its sharpest moment.`;
 }
 
 // ── Product finder (no sheet) ───────────────────────────────────────────────

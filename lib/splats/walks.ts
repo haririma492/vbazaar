@@ -242,6 +242,14 @@ export type Walk = {
    */
   pinned?: number;
   /**
+   * Which way a shopper is turned to on entering this walk (rad from the
+   * video's forward, + = right). A store's walk turns them to its right-hand
+   * shelf by itself (`faceOf`); set only for a store laid out otherwise.
+   */
+  face?: number;
+  /** When to turn (s of the walk): set only when `entryOf` cannot tell where the store's door is. */
+  faceAt?: number;
+  /**
    * THE STORE'S DOOR PHOTO, SHOWN FOR 4 s AS ITS WALK BEGINS (owner,
    * 2026-11-03: "always add the photo of the door of the store for 4 sec to
    * the beginning of the walk"). Set by the Store Builder's Placer; https only.
@@ -434,6 +442,14 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       if (typeof tl.down === "number" && tl.down <= 0 && tl.down >= -Math.PI / 2) tilt.down = tl.down;
       if (tilt.up !== undefined || tilt.down !== undefined) walk.tilt = tilt;
       else problems.push(`${key}: «tilt» needs up (0…90°) and/or down (−90…0°) in radians.`);
+    }
+    if (r.face !== undefined && r.face !== null) {
+      if (typeof r.face === "number" && Math.abs(r.face) <= Math.PI) walk.face = r.face;
+      else problems.push(`${key}: «face» must be a direction in radians (−π…π).`);
+    }
+    if (r.faceAt !== undefined && r.faceAt !== null) {
+      if (typeof r.faceAt === "number" && r.faceAt >= 0) walk.faceAt = r.faceAt;
+      else problems.push(`${key}: «faceAt» must be a time in seconds.`);
     }
     if (r.pinned !== undefined && r.pinned !== null) {
       if (typeof r.pinned === "number" && Number.isInteger(r.pinned) && r.pinned >= 1 && r.pinned <= 99) walk.pinned = r.pinned;
@@ -914,6 +930,45 @@ export function steadyPins(pins: ItemPin[], round: boolean): ItemPin[] {
   const out = ts.map((t, i) => ({ t, x: p.x[i], y: p.y[i] }));
   cache.set(pins, out);
   return out;
+}
+
+/**
+ * ⚠️ INTO A STORE, THE VIEW TURNS TO THE SHELF ON THE RIGHT (owner,
+ * 2026-11-04: "when moving into the store, the angle of the view has to
+ * automatically turn toward the shelf on the right but it does not happen").
+ * 75° right of the way the photographer walked in: the right-hand shelf, with
+ * a little of the way ahead still in view. Not worked out from where the lights
+ * are: in the bookshop's first seconds they are on the glass case to the LEFT.
+ */
+export const STORE_FACE = (75 * Math.PI) / 180;
+/** Which way to turn a shopper to on entering the walk `key` (rad from the video's forward), or null: stay as they are. */
+export function faceOf(walk: Walk | null, key: string | null): number | null {
+  if (walk?.face !== undefined) return walk.face;
+  return key && /^scenes\/store-/.test(key) ? STORE_FACE : null;
+}
+
+/**
+ * ⚠️ WHEN THE WALK COMES IN THROUGH THE STORE'S DOOR. A store's walk starts
+ * outside its door (in the mall's hallway), so turning at once faced the
+ * hallway's shops. Outside, the store's products are only AHEAD (seen through
+ * its door or window); inside, they are all round. So the door is the first
+ * second in which at least `ENTRY_SHARE` of the products' pins (and
+ * `ENTRY_MIN` of them) are beside the camera (more than ~30° off ahead).
+ * Measured on the bookshop: 4 s, where the photographer is at its door.
+ * `faceAt` overrides it; with no products yet, 0 (at once).
+ */
+export const ENTRY_SHARE = 0.25, ENTRY_MIN = 10;
+export function entryOf(walk: Walk | null): number {
+  if (walk?.faceAt !== undefined) return walk.faceAt;
+  const pins = (walk?.items ?? []).flatMap((it) => it.pins);
+  if (!pins.length) return 0;
+  const end = Math.max(...pins.map((p) => p.t));
+  for (let t = 0; t <= end; t += 1) {
+    const now = pins.filter((p) => p.t >= t && p.t < t + 1);
+    const beside = now.filter((p) => Math.abs(wrapAngle(p.x)) > 0.5).length;
+    if (beside >= ENTRY_MIN && beside >= now.length * ENTRY_SHARE) return t;
+  }
+  return 0;
 }
 
 /** A product with no outline is found by a tap this near its light (rad). */

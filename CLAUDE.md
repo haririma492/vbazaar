@@ -502,6 +502,19 @@ quality and choice to break away and enter in a shop. (period)"*
   product are measured for sharpness, the 3 sharpest close-ups from the upload
   go to Claude, who reads the title and author or says it cannot. Kept as a
   list beside the products (`stores/<slug>/titles.json`), never over a name.
+- **Into a store, the view turns to the right-hand shelf** (owner, 2026-11-04:
+  *"when moving into the store, the angle of the view has to automatically turn
+  toward the shelf on the right"*). A store's walk starts outside its door, so
+  the turn waits for the door: `entryOf` finds it as the first second when the
+  store's products are beside the camera, not only ahead (bookshop: 5 s; seen
+  at its door at 4 s). Then the view eases 75° right (`STORE_FACE`); the
+  shopper's own turn or drag takes over. A walk may set `face` / `faceAt`.
+- **Product photos at the sharpest moment** (owner, 2026-11-04: *"improve the
+  pixels of the product photos so when shoppers click on them they see a fully
+  improved and readable version"*): the Insta360 SDK cannot sharpen a photo,
+  only export a sharper video (`scripts/insta360/export-sharp.ps1`). Each
+  photo is cut from the upload at the sharpest of 8 moments of its light
+  (`sharpnessAt`), 1024 px. No AI upscaling: it invents letters on titles.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

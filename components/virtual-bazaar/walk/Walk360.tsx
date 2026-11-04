@@ -70,7 +70,7 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemHitAt, itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  entryOf, faceOf, itemHitAt, itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -419,6 +419,8 @@ type Engine = {
   setLightOf: (f: (item: WalkItem) => Light) => void;
   /** The product whose card is open (its id), outlined on the picture so it is clear which one it is; null for none. */
   setHighlight: (id: string | null) => void;
+  /** Turn smoothly to the way this walk should be faced on entering it (`faceOf`): a store's right-hand shelf. */
+  faceIn: () => void;
   /** Jump to a moment of this video (stands there). */
   seek: (t: number) => void;
 };
@@ -913,7 +915,10 @@ export default function Walk360() {
       // what they face again when they come back out.
       const h = heading();
       const yawIn = videoYaw();
-      if (await switchTo(to, () => -h)) trail.push({ key: fromKey, door, yaw: yawIn });
+      if (await switchTo(to, () => -h)) {
+        trail.push({ key: fromKey, door, yaw: yawIn });
+        planFace(door.to);
+      }
       report(true);
     }
 
@@ -930,6 +935,7 @@ export default function Walk360() {
       const to = makeLayer({ key, t: 0, purpose: "main" });
       const h = heading();
       if (await switchTo(to, () => -h)) {
+        planFace(key);
         try {
           const u = new URL(window.location.href);
           u.searchParams.set("v", key);
@@ -1331,6 +1337,9 @@ export default function Walk360() {
       setHighlight(id) {
         highlightId = id;
       },
+      faceIn() {
+        planFace(current?.key ?? null);
+      },
       setLabelOf(f) {
         labelOf = f;
       },
@@ -1449,6 +1458,16 @@ export default function Walk360() {
     let yaw = 0;
     let pitch = 0;
     let turnYaw = 0;
+    /** Where the view is turning to by itself (rad from the video's forward), till there or the shopper turns. */
+    let faceTo: number | null = null;
+    /** The turn to come: at `t` (the store's door, `entryOf`), to `yaw` (`faceOf`). */
+    let facePlan: { key: string; t: number; yaw: number } | null = null;
+    function planFace(key: string | null) {
+      const walk = walkOf(walksNow, key);
+      const yaw = faceOf(walk, key);
+      facePlan = key && yaw !== null ? { key, t: entryOf(walk), yaw } : null;
+      faceTo = null;
+    }
     let velTurn = 0;
     let rate = 0; // eased walk rate: + forward, − back, in "times as filmed"
     let holdUntil = 0; // the door photo is up: the walk waits
@@ -1643,6 +1662,20 @@ export default function Walk360() {
       if (current?.flat) wantTurn = 0;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
       turnYaw += velTurn * dt;
+      // Turning in to the shelf: when the walk reaches the store's door (`entryOf`), after the door photo,
+      // smoothly; the shopper's own turn or drag takes over.
+      if (facePlan && current?.key === facePlan.key && !busy && tShown() >= facePlan.t) {
+        faceTo = facePlan.yaw;
+        facePlan = null;
+      }
+      if (faceTo !== null) {
+        if (wantTurn !== 0 || pointers.size || !current || current.flat) faceTo = null;
+        else if (performance.now() >= holdUntil) {
+          const d = angleDiff(faceTo, videoYaw());
+          if (Math.abs(d) < 0.004) faceTo = null;
+          else turnYaw += d * Math.min(1, dt / 0.6);
+        }
+      }
       // ⚠️ THE PHONE'S COMPASS IS NOT THE WALK'S FORWARD. Its heading is
       // wherever the phone happened to point, so the first reading is turned
       // to what the visitor already faced — without this, a phone could start
@@ -1984,6 +2017,8 @@ export default function Walk360() {
     if (!editing && !spotMode) {
       engine.current?.kick();
       setDrive("on");
+      // Opened straight on a store's walk: turned to its shelf too, as on coming in by its door.
+      engine.current?.faceIn();
     }
   }
 

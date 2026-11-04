@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   doorPhotoOf,
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, itemHitAt, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, itemHitAt, entryOf, faceOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -566,4 +566,19 @@ test("a tap anywhere on a product's outline opens it; the smaller wins where out
   assert.equal(itemHitAt(shown, 20 * deg, 0), null, "between products: nothing");
   // Round the back of the view: −179° and 179° are 2° apart.
   assert.equal(itemHitAt([{ id: "back", x: 179 * deg, y: 0, size: { w: 6 * deg, h: 4 * deg } }], -179 * deg, 0)?.id, "back");
+});
+
+test("into a store, the view turns to the right-hand shelf; elsewhere it stays as it is", () => {
+  assert.equal(faceOf(null, "scenes/store-saraye-bamdad/walk-20261104-014600.mp4"), STORE_FACE);
+  assert.ok(STORE_FACE > 0 && STORE_FACE < Math.PI / 2, "to the right, still a little forward");
+  assert.equal(faceOf(null, "scenes/hallway/walk-1.mp4"), null);
+  assert.equal(faceOf({ doors: [], face: -1.2 }, "scenes/store-x/walk.mp4"), -1.2, "a store laid out otherwise keeps its own");
+  assert.equal(walkOf(parseWalks({ walks: { "scenes/store-x/w.mp4": { doors: [], face: 0.5 } } }), "scenes/store-x/w.mp4")?.face, 0.5);
+  // The turn waits for the store's door: products only ahead (outside, through the door), then all round (inside).
+  const pin = (t: number, x: number) => ({ t, x, y: 0 });
+  const outside = Array.from({ length: 30 }, (_, i) => pin(i * 0.15, 0.1 * ((i % 5) - 2)));
+  const inside = Array.from({ length: 40 }, (_, i) => pin(5 + i * 0.1, i % 2 ? 1.2 : -1.4));
+  assert.equal(entryOf({ doors: [], items: [{ id: "a", label: { en: "A" }, pins: [...outside, ...inside] }] }), 5);
+  assert.equal(entryOf({ doors: [] }), 0, "no products yet: at once");
+  assert.equal(entryOf({ doors: [], faceAt: 7 }), 7);
 });
