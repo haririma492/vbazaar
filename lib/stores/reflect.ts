@@ -50,6 +50,10 @@ export type JobState = {
 async function saveState(st: JobState) {
   try { await writeMastersJson(STATE_KEY, { ...st, at: new Date().toISOString() }); } catch (e) { console.error("[shadow] state", e); }
 }
+/** For `/operator/agents`: the Shadow agent's last job (what walk, how far, what it spent). */
+export async function shadowState(): Promise<JobState | null> {
+  return readState();
+}
 async function readState(): Promise<JobState | null> {
   try { const t = await readMastersText(STATE_KEY); return t ? (JSON.parse(t) as JobState) : null; } catch { return null; }
 }

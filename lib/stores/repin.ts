@@ -17,6 +17,10 @@ import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, MIN_PINS, PIN_VERSION, follow, lookP
 
 const PENDING = "repin/pending.json";
 let busy = false;
+/** For `/operator/agents`: the walks waiting to be re-pinned, and whether one is being done now. */
+export async function repinStatus(): Promise<{ busy: boolean; waiting: string[] }> {
+  return { busy, waiting: await readPending() };
+}
 
 const isAuto = (it: WalkItem) => it.id.startsWith("auto-") && it.pins.length >= 2;
 

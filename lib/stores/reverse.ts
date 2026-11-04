@@ -64,6 +64,10 @@ export async function makeReverse(walkKey: string): Promise<string> {
 
 const PENDING = "reverse/pending.json";
 let draining = false;
+/** For `/operator/agents`: the walks waiting for their reversed copy, and whether one is being made now. */
+export async function reverseStatus(): Promise<{ busy: boolean; waiting: string[] }> {
+  return { busy: draining, waiting: await readPending() };
+}
 async function readPending(): Promise<string[]> {
   try { const t = await readMastersText(PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
 }

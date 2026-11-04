@@ -59,6 +59,10 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
  */
 const PACE_PENDING = "pace/pending.json";
 let pacing = false;
+/** For `/operator/agents`: the walks waiting to be measured, and whether one is being measured now. */
+export async function paceStatus(): Promise<{ busy: boolean; waiting: string[] }> {
+  return { busy: pacing, waiting: await readPending() };
+}
 export async function queuePace(keys: string[]): Promise<void> {
   const old = await readPending();
   await writeMastersJson(PACE_PENDING, [...new Set([...old, ...keys])]);
