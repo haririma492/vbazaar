@@ -63,7 +63,7 @@ import { ShadowEditor } from "./WalkShadow";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
-import { driveRate } from "@/lib/splats/pace";
+import { SPEED_DEFAULT, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
@@ -87,20 +87,15 @@ const PEDAL_RATE = 1;
  */
 /**
  * ⚠️ THE SAME SPEED ON EVERY WALK (owner, 2026-11-03: "Slow and Fast … work
- * regardless of the speed of walk of photographer and is always standard";
- * "current Slow needs to be slower"). Each speed is a real walking speed,
- * `STANDARD` in `lib/splats/pace.ts` (Slow 0.3 m/s, Fast 1.4 m/s), turned into a
- * rate from the walk's measured `pace` (the lock agent measures it). `rate` is
- * only the fallback for a walk not measured yet.
+ * regardless of the speed of walk of photographer and is always standard").
+ * ⚠️ A SPEED BAR, NOT SLOW AND FAST (owner, 2026-11-04: "Slow and Fast is not
+ * good enough, the slow end of this bar should be really slow"): «Walk» or
+ * «Back» drives, at the bar's speed in metres a second (`lib/splats/pace.ts`:
+ * 0.05 m/s, a creep, to 1.6 m/s), turned into a rate from the walk's measured
+ * `pace`. The bar's place is kept on the device.
  */
-const DRIVES = {
-  slow: { rate: 0.3, label: "▶ آهسته · Auto slow" }, // 0.6 → 0.4 (2026-11-01) → 0.3 and standard (2026-11-03)
-  fast: { rate: 1.5, label: "▶▶ تند · Auto fast" },
-  // Walking back by itself (owner, 2026-11-01: "add a key under the steering wheel for going backward");
-  // as fast as Slow, always (owner, 2026-11-03: "it should go back with the same speed as 'Slow'").
-  back: { rate: -0.3, label: "◀ عقب · Back" },
-} as const;
-type Drive = keyof typeof DRIVES;
+type Drive = "on" | "back";
+const SPEED_KEY = "vb.walk.speed";
 /**
  * The walk's reversed copy and who is in charge of the picture. «idle»: the
  * walk's own video; «entering»: the reversed copy is seeking to the same spot
@@ -342,8 +337,10 @@ type Engine = {
   video: () => HTMLVideoElement;
   setMove: (x: number, y: number) => void;
   setGyro: (on: boolean) => void;
-  /** Self-drive at this standard speed, or null: only the wheel's pedals and the keys walk. */
-  setDrive: (speed: Drive | null) => void;
+  /** Self-drive on or back (at `setSpeed`'s speed), or null: only the wheel's pedals and the keys walk. */
+  setDrive: (drive: Drive | null) => void;
+  /** The speed bar's speed, in metres a second. */
+  setSpeed: (speed: number) => void;
   /** The bar: `exact` when the finger is lifted; while dragging, one seek at a time. */
   seekTo: (t: number, exact: boolean) => void;
   /** Inside a tap: start the video, so a phone that refuses play() without one lets it walk on. */
@@ -452,6 +449,13 @@ export default function Walk360() {
   /** Where the shopper's finger holds the bar (null: not holding it). The bar shows this, never the video's catching-up time. */
   const [dragT, setDragT] = useState<number | null>(null);
   const [drive, setDrive] = useState<Drive | null>(null);
+  const [speed, setSpeed] = useState(SPEED_DEFAULT);
+  useEffect(() => {
+    try {
+      const v = Number(localStorage.getItem(SPEED_KEY));
+      if (v > 0) setSpeed(speedAt(placeOf(v)));
+    } catch { /* no storage: the bar starts at the old Slow */ }
+  }, []);
   /** The item whose card is open (a tap on its dot). */
   const [card, setCard] = useState<WalkItem | null>(null);
   /** The product list of the store this video belongs to (`lib/splats/catalogue.ts`), or null. */
@@ -714,6 +718,47 @@ export default function Walk360() {
         return Math.max(0, Math.min(D, D * (1 - rv.video.currentTime / rv.video.duration)));
       return l.video.currentTime;
     }
+    /**
+     * ⚠️ TAGS MOVE WITH THE PICTURE, NOT WITH THE CLOCK (owner, 2026-11-04:
+     * "the labels are moving and shaking and dancing!!"). `currentTime` runs
+     * on smoothly between frames, but the picture changes only when the next
+     * frame is shown — 25 a second as filmed, a few a second at the slow end
+     * of the speed bar. Placed by `currentTime`, a tag slid across a still
+     * picture, then the books jumped to meet it. So tags and signs are placed
+     * at the time of the frame ON SCREEN (`requestVideoFrameCallback`, which
+     * the picture's texture follows too). Paused and not seeking, the frame on
+     * screen is `currentTime`'s; seeking, it is still the old frame.
+     */
+    const onScreen = new WeakMap<HTMLVideoElement, number>();
+    const watched = new WeakSet<HTMLVideoElement>();
+    function frameTime(v: HTMLVideoElement): number {
+      type Rvfc = (cb: (now: number, meta: { mediaTime: number }) => void) => number;
+      const rvfc = (v as unknown as { requestVideoFrameCallback?: Rvfc }).requestVideoFrameCallback;
+      if (!rvfc) return v.currentTime;
+      if (!watched.has(v)) {
+        watched.add(v);
+        const on = (_: number, meta: { mediaTime: number }) => {
+          onScreen.set(v, meta.mediaTime);
+          if (!disposed) rvfc.call(v, on);
+        };
+        rvfc.call(v, on);
+      }
+      const at = onScreen.get(v);
+      if (at === undefined) return v.currentTime;
+      if (v.seeking) return at;
+      // Standing still on a frame the callback never reported (some browsers skip it after a seek): currentTime is that frame.
+      if (v.paused && Math.abs(at - v.currentTime) > 0.1) return v.currentTime;
+      return at;
+    }
+    /** The walk's time of the frame on screen (see `frameTime`): where tags and signs are drawn. */
+    function tShown(l: Layer | null = current): number {
+      if (!l) return 0;
+      const rv = l.rev, D = l.video.duration;
+      if (rv && (rv.phase === "on" || rv.phase === "leaving") && Number.isFinite(D) && Number.isFinite(rv.video.duration) && rv.video.duration > 0)
+        return Math.max(0, Math.min(D, D * (1 - frameTime(rv.video) / rv.video.duration)));
+      // While the reversed copy seeks to take over, the walk's own frame is still the one shown.
+      return frameTime(l.video);
+    }
     /** Hand the picture back to the walk's own video (at once: the bar, a door, leaving the walk). */
     function dropTwin(l: Layer | null = current) {
       const rv = l?.rev;
@@ -950,7 +995,7 @@ export default function Walk360() {
       const v = current?.video;
       const ready = Boolean(current && !busy && v && v.readyState >= 1);
       const walk = walkOf(walksNow, current?.key);
-      const t = v ? tNow() : 0;
+      const t = v ? tShown() : 0;
       const flat = Boolean(current?.flat);
       let shown = ready ? itemsAt(walk, t, !flat) : [];
       if (ready && itemPreview) {
@@ -1053,7 +1098,7 @@ export default function Walk360() {
     function updateDoors() {
       const v = current?.video;
       const walk = walkOf(walksNow, current?.key);
-      const t = v ? tNow() : 0;
+      const t = v ? tShown() : 0;
       const around = current && !busy && v && v.readyState >= 1 ? doorsAround(walk, t) : [];
       const shown = preview && current && !current.flat ? [...around.filter((d) => d.id !== preview!.id), preview] : around;
       const want = new Set<string>();
@@ -1122,8 +1167,11 @@ export default function Walk360() {
       hold(ms) {
         holdUntil = performance.now() + ms;
       },
-      setDrive(speed) {
-        driveSpeed = speed;
+      setDrive(d) {
+        driveDir = d;
+      },
+      setSpeed(v) {
+        driveSpeed = v;
       },
       seekTo(t, exact) {
         // ⚠️ THE BAR IS THE SHOPPER'S WHILE THEY HOLD IT (owner, 2026-11-03:
@@ -1248,13 +1296,14 @@ export default function Walk360() {
     let stickX = 0;
     let stickY = 0;
     const maxRate = PEDAL_RATE;
-    let driveSpeed: Drive | null = null;
+    let driveDir: Drive | null = null;
+    let driveSpeed = SPEED_DEFAULT;
     /** The bar: where the shopper put it (null: not touched), and whether they still hold it. */
     let scrubT: number | null = null;
     let scrubbing = false;
-    /** The self-drive rate on the walk now playing: its standard speed over the walk's own pace. */
+    /** The self-drive rate on the walk now playing: the bar's speed over the walk's own pace. */
     const driveNow = (): number | null =>
-      driveSpeed ? driveRate(driveSpeed, current && !current.flat ? walkOf(walksNow, current.key)?.pace : null, DRIVES[driveSpeed].rate) : null;
+      driveDir ? driveRate(driveSpeed, driveDir === "back", current && !current.flat ? walkOf(walksNow, current.key)?.pace : null) : null;
     let playRefused: HTMLVideoElement | null = null;
     function kick() {
       const v = current?.video;
@@ -1675,6 +1724,9 @@ export default function Walk360() {
   useEffect(() => {
     engine.current?.setDrive(drive);
   }, [drive]);
+  useEffect(() => {
+    engine.current?.setSpeed(speed);
+  }, [speed]);
   // The store's product list: what the cards show, and what the operator tags by number.
   const store = view.key ? storeOfScene(view.key) : "";
   useEffect(() => {
@@ -1760,11 +1812,12 @@ export default function Walk360() {
     setPhase("walking");
     // «Start walking» starts walking (owner, 2026-11-03: "on all scene and
     // stores when shopper press on Start walking the Slow key should starts
-    // automatically"): Slow is on, as if pressed; Stop or any pedal takes over.
+    // automatically"): «Walk» is on at the speed bar's speed (the old Slow
+    // until the shopper moves it); Stop or any pedal takes over.
     // Not while editing: the operator places doors and products standing still.
     if (!editing && !spotMode) {
       engine.current?.kick();
-      setDrive("slow");
+      setDrive("on");
     }
   }
 
@@ -1842,25 +1895,53 @@ export default function Walk360() {
       {phase === "walking" && (
         <>
           <SteeringWheel
-            className="bottom-[6.75rem] right-5"
+            className="bottom-[9.25rem] right-5"
             onMove={(x, y) => engine.current?.setMove(x, y)}
             follow={() => engine.current?.turn() ?? 0}
           />
-          {/* Self-drive, below the wheel. */}
-          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-56 gap-1.5">
-            {(["back", "slow", "fast"] as Drive[]).map((k) => (
-              <button
-                key={k}
-                onClick={() => {
-                  if (drive !== k) engine.current?.kick();
-                  setDrive(drive === k ? null : k);
+          {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}
+          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-56 flex-col gap-1.5">
+            <div className="flex gap-1.5">
+              {([["back", "◀ عقب · Back"], ["on", "▶ برو · Walk"]] as const).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    if (drive !== k) engine.current?.kick();
+                    setDrive(drive === k ? null : k);
+                  }}
+                  aria-pressed={drive === k}
+                  className={`h-9 flex-1 rounded-full border px-1 text-[12px] leading-tight ${drive === k ? "border-amber-300/90 bg-amber-300/40 font-semibold text-amber-50" : "border-white/25 bg-black/60 text-white/85"}`}
+                >
+                  {drive === k ? "■ توقف · Stop" : label}
+                </button>
+              ))}
+            </div>
+            {/* The speed bar (owner, 2026-11-04): slow end a creep, fast end a brisk walk. Moving it while stopped starts the walk. */}
+            <label className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-black/60 px-3" title="سرعت · Speed">
+              <span aria-hidden="true" className="text-[15px]">🐢</span>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.001}
+                value={placeOf(speed)}
+                aria-label="سرعت · Speed"
+                aria-valuetext={`${speed.toFixed(2)} m/s`}
+                onPointerDown={() => {
+                  if (!drive) {
+                    engine.current?.kick();
+                    setDrive("on");
+                  }
                 }}
-                aria-pressed={drive === k}
-                className={`h-9 flex-1 rounded-full border px-1 text-[11px] leading-tight ${drive === k ? "border-amber-300/90 bg-amber-300/40 font-semibold text-amber-50" : "border-white/25 bg-black/60 text-white/85"}`}
-              >
-                {drive === k ? "■ توقف · Stop" : DRIVES[k].label}
-              </button>
-            ))}
+                onChange={(e) => {
+                  const v = speedAt(Number(e.target.value));
+                  setSpeed(v);
+                  try { localStorage.setItem(SPEED_KEY, String(v)); } catch { /* kept for this visit only */ }
+                }}
+                className="h-6 min-w-0 flex-1 accent-amber-300"
+              />
+              <span aria-hidden="true" className="text-[15px]">🐇</span>
+            </label>
           </div>
 
           {/* A door in reach: step inside. */}

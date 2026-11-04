@@ -6,8 +6,8 @@
  * Self-drive used to play a walk at a fixed multiple of how it was filmed, so
  * «Slow» on a walk filmed briskly was faster than «Fast» on one filmed slowly.
  * Now each walk carries `pace`, the photographer's own speed in metres a
- * second, and the player plays at `STANDARD[speed] / pace`, so Slow and Fast
- * are the same speed on every walk.
+ * second, and the player plays at the speed bar's m/s over `pace` (`driveRate`), so a speed is
+ * the same on every walk.
  *
  * The pace is MEASURED from the picture, by the lock agent (`lock.ts`), with no
  * AI: the floor is the one thing in every walk at a known distance — the
@@ -20,9 +20,40 @@
  * agree give no pace (null), and the player falls back to the old multiples.
  */
 
-/** Metres a second the self-drive speeds walk at, on every walk. */
-/** Back is as fast as Slow (owner, 2026-11-03: "it should go back with the same speed as 'Slow'"). */
-export const STANDARD = { slow: 0.3, fast: 1.4, back: 0.3 } as const;
+/**
+ * THE SPEED BAR (owner, 2026-11-04: "for speed we need a speed bar, Slow and
+ * Fast is not good enough, the slow end of this bar should be really slow").
+ * Self-drive walks at any speed between these, in metres a second, the same on
+ * every walk: `SPEED_MIN` is a creep (a fifth of a slow stroll, to read the
+ * spines of a bookshop's shelves), `SPEED_MAX` a brisk walk. The bar is
+ * logarithmic (`speedAt`), so its slow half has room for the slow speeds.
+ * Back walks at the bar's speed too (it was Slow's: owner, 2026-11-03, "the
+ * same speed as 'Slow'").
+ */
+export const SPEED_MIN = 0.05, SPEED_MAX = 1.6;
+/** Where the bar starts: the old «Slow» (owner, 2026-11-03). */
+export const SPEED_DEFAULT = 0.3;
+/** A walk not measured yet is taken as filmed at this pace (m/s): the old multiples. */
+export const PACE_FALLBACK = 1;
+/**
+ * The slowest a browser plays a video (times as filmed): every current one
+ * plays a muted video down to 1/16. Slower would be stepped by seeks, and in a
+ * heavy 360° video that froze (owner, 2026-11-03), so a walk filmed briskly
+ * has a slowest of a little over `SPEED_MIN`.
+ */
+export const RATE_MIN = 0.0625, RATE_MAX = 4;
+
+/** The bar's place (0–1) → metres a second, logarithmically. */
+export function speedAt(k: number): number {
+  const c = Math.min(1, Math.max(0, Number.isFinite(k) ? k : 0));
+  return Math.round(SPEED_MIN * (SPEED_MAX / SPEED_MIN) ** c * 1000) / 1000;
+}
+/** Metres a second → the bar's place (0–1). */
+export function placeOf(speed: number): number {
+  const s = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Number.isFinite(speed) ? speed : SPEED_DEFAULT));
+  return Math.log(s / SPEED_MIN) / Math.log(SPEED_MAX / SPEED_MIN);
+}
+
 /** How high the camera is held above the floor (m): over the head, as filming asks. */
 export const CAMERA_HEIGHT = 2.0;
 /** The views look this far down (rad): 45°, where the floor is close and the operator is not. */
@@ -118,13 +149,13 @@ export function paceOf(pairs: { move: number; score: number }[][], dt: number, m
 }
 
 /**
- * The self-drive rate (times as filmed) for `speed` on a walk filmed at
- * `pace` m/s; without a pace, the fallback multiple. Browsers play from 0.25×
- * to 4× smoothly (slower is stepped by the player), so the rate stays in that.
+ * The self-drive rate (times as filmed) for `speed` m/s on a walk filmed at
+ * `pace` m/s (`PACE_FALLBACK` when not measured), negative going back. Kept
+ * where browsers play smoothly (`RATE_MIN`–`RATE_MAX`).
  */
-export function driveRate(speed: keyof typeof STANDARD, pace: number | null | undefined, fallback: number): number {
-  if (!pace || !Number.isFinite(pace) || pace <= 0) return fallback;
-  const r = STANDARD[speed] / pace;
-  const sign = speed === "back" ? -1 : 1;
-  return sign * Math.round(Math.min(4, Math.max(0.1, r)) * 100) / 100;
+export function driveRate(speed: number, back: boolean, pace: number | null | undefined): number {
+  const p = pace && Number.isFinite(pace) && pace > 0 ? pace : PACE_FALLBACK;
+  const s = Math.min(SPEED_MAX, Math.max(SPEED_MIN, Number.isFinite(speed) ? speed : SPEED_DEFAULT));
+  const r = Math.round(Math.min(RATE_MAX, Math.max(RATE_MIN, s / p)) * 10000) / 10000;
+  return back ? -r : r;
 }

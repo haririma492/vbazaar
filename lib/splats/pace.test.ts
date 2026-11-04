@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CAMERA_HEIGHT, STANDARD, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, driveRate, frameShift, groundMove, paceOf } from "./pace.ts";
+import { CAMERA_HEIGHT, RATE_MIN, SPEED_DEFAULT, SPEED_MAX, SPEED_MIN, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, driveRate, frameShift, groundMove, paceOf, placeOf, speedAt } from "./pace.ts";
 
 /** A floor with texture: smooth-ish noise, the same at every point every time. */
 function floorAt(x: number, y: number): number {
@@ -75,11 +75,22 @@ test("standing still and unreadable frames give no pace", () => {
   assert.equal(paceOf(blank, 0.25), null);
 });
 
-test("Slow and Fast are the same real speed on every walk", () => {
-  assert.equal(driveRate("slow", 1.0, 0.3), STANDARD.slow / 1.0);
-  assert.equal(driveRate("slow", 0.6, 0.3), 0.5);
-  assert.equal(driveRate("fast", 0.7, 1.5), 2);
-  assert.ok(driveRate("back", 1.0, -0.6) < 0);
-  assert.equal(driveRate("fast", 0.2, 1.5), 4, "never faster than browsers play");
-  assert.equal(driveRate("slow", null, 0.3), 0.3, "no pace: the old multiple");
+test("the speed bar is the same real speed on every walk", () => {
+  assert.equal(driveRate(0.3, false, 1.0), 0.3);
+  assert.equal(driveRate(0.3, false, 0.6), 0.5);
+  assert.equal(driveRate(1.4, false, 0.7), 2);
+  assert.equal(driveRate(0.3, true, 1.0), -0.3, "back walks at the bar's speed");
+  assert.equal(driveRate(1.6, false, 0.2), 4, "never faster than browsers play");
+  assert.equal(driveRate(0.3, false, null), 0.3, "no pace: as if filmed at 1 m/s");
+  assert.equal(driveRate(0.05, false, 2.25), RATE_MIN, "never slower than browsers play");
+});
+
+test("the speed bar's slow end is really slow, and its slow half has room", () => {
+  assert.equal(speedAt(0), SPEED_MIN);
+  assert.equal(speedAt(1), SPEED_MAX);
+  assert.ok(SPEED_MIN <= 0.05, "a creep: a sixth of the old Slow");
+  assert.ok(speedAt(0.5) < 0.35, "the middle of the bar is still a slow stroll");
+  assert.ok(Math.abs(speedAt(placeOf(SPEED_DEFAULT)) - SPEED_DEFAULT) < 0.002, "the bar starts at the old Slow");
+  // On the bookshop's walk (filmed at 0.56 m/s) the slow end plays at under a tenth.
+  assert.ok(driveRate(SPEED_MIN, false, 0.56) < 0.1);
 });

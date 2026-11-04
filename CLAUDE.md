@@ -435,6 +435,23 @@ quality and choice to break away and enter in a shop. (period)"*
   founder: "funny and does not make any sense"); «Products» marks it «not
   pinned to the product» with «📌 Pin to the product», which follows it from
   that tap and saves (`isPinned`).
+- **A speed bar, not Slow and Fast** (owner, 2026-11-04, on the Saraye
+  Bamdad bookshop: *"Slow and Fast is not good enough, the slow end of this
+  bar should be really slow"*): under the wheel, «◀ Back» · «▶ Walk», then a
+  🐢—🐇 bar from 0.05 m/s (a creep, to read book spines) to 1.6 m/s,
+  logarithmic, starting at the old Slow (0.3 m/s) and kept on the device.
+  Back walks at the bar's speed. It is a real speed on every walk (the walk's
+  measured `pace`), never below 1/16× (slower froze); `lib/splats/pace.ts`.
+- **Tags stand as still as the books** (owner, 2026-11-04: *"not a single
+  shake or move or travel from price tags are accepted"*). Two causes, both
+  fixed for every store, old and new, without re-tagging: (1) the follow's
+  pins are noisy, so they are drawn steadied (`steadyItems` in
+  `lib/splats/walks.ts`: spikes out, the camera's sway shared by all tags kept,
+  each tag's own wobble fitted away, a smooth curve between pins; the saved
+  pins stay as found); (2) tags were placed by `currentTime`, which runs on
+  between frames, so they slid over a still picture: they are now placed at
+  the time of the frame on screen (`requestVideoFrameCallback`, `tShown` in
+  `Walk360.tsx`).
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

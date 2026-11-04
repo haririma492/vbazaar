@@ -437,3 +437,72 @@ test("a store walk opens on its own door photo, else the photo on a door leading
   const bad = parseWalks({ version: 1, walks: { [W]: { doors: [], doorPhoto: "javascript:alert(1)" } } });
   assert.equal(doorPhotoOf(bad, W), undefined);
 });
+
+test("a followed tag stands still on its product: the finder's shake is steadied away", () => {
+  // The product's true direction: the camera turns slowly and walks past it.
+  const truth = (t: number) => ({ x: 0.3 - 0.12 * t + 0.01 * t * t, y: -0.2 - 0.03 * t });
+  // Found 5 a second, each find off by up to ±0.02 rad, one find jumped 0.08.
+  const noise = [0.017, -0.019, 0.012, -0.008, 0.02, -0.015, 0.004, -0.02, 0.016, -0.011, 0.019, -0.006, 0.013, -0.018, 0.009, -0.017];
+  const pins = noise.map((e, i) => {
+    const t = i * 0.2;
+    const p = truth(t);
+    return { t, x: p.x + e + (i === 7 ? 0.08 : 0), y: p.y - e };
+  });
+  const item = { id: "book", label: { en: "Book" }, pins };
+  let worstRaw = 0, worst = 0, jerk = 0;
+  let prev: { x: number; y: number } | null = null, prevStep: number | null = null;
+  for (let t = 0.4; t <= 2.6; t += 1 / 60) {
+    const at = itemAt(item, t, true)!;
+    const p = truth(t);
+    worst = Math.max(worst, Math.hypot(at.x - p.x, at.y - p.y));
+    if (prev) {
+      const step = Math.hypot(at.x - prev.x, at.y - prev.y);
+      if (prevStep !== null) jerk = Math.max(jerk, Math.abs(step - prevStep));
+      prevStep = step;
+    }
+    prev = at;
+  }
+  for (const q of pins.slice(2, -2)) worstRaw = Math.max(worstRaw, Math.hypot(q.x - truth(q.t).x, q.y - truth(q.t).y));
+  assert.ok(worst < 0.015, `the tag keeps to the product (${worst.toFixed(4)} rad off; the finds were up to ${worstRaw.toFixed(3)})`);
+  assert.ok(jerk < 0.0003, `no shake from one screen frame to the next (${jerk.toFixed(5)})`);
+});
+
+test("a steadied tag crossing behind the viewer does not spin round", () => {
+  const pins = [3.0, 3.06, 3.12, 3.18, -3.04, -2.98, -2.92].map((x, i) => ({ t: i * 0.2, x, y: 0 }));
+  const item = { id: "b", label: { en: "B" }, pins };
+  for (let t = 0; t <= 1.2; t += 0.05) {
+    const x = itemAt(item, t, true)!.x;
+    assert.ok(Math.abs(x) > 2.9, `stays behind the viewer at ${t.toFixed(2)}: ${x}`);
+  }
+});
+
+test("tags sway with the camera exactly, and lose only the finder's own shake", () => {
+  // The camera sways as the photographer walks: every product swings together
+  // (about 0.02 rad once a second, as measured on the bookshop's walk).
+  const sway = (t: number) => 0.02 * Math.sin(2 * Math.PI * t);
+  const truth = (k: number, t: number) => ({ x: -1 + k * 0.5 - 0.08 * t * (k % 2 ? 1 : -1) + sway(t), y: -0.3 + 0.1 * k - 0.02 * t });
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.04; // ±0.02 rad
+  const items = [0, 1, 2, 3, 4].map((k) => ({
+    id: `b${k}`, label: { en: `B${k}` },
+    pins: Array.from({ length: 21 }, (_, i) => { const t = i * 0.2, p = truth(k, t); return { t, x: p.x + rnd(), y: p.y + rnd() }; }),
+  }));
+  const walk = { doors: [], items };
+  let worst = 0, jerk = 0;
+  for (const k of [0, 2, 4]) {
+    let prev: { x: number; y: number } | null = null, prevStep: { x: number; y: number } | null = null;
+    for (let t = 0.6; t <= 3.4; t += 1 / 60) {
+      const at = itemsAt(walk, t, true).find((s) => s.item.id === `b${k}`)!;
+      const p = truth(k, t);
+      worst = Math.max(worst, Math.hypot(at.x - p.x, at.y - p.y));
+      if (prev) {
+        const step = { x: at.x - prev.x, y: at.y - prev.y };
+        if (prevStep) jerk = Math.max(jerk, Math.hypot(step.x - prevStep.x, step.y - prevStep.y));
+        prevStep = step;
+      }
+      prev = at;
+    }
+  }
+  assert.ok(worst < 0.025, `each tag keeps to its product through the sway (${worst.toFixed(4)} rad off; finds were ±0.02)`);
+  assert.ok(jerk < 0.0003, `no shake from one screen frame to the next (${jerk.toFixed(5)})`);
+});
