@@ -33,15 +33,24 @@ export const LOOK_FOV = (75 * Math.PI) / 180;
 export const LOOK_N = 768;
 
 /** Following: the step, how far either way, and the small view it is followed in (as on the walk page). */
-export const FOLLOW_FPS = 5;
 /**
- * ⚠️ HOW FAR A SIGHTING IS FOLLOWED, EITHER WAY (s). It was 6: long enough for
- * a follow on a counter of look-alike trays to step onto the next tray, so one
- * product's tag visited three (owner, 2026-11-01: "tag of product #3 … was at
- * least on 3 different products … Tags do not move"). Claude looks every
- * `LOOK_EVERY` s, so a little over half that joins one sighting to the next.
+ * Frames a second a product is followed at. It was 5: a book 70 cm from the
+ * walking camera sweeps 45° a second, 9° between two frames, more than a
+ * step may jump (`MAX_RATE`), so the light went out within half a second
+ * (measured on the bookshop, 2026-11-04). At 10, it moves 4.5° a frame.
  */
-export const FOLLOW_SPAN = 1.6;
+export const FOLLOW_FPS = 10;
+/**
+ * ⚠️ HOW FAR A SIGHTING IS FOLLOWED, EITHER WAY (s). It was 6, then 1.6: a
+ * follow on a counter of look-alike trays stepped onto the next tray, so one
+ * product's tag visited three (owner, 2026-11-01). At 1.6 a light lasted 2 s,
+ * and went out while its book was still on screen (owner, 2026-11-04: "when we
+ * turn the wheel sideway even if books are still in the view the tag
+ * disappears"). Now each step is held to the product as Claude first saw it
+ * (`ANCHOR_MIN`, `ANCHOR_REACH`): a follow that would step onto a look-alike
+ * stops there, so it may go on as long as the book is in view, up to 5 s.
+ */
+export const FOLLOW_SPAN = 5;
 /**
  * ⚠️ FINE ENOUGH TO STAND STILL (owner, 2026-11-04: "the small circle light
  * still tends to move a bit … try to make them as stationary as book
@@ -54,8 +63,8 @@ export const FOLLOW_SPAN = 1.6;
  * along a shelf of look-alike spines.
  */
 export const FOLLOW_W = 2048;
-/** This follow's version, kept on each walk it pinned (`Walk.pinned`): 2 = the fine follow of 2026-11-04. */
-export const PIN_VERSION = 2;
+/** This follow's version, kept on each walk it pinned (`Walk.pinned`): 2 = the fine follow, 3 = followed up to 5 s either way (both 2026-11-04). */
+export const PIN_VERSION = 3;
 const VIEW_FOV = (36 * Math.PI) / 180;
 const VIEW_N = 128;
 const VIEW_PATCH = 21;
@@ -76,6 +85,8 @@ export const MIN_PINS = 3;
 export const ANCHOR_MIN = 0.55;
 export const MAX_LAT = 1.05;
 export const MAX_STEP = 0.12;
+/** The most a product may move in the view, rad a second (70°/s: a book 50 cm from a camera walking 0.6 m/s); a step faster than this has jumped. */
+export const MAX_RATE = 1.2;
 /** Two sightings of a product closer than this (radians, at the same moment) are the same one. */
 const SAME = 0.25;
 
@@ -137,7 +148,7 @@ export function boxSize(look: Look, box: [number, number, number, number]): { w:
  * `frames` (grey W×H panoramas, `FOLLOW_FPS` apart, the first at `t0` s),
  * both ways, until it is lost. Its pins, in time order.
  */
-export function follow(frames: Float32Array[], W: number, H: number, t0: number, i0: number, at0: { lon: number; lat: number }): ItemPin[] {
+export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, at0: { lon: number; lat: number }): ItemPin[] {
   const view = (i: number, at: { lon: number; lat: number }) => renderView(frames[i], W, H, "equirect", at.lon, at.lat, VIEW_FOV, VIEW_N);
   const c = VIEW_N / 2;
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -158,7 +169,7 @@ export function follow(frames: Float32Array[], W: number, H: number, t0: number,
       // The same pixel convention as the first look's patch (its centre at N/2 is the sighting itself).
       const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, fine.x, fine.y);
       const step = { lon: Math.atan2(Math.sin(next.lon - at.lon), Math.cos(next.lon - at.lon)), lat: next.lat - at.lat };
-      if (Math.abs(next.lat) > MAX_LAT || Math.hypot(step.lon * Math.cos(at.lat), step.lat) > MAX_STEP) break;
+      if (Math.abs(next.lat) > MAX_LAT || Math.hypot(step.lon * Math.cos(at.lat), step.lat) > MAX_RATE / FOLLOW_FPS) break;
       move = step;
       at = next;
       template = r.template;
@@ -166,6 +177,23 @@ export function follow(frames: Float32Array[], W: number, H: number, t0: number,
     }
   }
   return pins.sort((a, b) => a.t - b.t);
+}
+
+/**
+ * ⚠️ THE CAP IS SHARED FAIRLY (2026-11-04). With more products than
+ * `MAX_ITEMS` lights, keeping the tracks in time order cut the end of the walk
+ * off (the bookshop: no lights after 105 s of 152). Now every product's best
+ * track comes first, then the second spots, so each product gets a light
+ * before any gets two, all along the walk; the lights are then in time order.
+ */
+export function capTracks(tracks: Track[], max: number): Track[] {
+  const first: Track[] = [], rest: Track[] = [];
+  const seen = new Set<number>();
+  for (const t of [...tracks].sort((a, b) => b.pins.length - a.pins.length || b.confidence - a.confidence)) {
+    if (seen.has(t.n)) rest.push(t);
+    else { seen.add(t.n); first.push(t); }
+  }
+  return [...first, ...rest].slice(0, max).sort((a, b) => a.pins[0].t - b.pins[0].t);
 }
 
 export type Track = { n: number; pins: ItemPin[]; confidence: number; size?: { w: number; h: number } };

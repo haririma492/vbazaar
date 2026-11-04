@@ -31,6 +31,7 @@ import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, publish, recutPhotos } from "@/lib/stores/crew";
+import { readTitleList, readTitles } from "@/lib/stores/titles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -210,6 +211,17 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     });
     kick();
     return ok({ store: next ? forPage(next) : null });
+  }
+  if (body.action === "titlesRead") {
+    // Operator: the title reader on up to «limit» products not read yet (spends from the store's budget). Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    const limit = Number(body.limit) > 0 ? Math.floor(Number(body.limit)) : undefined;
+    void readTitles(s.slug, limit).then((note) => console.log("[titles]", s.slug, note)).catch((e) => console.error("[titles]", s.slug, e));
+    return ok({ started: true, limit: limit ?? "all" });
+  }
+  if (body.action === "titles") {
+    // The titles read so far (owner or operator).
+    return ok({ titles: await readTitleList(s.slug) });
   }
   if (body.action === "photosRecut") {
     // Operator: the product photos cut again, framed on each product (free, no AI). Runs in the background.

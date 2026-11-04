@@ -113,6 +113,29 @@ export async function productPhoto(input: string, t: number, lon: number, lat: n
   return new Uint8Array(await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-vf", vf, "-threads", "1", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
 }
 
+/**
+ * How sharp the product is at a moment: a small grey view of just its
+ * outline, and the mean squared change from each pixel to the next (blur and
+ * motion smear make it small). Used to pick the clearest moments to read a
+ * title from (`lib/stores/titles.ts`).
+ */
+export async function sharpnessAt(input: string, t: number, lon: number, lat: number, size: { w: number; h: number }, n = 160): Promise<number> {
+  const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
+  const fov = Math.min(0.8, Math.max(0.03, Math.max(size.w, size.h)));
+  const raw = await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-vf",
+    `v360=input=e:output=flat:yaw=${v360Yaw(lon).toFixed(3)}:pitch=${deg(lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n},format=gray`,
+    "-threads", "1", "-f", "rawvideo", "pipe:1"]);
+  if (raw.length < n * n) return 0;
+  let sum = 0;
+  for (let y = 0; y < n - 1; y++) {
+    for (let x = 0; x < n - 1; x++) {
+      const v = raw[y * n + x], dx = raw[y * n + x + 1] - v, dy = raw[(y + 1) * n + x] - v;
+      sum += dx * dx + dy * dy;
+    }
+  }
+  return sum / ((n - 1) * (n - 1));
+}
+
 /** The walk as grey W×W/2 panoramas, `fps` a second (one byte a pixel), from `start` s for `seconds`. */
 export async function grayFrames(input: string, fps: number, W: number, start: number, seconds: number): Promise<{ frames: Uint8Array[]; W: number; H: number }> {
   const H = W / 2;

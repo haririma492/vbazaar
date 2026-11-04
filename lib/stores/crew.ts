@@ -24,7 +24,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, looksFlat, MAX_ITEMS, type WalkItem, type Walks } from "@/lib/splats/walks";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
@@ -33,7 +33,7 @@ import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type 
 import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
-import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
+import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, capTracks, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
 import { autoLock } from "./lock";
 import { seedOf } from "./repin";
@@ -131,7 +131,7 @@ async function runStep(slug: string, step: StepName) {
 }
 
 /** The store's spending, kept in its record as each request is paid. */
-function purseOf(s: StoreRecord): Purse {
+export function purseOf(s: StoreRecord): Purse {
   let spent = s.spentCents;
   return {
     spent: () => spent,
@@ -340,6 +340,23 @@ async function stepPhotos(s: StoreRecord, say: (note: string) => Promise<void>):
   return `${byName + byLook} of ${s.files.photos.length} photos joined to their product (${byName} by name or list, ${byLook} by looking)${unmatched.length ? `; not placed: ${unmatched.slice(0, 8).join(", ")}${unmatched.length > 8 ? "…" : ""}` : ""}.`;
 }
 
+/**
+ * CLAUDE'S SIGHTINGS ARE KEPT (2026-11-04). The lights are made from them;
+ * kept, a later change to how lights are made (a longer follow, a fairer cap)
+ * rebuilds every light from them with no AI (`lib/stores/repin.ts`), instead
+ * of paying for the search again. `stores/<slug>/sightings.json`, masters.
+ */
+export type Sighting = { n: number; t: number; lon: number; lat: number; size: { w: number; h: number }; confidence: number };
+export const sightingsKey = (slug: string) => `stores/${slug}/sightings.json`;
+async function saveSightings(slug: string, list: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }>): Promise<void> {
+  const out: Sighting[] = list.map((x) => {
+    const at = aim(x.look, x.box);
+    const r4 = (v: number) => Math.round(v * 10000) / 10000;
+    return { n: x.n, t: x.look.t, lon: r4(at.lon), lat: r4(at.lat), size: boxSize(x.look, x.box), confidence: Math.round(x.confidence * 100) / 100 };
+  });
+  try { await writeMastersJson(sightingsKey(slug), out); } catch (e) { console.error("[crew] sightings", slug, e); }
+}
+
 // ── Looking at a moment of the walk ─────────────────────────────────────────
 
 /** Products seen within this long (s of walk) are the ones Claude is told about, to name again by # rather than twice. */
@@ -424,6 +441,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
       if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the ${BUDGET_SAY} budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
       i += step;
     }
+    await saveSightings(s.slug, sightings.filter((x) => x.confidence >= 0.6));
     // Follow each sighting both ways through the frames round its moment.
     const tracks: Track[] = [];
     const moments = [...new Set(sightings.map((x) => x.look.t))];
@@ -432,13 +450,13 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
       const start = Math.max(0, t - FOLLOW_SPAN);
       const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2);
       if (!frames.length) continue;
-      const grey = frames.map((f) => Float32Array.from(f));
+      const grey = frames;
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
       for (const x of sightings.filter((y) => y.look.t === t && y.confidence >= 0.6)) {
         tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)), size: boxSize(x.look, x.box) });
       }
     }
-    const kept = keepTracks(tracks).slice(0, MAX_ITEMS);
+    const kept = capTracks(keepTracks(tracks), MAX_ITEMS);
     // Products found in the video (no merchant photo) get their photo cut again from this walk.
     const best = new Map<number, Best>();
     const fromVideo = new Set(c.products.filter((p) => p.by === "video").map((p) => p.n));
@@ -612,6 +630,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
       i += step;
     }
     if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);
+    await saveSightings(s.slug, sightings);
     const photos = await cutPhotos(s, src, best, say);
     // No name: the owner names each product (2026-11-01); what the crew saw is kept only to find it again.
     const listed: Product[] = products.map((p) => ({ n: p.n, seen: p.en, unit: "piece" as const, priceCents: null, by: "video" as const, ...(photos.has(p.n) ? { photo: photos.get(p.n)! } : {}) }));
@@ -624,13 +643,13 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
       const start = Math.max(0, t - FOLLOW_SPAN);
       const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2);
       if (!frames.length) continue;
-      const grey = frames.map((f) => Float32Array.from(f));
+      const grey = frames;
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
       for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)), size: boxSize(x.look, x.box) });
     }
     const byN = new Map(listed.map((p) => [p.n, p]));
     const count = new Map<number, number>();
-    const items = keepTracks(tracks).slice(0, MAX_ITEMS).map((t) => {
+    const items = capTracks(keepTracks(tracks), MAX_ITEMS).map((t) => {
       const k = count.get(t.n) ?? 0;
       count.set(t.n, k + 1);
       return itemOf(t, byN.get(t.n)!, k);

@@ -483,6 +483,25 @@ quality and choice to break away and enter in a shop. (period)"*
   server starts (`lib/stores/repin.ts`). Tried and dropped: fitting each
   track to the curve of a still thing, and measuring the camera's sway from
   every frame: neither beat the steadying on real or synthetic walks.
+- **A light lasts while its book can be followed** (owner, 2026-11-04: *"when
+  we turn the wheel sideway even if books are still in the view the tag
+  disappears"*). Lights lasted 2 s: the follow ran 5 frames a second, and a
+  book 70 cm from the walking camera sweeps 45°/s, more than a step could
+  jump. Now 10 frames a second, up to 5 s either way, a step limited by speed
+  (`MAX_RATE`, 70°/s), each step held to the product as Claude saw it. A
+  "step" faster than that is a jump onto a look-alike spine, and the light
+  stops there rather than slide onto the wrong book. The 250-light cap is
+  shared fairly (`capTracks`: each product's first light before any second);
+  it had cut the bookshop's walk off after 105 s. Claude's sightings are kept
+  (`stores/<slug>/sightings.json`), so a change like this rebuilds every light
+  free (`repin.ts`).
+- **Titles read off the video** (owner, 2026-11-04: *"how much it costs to get
+  all titles OCRed from recording and compiled to a list and searchable"*; the
+  shop wants a credible result before any new filming): `lib/stores/titles.ts`,
+  the operator's «titlesRead» (a pilot with `limit`). Up to 8 moments of each
+  product are measured for sharpness, the 3 sharpest close-ups from the upload
+  go to Claude, who reads the title and author or says it cannot. Kept as a
+  list beside the products (`stores/<slug>/titles.json`), never over a name.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

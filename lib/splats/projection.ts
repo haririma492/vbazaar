@@ -103,7 +103,7 @@ export function viewDir(lon0: number, lat0: number, fov: number, N: number, px: 
 
 /** The N×N grey view centred on (lon0, lat0), read from a grey W×H 360° frame (bilinear). */
 export function renderView(
-  frame: Float32Array, W: number, H: number, projection: Projection, lon0: number, lat0: number, fov: number, N: number,
+  frame: ArrayLike<number>, W: number, H: number, projection: Projection, lon0: number, lat0: number, fov: number, N: number,
 ): Float32Array {
   const out = new Float32Array(N * N);
   for (let py = 0; py < N; py++) {
