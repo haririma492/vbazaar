@@ -169,3 +169,25 @@ export function ensureCoverage(seen: Array<{ n: number; from: number; to: number
     return acc;
   }, []).map((p) => ({ from: Math.round(p.from * 100) / 100, to: Math.round(p.to * 100) / 100 }));
 }
+
+/**
+ * THE PREVIEW AS SHOPPERS WILL RIDE IT (owner, 2026-11-04: "let me see the new"
+ * preview, after smoothness joined the Route optimizer). The kept parts in
+ * slices of `SLICE_S` s of the walk; each slice plays at the rate the player
+ * would (`speed` m/s over the pace there, within the browser's 1/16…4×) and is
+ * turned by the player's ease there (`ease`, rad); a soft edge dips.
+ */
+export const SLICE_S = 0.4;
+export type Slice = { from: number; to: number; rate: number; yaw: number; fadeIn: boolean; fadeOut: boolean };
+export function previewSlices(parts: Part[], pace: (t: number) => number | null, ease: (t: number) => number, speed: number, fallbackPace: number): Slice[] {
+  const out: Slice[] = [];
+  for (const p of parts) {
+    for (let a = p.from; a < p.to - 1e-6; a += SLICE_S) {
+      const b = Math.min(p.to, a + SLICE_S), mid = (a + b) / 2;
+      const rate = Math.min(4, Math.max(0.0625, speed / (pace(mid) ?? fallbackPace)));
+      out.push({ from: Math.round(a * 1000) / 1000, to: Math.round(b * 1000) / 1000, rate: Math.round(rate * 1000) / 1000, yaw: Math.round(ease(mid) * 1000) / 1000,
+        fadeIn: Boolean(p.soft?.in) && a === p.from, fadeOut: Boolean(p.soft?.out) && b >= p.to - 1e-6 });
+    }
+  }
+  return out;
+}

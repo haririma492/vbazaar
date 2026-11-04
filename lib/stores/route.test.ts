@@ -1,7 +1,7 @@
 // The Route optimizer's rules (`route.ts`).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { blocksOf, coverageCheck, ensureCoverage, planRoute, type Motion } from "./route.ts";
+import { blocksOf, coverageCheck, ensureCoverage, planRoute, previewSlices, type Motion } from "./route.ts";
 
 /** A walk sampled 5 a second: `legs` of [seconds, forward m/s, turn rad/s]. */
 function walkOf(legs: Array<[number, number, number]>): Motion {
@@ -44,4 +44,15 @@ test("a product only seen while walking back is kept; a product the plan would l
   assert.deepEqual(coverageCheck(seen, parts), [], "products 7 and 8 kept though seen walking back");
   const lost = ensureCoverage([{ n: 9, from: 20, to: 21 }], [{ from: 0, to: 10 }], 30);
   assert.ok(lost.some((p) => p.from <= 20 && p.to >= 21), "a lost product's stretch is added");
+});
+
+test("the preview is cut in slices that play at the player's even speed and turn by its ease", () => {
+  const parts = [{ from: 0, to: 2 }, { from: 5, to: 6, soft: { in: true } }];
+  const s = previewSlices(parts, (t) => (t < 1 ? 1.2 : 0.3), (t) => (t > 5 ? 0.1 : 0), 0.3, 0.5);
+  assert.equal(s.length, 5 + 3);
+  assert.ok(Math.abs(s[0].rate - 0.25) < 1e-6, "hurried: a quarter speed");
+  assert.ok(Math.abs(s[4].rate - 1) < 1e-6, "at the pace: as filmed");
+  assert.equal(s[5].fadeIn, true, "the soft edge dips");
+  assert.ok(s[6].yaw === 0.1, "turned by the ease");
+  assert.ok(s.every((x) => x.to - x.from <= 0.4 + 1e-9));
 });

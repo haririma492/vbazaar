@@ -19,7 +19,7 @@
 // to the walk editor's cut (`cut-job.ts`): frame-accurate, lights and doors moved
 // with the picture, the original kept («Put the original back»).
 
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { presignGet, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
@@ -31,7 +31,9 @@ import { SOFT_S } from "@/lib/splats/cut";
 import { readStore } from "./bucket";
 import { probe, run } from "./media";
 import { setJob } from "./jobState";
-import { blocksOf, coverageCheck, ensureCoverage, planRoute, productsInView, type Motion } from "./route";
+import { blocksOf, coverageCheck, ensureCoverage, planRoute, previewSlices, productsInView, type Motion } from "./route";
+import { paceAt, turnEase, type WalkMotion } from "@/lib/splats/motion";
+import { SPEED_DEFAULT } from "@/lib/splats/pace";
 import type { Part } from "@/lib/splats/cut";
 
 const FPS = 5;
@@ -172,20 +174,28 @@ export async function planStoreRoute(slug: string): Promise<string> {
         const roughLeft = proposalJoins.filter((j) => !j.smooth).length;
         if (roughLeft) notes.push(`${roughLeft} join${roughLeft > 1 ? "s" : ""} could not be made seamless (the camera was elsewhere): each gets a short dip to black, as a deliberate step. See them in the preview.`);
         if (lost.length) notes.push(`${lost.length} products would not be shown: #${lost.slice(0, 10).join(", #")}.`);
-        // 5. The preview: the route, facing ahead, small.
+        // 5. The preview AS SHOPPERS RIDE IT (owner, 2026-11-04: "let me see the new"): the kept parts in slices,
+        // each at the player's even speed (the speed bar's default) and turned by its ease, the dips at rough joins.
         await setJob("route", { busy: true, key: walkKey, note: "making the preview" });
         let preview: string | undefined;
         try {
-          // One input feeds one chain: split it, then a trim per part.
-          const split = `[0:v]split=${parts.length}${parts.map((_, k) => `[s${k}]`).join("")}`;
-          const dips = (p: Part) => {
-            const len = p.to - p.from;
-            return `${p.soft?.in ? `,fade=t=in:st=0:d=${SOFT_S}` : ""}${p.soft?.out ? `,fade=t=out:st=${Math.max(0, len - SOFT_S).toFixed(3)}:d=${SOFT_S}` : ""}`;
-          };
-          const chain = split + ";" + parts.map((p, k) => `[s${k}]trim=start=${p.from}:end=${p.to},setpts=PTS-STARTPTS${dips(p)}[p${k}]`).join(";");
-          const cat = `${parts.map((_, k) => `[p${k}]`).join("")}concat=n=${parts.length}:v=1:a=0[c];[c]v360=input=e:output=flat:yaw=0:pitch=-10:h_fov=100:v_fov=62:w=960:h=540[o]`;
+          const wm = walkMotionOf(motion);
+          const slices = previewSlices(parts, (t) => paceAt(wm, t), (t) => turnEase(wm, t), SPEED_DEFAULT, walk?.pace ?? 0.5);
+          const files: string[] = [];
+          for (const [k, sl] of slices.entries()) {
+            const len = sl.to - sl.from, out = len / sl.rate;
+            const vf = [`v360=input=e:output=flat:yaw=${deg(sl.yaw)}:pitch=-10:h_fov=100:v_fov=62:w=960:h=540`, `setpts=(PTS-STARTPTS)/${sl.rate}`, "fps=25"];
+            if (sl.fadeIn) vf.push(`fade=t=in:st=0:d=${SOFT_S}`);
+            if (sl.fadeOut) vf.push(`fade=t=out:st=${Math.max(0, out - SOFT_S).toFixed(3)}:d=${SOFT_S}`);
+            const f = join(dir, `s${String(k).padStart(4, "0")}.mp4`);
+            await run("ffmpeg", ["-v", "error", "-y", "-ss", sl.from.toFixed(3), "-t", len.toFixed(3), "-i", src, "-vf", vf.join(","), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p", "-r", "25", "-threads", "2", f]);
+            files.push(f);
+            if (k % 25 === 0) await setJob("route", { busy: true, key: walkKey, note: `making the preview: ${k + 1} of ${slices.length} slices` });
+          }
+          const list = join(dir, "list.txt");
+          writeFileSync(list, files.map((f) => `file '${f}'`).join("\n") + "\n");
           const out = join(dir, "preview.mp4");
-          await run("ffmpeg", ["-v", "error", "-y", "-i", src, "-filter_complex", `${chain};${cat}`, "-map", "[o]", "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "26", "-movflags", "+faststart", "-threads", "2", out]);
+          await run("ffmpeg", ["-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", "-movflags", "+faststart", out]);
           const key = `scenes/store-${slug}/route-preview-${Date.now()}.mp4`;
           await uploadFile(key, out, "video/mp4");
           preview = key;
@@ -212,6 +222,20 @@ export async function planStoreRoute(slug: string): Promise<string> {
 // ── Smoothness: the walk's motion, measured and kept (owner, 2026-11-04: "the route optimizer also is in charge
 // of smoothness, to fix sharp turns, fast moves in one spot and slow in another") ─────────────────────────────
 
+/**
+ * A reading → the walk's motion as the player uses it: reading i is the move
+ * from frame i to frame i + 1, so the heading after it belongs at (i + 1)·dt —
+ * stamped at i·dt, the ease would have lagged the picture by a frame.
+ */
+export function walkMotionOf(m: Motion): WalkMotion {
+  const r3 = (v: number) => Math.round(v * 1000) / 1000;
+  const yaw = [0];
+  for (const w of m.turn) yaw.push(r3(yaw[yaw.length - 1] + w * m.dt));
+  const speed = m.fwd.map((f, i) => r3(Math.hypot(f, m.side[i])));
+  speed.push(speed[speed.length - 1] ?? 0);
+  return { dt: m.dt, speed, yaw };
+}
+
 /** Measure how the camera moved through the walk as it is now and keep it on the walk (`Walk.motion`). Free. */
 export async function measureSmoothness(walkKey: string): Promise<string> {
   const before = (await readWalks()).walks[walkKey];
@@ -223,12 +247,7 @@ export async function measureSmoothness(walkKey: string): Promise<string> {
     const { seconds } = await probe(src);
     const m = await readMotion(src, dir, seconds);
     const r3 = (v: number) => Math.round(v * 1000) / 1000;
-    // ⚠️ ON TIME: reading i is the move from frame i to frame i + 1, so the heading after it belongs at
-    // (i + 1)·dt — stamped at i·dt, the ease would have lagged the picture by a frame and added a wobble.
-    const heading = [0];
-    for (const w of m.turn) heading.push(r3(heading[heading.length - 1] + w * m.dt));
-    const speed = [...m.fwd.map((f, i) => r3(Math.hypot(f, m.side[i])))];
-    speed.push(speed[speed.length - 1] ?? 0);
+    const { speed, yaw: heading } = walkMotionOf(m);
     const walks = await readWalks();
     const w = walks.walks[walkKey];
     if (!w) return "The walk is gone.";
