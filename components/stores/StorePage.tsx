@@ -233,6 +233,13 @@ export default function StorePage({ slug }: { slug: string }) {
             send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: c.kind }, file, onProgress); await load(); }}
           />
         ))}
+        <FilePick
+          fa="فایل خام دوربین (‎.insv) — فقط برای عامل‌ها" en="The camera's own .insv of this walk — for the agents only (a test)"
+          accept=".insv" multiple
+          hint="The same walk as the .mp4, straight from the camera's card (if the camera made two .insv files for it, both). The agents read the camera's motion sensor and its picture from it; shoppers still see the .mp4."
+          current={s.files.raw?.length ? s.files.raw.map((f) => f.name).join(", ") : null}
+          send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: "raw" }, file, onProgress); await load(); }}
+        />
         {page.walkUrl && (
           <FilePick
             fa="موسیقی پس‌زمینه فروشگاه" en="Background music for the store's walk (.mp3 / .m4a)" accept=".mp3,.m4a,audio/mpeg,audio/mp4"

@@ -953,12 +953,14 @@ export function steadyPins(pins: ItemPin[], round: boolean): ItemPin[] {
  * a little of the way ahead still in view. Not worked out from where the lights
  * are: in the bookshop's first seconds they are on the glass case to the LEFT.
  */
-export const STORE_FACE = (75 * Math.PI) / 180;
+export const STORE_FACE = Math.PI / 2;
 /** Which way to turn a shopper to on entering the walk `key` (rad from the video's forward), or null: stay as they are. */
 export function faceOf(walk: Walk | null, key: string | null): number | null {
   if (walk?.face !== undefined) return walk.face;
   if (!key || !/^scenes\/store-/.test(key)) return null;
-  return rightShelfOf(walk) ?? STORE_FACE;
+  // ⚠️ 90° RIGHT (owner, 2026-11-05: "the camera should turn right 90 degree and view the shelves"). The
+  // measured right-hand shelf (`rightShelfOf`, 27–35° on the bookshop) turned too little; kept for reference.
+  return STORE_FACE;
 }
 
 /**

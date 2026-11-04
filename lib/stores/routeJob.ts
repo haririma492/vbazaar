@@ -180,7 +180,9 @@ export async function planStoreRoute(slug: string): Promise<string> {
         let preview: string | undefined;
         try {
           const wm = walkMotionOf(motion);
-          const slices = previewSlices(parts, (t) => paceAt(wm, t), (t) => turnEase(wm, t), SPEED_DEFAULT, walk?.pace ?? 0.5);
+          // The preview plays as the player does now: one steady rate, no eased turns (owner, 2026-11-05).
+          void wm;
+          const slices = previewSlices(parts, () => null, () => 0, SPEED_DEFAULT, walk?.pace ?? 0.5);
           const files: string[] = [];
           for (const [k, sl] of slices.entries()) {
             const len = sl.to - sl.from, out = len / sl.rate;

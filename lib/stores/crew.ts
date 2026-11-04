@@ -33,7 +33,8 @@ import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
 import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
-import { fusedPhoto } from "./photoFuse";
+import { sharpestPhoto, originalTime } from "./photoSharp";
+import { cutParts } from "@/lib/splats/cut-job";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, capTracks, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
@@ -584,18 +585,23 @@ export async function photosStatus(): Promise<{ busy: boolean; waiting: string[]
 export async function storePhotosState(slug: string): Promise<{ state: "working" | "waiting" | "idle"; done: number; total: number; at: string | null }> {
   const s = await readStore(slug);
   const c = await readCatalogue(sceneOf(slug));
-  const total = c?.products.length ?? 0;
+  // Out of the products that have a light (a photo needs one to aim at); the rest keep the finder's photo.
+  const walk = s?.out.walk ? (await readWalks()).walks[s.out.walk] : undefined;
+  const total = new Set((walk?.items ?? []).filter((it) => it.n && it.size && it.pins.length).map((it) => it.n)).size || (c?.products.length ?? 0);
   let done = 0, at: string | null = null;
   try {
     const t = await readMastersText(`stores/${slug}/photos-done.json`);
     const v = t ? JSON.parse(t) : null;
-    if (v?.version === `${s?.out.walk}#fused-1` && Array.isArray(v.done)) done = v.done.length;
+    if (v?.version === `${s?.out.walk}${PHOTO_VERSION}` && Array.isArray(v.done)) done = v.done.length;
     at = v?.at ?? null;
   } catch { /* none yet */ }
   const st = await photosStatus();
   const state = st.current === slug ? "working" : st.waiting.includes(slug) ? "waiting" : "idle";
   return { state, done, total, at };
 }
+
+/** Bumped when the photos are made a new way: every store's are made again. */
+const PHOTO_VERSION = "#sharp-1";
 
 export async function recutPhotos(slug: string): Promise<string> {
   const s = await readStore(slug);
@@ -604,20 +610,23 @@ export async function recutPhotos(slug: string): Promise<string> {
   const c = await readCatalogue(sceneOf(slug));
   if (!c?.products.length) return "No products.";
   const walk = (await readWalks()).walks[walkKey];
-  // The sharpest source there is: the upload itself (an 8K SDK export stays 8K there), else the full-size walk.
-  let input: string;
-  // ⚠️ AFTER A CUT, THE CUT WALK (2026-11-04): the lights are in the cut walk's times; the upload is in the
-  // original's, so its frames at those times would be other moments. The upload only while the walk is uncut.
-  const cut = (await cutInfo(walkKey).catch(() => null))?.original ?? false;
-  try { input = s.files.video && !cut ? await presignGet(s.files.video.key, "master", 6 * 3600) : ((await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600))); }
-  catch { input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600)); }
+  // ⚠️ THE SHARPEST SOURCE THERE IS (owner, 2026-11-05): the upload itself (an 8K export stays 8K there),
+  // even after a cut: the walk's times are taken back to the original's (`originalTime`, the cut's parts).
+  // The full-size walk only when there is no upload.
+  const parts = await cutParts(walkKey).catch(() => []);
+  let input: string, timeOf: (t: number) => number = (t) => t;
+  if (s.files.video) {
+    input = await presignGet(s.files.video.key, "master", 6 * 3600);
+    if (parts.length) timeOf = (t) => originalTime(parts, t);
+  } else input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600));
+  const srcW = (await probe(input)).width || 3840;
   const lights = new Map<number, WalkItem>();
   // Each product's longest light: the most moments to choose its sharpest from.
   for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length && it.pins.length > (lights.get(it.n)?.pins.length ?? 0)) lights.set(it.n, it);
   // ⚠️ RESUMABLE (2026-11-04): a whole store takes hours (about 30 s a product); what is done is kept
   // (`stores/<slug>/photos-done.json`, by walk and version), so a restart carries on, not over.
   const doneKey = `stores/${slug}/photos-done.json`;
-  const version = `${walkKey}#fused-1`;
+  const version = `${walkKey}${PHOTO_VERSION}`;
   let done: number[] = [];
   try { const t = await readMastersText(doneKey); const v = t ? JSON.parse(t) : null; if (v?.version === version && Array.isArray(v.done)) done = v.done; } catch { /* from the start */ }
   const photos = new Map<number, string>();
@@ -632,15 +641,14 @@ export async function recutPhotos(slug: string): Promise<string> {
   };
   for (const [n, it] of lights) {
     if (done.includes(n)) continue;
-    // ⚠️ THE SHARPEST MOMENT, FRAMES COMBINED (owner, 2026-11-04: "improve the pixels of the product
-    // photos so when shoppers click on them they see a fully improved and readable version"; "go ahead
-    // with building frame combination"): `fusedPhoto` (photoFuse.ts). Nothing is invented.
-    try { photos.set(n, await publishPhoto(slug, n, (await fusedPhoto(input, it.pins, it.size!)).jpeg)); made++; }
+    // ⚠️ THE SHARPEST SINGLE FRAME, AT THE VIDEO'S OWN PIXELS (owner, 2026-11-05: a paused frame was
+    // sharper than the combined one): `sharpestPhoto` (photoSharp.ts), with the yellow box. Nothing is invented.
+    try { photos.set(n, await publishPhoto(slug, n, (await sharpestPhoto(input, srcW, it.pins, it.size!, timeOf)).jpeg)); made++; }
     catch (e) { console.error("[crew] recut", slug, n, e); }
     if (photos.size >= 10) await flush();
   }
   await flush();
-  return `${made} product photos made from several frames at their sharpest moment (${done.length} of ${c.products.length} done).`;
+  return `${made} product photos cut at their sharpest moment (${done.length} of ${lights.size} products with a light done).`;
 }
 
 // ── Product finder (no sheet) ───────────────────────────────────────────────

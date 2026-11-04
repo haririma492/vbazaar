@@ -43,7 +43,7 @@ export const MAX_TRIES = 3;
 
 export type Bi = { en: string; fa: string };
 
-export type UploadKind = "video" | "sheet" | "photo" | "door";
+export type UploadKind = "video" | "sheet" | "photo" | "door" | "raw";
 export type Uploaded = { key: string; name: string; size: number; at: string };
 
 export type StepName = "video" | "lock" | "catalogue" | "photos" | "tag" | "place" | "check";
@@ -79,6 +79,7 @@ export const REDO: Record<UploadKind, StepName[]> = {
   sheet: ["catalogue", "photos", "tag", "check"],
   photo: ["photos", "tag", "check"],
   door: ["place", "check"],
+  raw: [],
 };
 
 export type ThreadEntry = {
@@ -115,7 +116,8 @@ export type StoreRecord = {
   passwordHash: string;
   createdAt: string;
   updatedAt: string;
-  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded };
+  /** `raw`: the camera's own .insv file(s) of the walk, for the agents only (its gyro; the unexported picture). Shoppers never see it. */
+  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; raw?: Uploaded[] };
   steps: Record<StepName, Step>;
   /** What the crew made. */
   out: {
@@ -319,6 +321,9 @@ export function checkUploadName(kind: UploadKind, name: string): string | null {
     }
     return ext === "mp4" ? null : "The 360° walk is an .mp4 exported from Insta360 Studio. · ویدیوی ۳۶۰ باید ‎.mp4 باشد.";
   }
+  // ⚠️ THE RAW .insv, FOR THE AGENTS (owner, 2026-11-05: "sounds good lets do" — the test of reading the
+  // camera's gyro and its unexported picture). Kept beside the walk; the walk itself is still the .mp4.
+  if (kind === "raw") return ext === "insv" ? null : "Here, the camera's own .insv file(s) of this same walk. · فایل ‎.insv دوربین.";
   if (kind === "sheet") return ext === "xlsx" ? null : "The product list is an Excel workbook (.xlsx). · فهرست محصولات باید ‎.xlsx باشد.";
   return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A photo is .jpg, .png or .webp. · عکس باید jpg یا png یا webp باشد.";
 }
@@ -331,7 +336,7 @@ export function uploadKey(slug: string, kind: UploadKind, name: string, now: Dat
 }
 
 export const isUploadKeyOf = (slug: string, key: string) =>
-  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
+  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|raw)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
 
 /** The upload recorded: a video, sheet or door replaces the last one; photos add up. Then the steps it affects go back to do. */
 export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded): StoreRecord {
@@ -340,6 +345,8 @@ export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded): Sto
     const i = files.photos.findIndex((p) => p.name === file.name);
     if (i >= 0) files.photos[i] = file;
     else files.photos.push(file);
+  } else if (kind === "raw") {
+    files.raw = [...(files.raw ?? []).filter((p) => p.name !== file.name), file];
   } else files[kind] = file;
   return redo({ ...s, files, updatedAt: file.at }, REDO[kind]);
 }

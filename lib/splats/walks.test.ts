@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   doorPhotoOf,
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, itemHitAt, entryOf, faceOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, itemHitAt, entryOf, faceOf, rightShelfOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -570,7 +570,7 @@ test("a tap anywhere on a product's outline opens it; the smaller wins where out
 
 test("into a store, the view turns to the right-hand shelf; elsewhere it stays as it is", () => {
   assert.equal(faceOf(null, "scenes/store-saraye-bamdad/walk-20261104-014600.mp4"), STORE_FACE);
-  assert.ok(STORE_FACE > 0 && STORE_FACE < Math.PI / 2, "to the right, still a little forward");
+  assert.equal(STORE_FACE, Math.PI / 2, "90° right (owner, 2026-11-05)");
   assert.equal(faceOf(null, "scenes/hallway/walk-1.mp4"), null);
   assert.equal(faceOf({ doors: [], face: -1.2 }, "scenes/store-x/walk.mp4"), -1.2, "a store laid out otherwise keeps its own");
   assert.equal(walkOf(parseWalks({ walks: { "scenes/store-x/w.mp4": { doors: [], face: 0.5 } } }), "scenes/store-x/w.mp4")?.face, 0.5);
@@ -583,14 +583,10 @@ test("into a store, the view turns to the right-hand shelf; elsewhere it stays a
   assert.equal(entryOf({ doors: [], faceAt: 7 }), 7);
 });
 
-test("the turn goes to the store's own right-hand shelf: the middle of its products on the right after the door", () => {
-  // Outside: products ahead. From 5 s: a bookcase 20–35° right (and a glass case ahead and left).
+test("the turn is 90° right whatever the products (owner, 2026-11-05); the measured shelf is kept for reference", () => {
   const pin = (t: number, x: number) => ({ t, x, y: 0 });
-  const outside = Array.from({ length: 30 }, (_, i) => pin(i * 0.15, 0.05 * ((i % 5) - 2)));
   const shelf = Array.from({ length: 40 }, (_, i) => pin(5 + i * 0.2, ((20 + (i % 16)) * Math.PI) / 180));
-  const left = Array.from({ length: 30 }, (_, i) => pin(5 + i * 0.2, -1.0));
-  const walk = { doors: [], items: [{ id: "a", label: { en: "A" }, pins: [...outside, ...shelf, ...left] }] };
-  const face = faceOf(walk, "scenes/store-x/walk.mp4")!;
-  assert.ok(face > (20 * Math.PI) / 180 && face < (36 * Math.PI) / 180, `turned ${(face * 180 / Math.PI).toFixed(0)}° right, to the bookcase`);
-  assert.equal(faceOf({ doors: [] }, "scenes/store-x/walk.mp4"), STORE_FACE, "no products yet: 75°");
+  const walk = { doors: [], items: [{ id: "a", label: { en: "A" }, pins: shelf }] };
+  assert.equal(faceOf(walk, "scenes/store-x/walk.mp4"), Math.PI / 2);
+  assert.ok(rightShelfOf(walk)! < Math.PI / 4);
 });

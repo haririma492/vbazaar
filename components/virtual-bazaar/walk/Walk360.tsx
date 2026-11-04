@@ -65,7 +65,6 @@ import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { SPEED_DEFAULT, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
-import { paceAt, turnEase } from "@/lib/splats/motion";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
@@ -1435,12 +1434,14 @@ export default function Walk360() {
     let scrubT: number | null = null;
     let scrubbing = false;
     /** The self-drive rate on the walk now playing: the bar's speed over the walk's own pace. */
-    // ⚠️ EVEN SPEED (the Route optimizer, 2026-11-04: "fast moves in one spot and slow in another"):
-    // the photographer's pace HERE (`paceAt`, from the walk's measured motion), not the walk's average.
+    // ⚠️ ONE STEADY RATE PER WALK (owner, 2026-11-05: "lot of jerk moves … not smooth, even worse than
+    // what I did"). "Even speed" (the rate from the pace measured HERE, `paceAt`) followed the measuring's
+    // noise (0.13 → 4.2 → 0.3 m/s a second apart) and made the ride race and brake: dropped. The walk plays
+    // at the bar's speed over the walk's own pace, steady, as the photographer walked it.
     const driveNow = (): number | null => {
       if (!driveDir) return null;
       const walk = current && !current.flat ? walkOf(walksNow, current.key) : null;
-      return driveRate(driveSpeed, driveDir === "back", paceAt(walk?.motion, tNow()) ?? walk?.pace);
+      return driveRate(driveSpeed, driveDir === "back", walk?.pace);
     };
     let playRefused: HTMLVideoElement | null = null;
     function kick() {
@@ -1467,7 +1468,8 @@ export default function Walk360() {
     /** Where the view is turning to by itself (rad from the video's forward), till there or the shopper turns. */
     let faceTo: number | null = null;
     /** The turn ease last applied, and on which walk (`turnEase`). */
-    let easeLast = 0, easeKey: string | null = null;
+    /** The turn into the shelf, as a speed (rad/s): it starts and ends gently. */
+    let faceVel = 0;
     /** The turn to come: at `t` (the store's door, `entryOf`), to `yaw` (`faceOf`). */
     let facePlan: { key: string; t: number; yaw: number } | null = null;
     function planFace(key: string | null) {
@@ -1657,6 +1659,8 @@ export default function Walk360() {
     }
 
     // ── The loop: look, then walk the video ───────────────────────────────
+    /** A stick pushed sideways more than this (after shaping) is the shopper turning: it takes over the turn into a shelf. */
+    const TAKE_OVER = 0.12, FACE_RATE = 1.0;
     const clock = new THREE.Clock();
     const look = new THREE.Euler(0, 0, 0, "YXZ");
     renderer.setAnimationLoop(() => {
@@ -1677,11 +1681,19 @@ export default function Walk360() {
         facePlan = null;
       }
       if (faceTo !== null) {
-        if (wantTurn !== 0 || pointers.size || !current || current.flat) faceTo = null;
+        // ⚠️ ONLY A REAL TURN TAKES OVER (owner, 2026-11-05: "at sec 33 … the camera should turn right 90
+        // degree … but still looking straight"): driving with the stick, it is never exactly straight, and
+        // the slightest sideways cancelled the turn. Now a deliberate turn (`TAKE_OVER`) or a drag does.
+        if (Math.abs(wantTurn) > TAKE_OVER || pointers.size || !current || current.flat) { faceTo = null; faceVel = 0; }
         else if (performance.now() >= holdUntil) {
           const d = angleDiff(faceTo, videoYaw());
-          if (Math.abs(d) < 0.004) faceTo = null;
-          else turnYaw += d * Math.min(1, dt / 0.6);
+          if (Math.abs(d) < 0.01 && Math.abs(faceVel) < 0.05) { faceTo = null; faceVel = 0; }
+          else {
+            // Smooth: speeds up, cruises at `FACE_RATE`, slows into the shelf (about 2.5 s for 90°).
+            const want = Math.sign(d) * Math.min(FACE_RATE, Math.abs(d) / 0.7);
+            faceVel += (want - faceVel) * Math.min(1, dt / 0.35);
+            turnYaw += faceVel * dt;
+          }
         }
       }
       // ⚠️ THE PHONE'S COMPASS IS NOT THE WALK'S FORWARD. Its heading is
@@ -1856,14 +1868,8 @@ export default function Walk360() {
       }
 
       readTurn();
-      // ⚠️ SMOOTH TURNS (the Route optimizer, 2026-11-04: "fix sharp turns"): where the camera swung, the view
-      // turns gently against it (`turnEase`): the shopper sees the smoothed turn. Changes of walk start afresh.
-      if (current && !current.flat && !busy) {
-        const ease = turnEase(walkOf(walksNow, current.key)?.motion, tShown());
-        if (easeKey === current.key) turnYaw += ease - easeLast;
-        easeKey = current.key;
-        easeLast = ease;
-      }
+      // (The "eased turns" of 2026-11-04 are gone: turned from a noisy reading of the heading, they added
+      // small swings of their own. The owner's turns as filmed are smoother; the camera's gyro will tell.)
       updateDoors();
       updateItems();
       nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);

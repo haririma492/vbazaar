@@ -502,28 +502,29 @@ quality and choice to break away and enter in a shop. (period)"*
   product are measured for sharpness, the 3 sharpest close-ups from the upload
   go to Claude, who reads the title and author or says it cannot. Kept as a
   list beside the products (`stores/<slug>/titles.json`), never over a name.
-- **Into a store, the view turns to the right-hand shelf** (owner, 2026-11-04:
-  *"when moving into the store, the angle of the view has to automatically turn
-  toward the shelf on the right"*). A store's walk starts outside its door, so
-  the turn waits for the door: `entryOf` finds it as the first second when the
-  store's products are beside the camera, not only ahead (bookshop: 5 s; seen
-  at its door at 4 s). Then the view eases right, to the middle of the store's
-  own right-hand shelf (`rightShelfOf`: the products 15–100° right in the 12 s
-  after the door; the bookshop's, 27°; within 20–75°, else 75°): a fixed 75°
-  turned the bookshop's shoppers past its bookcase onto the mall hallway (the
-  owner: *"the camera does not turn toward the shelf on the right"*). The
-  shopper's own turn or drag takes over. A walk may set `face` / `faceAt`.
-- **Product photos at the sharpest moment** (owner, 2026-11-04: *"improve the
-  pixels of the product photos so when shoppers click on them they see a fully
-  improved and readable version"*): the Insta360 SDK cannot sharpen a photo,
-  only export a sharper video (`scripts/insta360/export-sharp.ps1`). Each
-  photo is cut from the upload at the sharpest of 8 moments of its light, and
-  the frames just round that moment are lined up and combined inside the
-  product's box (`lib/stores/fuse.ts`, `photoFuse.ts`; the background stays
-  the single sharpest frame, or it ghosts): less grain and blockiness, real
-  detail only, 1024 px. Measured: a clear but modest gain, not unreadable
-  titles made readable. No AI upscaling: it invents letters on titles.
-  About 30 s a product; resumable (`stores/<slug>/photos-done.json`).
+- **Into a store, the view turns 90° right, at the door** (owner, 2026-11-04,
+  then 2026-11-05: *"at sec 33 when camera goes inside the store the camera
+  should turn right 90 degree and view the shelves but still looking
+  straight"*). `STORE_FACE` is 90°; the measured right-hand shelf
+  (`rightShelfOf`, 27–35° on the bookshop) turned too little and is kept only
+  for reference. The turn waits for the door: the walk's `faceAt` (seconds),
+  else `entryOf` (the first second products are beside the camera; on the
+  bookshop it said 5 s, seen through the window, so its `faceAt` is set to 33).
+  It speeds up, cruises at 1 rad/s and slows into the shelf. ⚠️ Only a
+  deliberate sideways push of the stick or a drag cancels it: the slightest
+  sideways had cancelled every turn for shoppers driving with the stick.
+- **Product photos: the sharpest single frame, at the video's own pixels**
+  (owner, 2026-11-04: *"improve the pixels of the product photos"*; then
+  2026-11-05: *"compare to screenshot I myself got when stopped the movie …
+  the latter is much better. The green rectangle … keep it"*). Combining 5
+  frames (cut at 512 px, averaged, blown up to 1024) was worse than a paused
+  frame and is dropped. Now (`lib/stores/photoSharp.ts`): up to 12 moments of
+  each light are measured for sharpness in the upload itself, at the
+  original's time even after a cut (`originalTime`); the sharpest is cut once
+  at as many pixels as the product covers in the source (`nativeSize`, at most
+  1.25× blown up), Lanczos, with the yellow box. Nothing averaged, sharpened or
+  invented; no AI upscaling (it invents letters). Resumable
+  (`stores/<slug>/photos-done.json`, `PHOTO_VERSION`).
 - **The Route optimizer** (owner, 2026-11-04: *"edit the ride - the route so
   there is not so much back and forth … smooth move from shelf to shelf in
   progression"*; *"as delicate with pay attention to detail as possible"*).
@@ -538,16 +539,23 @@ quality and choice to break away and enter in a shop. (period)"*
   the lights stay on their books. The proposal and a preview are on the
   store's page («Route optimizer»); nothing is cut until the owner says yes
   («Cut the walk to this route…»), and the original is kept.
-- **The Route optimizer smooths the ride too** (owner, 2026-11-04: *"also is in
-  charge of smoothness, to fix sharp turns, fast moves in one spot and slow in
-  another"*). It measures each walk's motion (`Walk.motion`, re-measured after
-  any cut; every walk at start-up) and the player uses it without touching the
-  video (`lib/splats/motion.ts`): EVEN SPEED, self-drive's rate from the pace
-  HERE (the middle reading over 1.5 s, kept within 2.5× of the walk's own) —
-  hurried stretches play slower, dawdles and stands faster; SMOOTH TURNS, the
-  view turned gently against a swing (the heading over 2.5 s against the
-  heading over 0.4 s: the measuring's jitter is never corrected for, at most
-  35°). Lights are untouched (they are in the video's directions).
+- **The ride plays as filmed, at one steady rate** (owner, 2026-11-05: *"lot
+  of jerk moves … not smooth, even worse than what I did … I moved much
+  smoother"*). "Even speed" (the rate from the pace measured each moment) and
+  "eased turns" (the view turned against the measured heading), added
+  2026-11-04, followed the measuring's noise (speed readings 0.13 → 4.2 → 0.3
+  m/s a second apart) and made the ride race, brake and sway: both are off.
+  The motion is still measured (`Walk.motion`, `lib/splats/motion.ts`) and
+  the Route optimizer still uses it to plan, but the player does not steer by
+  it. Next: the camera's own gyro, from the .insv (below).
+- **The raw .insv, for the agents** (owner, 2026-11-05, the "one million $
+  question": *"would it be better if we upload .insv"*). The .insv holds the
+  camera's gyro for every frame (exact turns and shake, for smoothing and the
+  turn into a store) and the picture before Studio's second compression. A
+  store's page has an operator-only upload for it (`files.raw`, kind `raw`),
+  beside the .mp4, which shoppers still walk. First a test on the bookshop:
+  read its gyro on the server, compare a frame with the .mp4's. Stitching it
+  ourselves would need Insta360's Media SDK for Linux.
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

@@ -39,7 +39,7 @@ import { readTitleList, readTitles } from "@/lib/stores/titles";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS: UploadKind[] = ["video", "sheet", "photo", "door"];
+const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "raw"];
 
 async function open(req: NextRequest, slug: string) {
   if (!SLUG_RE.test(slug)) return { error: fail(404, "No such store.") };
@@ -90,6 +90,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "upload") {
     const kind = body.kind as UploadKind;
     if (!KINDS.includes(kind)) return fail(400, "Unknown upload kind.");
+    if (kind === "raw" && who !== "operator") return fail(403, "The operator only.");
     if (kind === "video" && who !== "operator") return fail(403, "Only the bazaar's operator uploads the store's video. · ویدیو را اپراتور بارگذاری می‌کند.");
     const name = String(body.name ?? "");
     let key = String(body.key ?? "");
@@ -276,7 +277,7 @@ export async function PUT(req: NextRequest, { params }: { params: { slug: string
   const q = req.nextUrl.searchParams;
   const key = q.get("key") || "";
   if (!isUploadKeyOf(o.s.slug, key)) return fail(400, "Not this store's upload.");
-  if (key.includes("/uploads/video/") && o.who !== "operator") return fail(403, "Only the operator uploads the video.");
+  if ((key.includes("/uploads/video/") || key.includes("/uploads/raw/")) && o.who !== "operator") return fail(403, "Only the operator uploads the video.");
   const n = Number(q.get("partNumber"));
   if (!Number.isInteger(n) || n < 1 || n > 10_000) return fail(400, "Part number 1–10000.");
   try {
