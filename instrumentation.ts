@@ -17,6 +17,9 @@ export async function register() {
     // Walks whose products were pinned by the old, rougher follow: followed again, free (`lib/stores/repin.ts`).
     const { queueRepin, walksToRepin } = await import("./lib/stores/repin");
     setTimeout(() => void walksToRepin().then(queueRepin).catch((e) => console.error("[repin] resume", e)), 35_000);
+    // Stores whose product photos are waiting to be made from several frames (the Photo improver, `crew.ts`).
+    const { drainPhotos } = await import("./lib/stores/crew");
+    setTimeout(() => void drainPhotos().catch((e) => console.error("[photos] resume", e)), 40_000);
     // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
     const { drainReverse } = await import("./lib/stores/reverse");
     setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);

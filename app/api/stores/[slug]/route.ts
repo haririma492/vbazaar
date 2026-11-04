@@ -30,7 +30,9 @@ import {
 import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
-import { kick, publish, recutPhotos } from "@/lib/stores/crew";
+import { kick, publish, queuePhotos } from "@/lib/stores/crew";
+import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
+import { startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
 
 export const runtime = "nodejs";
@@ -226,8 +228,25 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "photosRecut") {
     // Operator: the product photos cut again, framed on each product (free, no AI). Runs in the background.
     if (who !== "operator") return fail(403, "The operator only.");
-    void recutPhotos(s.slug).then((note) => console.log("[recut]", s.slug, note)).catch((e) => console.error("[recut]", s.slug, e));
+    await queuePhotos([s.slug]);
     return ok({ started: true });
+  }
+  if (body.action === "routePlan") {
+    // Operator: the Route optimizer plans this store's walk (free, nothing cut; the proposal and its preview are kept).
+    if (who !== "operator") return fail(403, "The operator only.");
+    void planStoreRoute(s.slug).then((note) => console.log("[route]", s.slug, note)).catch((e) => console.error("[route]", s.slug, e));
+    return ok({ started: true });
+  }
+  if (body.action === "route") {
+    const r = await readRoute(s.slug);
+    return ok({ route: r ? { ...r, previewUrl: r.preview && r2Config().publicBase ? `${r2Config().publicBase}/${r.preview}` : null } : null });
+  }
+  if (body.action === "routeApply") {
+    // Operator, on the owner's yes: the proposal is cut (the walk editor's cut: lights and doors move, the original kept).
+    if (who !== "operator") return fail(403, "The operator only.");
+    const r = await readRoute(s.slug);
+    if (!r || r.walk !== s.out.walk) return fail(409, "No route proposal for this walk: plan it first.");
+    return ok({ job: startCutJob(r.walk, r.parts) });
   }
   return fail(400, "Unknown action.");
 }

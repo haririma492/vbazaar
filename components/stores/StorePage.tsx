@@ -27,6 +27,7 @@ import { formatCents } from "@/lib/splats/catalogue";
 import { getJson, postJson, uploadInParts, uploadMusic } from "./upload";
 import { UPLOAD_CARDS } from "./Intake";
 import Products from "./Products";
+import RouteCard from "./RouteCard";
 import WalkFrame from "./WalkFrame";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread } from "./ui";
 
@@ -240,6 +241,8 @@ export default function StorePage({ slug }: { slug: string }) {
       </Card>}
 
       {page.products.length > 0 && <Products api={api} products={page.products} reload={load} />}
+
+      {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
 
       {op && <Card><ChangePassword api={api} /></Card>}
       {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}

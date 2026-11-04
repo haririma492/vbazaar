@@ -20,9 +20,18 @@
 
 import type { Walk } from "./walks";
 
-export type Part = { from: number; to: number };
+/**
+ * A part to keep. `soft` (the Route optimizer, 2026-11-04): where two parts
+ * meet and the moments are not alike enough to join unseen, the picture dips
+ * to black over `SOFT_S` at the end of one part and comes back at the start of
+ * the next — a deliberate step, not a glitch. Inside the part: the video's
+ * length and every light's time stay exactly as they were.
+ */
+export type Part = { from: number; to: number; soft?: { in?: boolean; out?: boolean } };
 
-export const MAX_PARTS = 20;
+export const MAX_PARTS = 40;
+/** How long a soft edge's dip takes (s). */
+export const SOFT_S = 0.3;
 /** Shorter than this is a slip of the finger, not a part. */
 export const MIN_PART_SECONDS = 1;
 
@@ -60,7 +69,9 @@ export function checkParts(raw: unknown, duration: number): { parts: Part[]; pro
     if (!Number.isFinite(from) || !Number.isFinite(to)) { problems.push(`${name}: a start and an end.`); continue; }
     if (from < 0 || (duration > 0 && to > duration + 0.5)) { problems.push(`${name}: ${sayTime(from)}–${sayTime(to)} is outside the video (0:00–${sayTime(duration)}).`); continue; }
     if (to - from < MIN_PART_SECONDS) { problems.push(`${name}: it ends before it starts, or is under ${MIN_PART_SECONDS} s.`); continue; }
-    parts.push({ from: Math.round(from * 100) / 100, to: Math.round(Math.min(to, duration > 0 ? duration : to) * 100) / 100 });
+    const sf = (p as Part)?.soft;
+    const soft = sf && typeof sf === "object" && (sf.in === true || sf.out === true) ? { ...(sf.in ? { in: true } : {}), ...(sf.out ? { out: true } : {}) } : null;
+    parts.push({ from: Math.round(from * 100) / 100, to: Math.round(Math.min(to, duration > 0 ? duration : to) * 100) / 100, ...(soft ? { soft } : {}) });
   }
   parts.sort((a, b) => a.from - b.from);
   for (let i = 1; i < parts.length; i++) {
@@ -163,8 +174,17 @@ export function partArgs(src: string, part: Part, out: string): string[] {
   return [
     "-hide_banner", "-y", "-nostdin", "-progress", "pipe:1", "-nostats",
     "-ss", String(part.from), "-to", String(part.to), "-i", src,
-    "-map", "0:v:0", ...ENCODE, out,
+    "-map", "0:v:0", ...softFilter(part), ...ENCODE, out,
   ];
+}
+
+/** The dip at a part's soft edges (`Part.soft`), as ffmpeg's -vf; none when it has none. */
+export function softFilter(part: Part): string[] {
+  const len = part.to - part.from;
+  const f: string[] = [];
+  if (part.soft?.in) f.push(`fade=t=in:st=0:d=${SOFT_S}`);
+  if (part.soft?.out) f.push(`fade=t=out:st=${Math.max(0, len - SOFT_S).toFixed(3)}:d=${SOFT_S}`);
+  return f.length ? ["-vf", f.join(",")] : [];
 }
 
 /** THE STITCH: the cut parts, every one encoded alike, joined in order without encoding again (`list` is ffmpeg's concat list). */

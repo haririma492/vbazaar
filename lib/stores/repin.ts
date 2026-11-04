@@ -52,7 +52,12 @@ export async function drainRepin(): Promise<void> {
       const [key, ...rest] = await readPending();
       if (!key) return;
       await setJob("repin", { busy: true, key });
-      try { console.log("[repin]", key, await repinWalk(key)); } catch (e) { console.error("[repin]", key, e); }
+      try {
+        console.log("[repin]", key, await repinWalk(key));
+        // The lights moved: the store's photos are made again from them (the Photo improver).
+        const slug = /^scenes\/store-([a-z0-9-]+)\//.exec(key)?.[1];
+        if (slug) await import("./crew").then((m) => m.queuePhotos([slug]));
+      } catch (e) { console.error("[repin]", key, e); }
       await setJob("repin", { busy: false, key: null });
       await writeMastersJson(PENDING, rest);
     }

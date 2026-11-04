@@ -21,6 +21,7 @@
  * Server only.
  */
 
+import { readJob, setJob } from "./jobState";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -484,6 +485,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     const tagged = new Set(items.map((it) => it.n!));
     const notFound = c.products.map((p) => p.n).filter((n) => !tagged.has(n));
     await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, tagged: items.length, notFound } }));
+    void queuePhotos([s.slug]).catch((e) => console.error("[photos] queue", e));
     return `${items.length} tags pinned on ${tagged.size} of ${c.products.length} products${notFound.length ? `; not found in the video: #${notFound.slice(0, 20).join(", #")}${notFound.length > 20 ? "…" : ""}` : ""}.${stopped}`;
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -536,6 +538,47 @@ async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Be
  * nothing spent (owner, 2026-11-04: "the photo is misleading because is not
  * zoomed enough"). Products with no light, or no outline, keep their photo.
  */
+/**
+ * ⚠️ THE PHOTO IMPROVER (owner, 2026-11-04: "do we have a 'Product Photo
+ * Improvement'? we need because this task is repeatable on all new stores").
+ * Every store's product photos are made again from several frames
+ * (`recutPhotos`) by themselves: queued when the crew has found a store's
+ * products or pinned its tags, and when the Light keeper has followed a walk
+ * again; the queue lives in the bucket (`photos/pending.json`) and is worked
+ * through in the background, one store at a time, carried on after a restart
+ * (`drainPhotos` at start-up; each store's own progress is kept too). Free.
+ */
+const PHOTOS_PENDING = "photos/pending.json";
+let improving = false;
+async function readPhotoQueue(): Promise<string[]> {
+  try { const t = await readMastersText(PHOTOS_PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
+}
+export async function queuePhotos(slugs: string[]): Promise<void> {
+  if (!slugs.length) return;
+  await writeMastersJson(PHOTOS_PENDING, [...new Set([...(await readPhotoQueue()), ...slugs])]);
+  void drainPhotos();
+}
+export async function drainPhotos(): Promise<void> {
+  if (improving) return;
+  improving = true;
+  try {
+    for (;;) {
+      const [slug, ...rest] = await readPhotoQueue();
+      if (!slug) return;
+      await setJob("photos", { busy: true, key: slug });
+      try { console.log("[photos]", slug, await recutPhotos(slug)); } catch (e) { console.error("[photos]", slug, e); }
+      await setJob("photos", { busy: false, key: null });
+      await writeMastersJson(PHOTOS_PENDING, rest);
+    }
+  } finally {
+    improving = false;
+  }
+}
+export async function photosStatus(): Promise<{ busy: boolean; waiting: string[]; current?: string }> {
+  const j = await readJob("photos");
+  return { busy: Boolean(j?.busy && Date.now() - Date.parse(j.at) < 12 * 3600_000), waiting: await readPhotoQueue(), ...(j?.busy && j.key ? { current: j.key } : {}) };
+}
+
 export async function recutPhotos(slug: string): Promise<string> {
   const s = await readStore(slug);
   if (!s?.out.walk) return "No walk.";
@@ -681,6 +724,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...walk, items: [...hand, ...items].slice(0, MAX_ITEMS), pinned: PIN_VERSION } } }, walks);
     const tagged = new Set(items.map((it) => it.n!));
     await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, found: walkKey, tagged: items.length, notFound: listed.map((p) => p.n).filter((n) => !tagged.has(n)) } }));
+    void queuePhotos([s.slug]).catch((e) => console.error("[photos] queue", e));
     return `${products.length} products found in the video, ${items.length} tags pinned. Give each its price on this page («Products»).${stopped}`;
   } finally {
     rmSync(dir, { recursive: true, force: true });

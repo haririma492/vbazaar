@@ -520,6 +520,23 @@ quality and choice to break away and enter in a shop. (period)"*
   detail only, 1024 px. Measured: a clear but modest gain, not unreadable
   titles made readable. No AI upscaling: it invents letters on titles.
   About 30 s a product; resumable (`stores/<slug>/photos-done.json`).
+- **The Route optimizer** (owner, 2026-11-04: *"edit the ride - the route so
+  there is not so much back and forth … smooth move from shelf to shelf in
+  progression"*; *"as delicate with pay attention to detail as possible"*).
+  Free, no AI. Reads how the camera moved (floor slide ahead/behind/sideways,
+  horizon turn, 5 a second), keeps the way in through the door, every stretch
+  showing a product not shown yet, and a 1.5 s look where the photographer
+  stood; drops walking back, standing on, and passing again with nothing new.
+  Every product must still be shown. Each join moves to the most alike pair of
+  moments within ±0.8 s that still cuts at least 80% of what the plan cuts (left
+  free it picked frames 0.1 s apart and cut nothing); a join that cannot be
+  seamless dips to black 0.3 s each side (`Part.soft`), the length unchanged so
+  the lights stay on their books. The proposal and a preview are on the
+  store's page («Route optimizer»); nothing is cut until the owner says yes
+  («Cut the walk to this route…»), and the original is kept.
+- **The Photo improver** runs by itself for every store (owner: *"this task is
+  repeatable on all new stores"*): queued when products are found or the
+  lights re-pinned, in the background, carried on after a restart.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

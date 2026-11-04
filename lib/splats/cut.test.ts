@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  checkParts, concatList, keptSeconds, mapTime, originalWalk, partArgs, readCutRecord, readTime, remapWalk, sayTime, stitchArgs, unmapTime,
+  MAX_PARTS, checkParts, concatList, softFilter, keptSeconds, mapTime, originalWalk, partArgs, readCutRecord, readTime, remapWalk, sayTime, stitchArgs, unmapTime,
 } from "./cut.ts";
 import type { Walk } from "./walks.ts";
 
@@ -101,4 +101,15 @@ test("the record kept by the first cuts (the walk alone) is still read", () => {
   assert.deepEqual(readCutRecord({ doors: [] }), { walk: { doors: [] } });
   assert.deepEqual(readCutRecord({ walk: { doors: [] }, parts: [{ from: 1, to: 5 }] }), { walk: { doors: [] }, parts: [{ from: 1, to: 5 }] });
   assert.equal(readCutRecord(null), null);
+});
+
+test("a part's soft edges (the Route optimizer's dips at rough joins) are kept and keep its length", () => {
+  const { parts, problems } = checkParts([{ from: 1, to: 5, soft: { out: true } }, { from: 9, to: 12, soft: { in: true, bogus: 1 } }, { from: 14, to: 16, soft: "x" }], 20);
+  assert.deepEqual(problems, []);
+  assert.deepEqual(parts.map((p) => p.soft ?? null), [{ out: true }, { in: true }, null]);
+  assert.deepEqual(softFilter(parts[0]), ["-vf", "fade=t=out:st=3.700:d=0.3"], "the dip ends with the part: its length is unchanged");
+  assert.deepEqual(softFilter(parts[1]), ["-vf", "fade=t=in:st=0:d=0.3"]);
+  assert.deepEqual(softFilter(parts[2]), []);
+  assert.ok(partArgs("in.mp4", parts[0], "out.mp4").includes("fade=t=out:st=3.700:d=0.3"));
+  assert.ok(MAX_PARTS >= 40, "room for a careful route");
 });
