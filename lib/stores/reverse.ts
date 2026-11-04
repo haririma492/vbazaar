@@ -9,6 +9,7 @@
 // joined in the opposite order. Walks waiting for theirs are kept in the
 // masters bucket, so a restart (every push to main redeploys) carries on.
 // Server only.
+import { readJob, setJob } from "./jobState";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -65,8 +66,9 @@ export async function makeReverse(walkKey: string): Promise<string> {
 const PENDING = "reverse/pending.json";
 let draining = false;
 /** For `/operator/agents`: the walks waiting for their reversed copy, and whether one is being made now. */
-export async function reverseStatus(): Promise<{ busy: boolean; waiting: string[] }> {
-  return { busy: draining, waiting: await readPending() };
+export async function reverseStatus(): Promise<{ busy: boolean; waiting: string[]; current?: string }> {
+  const j = await readJob("reverse");
+  return { busy: Boolean(j?.busy && Date.now() - Date.parse(j.at) < 6 * 3600_000), waiting: await readPending(), ...(j?.key ? { current: j.key } : {}) };
 }
 async function readPending(): Promise<string[]> {
   try { const t = await readMastersText(PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
@@ -85,7 +87,9 @@ export async function drainReverse(): Promise<void> {
     for (;;) {
       const [key, ...rest] = await readPending();
       if (!key) return;
+      await setJob("reverse", { busy: true, key });
       try { console.log("[reverse]", key, await makeReverse(key)); } catch (e) { console.error("[reverse]", key, e); }
+      await setJob("reverse", { busy: false, key: null });
       await writeMastersJson(PENDING, rest);
     }
   } finally {

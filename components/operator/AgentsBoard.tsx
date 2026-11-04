@@ -18,7 +18,7 @@ type Board = {
   server: { commit: string | null; message: string | null; startedAt: string; now: string };
   needsYou: Array<{ what: string; where: string; link?: string }>;
   stores: Array<{ slug: string; name: { en: string; fa: string }; status: { en: string; tone: string }; live: boolean; spentCents: number; budgetCents: number; updatedAt: string; walk: string | null; steps: Step[] }>;
-  jobs: Array<{ id: string; name: string; what: string; busy: boolean; waiting: string[] }>;
+  jobs: Array<{ id: string; name: string; what: string; busy: boolean; waiting: string[]; current?: string }>;
   shadow: { key: string; phase: string; note: string; at: string; looked: number; spentCents: number } | null;
   walks: Array<{ key: string; title: string | null; products: number; outlines: number; fine: boolean | null; pace: number | null; doors: number }>;
 };
@@ -96,7 +96,7 @@ export default function AgentsBoard() {
           </p>
         ))}
         {b.jobs.filter((j) => j.busy).map((j) => (
-          <p key={j.id} className="mt-1.5 text-[13px]"><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-300 animate-pulse" /><b>{j.name}</b> — on {j.waiting[0] ? short(j.waiting[0]) : "a walk"}{j.waiting.length > 1 ? `, ${j.waiting.length - 1} more waiting` : ""}</p>
+          <p key={j.id} className="mt-1.5 text-[13px]"><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-300 animate-pulse" /><b>{j.name}</b> — on {j.current ? short(j.current) : j.waiting[0] ? short(j.waiting[0]) : "a walk"}{j.waiting.length > 1 ? `, ${j.waiting.length - 1} more waiting` : ""}</p>
         ))}
         {b.shadow && (b.shadow.phase === "finding" || b.shadow.phase === "softening") && (
           <p className="mt-1.5 text-[13px]"><span className="mr-2 inline-block h-2.5 w-2.5 rounded-full bg-amber-300 animate-pulse" /><b>Shadow agent</b> — {b.shadow.note} ({short(b.shadow.key)}, {money(b.shadow.spentCents)})</p>

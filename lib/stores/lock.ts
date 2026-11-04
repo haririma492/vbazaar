@@ -12,6 +12,7 @@
 //      operator's arms come on screen, nor up into the ceiling.
 // It writes `Walk.hide` (marked `auto`) and `Walk.tilt`. Locks an operator set
 // by hand are kept: the agent then only adds what is missing.
+import { readJob, setJob } from "./jobState";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -60,8 +61,9 @@ export async function autoLock(walkKey: string, purse: Purse, say: (note: string
 const PACE_PENDING = "pace/pending.json";
 let pacing = false;
 /** For `/operator/agents`: the walks waiting to be measured, and whether one is being measured now. */
-export async function paceStatus(): Promise<{ busy: boolean; waiting: string[] }> {
-  return { busy: pacing, waiting: await readPending() };
+export async function paceStatus(): Promise<{ busy: boolean; waiting: string[]; current?: string }> {
+  const j = await readJob("pace");
+  return { busy: Boolean(j?.busy && Date.now() - Date.parse(j.at) < 6 * 3600_000), waiting: await readPending(), ...(j?.key ? { current: j.key } : {}) };
 }
 export async function queuePace(keys: string[]): Promise<void> {
   const old = await readPending();
@@ -79,7 +81,9 @@ export async function drainPace(): Promise<void> {
     for (;;) {
       const [key, ...rest] = await readPending();
       if (!key) return;
+      await setJob("pace", { busy: true, key });
       try { console.log("[pace]", key, await measurePace(key, async () => {})); } catch (e) { console.error("[pace]", key, e); }
+      await setJob("pace", { busy: false, key: null });
       await writeMastersJson(PACE_PENDING, rest);
     }
   } finally {

@@ -10,6 +10,7 @@
 // anyone changed meanwhile is left as it is. Walks wait in a list in the
 // masters bucket, so a restart (every push to main) carries on with the rest.
 
+import { readJob, setJob } from "./jobState";
 import { presignGet, readCatalogue, readMastersText, readWalks, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { MAX_ITEMS, phoneKeyOf, type ItemPin, type WalkItem } from "@/lib/splats/walks";
 import { grayFrames, probe } from "./media";
@@ -18,8 +19,9 @@ import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, MIN_PINS, PIN_VERSION, capTracks, fo
 const PENDING = "repin/pending.json";
 let busy = false;
 /** For `/operator/agents`: the walks waiting to be re-pinned, and whether one is being done now. */
-export async function repinStatus(): Promise<{ busy: boolean; waiting: string[] }> {
-  return { busy, waiting: await readPending() };
+export async function repinStatus(): Promise<{ busy: boolean; waiting: string[]; current?: string }> {
+  const j = await readJob("repin");
+  return { busy: Boolean(j?.busy && Date.now() - Date.parse(j.at) < 6 * 3600_000), waiting: await readPending(), ...(j?.busy && j.key ? { current: j.key } : {}) };
 }
 
 const isAuto = (it: WalkItem) => it.id.startsWith("auto-") && it.pins.length >= 2;
@@ -49,7 +51,9 @@ export async function drainRepin(): Promise<void> {
     for (;;) {
       const [key, ...rest] = await readPending();
       if (!key) return;
+      await setJob("repin", { busy: true, key });
       try { console.log("[repin]", key, await repinWalk(key)); } catch (e) { console.error("[repin]", key, e); }
+      await setJob("repin", { busy: false, key: null });
       await writeMastersJson(PENDING, rest);
     }
   } finally {
@@ -91,7 +95,7 @@ export async function repinWalk(walkKey: string): Promise<string> {
     const grey = frames;
     const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
     for (const { item, seed } of list) {
-      const pins = follow(grey, W, H, start, i0, { lon: seed.x, lat: seed.y });
+      const pins = follow(grey, W, H, start, i0, { lon: seed.x, lat: seed.y }, item.size);
       if (pins.length >= MIN_PINS) fresh.set(item.id, pins);
     }
   }
@@ -128,7 +132,7 @@ async function rebuildFromSightings(walkKey: string, slug: string, sightings: Si
     if (!frames.length) continue;
     const i0 = Math.min(frames.length - 1, Math.round((t - start) * FOLLOW_FPS));
     for (const x of sightings.filter((y) => y.t === t && byN.has(y.n))) {
-      tracks.push({ n: x.n, confidence: x.confidence, size: x.size, pins: follow(frames, W, H, start, i0, { lon: x.lon, lat: x.lat }) });
+      tracks.push({ n: x.n, confidence: x.confidence, size: x.size, pins: follow(frames, W, H, start, i0, { lon: x.lon, lat: x.lat }, x.size) });
     }
   }
   const walks = await readWalks();

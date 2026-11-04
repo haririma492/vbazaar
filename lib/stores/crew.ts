@@ -453,7 +453,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
       const grey = frames;
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
       for (const x of sightings.filter((y) => y.look.t === t && y.confidence >= 0.6)) {
-        tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)), size: boxSize(x.look, x.box) });
+        tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box), boxSize(x.look, x.box)), size: boxSize(x.look, x.box) });
       }
     }
     const kept = capTracks(keepTracks(tracks), MAX_ITEMS);
@@ -645,7 +645,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
       if (!frames.length) continue;
       const grey = frames;
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
-      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)), size: boxSize(x.look, x.box) });
+      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box), boxSize(x.look, x.box)), size: boxSize(x.look, x.box) });
     }
     const byN = new Map(listed.map((p) => [p.n, p]));
     const count = new Map<number, number>();

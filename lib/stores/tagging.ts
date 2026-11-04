@@ -63,8 +63,8 @@ export const FOLLOW_SPAN = 5;
  * along a shelf of look-alike spines.
  */
 export const FOLLOW_W = 2048;
-/** This follow's version, kept on each walk it pinned (`Walk.pinned`): 2 = the fine follow, 3 = followed up to 5 s either way (both 2026-11-04). */
-export const PIN_VERSION = 3;
+/** This follow's version, kept on each walk it pinned (`Walk.pinned`): 2 = the fine follow, 3 = up to 5 s either way, 4 = the Light keeper (each light checked to stay on its product, lights of one product joined) — all 2026-11-04. */
+export const PIN_VERSION = 4;
 const VIEW_FOV = (36 * Math.PI) / 180;
 const VIEW_N = 128;
 const VIEW_PATCH = 21;
@@ -148,7 +148,7 @@ export function boxSize(look: Look, box: [number, number, number, number]): { w:
  * `frames` (grey W×H panoramas, `FOLLOW_FPS` apart, the first at `t0` s),
  * both ways, until it is lost. Its pins, in time order.
  */
-export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, at0: { lon: number; lat: number }): ItemPin[] {
+export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, at0: { lon: number; lat: number }, size?: { w: number; h: number }): ItemPin[] {
   const view = (i: number, at: { lon: number; lat: number }) => renderView(frames[i], W, H, "equirect", at.lon, at.lat, VIEW_FOV, VIEW_N);
   const c = VIEW_N / 2;
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
@@ -176,8 +176,59 @@ export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: nu
       pins.push({ t: tOf(i), x: r3(at.lon), y: r3(at.lat) });
     }
   }
-  return pins.sort((a, b) => a.t - b.t);
+  const sorted = pins.sort((a, b) => a.t - b.t);
+  return size ? stillTheSame(frames, W, H, t0, i0, sorted, size) : sorted;
 }
+
+/**
+ * ⚠️ THE LIGHT KEEPER'S CHECK (owner, 2026-11-04: "making green tags
+ * stationary no move at all"). A follow can slide off its product onto a
+ * look-alike next to it; tried on the bookshop, "finding it again after a
+ * moment lost" made a 7 s light that went from the ceiling to blue spines to
+ * green ones, so that was dropped. Instead each follow is checked: the
+ * product's whole outline (`size`), seen at each of its moments, must still
+ * look like it did at the sighting (`SAME_LOOK`, normalised correlation of a
+ * small view of just the outline). Measured on the bookshop: the book one
+ * outline to the side scores under 0.3 95 times in 100, so 0.3 it is; one
+ * blurred frame may fall short, two in a row end the light, from the
+ * sighting outwards.
+ */
+export const SAME_LOOK = 0.3;
+function stillTheSame(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, pins: ItemPin[], size: { w: number; h: number }): ItemPin[] {
+  const fov = Math.min(0.8, Math.max(0.04, Math.max(size.w, size.h) * 1.1));
+  const n = 40;
+  const look = (p: ItemPin) => {
+    const i = Math.round((p.t - t0) * FOLLOW_FPS);
+    return i >= 0 && i < frames.length ? renderView(frames[i], W, H, "equirect", p.x, p.y, fov, n) : null;
+  };
+  const ncc = (a: Float32Array, b: Float32Array) => {
+    let ma = 0, mb = 0;
+    for (let k = 0; k < a.length; k++) { ma += a[k]; mb += b[k]; }
+    ma /= a.length; mb /= b.length;
+    let ab = 0, aa = 0, bb = 0;
+    for (let k = 0; k < a.length; k++) { const x = a[k] - ma, y = b[k] - mb; ab += x * y; aa += x * x; bb += y * y; }
+    return aa > 1e-6 && bb > 1e-6 ? ab / Math.sqrt(aa * bb) : 0;
+  };
+  const tSeen = Math.round((t0 + i0 / FOLLOW_FPS) * 100) / 100;
+  const k0 = pins.findIndex((p) => Math.abs(p.t - tSeen) < 0.01);
+  if (k0 < 0) return pins;
+  const ref = look(pins[k0]);
+  if (!ref) return pins;
+  const ok = (k: number) => { const v = look(pins[k]); return Boolean(v) && ncc(ref, v!) >= SAME_LOOK; };
+  let hi = k0, lo = k0;
+  for (let k = k0 + 1; k < pins.length; k++) {
+    if (ok(k)) { hi = k; continue; }
+    if (k + 1 < pins.length && ok(k + 1)) { hi = ++k; continue; } // one blurred frame
+    break;
+  }
+  for (let k = k0 - 1; k >= 0; k--) {
+    if (ok(k)) { lo = k; continue; }
+    if (k - 1 >= 0 && ok(k - 1)) { lo = --k; continue; }
+    break;
+  }
+  return pins.slice(lo, hi + 1);
+}
+
 
 /**
  * ⚠️ THE CAP IS SHARED FAIRLY (2026-11-04). With more products than
@@ -217,6 +268,34 @@ function sameSpot(a: ItemPin[], b: ItemPin[]): boolean {
   return false;
 }
 
+/** Whether `b` starts where `a` stops: within `JOIN_GAP` s after it, near where `a` was heading. */
+function carriesOn(a: ItemPin[], b: ItemPin[]): boolean {
+  if (a.length < 2 || !b.length) return false;
+  const z = a[a.length - 1], y = a[a.length - 2], f = b[0];
+  const gap = f.t - z.t;
+  if (gap <= 0 || gap > JOIN_GAP) return false;
+  const dt = z.t - y.t || 0.1;
+  const px = z.x + (Math.atan2(Math.sin(z.x - y.x), Math.cos(z.x - y.x)) / dt) * gap, py = z.y + ((z.y - y.y) / dt) * gap;
+  return angle(px, f.x) < SAME / 3 && Math.abs(py - f.y) < SAME / 3;
+}
+/** Two follows of one product as one: every moment either has, the two averaged where both have it. */
+export function joinPins(a: ItemPin[], b: ItemPin[]): ItemPin[] {
+  const at = new Map<number, ItemPin[]>();
+  for (const p of [...a, ...b]) {
+    const k = Math.round(p.t * 100);
+    at.set(k, [...(at.get(k) ?? []), p]);
+  }
+  return [...at.values()].map((ps) => {
+    if (ps.length === 1) return ps[0];
+    const x0 = ps[0].x;
+    const dx = ps.reduce((s, p) => s + Math.atan2(Math.sin(p.x - x0), Math.cos(p.x - x0)), 0) / ps.length;
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
+    return { t: ps[0].t, x: r3(Math.atan2(Math.sin(x0 + dx), Math.cos(x0 + dx))), y: r3(ps.reduce((s, p) => s + p.y, 0) / ps.length) };
+  }).sort((p, q) => p.t - q.t);
+}
+/** Follows of one product this close in time (s) and heading the same way are one light. */
+const JOIN_GAP = 1.2;
+
 /**
  * Per product, the tracks worth tags: sightings of one spot merged into the
  * longest of them, at most two spots per product, and none shorter than
@@ -230,9 +309,13 @@ export function keepTracks(tracks: Track[], perProduct = 12): Track[] {
     const sorted = [...list].sort((a, b) => b.pins.length - a.pins.length || b.confidence - a.confidence);
     const kept: Track[] = [];
     for (const t of sorted) {
-      if (kept.some((k) => sameSpot(k.pins, t.pins) || sameSpot(t.pins, k.pins))) continue;
-      kept.push(t);
-      if (kept.length >= perProduct) break;
+      // ⚠️ JOINED, NOT DROPPED (the Light keeper, 2026-11-04): another look's follow of the same
+      // product in the same place, or one that carries on right where a kept one stops, makes that
+      // light last longer instead of being thrown away.
+      const k = kept.find((k) => sameSpot(k.pins, t.pins) || sameSpot(t.pins, k.pins) || carriesOn(k.pins, t.pins) || carriesOn(t.pins, k.pins));
+      if (k) { k.pins = joinPins(k.pins, t.pins); continue; }
+      if (kept.length >= perProduct) continue;
+      kept.push({ ...t, pins: [...t.pins] });
     }
     out.push(...kept);
   }

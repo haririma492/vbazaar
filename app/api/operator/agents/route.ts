@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
   ]);
   const jobs = [
     { id: "pace", name: "Walking speed (lock agent's half)", what: "Measures how fast each walk was filmed, so the speed bar is a real speed. Free.", ...(pace ?? { busy: false, waiting: [] }) },
-    { id: "repin", name: "Re-pinner", what: "Follows the crew's products again with the fine follow, from Claude's own sightings. Free.", ...(repin ?? { busy: false, waiting: [] }) },
+    { id: "repin", name: "Light keeper", what: "Keeps each product's light on it while it is in view: follows it again, checks it stays on the same product, joins its lights. Free.", ...(repin ?? { busy: false, waiting: [] }) },
     { id: "reverse", name: "Reversed copies", what: "Makes the copy «◀ Back» plays. Free.", ...(reverse ?? { busy: false, waiting: [] }) },
   ];
   const shadowJob = shadow ? { key: shadow.key, phase: shadow.phase, note: shadow.note, at: shadow.at, looked: shadow.looked, spentCents: shadow.spent } : null;

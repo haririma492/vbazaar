@@ -271,26 +271,20 @@ const lightTextures = new Map<Light, THREE.CanvasTexture>();
 function lightTexture(kind: Light): THREE.CanvasTexture {
   const had = lightTextures.get(kind);
   if (had) return had;
-  // ⚠️ ONE GREEN DOT IN ITS GLOW (owner, 2026-11-04: "make the light on each
-  // book green, with two nested circle (twice as large as it is now)"; then:
-  // "remove the second larger circle, leave the aura around the first full
-  // circle"). A full green dot with a thin dark edge (it reads on a white
-  // spine), in a soft green aura that fades out.
-  const n = 256, c = document.createElement("canvas");
+  // ⚠️ ONE GREEN DOT, NO GLOW (owner, 2026-11-04: "make the light on each book
+  // green, with two nested circle (twice as large…)"; "remove the second larger
+  // circle, leave the aura…"; then: "turn off the aura around the green circle
+  // and make green circle 15% smaller"). A full green dot with a thin dark edge,
+  // so it reads on a white spine; the canvas is the dot.
+  const n = 128, c = document.createElement("canvas");
   c.width = c.height = n;
   const g = c.getContext("2d")!;
-  const [core, halo] = LIGHT_COLOUR[kind];
-  const glow = g.createRadialGradient(n / 2, n / 2, n * 0.1, n / 2, n / 2, n / 2);
-  glow.addColorStop(0, `${halo}0.75)`);
-  glow.addColorStop(0.45, `${halo}0.35)`);
-  glow.addColorStop(1, `${halo}0)`);
-  g.fillStyle = glow;
-  g.fillRect(0, 0, n, n);
+  const [core] = LIGHT_COLOUR[kind];
   g.beginPath();
-  g.arc(n / 2, n / 2, n * 0.16, 0, Math.PI * 2);
+  g.arc(n / 2, n / 2, n * 0.44, 0, Math.PI * 2);
   g.fillStyle = core;
   g.fill();
-  g.lineWidth = n * 0.025;
+  g.lineWidth = n * 0.06;
   g.strokeStyle = "rgba(0,0,0,0.45)";
   g.stroke();
   const t = new THREE.CanvasTexture(c);
@@ -298,8 +292,8 @@ function lightTexture(kind: Light): THREE.CanvasTexture {
   lightTextures.set(kind, t);
   return t;
 }
-/** The light's width on the sphere (`MARK_R` away), aura included: about 4.6° across; its dot about 1.5°. */
-const LIGHT_W = 1.6;
+/** The dot's width on the sphere (`MARK_R` away): about 1.25° across (15% smaller than the dot of the glowing light). */
+const LIGHT_W = 0.47;
 
 const TAG_W = 560;
 function tagTexture(item: WalkItem, listPrice?: string): { texture: THREE.CanvasTexture; aspect: number; foot: number } {
@@ -1143,7 +1137,8 @@ export default function Walk360() {
               el.className = "pointer-events-auto absolute flex items-center justify-center";
               el.style.transform = "translate(-50%, -50%)";
               const [core, halo] = LIGHT_COLOUR[light];
-              el.innerHTML = `<span style="width:44px;height:44px;border-radius:9999px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle, ${halo}0.75) 0 20%, ${halo}0.35) 45%, ${halo}0) 70%)"><span style="width:16px;height:16px;border-radius:9999px;background:${core};box-shadow:0 0 0 1.5px rgba(0,0,0,0.45)"></span></span>`;
+              void halo;
+              el.innerHTML = `<span style="width:14px;height:14px;border-radius:9999px;background:${core};box-shadow:0 0 0 1.5px rgba(0,0,0,0.45)"></span>`;
               el.setAttribute("aria-label", label.fa ? `${label.en} · ${label.fa}` : label.en);
             }
             const nameEl = el.querySelector("[data-n]") as HTMLElement | null;
