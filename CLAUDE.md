@@ -593,7 +593,9 @@ quality and choice to break away and enter in a shop. (period)"*
   and right alternating, the first nine outside the door, 95° room shots, the
   photographer in two). Now: only after the store's door (`entryOf`, in the
   original's times); wide shelves (~50°, gaps to 5 s, at least 6 products);
-  6–12 s each; ONE steady eased pan per shelf (never the per-moment middle);
+  6–12 s each; a FIXED camera per shelf, like a tripod (a pan sent to v360
+  as `sendcmd` every 0.2 s spun the view: v360 ADDS each command's rotation to
+  the last; measured a big change every 0.2 s; never drive v360 by commands);
   at most 70°; ordered so the camera keeps to one side; and the camera
   operator (the Lock agent's `hide`) never in view: the clip turns away from
   them up to 35°, else it is dropped. Bookshop: 7 shelves, 53 s, 90 products.

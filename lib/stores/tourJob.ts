@@ -32,7 +32,7 @@ import { readStore } from "./bucket";
 import { probe, run } from "./media";
 import { originalTime } from "./photoSharp";
 import { setJob } from "./jobState";
-import { aimCommands, ASPECT, FADE, planTour, type OperatorAt, type Seen, type TourPlan, type Track } from "./tour";
+import { ASPECT, FADE, planTour, type OperatorAt, type Seen, type TourPlan, type Track } from "./tour";
 
 export const TOUR_W = 1280, TOUR_H = Math.round(TOUR_W / ASPECT);
 export type TourManifest = Omit<TourPlan, "clips"> & {
@@ -64,12 +64,10 @@ export async function buildTour(slug: string): Promise<string> {
     const files: string[] = [];
     for (const [i, c] of plan.clips.entries()) {
       await setJob("tour", { busy: true, key: walkKey, note: `filming shelf ${i + 1} of ${plan.clips.length}` });
-      const len = c.to - c.from, cmd = join(dir, `c${i}.cmd`), out = join(dir, `c${String(i).padStart(3, "0")}.mp4`);
-      writeFileSync(cmd, aimCommands(c));
+      const len = c.to - c.from, out = join(dir, `c${String(i).padStart(3, "0")}.mp4`);
       const a0 = c.aim[0];
       const vf = [
-        `sendcmd=f=${cmd}`,
-        `v360@cam=input=e:output=flat:yaw=${deg(a0.yaw)}:pitch=${deg(a0.pitch)}:h_fov=${deg(c.hfov)}:v_fov=${deg(c.vfov)}:w=${TOUR_W}:h=${TOUR_H}:interp=lanczos`,
+        `v360=input=e:output=flat:yaw=${deg(a0.yaw)}:pitch=${deg(a0.pitch)}:h_fov=${deg(c.hfov)}:v_fov=${deg(c.vfov)}:w=${TOUR_W}:h=${TOUR_H}:interp=lanczos`,
         "fps=25",
         `fade=t=in:st=0:d=${FADE}`, `fade=t=out:st=${Math.max(0, len - FADE).toFixed(3)}:d=${FADE}`,
       ].join(",");

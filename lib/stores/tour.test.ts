@@ -1,7 +1,7 @@
 // The Shelf tour's planning (`tour.ts`).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { aimCommands, planTour, project, shelvesOf, type Seen } from "./tour.ts";
+import { planTour, project, shelvesOf, type Seen } from "./tour.ts";
 
 const deg = Math.PI / 180;
 const s = (n: number, t: number, lonDeg: number, w = 0.1): Seen => ({ n, t, lon: lonDeg * deg, lat: 0, size: { w, h: w } });
@@ -26,13 +26,13 @@ test("shelves: one direction without a long gap; a shelf seen again keeps its cl
 });
 
 test("the tour: a clip a shelf, every product on screen at some moment", () => {
-  const seen = [s(1, 10, 50), s(2, 11, 60), s(3, 12, 70), s(4, 30, -40), s(5, 31, -30)];
+  const seen = [s(1, 10, 50), s(2, 11, 60), s(3, 12, 70), s(6, 12.5, 55), s(7, 13, 65), s(8, 13.5, 58), s(4, 30, -40), s(5, 31, -30), s(9, 31.5, -35), s(10, 32, -45), s(11, 32.5, -38), s(12, 33, -33)];
   const p = planTour(seen, [], 60);
   assert.equal(p.clips.length, 2);
   assert.ok(p.clips.every((c) => c.to - c.from >= 3 && c.to - c.from <= 6));
-  assert.deepEqual(p.items.map((i) => i.n).sort(), [1, 2, 3, 4, 5]);
+  assert.deepEqual(p.items.map((i) => i.n).sort(), [1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9]);
   assert.ok(Math.abs(p.seconds - p.clips.reduce((x, c) => x + c.to - c.from, 0)) < 0.02);
-  assert.match(aimCommands(p.clips[0]), /^0\.000 v360@cam yaw /);
+  assert.ok(p.clips.every((c) => c.aim.every((a) => a.yaw === c.aim[0].yaw && a.pitch === c.aim[0].pitch)), "a fixed camera: one direction a clip (v360 commands add up)");
 });
 
 test("a point on the screen goes back to the direction it came from", async () => {

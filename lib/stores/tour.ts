@@ -198,16 +198,18 @@ export function planTour(seenAll: Seen[], trackList: Track[], end: number, entry
     const yaw0 = y0s.length ? midAngle(y0s) : fallback.yaw, yaw1 = y1s.length ? midAngle(y1s) : yaw0;
     const pitches = raw.filter((x): x is NonNullable<typeof x> => Boolean(x)).map((x) => x.pitch);
     const pitch = Math.max(-0.6, Math.min(0.6, pitches.length ? median(pitches) : fallback.pitch));
+    // ⚠️ A FIXED CAMERA, LIKE A TRIPOD (owner, 2026-11-05: "still the same thing"). The pan was sent to ffmpeg's
+    // v360 as a command every 0.2 s, and v360 ADDS each command's rotation to the last: the view spun a little
+    // further every 0.2 s, into the hallway and other scenes (measured: a big change every 0.2 s through the whole
+    // tour). Each clip now holds ONE direction, between the shelf's two ends, and is widened to hold both.
     const turn = wrap(yaw1 - yaw0);
-    const aim: Aim[] = steps.map((t, i) => {
-      const u = steps.length > 1 ? i / (steps.length - 1) : 0, e = u * u * (3 - 2 * u);
-      return { t, yaw: wrap(yaw0 + turn * e), pitch };
-    });
+    const yawMid = wrap(yaw0 + turn / 2);
+    const aim: Aim[] = steps.map((t) => ({ t, yaw: yawMid, pitch }));
     void AIM_SMOOTH;
     // The zoom: the products' spread round the aim (10th–90th), plus room; within FOV_MIN…FOV_MAX.
     const offs = raw.flatMap((x, i) => (x ? x.xs.map((v) => Math.abs(wrap(v - aim[i].yaw))) : [])).sort((a, b) => a - b);
     const spread = offs.length ? offs[Math.floor(offs.length * 0.9)] : 0.4;
-    const hfov = Math.max(FOV_MIN, Math.min(FOV_MAX, 2 * spread * 1.25 + 0.15));
+    const hfov = Math.max(FOV_MIN, Math.min(FOV_MAX, 2 * spread * 1.25 + 0.15 + Math.abs(turn) / 2));
     const vfov = 2 * Math.atan(Math.tan(hfov / 2) / ASPECT);
     // ⚠️ THE OPERATOR STAYS OUT (2026-11-05: the photographer filled two clips). A clip whose camera would have
     // the operator in view for more than a fifth of it is dropped; the shelf is seen in another or not at all.
@@ -238,10 +240,4 @@ export function planTour(seenAll: Seen[], trackList: Track[], end: number, entry
     at += to - from;
   }
   return { clips, items: [...items.values()], seconds: Math.round(at * 100) / 100 };
-}
-
-/** ffmpeg's sendcmd script for a clip: the camera's aim each step (degrees), times from the clip's start. */
-export function aimCommands(c: Clip): string {
-  const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
-  return c.aim.map((a) => `${(a.t - c.from).toFixed(3)} v360@cam yaw ${deg(a.yaw)}, v360@cam pitch ${deg(a.pitch)};`).join("\n") + "\n";
 }
