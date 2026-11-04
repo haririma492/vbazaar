@@ -22,7 +22,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { presignGet, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson } from "@/lib/splats/r2";
+import { presignGet, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { entryOf, phoneKeyOf } from "@/lib/splats/walks";
 import { CAMERA_HEIGHT, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, frameShift } from "@/lib/splats/pace";
 import { bandProfile, ringShift } from "@/lib/splats/walkTurn";
@@ -206,5 +206,70 @@ export async function planStoreRoute(slug: string): Promise<string> {
   } finally {
     rmSync(dir, { recursive: true, force: true });
     await setJob("route", { busy: false, key: null });
+  }
+}
+
+// ── Smoothness: the walk's motion, measured and kept (owner, 2026-11-04: "the route optimizer also is in charge
+// of smoothness, to fix sharp turns, fast moves in one spot and slow in another") ─────────────────────────────
+
+/** Measure how the camera moved through the walk as it is now and keep it on the walk (`Walk.motion`). Free. */
+export async function measureSmoothness(walkKey: string): Promise<string> {
+  const before = (await readWalks()).walks[walkKey];
+  if (!before) return "No such walk.";
+  if (before.projection === "flat" || before.projection === "eac") return "Not a 360° walk.";
+  const dir = mkdtempSync(join(tmpdir(), "smooth-"));
+  try {
+    const src = (await webObjectExists(phoneKeyOf(walkKey))) ? await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600) : await presignGet(walkKey, "web", 6 * 3600);
+    const { seconds } = await probe(src);
+    const m = await readMotion(src, dir, seconds);
+    const r3 = (v: number) => Math.round(v * 1000) / 1000;
+    // ⚠️ ON TIME: reading i is the move from frame i to frame i + 1, so the heading after it belongs at
+    // (i + 1)·dt — stamped at i·dt, the ease would have lagged the picture by a frame and added a wobble.
+    const heading = [0];
+    for (const w of m.turn) heading.push(r3(heading[heading.length - 1] + w * m.dt));
+    const speed = [...m.fwd.map((f, i) => r3(Math.hypot(f, m.side[i])))];
+    speed.push(speed[speed.length - 1] ?? 0);
+    const walks = await readWalks();
+    const w = walks.walks[walkKey];
+    if (!w) return "The walk is gone.";
+    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, motion: { dt: m.dt, speed, yaw: heading, rev: w.rev ?? 0 } } } }, walks);
+    return `Motion kept: ${speed.length} moments; the player evens the speed and eases sharp turns from it.`;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const SMOOTH_PENDING = "smooth/pending.json";
+let smoothing = false;
+async function readSmoothQueue(): Promise<string[]> {
+  try { const t = await readMastersText(SMOOTH_PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
+}
+export async function queueSmooth(keys: string[]): Promise<void> {
+  if (!keys.length) return;
+  await writeMastersJson(SMOOTH_PENDING, [...new Set([...(await readSmoothQueue()), ...keys])]);
+  void drainSmooth();
+}
+/** Every 360° walk whose motion is not measured, or was measured before its last cut. */
+export async function walksToSmooth(): Promise<string[]> {
+  const all = (await readWalks()).walks;
+  return Object.keys(all).filter((k) => {
+    const w = all[k];
+    return /^scenes\//.test(k) && w.projection !== "flat" && w.projection !== "eac" && (!w.motion || (w.motion.rev ?? 0) !== (w.rev ?? 0));
+  });
+}
+export async function drainSmooth(): Promise<void> {
+  if (smoothing) return;
+  smoothing = true;
+  try {
+    for (;;) {
+      const [key, ...rest] = await readSmoothQueue();
+      if (!key) return;
+      await setJob("smooth", { busy: true, key });
+      try { console.log("[smooth]", key, await measureSmoothness(key)); } catch (e) { console.error("[smooth]", key, e); }
+      await setJob("smooth", { busy: false, key: null });
+      await writeMastersJson(SMOOTH_PENDING, rest);
+    }
+  } finally {
+    smoothing = false;
   }
 }

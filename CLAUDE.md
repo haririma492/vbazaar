@@ -534,6 +534,16 @@ quality and choice to break away and enter in a shop. (period)"*
   the lights stay on their books. The proposal and a preview are on the
   store's page («Route optimizer»); nothing is cut until the owner says yes
   («Cut the walk to this route…»), and the original is kept.
+- **The Route optimizer smooths the ride too** (owner, 2026-11-04: *"also is in
+  charge of smoothness, to fix sharp turns, fast moves in one spot and slow in
+  another"*). It measures each walk's motion (`Walk.motion`, re-measured after
+  any cut; every walk at start-up) and the player uses it without touching the
+  video (`lib/splats/motion.ts`): EVEN SPEED, self-drive's rate from the pace
+  HERE (the middle reading over 1.5 s, kept within 2.5× of the walk's own) —
+  hurried stretches play slower, dawdles and stands faster; SMOOTH TURNS, the
+  view turned gently against a swing (the heading over 2.5 s against the
+  heading over 0.4 s: the measuring's jitter is never corrected for, at most
+  35°). Lights are untouched (they are in the video's directions).
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

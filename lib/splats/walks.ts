@@ -36,6 +36,8 @@
  * `node --test` runs this file without a bundler, so it imports nothing.
  */
 
+import { parseMotion, type WalkMotion } from "./motion";
+
 export const WALKS_KEY = "scenes/walks.json";
 export const MAX_DOORS = 60;
 /** A door is offered within this many seconds of its moment… */
@@ -247,6 +249,12 @@ export type Walk = {
    * shelf by itself (`faceOf`); set only for a store laid out otherwise.
    */
   face?: number;
+  /**
+   * How the camera moved all through the walk, measured by the Route optimizer
+   * (`lib/splats/motion.ts`): the player evens the speed and eases sharp turns
+   * from it. `rev`: the walk's `rev` it was measured on (a cut measures again).
+   */
+  motion?: WalkMotion;
   /** When to turn (s of the walk): set only when `entryOf` cannot tell where the store's door is. */
   faceAt?: number;
   /**
@@ -446,6 +454,11 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.face !== undefined && r.face !== null) {
       if (typeof r.face === "number" && Math.abs(r.face) <= Math.PI) walk.face = r.face;
       else problems.push(`${key}: «face» must be a direction in radians (−π…π).`);
+    }
+    if (r.motion !== undefined && r.motion !== null) {
+      const m = parseMotion(r.motion);
+      if (m) walk.motion = m;
+      else problems.push(`${key}: «motion» is not a measured motion (dt, speed, yaw).`);
     }
     if (r.faceAt !== undefined && r.faceAt !== null) {
       if (typeof r.faceAt === "number" && r.faceAt >= 0) walk.faceAt = r.faceAt;

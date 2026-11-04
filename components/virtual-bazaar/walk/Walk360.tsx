@@ -65,6 +65,7 @@ import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { SPEED_DEFAULT, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
+import { paceAt, turnEase } from "@/lib/splats/motion";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
@@ -1434,8 +1435,13 @@ export default function Walk360() {
     let scrubT: number | null = null;
     let scrubbing = false;
     /** The self-drive rate on the walk now playing: the bar's speed over the walk's own pace. */
-    const driveNow = (): number | null =>
-      driveDir ? driveRate(driveSpeed, driveDir === "back", current && !current.flat ? walkOf(walksNow, current.key)?.pace : null) : null;
+    // ⚠️ EVEN SPEED (the Route optimizer, 2026-11-04: "fast moves in one spot and slow in another"):
+    // the photographer's pace HERE (`paceAt`, from the walk's measured motion), not the walk's average.
+    const driveNow = (): number | null => {
+      if (!driveDir) return null;
+      const walk = current && !current.flat ? walkOf(walksNow, current.key) : null;
+      return driveRate(driveSpeed, driveDir === "back", paceAt(walk?.motion, tNow()) ?? walk?.pace);
+    };
     let playRefused: HTMLVideoElement | null = null;
     function kick() {
       const v = current?.video;
@@ -1460,6 +1466,8 @@ export default function Walk360() {
     let turnYaw = 0;
     /** Where the view is turning to by itself (rad from the video's forward), till there or the shopper turns. */
     let faceTo: number | null = null;
+    /** The turn ease last applied, and on which walk (`turnEase`). */
+    let easeLast = 0, easeKey: string | null = null;
     /** The turn to come: at `t` (the store's door, `entryOf`), to `yaw` (`faceOf`). */
     let facePlan: { key: string; t: number; yaw: number } | null = null;
     function planFace(key: string | null) {
@@ -1848,6 +1856,14 @@ export default function Walk360() {
       }
 
       readTurn();
+      // ⚠️ SMOOTH TURNS (the Route optimizer, 2026-11-04: "fix sharp turns"): where the camera swung, the view
+      // turns gently against it (`turnEase`): the shopper sees the smoothed turn. Changes of walk start afresh.
+      if (current && !current.flat && !busy) {
+        const ease = turnEase(walkOf(walksNow, current.key)?.motion, tShown());
+        if (easeKey === current.key) turnYaw += ease - easeLast;
+        easeKey = current.key;
+        easeLast = ease;
+      }
       updateDoors();
       updateItems();
       nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);

@@ -20,6 +20,9 @@ export async function register() {
     // Stores whose product photos are waiting to be made from several frames (the Photo improver, `crew.ts`).
     const { drainPhotos } = await import("./lib/stores/crew");
     setTimeout(() => void drainPhotos().catch((e) => console.error("[photos] resume", e)), 40_000);
+    // Walks whose motion is not measured (the Route optimizer's smoothness, `lib/stores/routeJob.ts`).
+    const { queueSmooth, walksToSmooth } = await import("./lib/stores/routeJob");
+    setTimeout(() => void walksToSmooth().then(queueSmooth).catch((e) => console.error("[smooth] resume", e)), 45_000);
     // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
     const { drainReverse } = await import("./lib/stores/reverse");
     setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);
