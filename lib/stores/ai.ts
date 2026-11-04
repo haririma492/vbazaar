@@ -15,6 +15,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import type { Product } from "@/lib/splats/catalogue";
+import { BUDGET_SAY } from "./store";
 
 export const MODEL = "claude-opus-5-5";
 
@@ -32,7 +33,7 @@ export class NoKey extends Error {
 }
 export class OverBudget extends Error {
   constructor(spent: number) {
-    super(`This store's AI budget is used up ($${(spent / 100).toFixed(2)} of $5). Raise it or finish by hand.`);
+    super(`This store's AI budget is used up ($${(spent / 100).toFixed(2)} of ${BUDGET_SAY}). Raise it or finish by hand.`);
   }
 }
 

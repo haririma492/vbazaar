@@ -27,7 +27,7 @@ import { join } from "node:path";
 import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, looksFlat, MAX_ITEMS, type Walks } from "@/lib/splats/walks";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
-import { BUDGET_CENTS, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
+import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
 import { cropJpeg, encode, grayFrames, jpegOf, probe, views } from "./media";
@@ -363,7 +363,7 @@ async function sharpSource(walkKey: string): Promise<string | null> {
 }
 
 /**
- * ⚠️ THE LOOKS FIT THE STORE'S BUDGET (rule 10; $5 a store, owner
+ * ⚠️ THE LOOKS FIT THE STORE'S BUDGET (rule 10; $15 a store, owner
  * 2026-10-30). Sixteen sharp views a moment cost more than six did; a long
  * walk could spend the budget halfway and leave its end unseen. After each
  * look, what a look costs is known: when the moments left would not fit what
@@ -409,13 +409,13 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
         const found = await findInViews(purse, c.products, moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
         for (const f of found) sightings.push({ look: moment.looks.find((l) => l.id === f.view)!, n: f.n, box: f.box, confidence: f.confidence });
       } catch (e) {
-        if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
+        if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the ${BUDGET_SAY} budget is used up.`; break; }
         throw e;
       }
       looked++;
       const step = strideFor(spentAtStart, looked, purse.spent(), purse.limit, plan.length - i - 1);
-      if (!Number.isFinite(step)) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
-      if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the $5 budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
+      if (!Number.isFinite(step)) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the ${BUDGET_SAY} budget is used up.`; break; }
+      if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the ${BUDGET_SAY} budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
       i += step;
     }
     // Follow each sighting both ways through the frames round its moment.
@@ -551,7 +551,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
         const nearby = products.filter((p) => moment.t - p.last <= NEARBY_S);
         seen = await discoverInViews(purse, nearby.map((p) => ({ n: p.n, en: p.en })), moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
       } catch (e) {
-        if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
+        if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the ${BUDGET_SAY} budget is used up.`; break; }
         throw e;
       }
       looked++;
@@ -572,8 +572,8 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
         keepBest(best, p.n, look, f.box, f.confidence);
         sightings.push({ look, n: p.n, box: f.box, confidence: f.confidence });
       }
-      if (!Number.isFinite(step)) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
-      if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the $5 budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
+      if (!Number.isFinite(step)) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the ${BUDGET_SAY} budget is used up.`; break; }
+      if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the ${BUDGET_SAY} budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
       i += step;
     }
     if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);

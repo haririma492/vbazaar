@@ -94,7 +94,8 @@ plan and the Managed Agents decision are in
 - **The basket** (`/basket`, the bazaar's own, on the device) is the end of
   the cycle; no payment yet.
 - **A new store waits for «Publish».** Later changes go live by themselves.
-  There is a $5 AI ceiling per store.
+  There is a $15 AI ceiling per store (owner, 2026-11-04: *"I raised the
+  budget to $15 for each store"*; it was $5; `BUDGET_CENTS`).
 - **Env on Railway (v-bazzar):** `ANTHROPIC_API_KEY` (the Photo matcher, the
   Tagger and the Messages agent). Each store has its own password; nothing
   else is needed (owner, 2026-10-30: *"not needed ever store will have a
@@ -468,7 +469,7 @@ quality and choice to break away and enter in a shop. (period)"*
   through 16 sharp shelf views a moment from the full-size walk, is told a
   run of copies of one title is one product boxed together, and lists a
   title it cannot read by its look for the owner to name
-  (`agents/store-builder/README.md`). Within the store's $5: moments are
+  (`agents/store-builder/README.md`). Within the store's $15: moments are
   spaced out when a walk would not fit (`strideFor`).
 - **Why the lights moved, measured** (2026-11-04): the camera barely sways
   (0.05° a frame); the follow's own error was the shake (finds zig-zagged

@@ -70,7 +70,7 @@ where shoppers start.
   them opens it (`itemHitAt`).
 - A wrong tag is worse than a missing one. The prompt says so, and sightings
   below 0.6 are dropped.
-- No more than $5 of AI per store. The request that would pass it is not
+- No more than $15 of AI per store (raised from $5 by the owner, 2026-11-04). The request that would pass it is not
   made; the step stops and says so on the page. When a long walk's looks
   would not fit, every 2nd (3rd…) moment is looked at instead, so the whole
   walk is still seen (`strideFor`), and the report says so.
@@ -94,7 +94,7 @@ prompt or model change.
 | The video is not 2:1 | The Video step is `needs-you`: "not a 360° walk" | Operator re-exports |
 | No product sheet found | The Catalogue step is `needs-you` and names the header it needs | Operator or owner |
 | `ANTHROPIC_API_KEY` missing | The AI steps are `needs-you` and name the variable | Operator: Railway |
-| $5 used | Photos stop being matched (the rest are listed); the Tagger stops looking and keeps what it found | Operator decides |
+| The budget ($15) used | Photos stop being matched (the rest are listed); the Tagger stops looking and keeps what it found | Operator decides |
 | The server restarts mid-step | The step that was `working` runs again (`nextStep`). Outputs have new names and are only recorded at the end, so a half-made run leaves nothing behind. | none |
 | A Claude request is refused | Server-side fallback (`fallbacks: "default"`). Then that photo or moment is skipped. | none |
 
@@ -109,7 +109,7 @@ start.
   «Publish».
 - **Cutting a video** is for the operator only. The original stays kept, and
   «Put the original back» restores it.
-- **Spending** is capped at $5 per store, approved by the owner on 2026-10-30.
+- **Spending** is capped at $15 per store (approved by the owner at $5 on 2026-10-30, raised to $15 on 2026-11-04).
 
 ## Managed Agents or not (rules 1 and 3, decided 2026-10-30)
 

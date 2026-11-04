@@ -30,8 +30,14 @@ export const storeKey = (slug: string) => `stores/${slug}/store.json`;
 export const sceneOf = (slug: string) => `store-${slug}`;
 export const STORES_INDEX_KEY = "stores/index.json";
 
-/** AI spending per store, in cents (owner, 2026-10-30: "we will pay that $1 to $5 per store"). */
-export const BUDGET_CENTS = 500;
+/**
+ * AI spending per store, in cents (owner, 2026-10-30: "we will pay that $1 to
+ * $5 per store"; raised 2026-11-04: "I raised the budget to $15 for each
+ * store", so a bookshop's walk can be looked at whole with the shelf looks).
+ */
+export const BUDGET_CENTS = 1500;
+/** The budget as people read it: "$15". */
+export const BUDGET_SAY = `$${BUDGET_CENTS / 100}`;
 /** A failing step is tried this many times, then it waits for a person. */
 export const MAX_TRIES = 3;
 
