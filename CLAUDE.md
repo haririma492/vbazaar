@@ -552,14 +552,25 @@ quality and choice to break away and enter in a shop. (period)"*
   The motion is still measured (`Walk.motion`, `lib/splats/motion.ts`) and
   the Route optimizer still uses it to plan, but the player does not steer by
   it. Next: the camera's own gyro, from the .insv (below).
-- **The raw .insv, for the agents** (owner, 2026-11-05, the "one million $
-  question": *"would it be better if we upload .insv"*). The .insv holds the
-  camera's gyro for every frame (exact turns and shake, for smoothing and the
-  turn into a store) and the picture before Studio's second compression. A
-  store's page has an operator-only upload for it (`files.raw`, kind `raw`),
-  beside the .mp4, which shoppers still walk. First a test on the bookshop:
-  read its gyro on the server, compare a frame with the .mp4's. Stitching it
-  ourselves would need Insta360's Media SDK for Linux.
+- **The raw .insv, tested on the bookshop (2026-11-05): not worth it for every
+  store** (owner: *"would it be better if we upload .insv"*). The file (X6,
+  2.3 GB, 152 s) holds two 3840×3840 HEVC lens images at 25 fps (~60 Mbit/s
+  each) and a trailer with the gyro and accelerometer at 1,000 a second (raw
+  16-bit, ±2000°/s), read by our own reader
+  (`/tools`-style script following gyroflow's telemetry-parser layout; the
+  operator's «rawLinks» gives a private link). What it showed:
+  - **Studio already used the gyro.** The camera turned ±110° through the walk;
+    the exported .mp4's heading stays within ±15° (Studio's stabilization and
+    direction lock). Smoothing from the gyro would redo what the .mp4 has.
+  - **The picture is no sharper.** A lens image is ~19 px a degree, the same
+    as an 8K export; using it means stitching ourselves (Insta360's Media SDK
+    for Linux).
+  - **The real finding: how the camera was held.** One lens looked at the
+    floor, the other at the ceiling, so every shelf was at the edge of both
+    lenses, on the stitch line: the softest part of the picture. Film with the
+    X6 upright on the stick and turned SIDE-ON to the walk, one lens facing
+    each shelf: the books then sit in the middle of a lens, its sharpest part.
+  The upload stays (`files.raw`, kind `raw`, operator only) for later tests.
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.
