@@ -582,3 +582,15 @@ test("into a store, the view turns to the right-hand shelf; elsewhere it stays a
   assert.equal(entryOf({ doors: [] }), 0, "no products yet: at once");
   assert.equal(entryOf({ doors: [], faceAt: 7 }), 7);
 });
+
+test("the turn goes to the store's own right-hand shelf: the middle of its products on the right after the door", () => {
+  // Outside: products ahead. From 5 s: a bookcase 20–35° right (and a glass case ahead and left).
+  const pin = (t: number, x: number) => ({ t, x, y: 0 });
+  const outside = Array.from({ length: 30 }, (_, i) => pin(i * 0.15, 0.05 * ((i % 5) - 2)));
+  const shelf = Array.from({ length: 40 }, (_, i) => pin(5 + i * 0.2, ((20 + (i % 16)) * Math.PI) / 180));
+  const left = Array.from({ length: 30 }, (_, i) => pin(5 + i * 0.2, -1.0));
+  const walk = { doors: [], items: [{ id: "a", label: { en: "A" }, pins: [...outside, ...shelf, ...left] }] };
+  const face = faceOf(walk, "scenes/store-x/walk.mp4")!;
+  assert.ok(face > (20 * Math.PI) / 180 && face < (36 * Math.PI) / 180, `turned ${(face * 180 / Math.PI).toFixed(0)}° right, to the bookcase`);
+  assert.equal(faceOf({ doors: [] }, "scenes/store-x/walk.mp4"), STORE_FACE, "no products yet: 75°");
+});

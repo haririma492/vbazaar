@@ -507,7 +507,11 @@ quality and choice to break away and enter in a shop. (period)"*
   toward the shelf on the right"*). A store's walk starts outside its door, so
   the turn waits for the door: `entryOf` finds it as the first second when the
   store's products are beside the camera, not only ahead (bookshop: 5 s; seen
-  at its door at 4 s). Then the view eases 75° right (`STORE_FACE`); the
+  at its door at 4 s). Then the view eases right, to the middle of the store's
+  own right-hand shelf (`rightShelfOf`: the products 15–100° right in the 12 s
+  after the door; the bookshop's, 27°; within 20–75°, else 75°): a fixed 75°
+  turned the bookshop's shoppers past its bookcase onto the mall hallway (the
+  owner: *"the camera does not turn toward the shelf on the right"*). The
   shopper's own turn or drag takes over. A walk may set `face` / `faceAt`.
 - **Product photos at the sharpest moment** (owner, 2026-11-04: *"improve the
   pixels of the product photos so when shoppers click on them they see a fully

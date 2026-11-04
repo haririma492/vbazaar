@@ -20,6 +20,7 @@
 import { presignGet, readCatalogue, readMastersText, readWalks, writeMastersJson } from "@/lib/splats/r2";
 import { phoneKeyOf, type WalkItem } from "@/lib/splats/walks";
 import { readStore } from "./bucket";
+import { cutInfo } from "@/lib/splats/cut-job";
 import { sceneOf } from "./store";
 import { productPhoto, sharpnessAt } from "./media";
 import { readTitle, OverBudget, type ReadTitle } from "./ai";
@@ -53,7 +54,9 @@ export async function readTitles(slug: string, limit?: number): Promise<string> 
     for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length >= 3 && !firstLight.has(it.n)) firstLight.set(it.n, it);
     // The sharpest source: the upload itself, else the full-size walk, else the phone copy.
     let src: string;
-    try { src = s.files.video ? await presignGet(s.files.video.key, "master", 6 * 3600) : await presignGet(walkKey, "web", 6 * 3600); }
+    // After a cut the lights are in the cut walk's times: the cut walk then, not the upload (in the original's).
+    const cut = (await cutInfo(walkKey).catch(() => null))?.original ?? false;
+    try { src = s.files.video && !cut ? await presignGet(s.files.video.key, "master", 6 * 3600) : await presignGet(walkKey, "web", 6 * 3600); }
     catch { src = await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600); }
     const list: TitleList = (await readTitleList(slug)) ?? { store: slug, rows: [], spentCents: 0, updated: "" };
     const done = new Set(list.rows.map((r) => r.n));

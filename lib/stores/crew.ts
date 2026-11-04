@@ -21,6 +21,7 @@
  * Server only.
  */
 
+import { cutInfo } from "@/lib/splats/cut-job";
 import { readJob, setJob } from "./jobState";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -605,7 +606,10 @@ export async function recutPhotos(slug: string): Promise<string> {
   const walk = (await readWalks()).walks[walkKey];
   // The sharpest source there is: the upload itself (an 8K SDK export stays 8K there), else the full-size walk.
   let input: string;
-  try { input = s.files.video ? await presignGet(s.files.video.key, "master", 6 * 3600) : ((await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600))); }
+  // ⚠️ AFTER A CUT, THE CUT WALK (2026-11-04): the lights are in the cut walk's times; the upload is in the
+  // original's, so its frames at those times would be other moments. The upload only while the walk is uncut.
+  const cut = (await cutInfo(walkKey).catch(() => null))?.original ?? false;
+  try { input = s.files.video && !cut ? await presignGet(s.files.video.key, "master", 6 * 3600) : ((await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600))); }
   catch { input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600)); }
   const lights = new Map<number, WalkItem>();
   // Each product's longest light: the most moments to choose its sharpest from.

@@ -957,7 +957,25 @@ export const STORE_FACE = (75 * Math.PI) / 180;
 /** Which way to turn a shopper to on entering the walk `key` (rad from the video's forward), or null: stay as they are. */
 export function faceOf(walk: Walk | null, key: string | null): number | null {
   if (walk?.face !== undefined) return walk.face;
-  return key && /^scenes\/store-/.test(key) ? STORE_FACE : null;
+  if (!key || !/^scenes\/store-/.test(key)) return null;
+  return rightShelfOf(walk) ?? STORE_FACE;
+}
+
+/**
+ * ⚠️ THE RIGHT-HAND SHELF, MEASURED (owner, 2026-11-04: "when we walk inside the
+ * store the camera does not turn toward the shelf on the right"). A fixed 75°
+ * turned the bookshop's shoppers past its bookcase onto the mall's hallway: the
+ * photographer stood at the entrance, the bookcase 20–65° right. So the turn is
+ * to the middle of the products on the right (15°–100° off ahead) in the
+ * `SHELF_LOOK_S` s after the door (`entryOf`): the bookshop's, 27°. Kept within
+ * `SHELF_MIN`…`STORE_FACE`; with too few products there, null (75° then).
+ */
+export const SHELF_LOOK_S = 12, SHELF_MIN = (20 * Math.PI) / 180;
+export function rightShelfOf(walk: Walk | null): number | null {
+  const t0 = entryOf(walk);
+  const xs = (walk?.items ?? []).flatMap((it) => it.pins).filter((p) => p.t >= t0 && p.t <= t0 + SHELF_LOOK_S).map((p) => wrapAngle(p.x)).filter((x) => x > 0.26 && x < 1.75).sort((a, b) => a - b);
+  if (xs.length < 20) return null;
+  return Math.max(SHELF_MIN, Math.min(STORE_FACE, xs[xs.length >> 1]));
 }
 
 /**

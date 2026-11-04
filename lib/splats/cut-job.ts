@@ -150,6 +150,15 @@ export function startCutJob(key: string, rawParts: unknown): CutJob {
       void import("@/lib/stores/reverse").then((m) => m.queueReverse([key])).catch((e) => console.error("[cut] reverse", e));
       // Its motion is measured again on the cut walk (the Route optimizer's smoothness, `routeJob.ts`).
       void import("@/lib/stores/routeJob").then((m) => m.queueSmooth([key])).catch((e) => console.error("[cut] smooth", e));
+      // A store's photos are made again on the cut walk (its lights moved): the Photo improver.
+      const storeSlug = /^scenes\/store-([a-z0-9-]+)\//.exec(key)?.[1];
+      if (storeSlug) {
+        void (async () => {
+          const { writeMastersJson: w } = await import("@/lib/splats/r2");
+          await w(`stores/${storeSlug}/photos-done.json`, { version: "cut", done: [] }); // start them over
+          (await import("@/lib/stores/crew")).queuePhotos([storeSlug]);
+        })().catch((e) => console.error("[cut] photos", e));
+      }
       Object.assign(job, { state: "done", step: "done", percent: 100, dropped, seconds: total, finishedAt: Date.now() });
     } catch (e) {
       Object.assign(job, { state: "failed", error: (e as Error).message, finishedAt: Date.now() });
