@@ -98,6 +98,8 @@ export function ProductCard({ api, product, others, close, reload }: { api: stri
         <div className="min-w-0 flex-1">
           <div dir="auto" className="text-[16px] font-bold">#{product.n} · {nameOf(product)}</div>
           {product.fa && product.en && <div dir="ltr" className="text-left text-[13px] text-white/60">{product.en}</div>}
+          {/* What the finder saw (owner, 2026-11-04: "which one is the intended product"): the books or item it boxed. */}
+          {product.seen && <div dir="ltr" className="mt-0.5 text-left text-[12px] text-amber-200/80">The finder saw: {product.seen}</div>}
           <div className="mt-1 text-[12px] text-white/45">{step === "done" ? "All saved." : `Question ${i + 1} of 5`}</div>
         </div>
         <button type="button" aria-label="Close" className="text-[20px] text-white/60" onClick={close}>✕</button>

@@ -90,6 +90,29 @@ export async function views(input: string, t: number, yaws: number[], pitch: num
   }
 }
 
+/**
+ * ⚠️ A PRODUCT'S PHOTO IS ITS OWN BOOKS, BOXED (owner, 2026-11-04: "there are
+ * more than 3 titles of books here, which one is the intended product"; "the
+ * photo is misleading because is not zoomed enough"). A square view aimed at
+ * the product's middle, only a little wider than the product (`size`, its
+ * outline in radians: `PHOTO_MARGIN` × the larger side), with a thin yellow
+ * box drawn round exactly what the finder boxed. `n` px a side.
+ */
+export const PHOTO_MARGIN = 1.35;
+export function photoFrame(size: { w: number; h: number }, n: number): { fov: number; box: { x: number; y: number; w: number; h: number } } {
+  const fov = Math.min(0.8, Math.max(0.06, Math.max(size.w, size.h) * PHOTO_MARGIN));
+  const half = (a: number) => (Math.tan(Math.min(a, fov) / 2) / Math.tan(fov / 2)) * (n / 2);
+  const hw = half(size.w), hh = half(size.h);
+  return { fov, box: { x: Math.round(n / 2 - hw), y: Math.round(n / 2 - hh), w: Math.round(2 * hw), h: Math.round(2 * hh) } };
+}
+export async function productPhoto(input: string, t: number, lon: number, lat: number, size: { w: number; h: number }, n = 640): Promise<Uint8Array> {
+  const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
+  const { fov, box } = photoFrame(size, n);
+  const vf = `v360=input=e:output=flat:yaw=${v360Yaw(lon).toFixed(3)}:pitch=${deg(lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n},` +
+    `drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}:color=yellow@0.9:t=3`;
+  return new Uint8Array(await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-vf", vf, "-threads", "1", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
+}
+
 /** The walk as grey W×W/2 panoramas, `fps` a second (one byte a pixel), from `start` s for `seconds`. */
 export async function grayFrames(input: string, fps: number, W: number, start: number, seconds: number): Promise<{ frames: Uint8Array[]; W: number; H: number }> {
   const H = W / 2;

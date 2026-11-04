@@ -461,9 +461,12 @@ quality and choice to break away and enter in a shop. (period)"*
   special keeps its red tag. A tap anywhere on the product's outline
   (`WalkItem.size`, from Claude's box; `itemHitAt`) opens the basket card, or
   for the store's owner (signed in on `/stores/<slug>`) or the operator, the
-  card of questions to name and price it (`ProductCard`); to them a product
-  still waiting for a name or a price glows amber. At most 250 products a
-  walk (owner: *"make the 150 to be 250"*).
+  card of questions to name and price it (`ProductCard`), with what the
+  finder saw, while the product's outline is drawn on the walk (owner: *"there
+  are more than 3 titles of books here, which one is the intended product"*).
+  Every light is green, two nested circles about 4.6° across (owner: *"make the
+  light on each book green, with two nested circle (twice as large as it is
+  now)"*). At most 250 products a walk (owner: *"make the 150 to be 250"*).
 - **Every product, even in a bookshop** (owner, 2026-11-04: *"70% of them
   are not pictured or listed, that need to change"*): the finder looks
   through 16 sharp shelf views a moment from the full-size walk, is told a

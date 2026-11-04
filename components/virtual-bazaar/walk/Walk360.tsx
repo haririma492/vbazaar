@@ -271,30 +271,41 @@ const lightTextures = new Map<Light, THREE.CanvasTexture>();
 function lightTexture(kind: Light): THREE.CanvasTexture {
   const had = lightTextures.get(kind);
   if (had) return had;
-  const n = 128, c = document.createElement("canvas");
+  // ⚠️ TWO NESTED GREEN CIRCLES (owner, 2026-11-04: "make the light on each book
+  // green, with two nested circle (twice as large as it is now)"): a ring, and a
+  // dot in its middle, each with a thin dark edge so it reads on a white spine.
+  const n = 256, c = document.createElement("canvas");
   c.width = c.height = n;
   const g = c.getContext("2d")!;
   const [core, halo] = LIGHT_COLOUR[kind];
-  const glow = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
-  glow.addColorStop(0, `${halo}0.85)`);
-  glow.addColorStop(0.35, `${halo}0.45)`);
+  const glow = g.createRadialGradient(n / 2, n / 2, n * 0.3, n / 2, n / 2, n / 2);
+  glow.addColorStop(0, `${halo}0.35)`);
   glow.addColorStop(1, `${halo}0)`);
   g.fillStyle = glow;
   g.fillRect(0, 0, n, n);
-  g.beginPath();
-  g.arc(n / 2, n / 2, n * 0.16, 0, Math.PI * 2);
+  const circle = (r: number) => { g.beginPath(); g.arc(n / 2, n / 2, r, 0, Math.PI * 2); };
+  // The outer ring.
+  circle(n * 0.38);
+  g.lineWidth = n * 0.09;
+  g.strokeStyle = "rgba(0,0,0,0.45)";
+  g.stroke();
+  g.lineWidth = n * 0.06;
+  g.strokeStyle = core;
+  g.stroke();
+  // The inner dot.
+  circle(n * 0.16);
   g.fillStyle = core;
   g.fill();
-  g.lineWidth = n * 0.04;
-  g.strokeStyle = "rgba(255,255,255,0.95)";
+  g.lineWidth = n * 0.025;
+  g.strokeStyle = "rgba(0,0,0,0.45)";
   g.stroke();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   lightTextures.set(kind, t);
   return t;
 }
-/** The light's width on the sphere (`MARK_R` away): about 2.3° across, its bright core a third of that. */
-const LIGHT_W = 0.8;
+/** The light's width on the sphere (`MARK_R` away): about 4.6° across (twice the first light, owner 2026-11-04). */
+const LIGHT_W = 1.6;
 
 const TAG_W = 560;
 function tagTexture(item: WalkItem, listPrice?: string): { texture: THREE.CanvasTexture; aspect: number; foot: number } {
@@ -418,6 +429,8 @@ type Engine = {
   setLabelOf: (f: (item: WalkItem) => WalkItem["label"]) => void;
   /** Which light an item shows (`Light`): amber to the store's owner while it waits for a name or a price. */
   setLightOf: (f: (item: WalkItem) => Light) => void;
+  /** The product whose card is open (its id), outlined on the picture so it is clear which one it is; null for none. */
+  setHighlight: (id: string | null) => void;
   /** Jump to a moment of this video (stands there). */
   seek: (t: number) => void;
 };
@@ -502,6 +515,8 @@ export default function Walk360() {
   }, []);
   /** The item whose card is open (a tap on its dot). */
   const [card, setCard] = useState<WalkItem | null>(null);
+  /** The product whose card is open, outlined on the walk (`setHighlight`). */
+  const [lit, setLit] = useState<string | null>(null);
   /** The product list of the store this video belongs to (`lib/splats/catalogue.ts`), or null. */
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   /**
@@ -1033,6 +1048,40 @@ export default function Walk360() {
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
     let labelOf: (item: WalkItem) => WalkItem["label"] = (item) => item.label;
     let lightOf: (item: WalkItem) => Light = () => "green";
+    /**
+     * ⚠️ WHICH PRODUCT IS THIS? (owner, 2026-11-04, on the card of a product in
+     * a bookcase: "there are more than 3 titles of books here, which one is the
+     * intended product"). While its card is open, the product's outline is
+     * drawn on the picture, round exactly what the finder boxed.
+     */
+    let highlightId: string | null = null;
+    const outline = new THREE.Group();
+    outline.renderOrder = 12;
+    outline.visible = false;
+    scene.add(outline);
+    /** The outline round (x, y), `size` across and up (rad): three loops a hair apart, so it reads as a thick line. */
+    function drawOutline(x: number, y: number, size: { w: number; h: number }) {
+      for (const c of [...outline.children]) { outline.remove(c); (c as THREE.Line).geometry.dispose(); }
+      const ring = (grow: number) => {
+        const pts: THREE.Vector3[] = [];
+        const hw = size.w / 2 + grow, hh = size.h / 2 + grow;
+        const at = (u: number, v: number) => {
+          const pitch = y + v * hh, yaw = x + (u * hw) / Math.max(0.2, Math.cos(pitch));
+          const h = yaw - (current?.spin ?? 0), cp = Math.cos(pitch);
+          return new THREE.Vector3(Math.sin(h) * cp * MARK_R, Math.sin(pitch) * MARK_R, -Math.cos(h) * cp * MARK_R);
+        };
+        const N = 8;
+        for (let i = 0; i < N; i++) pts.push(at(-1 + (2 * i) / N, -1));
+        for (let i = 0; i < N; i++) pts.push(at(1, -1 + (2 * i) / N));
+        for (let i = 0; i < N; i++) pts.push(at(1 - (2 * i) / N, 1));
+        for (let i = 0; i < N; i++) pts.push(at(-1, 1 - (2 * i) / N));
+        const line = new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(pts), outlineMaterial);
+        line.renderOrder = 12;
+        return line;
+      };
+      for (const g of [0, 0.0015, 0.003]) outline.add(ring(g));
+    }
+    const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false, depthWrite: false, transparent: true });
     /** On screen now: each product's sprite (a light, or a special's tag), with where it is and its outline. */
     const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem; x: number; y: number; size?: { w: number; h: number } }>();
     const itemButtons = new Map<string, { el: HTMLButtonElement; item: WalkItem }>();
@@ -1100,7 +1149,8 @@ export default function Walk360() {
               el.className = "pointer-events-auto absolute flex items-center justify-center";
               el.style.transform = "translate(-50%, -50%)";
               const [core, halo] = LIGHT_COLOUR[light];
-              el.innerHTML = `<span style="width:22px;height:22px;border-radius:9999px;background:radial-gradient(circle, ${core} 0 32%, ${halo}0.55) 40%, ${halo}0) 70%);box-shadow:0 0 0 2px rgba(255,255,255,0.9) inset"></span>`;
+              void halo;
+              el.innerHTML = `<span style="position:relative;width:44px;height:44px;border-radius:9999px;border:5px solid ${core};box-shadow:0 0 0 1.5px rgba(0,0,0,0.45), inset 0 0 0 1.5px rgba(0,0,0,0.45)"><span style="position:absolute;left:50%;top:50%;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:9999px;background:${core};box-shadow:0 0 0 1.5px rgba(0,0,0,0.45)"></span></span>`;
               el.setAttribute("aria-label", label.fa ? `${label.en} · ${label.fa}` : label.en);
             }
             const nameEl = el.querySelector("[data-n]") as HTMLElement | null;
@@ -1156,6 +1206,11 @@ export default function Walk360() {
           (m.sprite.material as THREE.SpriteMaterial).opacity = item === itemPreview ? 0.8 : 1;
         }
       }
+      // The open card's product, outlined (360°: lines on the picture; flat: the button's border).
+      const lit = highlightId ? [...itemSprites.values()].find((m) => m.item.id === highlightId) : undefined;
+      if (lit) drawOutline(lit.x, lit.y, lit.size ?? { w: 0.05, h: 0.05 });
+      outline.visible = Boolean(lit);
+      for (const b of itemButtons.values()) b.el.style.outline = b.item.id === highlightId ? "3px solid #ffd24a" : "";
       for (const [id, m] of itemSprites) {
         if (wantSprites.has(id)) continue;
         scene.remove(m.sprite);
@@ -1284,6 +1339,9 @@ export default function Walk360() {
       },
       setLightOf(f) {
         lightOf = f;
+      },
+      setHighlight(id) {
+        highlightId = id;
       },
       setLabelOf(f) {
         labelOf = f;
@@ -1807,6 +1865,9 @@ export default function Walk360() {
     engine.current?.setDrive(drive);
   }, [drive]);
   useEffect(() => {
+    engine.current?.setHighlight(lit);
+  }, [lit]);
+  useEffect(() => {
     engine.current?.setSpeed(speed);
   }, [speed]);
   // The store's product list: what the cards show, and what the operator tags by number.
@@ -1868,7 +1929,9 @@ export default function Walk360() {
   ownerRef.current = owner;
   useEffect(() => {
     const needs = (p: Product | undefined) => Boolean(p && (p.priceCents === null || (!p.en && !p.fa)));
-    engine.current?.setLightOf((item) => (owner && needs(owner.products.find((p) => p.n === item.n)) ? "amber" : "green"));
+    // Green for everyone (owner, 2026-11-04: "make the light on each book green"); `needs` stays for the card.
+    void needs;
+    engine.current?.setLightOf(() => "green");
   }, [owner]);
 
   // Tags show the store's list price for products tagged by their number.
@@ -1891,6 +1954,7 @@ export default function Walk360() {
       setDrive(null);
       // The owner fills in the product; a shopper gets its card (add to basket).
       const o = ownerRef.current;
+      setLit(item.id);
       if (o && item.n && o.products.some((p) => p.n === item.n)) setOwnerCard(item.n);
       else setCard(item);
     });
@@ -2215,12 +2279,12 @@ export default function Walk360() {
         if (!product) return null;
         return (
           <div dir="ltr" className="fixed bottom-24 left-1/2 z-40 max-h-[70vh] w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 overflow-y-auto rounded-2xl bg-[#0f1418]/95 text-white shadow-2xl">
-            <ProductCard key={product.n} api={owner.api} product={product} others={owner.products.filter((p) => p.n !== product.n)} close={() => setOwnerCard(null)} reload={reloadOwner} />
+            <ProductCard key={product.n} api={owner.api} product={product} others={owner.products.filter((p) => p.n !== product.n)} close={() => { setOwnerCard(null); setLit(null); }} reload={reloadOwner} />
           </div>
         );
       })()}
       {card && view.key && (
-        <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => setCard(null)} />
+        <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => { setCard(null); setLit(null); }} />
       )}
 
       {needSignIn && (

@@ -25,17 +25,18 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeWalks } from "@/lib/splats/r2";
-import { phoneKeyOf, looksFlat, MAX_ITEMS, type Walks } from "@/lib/splats/walks";
+import { phoneKeyOf, looksFlat, MAX_ITEMS, type WalkItem, type Walks } from "@/lib/splats/walks";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
-import { cropJpeg, encode, grayFrames, jpegOf, probe, views } from "./media";
+import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
 import { autoLock } from "./lock";
+import { seedOf } from "./repin";
 import { queueReverse } from "./reverse";
 
 /** A step that needs a person: the note says what. */
@@ -496,18 +497,47 @@ async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Be
     i++;
     if (i % 5 === 1) await say(`Cutting product photos: ${i} of ${best.size}…`);
     const dir = aim(b.look, b.box);
-    const size = Math.max(b.box[2] - b.box[0], b.box[3] - b.box[1]) / 1000 * b.look.fov;
-    const fov = Math.min(0.8, Math.max(0.1, size * 1.5));
+    const size = boxSize(b.look, b.box);
     try {
       let jpeg: Uint8Array;
-      try { [jpeg] = await views(input, b.look.t, [dir.lon], dir.lat, fov, 640); }
-      catch { [jpeg] = await views(localCopy, b.look.t, [dir.lon], dir.lat, fov, 640); }
+      try { jpeg = await productPhoto(input, b.look.t, dir.lon, dir.lat, size); }
+      catch { jpeg = await productPhoto(localCopy, b.look.t, dir.lon, dir.lat, size); }
       out.set(n, await publishPhoto(s.slug, n, jpeg));
     } catch (e) {
       console.error("[crew] photo", s.slug, n, e);
     }
   }
   return out;
+}
+
+/**
+ * The photos of a store's products cut again, framed on each product with its
+ * box drawn (`productPhoto`), from where the walk's lights already are: each
+ * product's first light, at the moment Claude saw it, with its outline. No AI,
+ * nothing spent (owner, 2026-11-04: "the photo is misleading because is not
+ * zoomed enough"). Products with no light, or no outline, keep their photo.
+ */
+export async function recutPhotos(slug: string): Promise<string> {
+  const s = await readStore(slug);
+  if (!s?.out.walk) return "No walk.";
+  const walkKey = s.out.walk;
+  const c = await readCatalogue(sceneOf(slug));
+  if (!c?.products.length) return "No products.";
+  const walk = (await readWalks()).walks[walkKey];
+  const input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600));
+  const { seconds } = await probe(input);
+  const looks = lookPlan(seconds, walk?.tagsFrom ?? 0).map((m) => m.t);
+  const firstLight = new Map<number, WalkItem>();
+  for (const it of walk?.items ?? []) if (it.n && it.size && !firstLight.has(it.n)) firstLight.set(it.n, it);
+  const photos = new Map<number, string>();
+  for (const [n, it] of firstLight) {
+    const seed = seedOf(it.pins, looks);
+    try { photos.set(n, await publishPhoto(slug, n, await productPhoto(input, seed.t, seed.x, seed.y, it.size!))); }
+    catch (e) { console.error("[crew] recut", slug, n, e); }
+  }
+  const now = await readCatalogue(sceneOf(slug));
+  if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
+  return `${photos.size} of ${c.products.length} product photos cut again, framed on the product.`;
 }
 
 // ── Product finder (no sheet) ───────────────────────────────────────────────

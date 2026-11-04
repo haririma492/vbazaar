@@ -30,7 +30,7 @@ import {
 import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
-import { kick, publish } from "@/lib/stores/crew";
+import { kick, publish, recutPhotos } from "@/lib/stores/crew";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -210,6 +210,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     });
     kick();
     return ok({ store: next ? forPage(next) : null });
+  }
+  if (body.action === "photosRecut") {
+    // Operator: the product photos cut again, framed on each product (free, no AI). Runs in the background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    void recutPhotos(s.slug).then((note) => console.log("[recut]", s.slug, note)).catch((e) => console.error("[recut]", s.slug, e));
+    return ok({ started: true });
   }
   return fail(400, "Unknown action.");
 }
