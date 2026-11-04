@@ -30,7 +30,7 @@ import {
 import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
-import { kick, publish, queuePhotos } from "@/lib/stores/crew";
+import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
@@ -230,6 +230,10 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (who !== "operator") return fail(403, "The operator only.");
     await queuePhotos([s.slug]);
     return ok({ started: true });
+  }
+  if (body.action === "photos") {
+    // The Photo improver on this store (owner or operator).
+    return ok({ photos: await storePhotosState(s.slug) });
   }
   if (body.action === "routePlan") {
     // Operator: the Route optimizer plans this store's walk (free, nothing cut; the proposal and its preview are kept).

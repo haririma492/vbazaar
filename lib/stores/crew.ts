@@ -579,6 +579,23 @@ export async function photosStatus(): Promise<{ busy: boolean; waiting: string[]
   return { busy: Boolean(j?.busy && Date.now() - Date.parse(j.at) < 12 * 3600_000), waiting: await readPhotoQueue(), ...(j?.busy && j.key ? { current: j.key } : {}) };
 }
 
+/** For the store's page: the Photo improver on this store — working, waiting or not, and how many photos are made. */
+export async function storePhotosState(slug: string): Promise<{ state: "working" | "waiting" | "idle"; done: number; total: number; at: string | null }> {
+  const s = await readStore(slug);
+  const c = await readCatalogue(sceneOf(slug));
+  const total = c?.products.length ?? 0;
+  let done = 0, at: string | null = null;
+  try {
+    const t = await readMastersText(`stores/${slug}/photos-done.json`);
+    const v = t ? JSON.parse(t) : null;
+    if (v?.version === `${s?.out.walk}#fused-1` && Array.isArray(v.done)) done = v.done.length;
+    at = v?.at ?? null;
+  } catch { /* none yet */ }
+  const st = await photosStatus();
+  const state = st.current === slug ? "working" : st.waiting.includes(slug) ? "waiting" : "idle";
+  return { state, done, total, at };
+}
+
 export async function recutPhotos(slug: string): Promise<string> {
   const s = await readStore(slug);
   if (!s?.out.walk) return "No walk.";
@@ -606,7 +623,7 @@ export async function recutPhotos(slug: string): Promise<string> {
     const now = await readCatalogue(sceneOf(slug));
     if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
     done = [...new Set([...done, ...photos.keys()])];
-    await writeMastersJson(doneKey, { version, done });
+    await writeMastersJson(doneKey, { version, done, at: new Date().toISOString() });
     photos.clear();
   };
   for (const [n, it] of lights) {
