@@ -32,6 +32,7 @@ import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
+import { readJob } from "@/lib/stores/jobState";
 import { startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
 
@@ -243,7 +244,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
   if (body.action === "route") {
     const r = await readRoute(s.slug);
-    return ok({ route: r ? { ...r, previewUrl: r.preview && r2Config().publicBase ? `${r2Config().publicBase}/${r.preview}` : null } : null });
+    const job = await readJob("route");
+    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    return ok({
+      route: r && r.walk === s.out.walk ? { ...r, previewUrl: r.preview && r2Config().publicBase ? `${r2Config().publicBase}/${r.preview}` : null } : null,
+      working, note: working ? job?.note ?? "" : "",
+    });
   }
   if (body.action === "routeApply") {
     // Operator, on the owner's yes: the proposal is cut (the walk editor's cut: lights and doors move, the original kept).

@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { STEPS, STEP_SAY, type StoreRecord } from "@/lib/stores/store";
+import { BUDGET_CENTS, STEPS, STEP_SAY, type StoreRecord } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
 import { formatCents } from "@/lib/splats/catalogue";
 import { getJson, postJson, uploadInParts, uploadMusic } from "./upload";
@@ -30,7 +30,7 @@ import Products from "./Products";
 import RouteCard from "./RouteCard";
 import PhotosCard from "./PhotosCard";
 import WalkFrame from "./WalkFrame";
-import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread } from "./ui";
+import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
 type Page = {
   who: "owner" | "operator";
@@ -123,6 +123,7 @@ export default function StorePage({ slug }: { slug: string }) {
   /** The operator looking at the page as the store's owner sees it. */
   const [asOwner, setAsOwner] = useState(false);
   const api = `/api/stores/${slug}`;
+  const agentRows = useAgentRows(api);
 
   const load = useCallback(async () => {
     try {
@@ -189,12 +190,12 @@ export default function StorePage({ slug }: { slug: string }) {
           )}
           {op && s.live && <button type="button" className={QUIET} onClick={() => void act({ action: "unpublish" })}>برداشتن از بازار · Unpublish</button>}
         </div>
-        <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of $5.00</p>
+        <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of ${(BUDGET_CENTS / 100).toFixed(2)}</p>
       </Card>}
 
       {op && <Card>
         <Bi fa="کار تیم ساخت" en="What the crew is doing" className="mb-3 text-[15px] font-bold text-amber-100" />
-        <Steps steps={STEPS.map((n) => [n, s.steps[n]])} say={STEP_SAY} />
+        <Steps steps={[...STEPS.map((n) => [n, s.steps[n]] as [string, StepView]), ...agentRows]} say={{ ...STEP_SAY, ...AGENT_SAY }} />
         {op && (
           <div className="mt-3 flex flex-wrap gap-2">
             {STEPS.filter((n) => s.steps[n].state === "failed" || s.steps[n].state === "needs-you" || s.steps[n].state === "done").slice(0, 6).map((n) => (
@@ -269,4 +270,46 @@ function ChangePassword({ api }: { api: string }) {
       {said && <Said ok={said.ok} text={said.text} />}
     </form>
   );
+}
+
+/**
+ * THE TWO AGENTS THAT WORK AFTER THE CREW, IN THE CREW'S LIST (owner, 2026-11-04:
+ * "let me see these two new agents in /stores/saraye-bamdad"): 8, the Photo
+ * improver (by itself, for every store); 9, the Route optimizer (it plans; the
+ * cut waits for the owner's yes, so a plan ready reads «needs you»).
+ */
+const AGENT_SAY: Record<string, { en: string; fa: string }> = {
+  photosImprover: { en: "Photo improver — each product's photo from several frames, at its sharpest", fa: "بهبود عکس محصولات" },
+  routeOptimizer: { en: "Route optimizer — a smooth forward walk, no back and forth", fa: "مسیر بهینه" },
+};
+function useAgentRows(api: string): Array<[string, StepView]> {
+  const [rows, setRows] = useState<Array<[string, StepView]>>([]);
+  useEffect(() => {
+    let gone = false;
+    const load = async () => {
+      try {
+        const [ph, rt] = await Promise.all([
+          postJson<{ photos: { state: string; done: number; total: number; at: string | null } }>(api, { action: "photos" }),
+          postJson<{ route: { kept: number; seconds: number; parts: unknown[]; joins: Array<{ smooth: boolean }>; lost: number[]; made: string } | null; working: boolean; note: string }>(api, { action: "route" }),
+        ]);
+        const p = ph.photos, r = rt.route;
+        const mm = (x: number) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
+        const photo: StepView = {
+          state: p.state === "working" ? "working" : p.state === "waiting" ? "todo" : p.total && p.done >= p.total ? "done" : "todo",
+          tries: 0, at: p.at,
+          note: `${p.done} of ${p.total} photos made from several frames.${p.state === "working" ? " Working now, about 30 s a product." : p.state === "waiting" ? " Waiting its turn." : p.done < p.total ? " Runs by itself; «Run it now» below to start it." : ""}`,
+        };
+        const route: StepView = rt.working
+          ? { state: "working", tries: 0, at: null, note: `Planning: ${rt.note || "…"}` }
+          : r
+            ? { state: "needs-you", tries: 0, at: r.made, note: `Planned: keeps ${mm(r.kept)} of ${mm(r.seconds)} in ${r.parts.length} parts, ${r.lost.length ? `${r.lost.length} products would be lost` : "every product still shown"}; ${r.joins.filter((j) => j.smooth).length} seamless joins, ${r.joins.filter((j) => !j.smooth).length} with a short dip. Watch the preview below («Route optimizer»), then say yes to cut — or plan again.` }
+            : { state: "todo", tries: 0, at: null, note: "Not planned yet: «Plan the route» below." };
+        if (!gone) setRows([["photosImprover", photo], ["routeOptimizer", route]]);
+      } catch { /* the list shows the crew alone */ }
+    };
+    void load();
+    const id = setInterval(load, 15000);
+    return () => { gone = true; clearInterval(id); };
+  }, [api]);
+  return rows;
 }
