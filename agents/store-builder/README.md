@@ -45,7 +45,9 @@ own server as each file arrives. A new store waits for the operator's
 | Video | The upload becomes a walk browsers can play | the master `.mp4` → `scenes/store-<slug>/walk-<stamp>.mp4` (H.264, at most 5760 wide, CRF 18, keyframe every 10 frames) plus `-phone.mp4` (3840 wide) | ffmpeg | none |
 | Catalogue | The workbook becomes the store's product list | `.xlsx` (every sheet, pictures placed on rows or in cells) → `scenes/catalogues/store-<slug>.json` | `workbook.ts` | none |
 | Photo matcher | Each photo is joined to its product | photos → `product.photo`, by file name or photo list first, then by looking (taken at confidence ≥ 0.7) | Claude vision, one request per photo, JSON schema | Opus 5.5, effort low |
-| Tagger | Price tags are pinned on the products in the video | phone copy + list → walk `items` (`auto-<n>-<k>`) | 6 views every 3 s in one Claude request, JSON schema with boxes; then the product is followed frame by frame (`track.ts`) | Opus 5.5, effort medium |
+| Tagger | Each product in the video gets its light and outline | full-size walk + list → walk `items` (`auto-<n>-<k>`, each with `size`, its outline) | 16 shelf views (8 directions × 2 heights, 50°) every 3 s in one Claude request, JSON schema with boxes round each product or group of its copies; then followed frame by frame on a 2048-wide panorama to a fraction of a pixel (`tagging.ts`, `track.ts`) | Opus 5.5, effort medium |
+| Product finder (no list) | Every product for sale in the video is listed, named and pictured | the same looks → the store's list (`by: "video"`) + photos + items | as the Tagger, asked for EVERY title or product, a run of copies as one, an unreadable title described by its look for the owner to name | Opus 5.5, effort medium |
+| Re-pinner | Walks pinned by the old follow are followed again from Claude's own sightings | walk `items` → the same items, steadier pins; `Walk.pinned = 2` | `repin.ts`; no AI, runs once per walk when the server starts | none |
 | Placer | The store's door goes on the hallway | door photo, spot → a door on the hallway walk, with `image` and `size` | none | none |
 | Checker | Writes the report and finds what is missing | everything → `report` on the record | none | none |
 | Messages | Does what the owner or operator writes, then answers | the thread → catalogue, tag, detail and walk changes | Claude with tools (`messages.ts`; cutting the video is for the operator only) | Opus 5.5, effort medium |
@@ -60,12 +62,18 @@ where shoppers start.
   copies exist.
 - Every product in the list has a price, or the report names it.
 - Every uploaded photo is joined to a product, or the report names it.
-- A product the Tagger tags stays on the product as the camera walks past.
-  `tagging.test.ts` follows a synthetic product within 1.5°.
+- A product's light stays on the product as the camera walks past.
+  `tagging.test.ts` follows fine book spines within 0.1° in every frame (the
+  old follow: 0.31°); `walks.test.ts` walks an aisle past 12 books and keeps
+  each light within 0.2° on average.
+- Copies of one title side by side are one product, and a tap anywhere on
+  them opens it (`itemHitAt`).
 - A wrong tag is worse than a missing one. The prompt says so, and sightings
   below 0.6 are dropped.
 - No more than $5 of AI per store. The request that would pass it is not
-  made; the step stops and says so on the page.
+  made; the step stops and says so on the page. When a long walk's looks
+  would not fit, every 2nd (3rd…) moment is looked at instead, so the whole
+  walk is still seen (`strideFor`), and the report says so.
 
 **Test cases:** `npm test` covers `lib/stores/*.test.ts`: the step order and
 redo rules, the intake checks, a real workbook with a placed picture and a

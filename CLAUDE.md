@@ -452,6 +452,32 @@ quality and choice to break away and enter in a shop. (period)"*
   between frames, so they slid over a still picture: they are now placed at
   the time of the frame on screen (`requestVideoFrameCallback`, `tShown` in
   `Walk360.tsx`).
+- **Lights, not tags; the whole product is the button** (owner, 2026-11-04:
+  *"remove the tag on each book because they are distracting replacing them
+  by a light a circle that is turned green … click anywhere on that product
+  (book) boundary - or couple of books with the same title"*). Each product
+  is a small green light on its middle (`lightTexture`, `Walk360.tsx`); a
+  special keeps its red tag. A tap anywhere on the product's outline
+  (`WalkItem.size`, from Claude's box; `itemHitAt`) opens the basket card, or
+  for the store's owner (signed in on `/stores/<slug>`) or the operator, the
+  card of questions to name and price it (`ProductCard`); to them a product
+  still waiting for a name or a price glows amber. At most 250 products a
+  walk (owner: *"make the 150 to be 250"*).
+- **Every product, even in a bookshop** (owner, 2026-11-04: *"70% of them
+  are not pictured or listed, that need to change"*): the finder looks
+  through 16 sharp shelf views a moment from the full-size walk, is told a
+  run of copies of one title is one product boxed together, and lists a
+  title it cannot read by its look for the owner to name
+  (`agents/store-builder/README.md`). Within the store's $5: moments are
+  spaced out when a walk would not fit (`strideFor`).
+- **Why the lights moved, measured** (2026-11-04): the camera barely sways
+  (0.05° a frame); the follow's own error was the shake (finds zig-zagged
+  1.4°: a 1024-wide panorama, whole pixels). It now runs on 2048, to a
+  fraction of a pixel, held to the product as Claude saw it (0.08° vs 0.31°
+  on the test). Walks pinned before are followed again, free, when the
+  server starts (`lib/stores/repin.ts`). Tried and dropped: fitting each
+  track to the curve of a still thing, and measuring the camera's sway from
+  every frame: neither beat the steadying on real or synthetic walks.
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

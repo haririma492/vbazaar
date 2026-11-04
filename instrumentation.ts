@@ -14,6 +14,9 @@ export async function register() {
     // Walks still waiting for their walking speed (`lib/stores/lock.ts`).
     const { drainPace } = await import("./lib/stores/lock");
     setTimeout(() => void drainPace().catch((e) => console.error("[pace] resume", e)), 25_000);
+    // Walks whose products were pinned by the old, rougher follow: followed again, free (`lib/stores/repin.ts`).
+    const { queueRepin, walksToRepin } = await import("./lib/stores/repin");
+    setTimeout(() => void walksToRepin().then(queueRepin).catch((e) => console.error("[repin] resume", e)), 35_000);
     // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
     const { drainReverse } = await import("./lib/stores/reverse");
     setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);

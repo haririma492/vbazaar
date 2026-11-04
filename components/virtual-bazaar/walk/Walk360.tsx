@@ -53,15 +53,16 @@
  *   …&edit=1                                place doors (operator token, like /vca/splat)
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
+import { ProductCard } from "@/components/stores/Products";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
-import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue } from "@/lib/splats/catalogue";
+import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { SPEED_DEFAULT, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
@@ -69,7 +70,7 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  itemHitAt, itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -254,6 +255,47 @@ type Layer = {
  * foot (a dot) is the product's own spot. Drawn once; `foot` is where that
  * spot is, as a share of the height from the bottom (`Sprite.center`).
  */
+/**
+ * ⚠️ A LIGHT, NOT A TAG (owner, 2026-11-04: "remove the tag on each book
+ * because they are distracting replacing them by a light a circle that is
+ * turned green and when shopper or owner … click anywhere on that product
+ * (book) boundary … the option to add to basket (or for owner the option to
+ * add info) will open"). A small glowing circle on the product's middle;
+ * the whole product (`WalkItem.size`) is what a tap finds (`itemHitAt`).
+ * Only a special keeps its big red tag. To its owner, a product still waiting
+ * for a name or a price glows amber.
+ */
+export type Light = "green" | "amber";
+const LIGHT_COLOUR: Record<Light, [string, string]> = { green: ["#5dff8f", "rgba(40,220,110,"], amber: ["#ffd24a", "rgba(245,170,20,"] };
+const lightTextures = new Map<Light, THREE.CanvasTexture>();
+function lightTexture(kind: Light): THREE.CanvasTexture {
+  const had = lightTextures.get(kind);
+  if (had) return had;
+  const n = 128, c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d")!;
+  const [core, halo] = LIGHT_COLOUR[kind];
+  const glow = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  glow.addColorStop(0, `${halo}0.85)`);
+  glow.addColorStop(0.35, `${halo}0.45)`);
+  glow.addColorStop(1, `${halo}0)`);
+  g.fillStyle = glow;
+  g.fillRect(0, 0, n, n);
+  g.beginPath();
+  g.arc(n / 2, n / 2, n * 0.16, 0, Math.PI * 2);
+  g.fillStyle = core;
+  g.fill();
+  g.lineWidth = n * 0.04;
+  g.strokeStyle = "rgba(255,255,255,0.95)";
+  g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  lightTextures.set(kind, t);
+  return t;
+}
+/** The light's width on the sphere (`MARK_R` away): about 2.3° across, its bright core a third of that. */
+const LIGHT_W = 0.8;
+
 const TAG_W = 560;
 function tagTexture(item: WalkItem, listPrice?: string): { texture: THREE.CanvasTexture; aspect: number; foot: number } {
   const sp = item.special;
@@ -374,6 +416,8 @@ type Engine = {
   setPriceText: (f: (item: WalkItem) => string | undefined) => void;
   /** What an item's tag says as its name: the store's list where it has one (the owner names products found in a video). */
   setLabelOf: (f: (item: WalkItem) => WalkItem["label"]) => void;
+  /** Which light an item shows (`Light`): amber to the store's owner while it waits for a name or a price. */
+  setLightOf: (f: (item: WalkItem) => Light) => void;
   /** Jump to a moment of this video (stands there). */
   seek: (t: number) => void;
 };
@@ -460,6 +504,16 @@ export default function Walk360() {
   const [card, setCard] = useState<WalkItem | null>(null);
   /** The product list of the store this video belongs to (`lib/splats/catalogue.ts`), or null. */
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  /**
+   * THE STORE'S OWNER ON THE WALK (owner, 2026-11-04: "when shopper or owner
+   * (for the reason of adding price and title) click anywhere on that product
+   * … for owner the option to add info will open"). Signed in on the store's
+   * page (its cookie), or the operator: a tap on a product opens its card of
+   * questions (name, unit, price…), the same as on the store's page, and a
+   * product still waiting for a name or a price glows amber.
+   */
+  const [owner, setOwner] = useState<{ api: string; products: Product[] } | null>(null);
+  const [ownerCard, setOwnerCard] = useState<number | null>(null);
   /** The store's aisles (its shelf videos, in order), for Next / Previous. */
   const [aisles, setAisles] = useState<Aisle[]>([]);
   const [debug, setDebug] = useState(false);
@@ -978,7 +1032,9 @@ export default function Walk360() {
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
     let labelOf: (item: WalkItem) => WalkItem["label"] = (item) => item.label;
-    const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem }>();
+    let lightOf: (item: WalkItem) => Light = () => "green";
+    /** On screen now: each product's sprite (a light, or a special's tag), with where it is and its outline. */
+    const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem; x: number; y: number; size?: { w: number; h: number } }>();
     const itemButtons = new Map<string, { el: HTMLButtonElement; item: WalkItem }>();
     /** Specials in view a moment ago, and when each was last said aloud. */
     let seen = new Set<string>();
@@ -1021,7 +1077,8 @@ export default function Walk360() {
         const sp = item.special;
         const price = priceText(item);
         const label = labelOf(item);
-        const id = `${current!.key}#${item.id}#${label.en}#${price ?? ""}#${sp ? `${sp.was}>${sp.now}` : ""}`;
+        const light = lightOf(item);
+        const id = sp ? `${current!.key}#${item.id}#${label.en}#${price ?? ""}#${sp.was}>${sp.now}` : `${current!.key}#${item.id}#${light}`;
         if (flat) {
           wantButtons.add(id);
           let b = itemButtons.get(id);
@@ -1039,12 +1096,15 @@ export default function Walk360() {
               (el.querySelector("[data-w]") as HTMLElement).textContent = sp.was;
               (el.querySelector("[data-p]") as HTMLElement).textContent = sp.now;
             } else {
-              el.innerHTML = `<span class="flex flex-col items-center rounded-xl border-[3px] border-[#00B8C8] bg-[#0a161c]/90 px-3 py-1.5 text-center text-white shadow-xl"><span data-n class="max-w-[12rem] truncate text-[14px] font-bold"></span><span data-p class="text-[20px] font-black leading-tight text-[#ffd75e]"></span></span>${stick}`;
-              const pr = el.querySelector("[data-p]") as HTMLElement;
-              if (price) pr.textContent = price;
-              else pr.remove();
+              // A light on the product; the button is the product's outline, so a tap anywhere on it opens it.
+              el.className = "pointer-events-auto absolute flex items-center justify-center";
+              el.style.transform = "translate(-50%, -50%)";
+              const [core, halo] = LIGHT_COLOUR[light];
+              el.innerHTML = `<span style="width:22px;height:22px;border-radius:9999px;background:radial-gradient(circle, ${core} 0 32%, ${halo}0.55) 40%, ${halo}0) 70%);box-shadow:0 0 0 2px rgba(255,255,255,0.9) inset"></span>`;
+              el.setAttribute("aria-label", label.fa ? `${label.en} · ${label.fa}` : label.en);
             }
-            (el.querySelector("[data-n]") as HTMLElement).textContent = sp ? label.en : label.fa ? `${label.en} · ${label.fa}` : label.en;
+            const nameEl = el.querySelector("[data-n]") as HTMLElement | null;
+            if (nameEl) nameEl.textContent = label.en;
             el.addEventListener("click", () => {
               const m = itemButtons.get(id);
               if (m && m.item !== itemPreview && !itemPick) onItem?.(m.item);
@@ -1057,6 +1117,10 @@ export default function Walk360() {
           const r = flatRect(v!);
           b.el.style.left = `${r.x + x * r.w}px`;
           b.el.style.top = `${r.y + y * r.h}px`;
+          if (!sp) {
+            b.el.style.width = `${Math.max(44, (item.size?.w ?? 0) * r.w)}px`;
+            b.el.style.height = `${Math.max(44, (item.size?.h ?? 0) * r.h)}px`;
+          }
           b.el.style.opacity = item === itemPreview ? "0.8" : "1";
           // While pinning, taps go through to the picture.
           b.el.style.pointerEvents = itemPick ? "none" : "auto";
@@ -1064,18 +1128,28 @@ export default function Walk360() {
           wantSprites.add(id);
           let m = itemSprites.get(id);
           if (!m) {
-            // The tag on its stick, the stick's foot on the product's spot.
-            const tag = tagTexture({ ...item, label }, price);
-            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag.texture, depthTest: false, depthWrite: false, transparent: true }));
-            const width = sp ? 5.4 : 4.2;
-            sprite.scale.set(width, width * tag.aspect, 1);
-            sprite.center.set(0.5, tag.foot);
+            let sprite: THREE.Sprite;
+            if (sp) {
+              // A special: its big red tag on a stick, the stick's foot on the product's spot.
+              const tag = tagTexture({ ...item, label }, price);
+              sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tag.texture, depthTest: false, depthWrite: false, transparent: true }));
+              sprite.scale.set(5.4, 5.4 * tag.aspect, 1);
+              sprite.center.set(0.5, tag.foot);
+            } else {
+              // Every other product: a small light on its middle (the texture is shared, so it is not disposed).
+              sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: lightTexture(light), depthTest: false, depthWrite: false, transparent: true }));
+              sprite.scale.set(LIGHT_W, LIGHT_W, 1);
+              sprite.userData.shared = true;
+            }
             sprite.renderOrder = 11;
-            m = { sprite, item };
+            m = { sprite, item, x, y };
             itemSprites.set(id, m);
             scene.add(sprite);
           }
           m.item = item;
+          m.x = x;
+          m.y = y;
+          m.size = item.size;
           const h = x - current!.spin;
           const cp = Math.cos(y);
           m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
@@ -1085,7 +1159,7 @@ export default function Walk360() {
       for (const [id, m] of itemSprites) {
         if (wantSprites.has(id)) continue;
         scene.remove(m.sprite);
-        (m.sprite.material as THREE.SpriteMaterial).map?.dispose();
+        if (!m.sprite.userData.shared) (m.sprite.material as THREE.SpriteMaterial).map?.dispose();
         m.sprite.material.dispose();
         itemSprites.delete(id);
       }
@@ -1207,6 +1281,9 @@ export default function Walk360() {
       },
       setPriceText(f) {
         priceText = f;
+      },
+      setLightOf(f) {
+        lightOf = f;
       },
       setLabelOf(f) {
         labelOf = f;
@@ -1376,7 +1453,12 @@ export default function Walk360() {
         return;
       }
       const itemHit = raycaster.intersectObjects([...itemSprites.values()].map((m) => m.sprite), false)[0];
-      const im = itemHit && [...itemSprites.values()].find((m) => m.sprite === itemHit.object);
+      // A special's tag first; then anywhere on a product's outline (or near its light).
+      let im = itemHit && [...itemSprites.values()].find((m) => m.sprite === itemHit.object);
+      if (!im) {
+        const d = raycaster.ray.direction;
+        im = itemHitAt([...itemSprites.values()], wrapAngle(Math.atan2(d.x, -d.z) + current.spin), Math.asin(THREE.MathUtils.clamp(d.y, -1, 1))) ?? undefined;
+      }
       if (im && im.item !== itemPreview) {
         onItem?.(im.item);
         return;
@@ -1709,7 +1791,7 @@ export default function Walk360() {
       release(pending);
       for (const { el } of itemButtons.values()) el.remove();
       for (const { sprite } of [...markers.values(), ...itemSprites.values()]) {
-        (sprite.material as THREE.SpriteMaterial).map?.dispose();
+        if (!sprite.userData.shared) (sprite.material as THREE.SpriteMaterial).map?.dispose();
         sprite.material.dispose();
       }
       geometry.dispose();
@@ -1760,6 +1842,35 @@ export default function Walk360() {
     }
   }
 
+  // Is the person walking this store its owner (or the operator)? Their store's page says so.
+  const slug = store.startsWith("store-") ? store.slice(6) : "";
+  const loadOwner = useCallback(async () => {
+    if (!slug) { setOwner(null); return; }
+    try {
+      const token = readAdminToken();
+      const res = await fetch(`/api/stores/${encodeURIComponent(slug)}`, { cache: "no-store", credentials: "same-origin", headers: token ? { "x-admin-token": token } : {} });
+      const j = await res.json().catch(() => null);
+      setOwner(res.ok && j?.ok ? { api: `/api/stores/${encodeURIComponent(slug)}`, products: Array.isArray(j.products) ? j.products : [] } : null);
+    } catch {
+      setOwner(null); // a shopper: the basket card
+    }
+  }, [slug]);
+  useEffect(() => { void loadOwner(); }, [loadOwner]);
+  /** After the owner saves: their list again, and the walk's copy of it (what shoppers see). */
+  async function reloadOwner() {
+    await loadOwner();
+    try {
+      const j = await (await fetch(`/api/splats/catalogue?store=${encodeURIComponent(store)}`, { cache: "no-store" })).json();
+      if (j?.ok && j.catalogue) setCatalogue(checkCatalogue(j.catalogue).catalogue);
+    } catch { /* the card said it was saved; the walk shows it on the next visit */ }
+  }
+  const ownerRef = useRef(owner);
+  ownerRef.current = owner;
+  useEffect(() => {
+    const needs = (p: Product | undefined) => Boolean(p && (p.priceCents === null || (!p.en && !p.fa)));
+    engine.current?.setLightOf((item) => (owner && needs(owner.products.find((p) => p.n === item.n)) ? "amber" : "green"));
+  }, [owner]);
+
   // Tags show the store's list price for products tagged by their number.
   useEffect(() => {
     engine.current?.setPriceText((item) => {
@@ -1778,7 +1889,10 @@ export default function Walk360() {
   useEffect(() => {
     engine.current?.setOnItem((item) => {
       setDrive(null);
-      setCard(item);
+      // The owner fills in the product; a shopper gets its card (add to basket).
+      const o = ownerRef.current;
+      if (o && item.n && o.products.some((p) => p.n === item.n)) setOwnerCard(item.n);
+      else setCard(item);
     });
     return () => engine.current?.setOnItem(null);
   }, []);
@@ -2096,6 +2210,15 @@ export default function Walk360() {
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
+      {ownerCard !== null && owner && (() => {
+        const product = owner.products.find((p) => p.n === ownerCard);
+        if (!product) return null;
+        return (
+          <div dir="ltr" className="fixed bottom-24 left-1/2 z-40 max-h-[70vh] w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 overflow-y-auto rounded-2xl bg-[#0f1418]/95 text-white shadow-2xl">
+            <ProductCard key={product.n} api={owner.api} product={product} others={owner.products.filter((p) => p.n !== product.n)} close={() => setOwnerCard(null)} reload={reloadOwner} />
+          </div>
+        );
+      })()}
       {card && view.key && (
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => setCard(null)} />
       )}

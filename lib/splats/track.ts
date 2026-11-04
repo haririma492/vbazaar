@@ -92,10 +92,28 @@ export const MIN_MATCH = 0.55;
  */
 export function followStep(
   frame: Float32Array, w: number, h: number, template: Float32Array, size: number, at: { x: number; y: number }, radius: number,
-): { x: number; y: number; score: number; template: Float32Array } | null {
+): { x: number; y: number; fx: number; fy: number; score: number; template: Float32Array } | null {
   const m = matchPatch(frame, w, h, template, size, at.x, at.y, radius);
   if (m.score < MIN_MATCH) return null;
   const half = size >> 1;
   if (m.x <= half || m.y <= half || m.x >= w - half - 1 || m.y >= h - half - 1) return null;
-  return { ...m, template: refresh(template, patchAt(frame, w, m.x, m.y, size)) };
+  const sub = subPixel(frame, w, h, template, size, m.x, m.y);
+  return { ...m, fx: sub.x, fy: sub.y, template: refresh(template, patchAt(frame, w, m.x, m.y, size)) };
+}
+
+/**
+ * ⚠️ TO A FRACTION OF A PIXEL (owner, 2026-11-04: "the small circle light
+ * still tends to move a bit"). A match is found on whole pixels, so a dot
+ * stepped by up to half a pixel each time (on the tagger's views, 0.15°).
+ * The match next door each way says where between them the best really is:
+ * a parabola through the three, across and down.
+ */
+export function subPixel(frame: Float32Array, w: number, h: number, template: Float32Array, size: number, x: number, y: number): { x: number; y: number } {
+  const at = (dx: number, dy: number) => matchPatch(frame, w, h, template, size, x + dx, y + dy, 0).score;
+  const c = at(0, 0);
+  const peak = (l: number, r: number) => {
+    const den = l - 2 * c + r;
+    return den < -1e-9 ? Math.max(-0.5, Math.min(0.5, (l - r) / (2 * den))) : 0;
+  };
+  return { x: x + peak(at(-1, 0), at(1, 0)), y: y + peak(at(0, -1), at(0, 1)) };
 }

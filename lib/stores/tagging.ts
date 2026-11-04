@@ -19,7 +19,7 @@
  * Pure: `node --test` runs it.
  */
 
-import { followStep, matchPatch, patchAt } from "../splats/track";
+import { followStep, matchPatch, patchAt, subPixel } from "../splats/track";
 import { renderView, viewDir } from "../splats/projection";
 import type { ItemPin, WalkItem } from "../splats/walks";
 import type { Product } from "../splats/catalogue";
@@ -42,11 +42,25 @@ export const FOLLOW_FPS = 5;
  * `LOOK_EVERY` s, so a little over half that joins one sighting to the next.
  */
 export const FOLLOW_SPAN = 1.6;
-export const FOLLOW_W = 1024;
+/**
+ * ⚠️ FINE ENOUGH TO STAND STILL (owner, 2026-11-04: "the small circle light
+ * still tends to move a bit … try to make them as stationary as book
+ * themselves"). Measured on the bookshop's walk: the camera barely sways
+ * (0.05° a frame), but the finds zig-zagged by 1.4°, because the follow ran
+ * on a panorama 1024 wide (0.35° a pixel) and stepped whole pixels. Now it
+ * runs on one twice as fine, each step to a fraction of a pixel
+ * (`subPixel`), and each step is put where the product looks as it did when
+ * Claude saw it (`template0`, within `ANCHOR_REACH` px), so it cannot creep
+ * along a shelf of look-alike spines.
+ */
+export const FOLLOW_W = 2048;
+/** This follow's version, kept on each walk it pinned (`Walk.pinned`): 2 = the fine follow of 2026-11-04. */
+export const PIN_VERSION = 2;
 const VIEW_FOV = (36 * Math.PI) / 180;
-const VIEW_N = 96;
-const VIEW_PATCH = 15;
-const VIEW_RADIUS = 20;
+const VIEW_N = 128;
+const VIEW_PATCH = 21;
+const VIEW_RADIUS = 26;
+const ANCHOR_REACH = 2;
 /** A follow shorter than this many pins is not kept on its own (one sighting, seen once). */
 export const MIN_PINS = 3;
 /**
@@ -65,15 +79,32 @@ export const MAX_STEP = 0.12;
 /** Two sightings of a product closer than this (radians, at the same moment) are the same one. */
 const SAME = 0.25;
 
-export type Look = { t: number; heading: number; id: string };
+/** A view the crew looks through: when, which way, how far up or down, and how wide (rad). */
+export type Look = { t: number; heading: number; pitch: number; fov: number; id: string };
 
-/** The moments and headings the tagger looks at, for a walk `seconds` long. */
+/**
+ * ⚠️ SHELF LOOKS (owner, 2026-11-04, on a bookshop: "currently 70% of them
+ * are not pictured or listed, that need to change"). Six views 75° wide from
+ * the phone copy put a book's spine at a few pixels, so most titles were
+ * never seen. Each moment is now `SHELF_HEADINGS` × `SHELF_PITCHES` views,
+ * `SHELF_FOV` wide, cut from the full-size walk: 15 pixels a degree, the
+ * video's own sharpness, from the floor-level shelves to the top ones.
+ */
+export const SHELF_FOV = (50 * Math.PI) / 180;
+export const SHELF_HEADINGS = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (i * Math.PI) / 4);
+export const SHELF_PITCHES = [(-28 * Math.PI) / 180, (8 * Math.PI) / 180];
+
+/** The moments and views the crew looks at, for a walk `seconds` long. */
 export function lookPlan(seconds: number, from = 0): Array<{ t: number; looks: Look[] }> {
   const out: Array<{ t: number; looks: Look[] }> = [];
   const start = from > 0 && from < seconds - 0.5 ? from + 0.5 : Math.min(1, seconds / 2);
   for (let t = start; t < seconds - 0.2; t += LOOK_EVERY) {
     const tt = Math.round(t * 100) / 100;
-    out.push({ t: tt, looks: HEADINGS.map((heading, i) => ({ t: tt, heading, id: `${tt}s-${i * 60}°` })) });
+    const looks: Look[] = [];
+    for (const pitch of SHELF_PITCHES) {
+      for (const [i, heading] of SHELF_HEADINGS.entries()) looks.push({ t: tt, heading, pitch, fov: SHELF_FOV, id: `${tt}s-${i * 45}°${pitch < 0 ? "low" : "high"}` });
+    }
+    out.push({ t: tt, looks });
   }
   return out;
 }
@@ -81,7 +112,24 @@ export function lookPlan(seconds: number, from = 0): Array<{ t: number; looks: L
 /** A box (thousandths of a LOOK_N view) → the direction of its middle in the walk. */
 export function aim(look: Look, box: [number, number, number, number]): { lon: number; lat: number } {
   const px = ((box[0] + box[2]) / 2000) * LOOK_N, py = ((box[1] + box[3]) / 2000) * LOOK_N;
-  return viewDir(look.heading, LOOK_PITCH, LOOK_FOV, LOOK_N, px, py);
+  return viewDir(look.heading, look.pitch, look.fov, LOOK_N, px, py);
+}
+
+/**
+ * A box → the product's outline round its middle, in radians across and up
+ * (`WalkItem.size`): the angles between the middles of its opposite edges. A
+ * shopper's tap anywhere inside it opens the product (owner, 2026-11-04:
+ * "click anywhere on that product (book) boundary").
+ */
+export function boxSize(look: Look, box: [number, number, number, number]): { w: number; h: number } {
+  const at = (fx: number, fy: number) => viewDir(look.heading, look.pitch, look.fov, LOOK_N, (fx / 1000) * LOOK_N, (fy / 1000) * LOOK_N);
+  const mx = (box[0] + box[2]) / 2, my = (box[1] + box[3]) / 2;
+  const l = at(box[0], my), r = at(box[2], my), t = at(mx, box[1]), b = at(mx, box[3]);
+  const lat = (l.lat + r.lat) / 2;
+  const w = Math.abs(Math.atan2(Math.sin(r.lon - l.lon), Math.cos(r.lon - l.lon))) * Math.cos(lat);
+  const h = Math.abs(t.lat - b.lat);
+  const r3 = (v: number) => Math.round(Math.min(1.5, Math.max(0.01, v)) * 1000) / 1000;
+  return { w: r3(w), h: r3(h) };
 }
 
 /**
@@ -103,8 +151,12 @@ export function follow(frames: Float32Array[], W: number, H: number, t0: number,
       const frameView = view(i, guess);
       const r = followStep(frameView, VIEW_N, VIEW_N, template, VIEW_PATCH, { x: c, y: c }, VIEW_RADIUS);
       if (!r) break;
-      if (matchPatch(frameView, VIEW_N, VIEW_N, template0, VIEW_PATCH, r.x, r.y, 0).score < ANCHOR_MIN) break;
-      const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, r.x, r.y);
+      // Held to the product as first seen: the best match of the first look within a pixel or two.
+      const anchor = matchPatch(frameView, VIEW_N, VIEW_N, template0, VIEW_PATCH, r.x, r.y, ANCHOR_REACH);
+      if (anchor.score < ANCHOR_MIN) break;
+      const fine = subPixel(frameView, VIEW_N, VIEW_N, template0, VIEW_PATCH, anchor.x, anchor.y);
+      // The same pixel convention as the first look's patch (its centre at N/2 is the sighting itself).
+      const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, fine.x, fine.y);
       const step = { lon: Math.atan2(Math.sin(next.lon - at.lon), Math.cos(next.lon - at.lon)), lat: next.lat - at.lat };
       if (Math.abs(next.lat) > MAX_LAT || Math.hypot(step.lon * Math.cos(at.lat), step.lat) > MAX_STEP) break;
       move = step;
@@ -116,7 +168,7 @@ export function follow(frames: Float32Array[], W: number, H: number, t0: number,
   return pins.sort((a, b) => a.t - b.t);
 }
 
-export type Track = { n: number; pins: ItemPin[]; confidence: number };
+export type Track = { n: number; pins: ItemPin[]; confidence: number; size?: { w: number; h: number } };
 
 const angle = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
 
@@ -166,5 +218,6 @@ export function itemOf(track: Track, product: Product, index: number): Omit<Walk
     label: { en: product.en || product.fa || `#${product.n}`, ...(product.fa ? { fa: product.fa } : {}) },
     n: product.n,
     pins: track.pins,
+    ...(track.size ? { size: track.size } : {}),
   };
 }

@@ -33,7 +33,7 @@ import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type 
 import { cropJpeg, encode, grayFrames, jpegOf, probe, views } from "./media";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
-import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, HEADINGS, LOOK_FOV, LOOK_N, LOOK_PITCH, aim, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
+import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
 import { autoLock } from "./lock";
 import { queueReverse } from "./reverse";
@@ -339,6 +339,47 @@ async function stepPhotos(s: StoreRecord, say: (note: string) => Promise<void>):
   return `${byName + byLook} of ${s.files.photos.length} photos joined to their product (${byName} by name or list, ${byLook} by looking)${unmatched.length ? `; not placed: ${unmatched.slice(0, 8).join(", ")}${unmatched.length > 8 ? "…" : ""}` : ""}.`;
 }
 
+// ── Looking at a moment of the walk ─────────────────────────────────────────
+
+/** Products seen within this long (s of walk) are the ones Claude is told about, to name again by # rather than twice. */
+const NEARBY_S = 15;
+
+/**
+ * A moment's shelf looks as JPEGs, in the order of `moment.looks` (each
+ * height, then each direction), cut from the full-size walk (`sharp`, read
+ * from the bucket: only that moment), or from the phone copy when it cannot.
+ */
+async function momentViews(sharp: string | null, local: string, t: number): Promise<Uint8Array[]> {
+  const cut = async (src: string) => (await Promise.all(SHELF_PITCHES.map((pitch) => views(src, t, SHELF_HEADINGS, pitch, SHELF_FOV, LOOK_N)))).flat();
+  if (sharp) {
+    try { return await cut(sharp); } catch (e) { console.error("[crew] sharp views", e); }
+  }
+  return cut(local);
+}
+
+/** The full-size walk's address for ffmpeg (null without one). */
+async function sharpSource(walkKey: string): Promise<string | null> {
+  try { return (await webObjectExists(walkKey)) ? await presignGet(walkKey, "web", 6 * 3600) : null; } catch { return null; }
+}
+
+/**
+ * ⚠️ THE LOOKS FIT THE STORE'S BUDGET (rule 10; $5 a store, owner
+ * 2026-10-30). Sixteen sharp views a moment cost more than six did; a long
+ * walk could spend the budget halfway and leave its end unseen. After each
+ * look, what a look costs is known: when the moments left would not fit what
+ * is left, moments are skipped evenly (every 2nd, 3rd…) so the whole walk is
+ * still seen. Returns how many moments to step on.
+ */
+export function strideFor(spentSoFar: number, looksDone: number, spentNow: number, limit: number, momentsLeft: number): number {
+  if (looksDone < 2 || momentsLeft <= 0) return 1;
+  const per = (spentNow - spentSoFar) / looksDone;
+  const left = Math.max(0, limit * 0.95 - spentNow);
+  if (per <= 0) return 1;
+  const affordable = Math.floor(left / per);
+  if (affordable >= momentsLeft) return 1;
+  return affordable <= 0 ? Infinity : Math.ceil(momentsLeft / affordable);
+}
+
 // ── Tagger ──────────────────────────────────────────────────────────────────
 
 async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
@@ -355,11 +396,15 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     const { seconds } = await probe(src);
     const plan = lookPlan(seconds, (await readWalks()).walks[walkKey]?.tagsFrom ?? 0);
     const purse = purseOf(s);
+    const sharp = await sharpSource(walkKey);
     const sightings: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }> = [];
     let stopped = "";
-    for (const [i, moment] of plan.entries()) {
+    const spentAtStart = purse.spent();
+    let looked = 0;
+    for (let i = 0; i < plan.length; ) {
+      const moment = plan[i];
       await say(`Looking for products: moment ${i + 1} of ${plan.length}, ${sightings.length} seen so far…`);
-      const jpegs = await views(src, moment.t, HEADINGS, LOOK_PITCH, LOOK_FOV, LOOK_N);
+      const jpegs = await momentViews(sharp, src, moment.t);
       try {
         const found = await findInViews(purse, c.products, moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
         for (const f of found) sightings.push({ look: moment.looks.find((l) => l.id === f.view)!, n: f.n, box: f.box, confidence: f.confidence });
@@ -367,6 +412,11 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
         if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
         throw e;
       }
+      looked++;
+      const step = strideFor(spentAtStart, looked, purse.spent(), purse.limit, plan.length - i - 1);
+      if (!Number.isFinite(step)) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
+      if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the $5 budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
+      i += step;
     }
     // Follow each sighting both ways through the frames round its moment.
     const tracks: Track[] = [];
@@ -379,7 +429,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
       const grey = frames.map((f) => Float32Array.from(f));
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
       for (const x of sightings.filter((y) => y.look.t === t && y.confidence >= 0.6)) {
-        tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)) });
+        tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)), size: boxSize(x.look, x.box) });
       }
     }
     const kept = keepTracks(tracks).slice(0, MAX_ITEMS);
@@ -405,7 +455,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     const hand = (walk.items ?? []).filter((it) => !it.id.startsWith("auto-"));
     const specials = new Map((walk.items ?? []).filter((it) => it.special && it.n).map((it) => [it.n!, it.special!]));
     const merged = [...hand, ...items.map((it) => (specials.has(it.n!) ? { ...it, special: specials.get(it.n!) } : it))].slice(0, MAX_ITEMS);
-    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...walk, items: merged } } }, walks);
+    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...walk, items: merged, pinned: PIN_VERSION } } }, walks);
     const tagged = new Set(items.map((it) => it.n!));
     const notFound = c.products.map((p) => p.n).filter((n) => !tagged.has(n));
     await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, tagged: items.length, notFound } }));
@@ -441,7 +491,7 @@ async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Be
     i++;
     if (i % 5 === 1) await say(`Cutting product photos: ${i} of ${best.size}…`);
     const dir = aim(b.look, b.box);
-    const size = Math.max(b.box[2] - b.box[0], b.box[3] - b.box[1]) / 1000 * LOOK_FOV;
+    const size = Math.max(b.box[2] - b.box[0], b.box[3] - b.box[1]) / 1000 * b.look.fov;
     const fov = Math.min(0.8, Math.max(0.1, size * 1.5));
     try {
       let jpeg: Uint8Array;
@@ -484,20 +534,28 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     const { seconds } = await probe(src);
     const plan = lookPlan(seconds, (await readWalks()).walks[walkKey]?.tagsFrom ?? 0);
     const purse = purseOf(s);
-    const products: Array<{ n: number; en: string; fa: string }> = [];
+    const sharp = await sharpSource(walkKey);
+    const products: Array<{ n: number; en: string; fa: string; last: number }> = [];
     const best = new Map<number, Best>();
     const sightings: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }> = [];
     let stopped = "";
-    for (const [i, moment] of plan.entries()) {
+    const spentAtStart = purse.spent();
+    let looked = 0;
+    for (let i = 0; i < plan.length; ) {
+      const moment = plan[i];
       await say(`Finding products: moment ${i + 1} of ${plan.length}, ${products.length} found so far…`);
-      const jpegs = await views(src, moment.t, HEADINGS, LOOK_PITCH, LOOK_FOV, LOOK_N);
+      const jpegs = await momentViews(sharp, src, moment.t);
       let seen;
       try {
-        seen = await discoverInViews(purse, products.map((p) => ({ n: p.n, en: p.en })), moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
+        // Only those seen in the last stretch of the walk can be in view again (and the list stays short).
+        const nearby = products.filter((p) => moment.t - p.last <= NEARBY_S);
+        seen = await discoverInViews(purse, nearby.map((p) => ({ n: p.n, en: p.en })), moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
       } catch (e) {
         if (e instanceof OverBudget) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
         throw e;
       }
+      looked++;
+      const step = strideFor(spentAtStart, looked, purse.spent(), purse.limit, plan.length - i - 1);
       for (const f of seen) {
         if (f.confidence < 0.6) continue;
         const look = moment.looks.find((l) => l.id === f.view);
@@ -505,12 +563,18 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
         let p = f.same !== null ? products.find((x) => x.n === f.same) : undefined;
         if (!p) {
           if (products.length >= MAX_NUMBER) continue;
-          p = { n: products.length + 1, en: f.en, fa: f.fa };
+          p = { n: products.length + 1, en: f.en, fa: f.fa, last: moment.t };
           products.push(p);
-        } else if (!p.fa && f.fa) p.fa = f.fa;
+        } else {
+          if (!p.fa && f.fa) p.fa = f.fa;
+          p.last = moment.t;
+        }
         keepBest(best, p.n, look, f.box, f.confidence);
         sightings.push({ look, n: p.n, box: f.box, confidence: f.confidence });
       }
+      if (!Number.isFinite(step)) { stopped = ` Stopped at ${Math.round(moment.t)} s of ${Math.round(seconds)}: the $5 budget is used up.`; break; }
+      if (step > 1 && !stopped.includes("every")) stopped = ` To stay within the $5 budget, looked at every ${step}th moment from ${Math.round(moment.t)} s on.`;
+      i += step;
     }
     if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);
     const photos = await cutPhotos(s, src, best, say);
@@ -527,7 +591,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
       if (!frames.length) continue;
       const grey = frames.map((f) => Float32Array.from(f));
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
-      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)) });
+      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box)), size: boxSize(x.look, x.box) });
     }
     const byN = new Map(listed.map((p) => [p.n, p]));
     const count = new Map<number, number>();
@@ -539,7 +603,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     const walks = await readWalks();
     const walk = walks.walks[walkKey] ?? { doors: [] };
     const hand = (walk.items ?? []).filter((it) => !it.id.startsWith("auto-"));
-    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...walk, items: [...hand, ...items].slice(0, MAX_ITEMS) } } }, walks);
+    await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...walk, items: [...hand, ...items].slice(0, MAX_ITEMS), pinned: PIN_VERSION } } }, walks);
     const tagged = new Set(items.map((it) => it.n!));
     await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, found: walkKey, tagged: items.length, notFound: listed.map((p) => p.n).filter((n) => !tagged.has(n)) } }));
     return `${products.length} products found in the video, ${items.length} tags pinned. Give each its price on this page («Products»).${stopped}`;

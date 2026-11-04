@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   doorPhotoOf,
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, itemHitAt, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -505,4 +505,65 @@ test("tags sway with the camera exactly, and lose only the finder's own shake", 
   }
   assert.ok(worst < 0.025, `each tag keeps to its product through the sway (${worst.toFixed(4)} rad off; finds were ±0.02)`);
   assert.ok(jerk < 0.0003, `no shake from one screen frame to the next (${jerk.toFixed(5)})`);
+});
+
+test("a book's light stays on the book as the camera walks down the aisle past it", () => {
+  // The camera walks down an aisle at 0.56 m/s, held 2 m up, swaying as much
+  // as measured on the bookshop's walk (about 0.05° a frame);
+  // books sit on shelves both sides, 0.8–2 m from its path, at many heights.
+  const pace = 0.56;
+  const sway = (t: number) => 0.004 * Math.sin(2 * Math.PI * 1.1 * t) + 0.002 * Math.sin(2 * Math.PI * 2.3 * t + 1);
+  const tip = (t: number) => 0.003 * Math.sin(2 * Math.PI * 1.1 * t + 0.5);
+  const books = Array.from({ length: 12 }, (_, k) => ({ side: k % 2 ? 1 : -1, d: 0.8 + (k % 4) * 0.4, s: 0.6 + k * 0.45, h: -1.8 + (k % 5) * 0.35 }));
+  const truth = (bk: typeof books[number], t: number) => {
+    const along = bk.s - pace * t;
+    const x = Math.atan2(bk.side * bk.d, along) + sway(t);
+    const y = Math.atan2(bk.h, Math.hypot(bk.d, along)) + tip(t) * Math.cos(x);
+    return { x, y };
+  };
+  let seed = 11;
+  // The finder: ±0.25° — three times what the follow keeps to on a clean picture (`tagging.test.ts`).
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.0087;
+  // Each book is followed for 3 s round the moment the camera is nearly level with it.
+  const items = books.map((bk, k) => {
+    const t0 = Math.max(0, bk.s / pace - 2.2);
+    return { id: `b${k}`, label: { en: `B${k}` }, pins: Array.from({ length: 16 }, (_, i) => { const t = t0 + i * 0.2, p = truth(bk, t); return { t, x: wrapAngle(p.x + rnd()), y: p.y + rnd() }; }) };
+  });
+  const walk = { doors: [], items };
+  let worst = 0, sum = 0, n = 0, jerk = 0;
+  for (const [k, it] of items.entries()) {
+    const a = it.pins[1].t, z = it.pins[it.pins.length - 2].t;
+    let prev: { x: number; y: number } | null = null, prevStep: { x: number; y: number } | null = null;
+    for (let t = a; t <= z; t += 1 / 60) {
+      const at = itemsAt(walk, t, true).find((s) => s.item.id === it.id)!;
+      const p = truth(books[k], t);
+      const off = Math.hypot(angleDiff(at.x, p.x), at.y - p.y);
+      worst = Math.max(worst, off); sum += off; n++;
+      if (prev) {
+        const step = { x: angleDiff(at.x, prev.x), y: at.y - prev.y };
+        if (prevStep) jerk = Math.max(jerk, Math.hypot(step.x - prevStep.x, step.y - prevStep.y));
+        prevStep = step;
+      }
+      prev = at;
+    }
+  }
+  const mean = sum / n;
+  assert.ok(mean < 0.0035, `on average the light is ${(mean * 180 / Math.PI).toFixed(2)}° from the book (finds were ±0.25°)`);
+  assert.ok(worst < 0.011, `at worst ${(worst * 180 / Math.PI).toFixed(2)}° from the book`);
+  assert.ok(jerk < 0.0003, `no shake from one screen frame to the next (${jerk.toFixed(5)})`);
+});
+
+
+test("a tap anywhere on a product's outline opens it; the smaller wins where outlines overlap", () => {
+  const deg = Math.PI / 180;
+  const row = { id: "row", x: 0, y: 0, size: { w: 12 * deg, h: 4 * deg } }; // three copies of a title, side by side
+  const one = { id: "one", x: 3 * deg, y: 0.5 * deg, size: { w: 2 * deg, h: 3 * deg } };
+  const bare = { id: "bare", x: 40 * deg, y: -10 * deg };
+  const shown = [row, one, bare];
+  assert.equal(itemHitAt(shown, -5 * deg, 1 * deg)?.id, "row", "the far end of the row of copies");
+  assert.equal(itemHitAt(shown, 3.4 * deg, 0.2 * deg)?.id, "one", "inside both: the smaller one");
+  assert.equal(itemHitAt(shown, 41 * deg, -10 * deg)?.id, "bare", "no outline: near its light");
+  assert.equal(itemHitAt(shown, 20 * deg, 0), null, "between products: nothing");
+  // Round the back of the view: −179° and 179° are 2° apart.
+  assert.equal(itemHitAt([{ id: "back", x: 179 * deg, y: 0, size: { w: 6 * deg, h: 4 * deg } }], -179 * deg, 0)?.id, "back");
 });

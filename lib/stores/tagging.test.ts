@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { panoPixel } from "../splats/projection.ts";
 import { checkWalks } from "../splats/walks.ts";
-import { FOLLOW_FPS, LOOK_EVERY, LOOK_N, LOOK_PITCH, aim, follow, itemOf, keepTracks, lookPlan, type Track } from "./tagging.ts";
+import { FOLLOW_FPS, FOLLOW_W, LOOK_EVERY, LOOK_FOV, LOOK_N, LOOK_PITCH, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, follow, itemOf, keepTracks, lookPlan, type Track } from "./tagging.ts";
 import { doorOf, emptyBazaar, joins, moveArea, moveStore, spotFor, takeSpot, type Bazaar } from "./bazaar.ts";
 
 const deg = Math.PI / 180;
@@ -16,17 +16,22 @@ test("the tagger looks all round every few seconds", () => {
   const plan = lookPlan(20);
   assert.equal(plan[0].t, 1);
   assert.ok(plan.every((m, i) => i === 0 || Math.abs(m.t - plan[i - 1].t - LOOK_EVERY) < 1e-9));
-  assert.equal(plan[0].looks.length, 6);
-  assert.equal(new Set(plan.flatMap((m) => m.looks.map((l) => l.id))).size, plan.length * 6, "every view has its own id");
+  // Shelf looks (2026-11-04): 8 directions × 2 heights, 50° each, so a book's spine is sharp enough to read.
+  assert.equal(plan[0].looks.length, SHELF_HEADINGS.length * SHELF_PITCHES.length);
+  assert.equal(new Set(plan.flatMap((m) => m.looks.map((l) => l.id))).size, plan.length * 16, "every view has its own id");
+  assert.ok(plan[0].looks.every((l) => l.fov === SHELF_FOV), "every view 50° wide");
 });
 
 test("a box's middle is aimed the way ffmpeg cut the view: the view's centre is its heading, right is + yaw", () => {
-  const look = { t: 1, heading: 60 * deg, id: "a" };
+  const look = { t: 1, heading: 60 * deg, pitch: LOOK_PITCH, fov: LOOK_FOV, id: "a" };
   const c = aim(look, [400, 400, 600, 600]);
   assert.ok(Math.abs(c.lon - 60 * deg) < 1e-6 && Math.abs(c.lat - LOOK_PITCH) < 1e-6);
   assert.ok(aim(look, [800, 450, 900, 550]).lon > 60 * deg, "right of centre is further right");
   assert.ok(aim(look, [450, 50, 550, 150]).lat > LOOK_PITCH, "up is up");
   void LOOK_N;
+  // The outline: a box a fifth of a 75° view wide is 17.5° across (2·atan(0.2·tan 37.5°)).
+  const size = boxSize(look, [400, 400, 600, 600]);
+  assert.ok(Math.abs(size.w - 17.5 * deg) < 0.3 * deg && Math.abs(size.h - 17.5 * deg) < 0.3 * deg, `${size.w / deg}° × ${size.h / deg}°`);
 });
 
 /** Noise panoramas with a bright «product» drifting right as the camera walks past it. */
@@ -102,11 +107,39 @@ test("stores take the hallway's free spots in order; the operator moves them; th
 test("every heading the Tagger looks along is a yaw ffmpeg's v360 accepts (−180…180°)", async () => {
   const { v360Yaw } = await import("./media.ts");
   const { HEADINGS } = await import("./tagging.ts");
-  for (const h of HEADINGS) {
+  for (const h of [...HEADINGS, ...SHELF_HEADINGS]) {
     const y = v360Yaw(h);
     assert.ok(y >= -180 && y <= 180, `heading ${(h * 180) / Math.PI}° became ${y}`);
   }
   assert.equal(Math.round(v360Yaw((240 * Math.PI) / 180)), -120);
   assert.equal(Math.round(v360Yaw((300 * Math.PI) / 180)), -60);
   assert.equal(Math.round(v360Yaw((60 * Math.PI) / 180)), 60);
+});
+
+test("a follow is precise to a fraction of a pixel: the dot does not zig-zag or creep", () => {
+  const W = FOLLOW_W, H = FOLLOW_W / 2;
+  // Book spines: fine stripes of many shades, the same every time; the camera turns and tips a little each frame.
+  const shelf = (lon: number, lat: number) => 120 + 50 * Math.sin(lon * 180 + Math.sin(lon * 23) * 3) + 30 * Math.sin(lat * 90 + lon * 40) + 20 * Math.sin(lon * 57 - lat * 33);
+  const truth = (i: number) => ({ lon: (20 + 0.37 * i + 0.2 * Math.sin(i * 0.9)) * deg, lat: (-8 + 0.13 * i) * deg });
+  const frames: Float32Array[] = [];
+  for (let i = 0; i < 17; i++) {
+    const f = new Float32Array(W * H), d = truth(i), d0 = truth(8);
+    // Only round the product matters: the rest stays plain.
+    const p = panoPixel(d.lon, d.lat, "equirect", W, H);
+    for (let y = Math.floor(p.y) - 60; y <= Math.floor(p.y) + 60; y++) {
+      for (let x = Math.floor(p.x) - 60; x <= Math.floor(p.x) + 60; x++) {
+        const lon = -Math.PI + ((x + 0.5) / W) * 2 * Math.PI, lat = Math.PI / 2 - ((y + 0.5) / H) * Math.PI;
+        f[y * W + ((x % W) + W) % W] = shelf(lon - (d.lon - d0.lon), lat - (d.lat - d0.lat));
+      }
+    }
+    frames.push(f);
+  }
+  const pins = follow(frames, W, H, 0, 8, truth(8));
+  assert.ok(pins.length >= 15, `followed ${pins.length} of 17 frames`);
+  let worst = 0;
+  for (const q of pins) {
+    const i = Math.round(q.t * FOLLOW_FPS);
+    worst = Math.max(worst, Math.hypot(q.x - truth(i).lon, q.y - truth(i).lat));
+  }
+  assert.ok(worst < 0.1 * deg, `within ${(worst / deg).toFixed(3)}° of the product in every frame (a pixel is ${(360 / W).toFixed(3)}°)`);
 });

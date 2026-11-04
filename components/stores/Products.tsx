@@ -56,7 +56,7 @@ export default function Products({ api, products, reload }: { api: string; produ
   );
 }
 
-function ProductCard({ api, product, others, close, reload }: { api: string; product: Product; others: Product[]; close: () => void; reload: () => Promise<void> }) {
+export function ProductCard({ api, product, others, close, reload }: { api: string; product: Product; others: Product[]; close: () => void; reload: () => Promise<void> }) {
   const [step, setStep] = useState<Step>("name");
   const [en, setEn] = useState(product.en ?? "");
   const [fa, setFa] = useState(product.fa ?? "");

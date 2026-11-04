@@ -142,8 +142,17 @@ export type WalkItem = {
    * "$15.99", "2/$5".
    */
   special?: { was: string; now: string };
+  /**
+   * THE PRODUCT'S OUTLINE (owner, 2026-11-04: "click anywhere on that product
+   * (book) boundary - or couple of books with the same title"): how wide and
+   * tall it is round its dot — radians on a 360° walk, fractions of the frame
+   * on a flat video. A tap anywhere inside opens it (`itemHit`). Without one, a
+   * small round area round the dot.
+   */
+  size?: { w: number; h: number };
 };
-export const MAX_ITEMS = 150;
+/** At most this many products on one walk (owner, 2026-11-04: "make the 150 to be 250"). */
+export const MAX_ITEMS = 250;
 
 /** What the walk says aloud as the shopper passes an item on special — English only (founder). */
 export function specialSay(item: WalkItem, name = item.label.en): string | null {
@@ -226,6 +235,12 @@ export type Walk = {
    * (`lib/splats/pace.ts`): Slow and Fast play at standard speeds from it.
    */
   pace?: number;
+  /**
+   * Which follow pinned the crew's products on this walk (`PIN_VERSION` in
+   * `lib/stores/tagging.ts`). A walk pinned by an older one is followed
+   * again from the same sightings, with no AI (`lib/stores/repin.ts`).
+   */
+  pinned?: number;
   /**
    * THE STORE'S DOOR PHOTO, SHOWN FOR 4 s AS ITS WALK BEGINS (owner,
    * 2026-11-03: "always add the photo of the door of the store for 4 sec to
@@ -420,6 +435,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       if (tilt.up !== undefined || tilt.down !== undefined) walk.tilt = tilt;
       else problems.push(`${key}: «tilt» needs up (0…90°) and/or down (−90…0°) in radians.`);
     }
+    if (r.pinned !== undefined && r.pinned !== null) {
+      if (typeof r.pinned === "number" && Number.isInteger(r.pinned) && r.pinned >= 1 && r.pinned <= 99) walk.pinned = r.pinned;
+      else problems.push(`${key}: «pinned» must be the follow's version (a whole number).`);
+    }
     if (r.pace !== undefined && r.pace !== null) {
       if (typeof r.pace === "number" && r.pace >= 0.1 && r.pace <= 5) walk.pace = r.pace;
       else problems.push(`${key}: «pace» must be the walking speed in m/s (0.1…5).`);
@@ -531,11 +550,17 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         if (!was || !now) { problems.push(`${where}: a special needs its price before («was») and now.`); continue; }
         special = { was, now };
       }
+      let size: WalkItem["size"];
+      if (x.size !== undefined && x.size !== null) {
+        const z = (typeof x.size === "object" ? x.size : {}) as Record<string, unknown>;
+        if (!finite(z.w) || !finite(z.h) || z.w <= 0 || z.h <= 0 || z.w > 2 || z.h > 2) { problems.push(`${where}: its outline must be { w, h }, each above 0 and at most 2.`); continue; }
+        size = { w: z.w, h: z.h };
+      }
       itemIds.add(id);
       kept.push({
         id, label: fa ? { en, fa } : { en },
         ...(price ? { price } : {}), ...(hasImage ? { image: x.image as string } : {}), ...(typeof num === "number" ? { n: num } : {}),
-        ...(special ? { special } : {}),
+        ...(special ? { special } : {}), ...(size ? { size } : {}),
         pins: sortItemPins((pins as Array<Record<string, number>>).map((q) => ({ t: q.t, x: q.x, y: q.y }))),
       });
     }
@@ -718,24 +743,29 @@ export function itemAt(item: WalkItem, t: number, round: boolean, slack = ITEM_S
  * ⚠️ TAGS STAND AS STILL AS THE BOOKS THEY ARE PINNED ON (owner, 2026-11-04,
  * on a bookshop of 150 tags: "the labels are moving and shaking and
  * dancing!! … not a single shake or move or travel from price tags are
- * accepted"). A followed product's pins are found again frame by frame, 5 a
- * second, and each find is off by a little; drawn straight from pin to pin the
- * tag zig-zagged round the book. Measured on that walk: the finds' wobble was
- * mostly each tag's own (noise), partly shared by every tag at once (the
- * camera swaying as the photographer walks, which the books on screen do too).
+ * accepted"; then: "still tends to move a bit … try to make them as
+ * stationary as book themselves"). A followed product's pins are found again
+ * frame by frame, 5 a second, and each find is off by a little.
  *
- * So the pins are steadied before they are drawn (`steadyItems`):
+ * Measured on the bookshop's walk (2026-11-04): the camera itself barely
+ * sways (0.05° a frame: Insta360's stabilisation), while the finds zig-zag by
+ * 1.4° — the follow's own error, which `lib/stores/tagging.ts` now keeps
+ * small (`follow`: a finer picture, to a fraction of a pixel, held to the
+ * product as first seen). What is left is steadied here (`steadyItems`):
  *   1. a lone find that jumped is put back in line (median of 3);
- *   2. THE CAMERA'S SWAY: every `GRID_S`, how all tags in view moved — the
- *      middle of their sideways moves (the camera turning), and up/down fitted
- *      as the camera tipping (`a·cos x + b·sin x + c`) — when at least
- *      `MIN_SHARED` tags say so; a tag keeps that part exactly;
- *   3. what is left of each tag (the camera walking past it, and the noise)
- *      only changes smoothly, so it is put on a local quadratic through its
- *      pins within `STEADY_S` (weighted, nearer counts more).
+ *   2. each product's finds are put on a local quadratic within `STEADY_S`
+ *      (weighted, nearer counts more): a still thing seen from a walking
+ *      camera only moves smoothly;
+ *   3. what is left over that every tag in view shares (at least
+ *      `MIN_SHARED`, every `GRID_S`: sideways, and up/down fitted as the
+ *      camera tipping, `a·cos x + b·sin x + c`) is the camera's sway, and each
+ *      tag gets it back; the noise, each tag's own, does not.
  * The pins saved stay as found; this is only how they are drawn. On a 360°
  * walk x is unwrapped first, so a product crossing behind the viewer does not
- * spin. Between pins the tag follows a cubic curve (`itemAt`): no corners.
+ * spin. Between pins the dot follows a cubic curve (`itemAt`): no corners.
+ * (Tried and dropped: fitting each track to the exact curve of a still thing
+ * walked past, and measuring the camera's sway from every frame of the
+ * video. On synthetic and real walks neither beat this.)
  */
 export const STEADY_S = 1.0;
 const GRID_S = 0.1;
@@ -793,6 +823,11 @@ function solve3(M: number[][], r: number[]): number[] | null {
   return [0, 1, 2].map((c) => det(M.map((row, i) => row.map((v, j) => (j === c ? r[i] : v)))) / D);
 }
 
+/** A product's smooth path at its pins: a local quadratic within `STEADY_S`. */
+function smoothPath(ts: number[], xs: number[], ys: number[]): { x: number[]; y: number[] } {
+  return { x: ts.map((t, i) => localFit(ts, xs, t, STEADY_S, xs[i])), y: ts.map((t, i) => localFit(ts, ys, t, STEADY_S, ys[i])) };
+}
+
 /** Steadies every item of a walk together (see above), once per items list; `itemAt` then draws the steadied pins. */
 export function steadyItems(items: WalkItem[], round: boolean): void {
   const done = steadyDone[round ? 1 : 0];
@@ -801,89 +836,104 @@ export function steadyItems(items: WalkItem[], round: boolean): void {
   const cache = steadyCache[round ? 1 : 0];
   const followed = items.filter((it) => it.pins.length >= 3);
   const clean = followed.map((it) => cleanPins(it.pins, round));
-  // How each tag moved, per grid step: { x rate, y rate, x }.
-  const cells = new Map<number, Array<{ vx: number; vy: number; x: number }>>();
-  clean.forEach(({ ts, xs, ys }) => {
+  const paths = clean.map(({ ts, xs, ys }) => smoothPath(ts, xs, ys));
+  // What is left over of each tag, at each grid step it spans (between its pins, not across a gap).
+  const cells = new Map<number, Array<{ ex: number; ey: number; x: number }>>();
+  clean.forEach(({ ts, xs, ys }, k) => {
+    const ex = xs.map((v, i) => v - paths[k].x[i]), ey = ys.map((v, i) => v - paths[k].y[i]);
     for (let i = 0; i + 1 < ts.length; i++) {
       const dt = ts[i + 1] - ts[i];
       if (dt <= 0 || dt > MAX_GAP) continue;
-      const m = { vx: (xs[i + 1] - xs[i]) / dt, vy: (ys[i + 1] - ys[i]) / dt, x: xs[i] };
-      for (let g = Math.ceil(ts[i] / GRID_S - 1e-9); g * GRID_S < ts[i + 1] - 1e-9; g++) {
+      for (let g = Math.ceil(ts[i] / GRID_S - 1e-9); g * GRID_S < ts[i + 1] - 1e-9 || (i + 2 === ts.length && g * GRID_S <= ts[i + 1] + 1e-9); g++) {
+        const f = (g * GRID_S - ts[i]) / dt;
+        const m = { ex: ex[i] + (ex[i + 1] - ex[i]) * f, ey: ey[i] + (ey[i + 1] - ey[i]) * f, x: xs[i] + (xs[i + 1] - xs[i]) * f };
         const list = cells.get(g);
         if (list) list.push(m);
         else cells.set(g, [m]);
       }
     }
   });
-  // The camera's sway per grid step: x rate, and the tip (a, b, c) for y.
+  // The camera's sway per grid step: sideways, and the tip (a, b, c) for up/down.
   const raw = new Map<number, { x: number; a: number; b: number; c: number }>();
   for (const [g, list] of cells) {
     if (list.length < MIN_SHARED) continue;
-    const x = Math.max(-1, Math.min(1, median(list.map((m) => m.vx))));
-    let a = 0, b = 0, c = median(list.map((m) => m.vy));
+    const x = median(list.map((m) => m.ex));
+    let a = 0, b = 0, c = median(list.map((m) => m.ey));
     if (round && list.length >= MIN_SHARED + 1) {
       const M = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], r = [0, 0, 0];
       for (const m of list) {
         const f = [Math.cos(m.x), Math.sin(m.x), 1];
-        for (let i = 0; i < 3; i++) { r[i] += f[i] * m.vy; for (let j = 0; j < 3; j++) M[i][j] += f[i] * f[j]; }
+        for (let i = 0; i < 3; i++) { r[i] += f[i] * m.ey; for (let j = 0; j < 3; j++) M[i][j] += f[i] * f[j]; }
       }
       const s3 = solve3(M, r);
-      if (s3 && s3.every((v) => Math.abs(v) < 1)) [a, b, c] = s3;
+      if (s3 && s3.every((v) => Math.abs(v) < 0.1)) [a, b, c] = s3;
     }
-    raw.set(g, { x, a, b, c: Math.max(-1, Math.min(1, c)) });
+    if (Math.abs(x) < 0.1 && Math.abs(c) < 0.1) raw.set(g, { x, a, b, c });
   }
   // The sway is measured from only a few tags at a time, so its own shake is
-  // taken out too: each step's sway is the weighted mean of the steps within
-  // `SWAY_S` (a step nobody measured counts as no sway). A walking sway is
-  // about one swing a second; it stays.
-  const sway = new Map<number, { x: number; a: number; b: number; c: number }>();
+  // taken out too: the weighted mean of the steps within `SWAY_S` (a step
+  // nobody measured counts as no sway).
   const reach = Math.round(SWAY_S / GRID_S);
-  for (const g of raw.keys()) {
-    for (let h = g - reach; h <= g + reach; h++) {
-      if (sway.has(h)) continue;
-      let w = 0, x = 0, a = 0, b = 0, c = 0;
-      for (let j = h - reach; j <= h + reach; j++) {
-        const u = Math.abs(j - h) / (reach + 1), wt = (1 - u * u * u) ** 3;
-        w += wt;
-        const s = raw.get(j);
-        if (s) { x += wt * s.x; a += wt * s.a; b += wt * s.b; c += wt * s.c; }
-      }
-      sway.set(h, { x: x / w, a: a / w, b: b / w, c: c / w });
+  const memo = new Map<number, { x: number; a: number; b: number; c: number }>();
+  const shared = (g: number) => {
+    let s = memo.get(g);
+    if (s) return s;
+    let w = 0, x = 0, a = 0, b = 0, c = 0;
+    for (let j = g - reach; j <= g + reach; j++) {
+      const u = Math.abs(j - g) / (reach + 1), wt = (1 - u * u * u) ** 3;
+      w += wt;
+      const r = raw.get(j);
+      if (r) { x += wt * r.x; a += wt * r.a; b += wt * r.b; c += wt * r.c; }
     }
-  }
+    s = { x: x / w, a: a / w, b: b / w, c: c / w };
+    memo.set(g, s);
+    return s;
+  };
   followed.forEach((it, k) => {
-    const { ts, xs, ys } = clean[k];
-    // The sway carried to each of this tag's pins (summed from its first).
-    const ox = [0], oy = [0];
-    for (let i = 1; i < ts.length; i++) {
-      let dx = 0, dy = 0;
-      if (ts[i] - ts[i - 1] <= MAX_GAP) {
-        for (let g = Math.ceil(ts[i - 1] / GRID_S - 1e-9); g * GRID_S < ts[i] - 1e-9; g++) {
-          const s = sway.get(g);
-          if (!s) continue;
-          const lo = Math.max(ts[i - 1], g * GRID_S), hi = Math.min(ts[i], (g + 1) * GRID_S);
-          const x = xs[i - 1] + ((xs[i] - xs[i - 1]) * (lo - ts[i - 1])) / (ts[i] - ts[i - 1] || 1);
-          dx += s.x * (hi - lo);
-          dy += (round ? s.a * Math.cos(x) + s.b * Math.sin(x) + s.c : s.c) * (hi - lo);
-        }
-      }
-      ox.push(ox[i - 1] + dx);
-      oy.push(oy[i - 1] + dy);
-    }
-    const rx = xs.map((v, i) => v - ox[i]), ry = ys.map((v, i) => v - oy[i]);
-    cache.set(it.pins, ts.map((t, i) => ({ t, x: localFit(ts, rx, t, STEADY_S, rx[i]) + ox[i], y: localFit(ts, ry, t, STEADY_S, ry[i]) + oy[i] })));
+    const { ts, xs } = clean[k];
+    const out = ts.map((t, i) => {
+      // The sway at this pin's moment, between the two grid steps round it.
+      const g0 = Math.floor(t / GRID_S + 1e-9), f = t / GRID_S - g0;
+      const s0 = shared(g0), s1 = shared(g0 + 1);
+      const mix = (p: number, q: number) => p + (q - p) * f;
+      const sx = mix(s0.x, s1.x);
+      const sy = round ? mix(s0.a, s1.a) * Math.cos(xs[i]) + mix(s0.b, s1.b) * Math.sin(xs[i]) + mix(s0.c, s1.c) : mix(s0.c, s1.c);
+      return { t, x: paths[k].x[i] + sx, y: paths[k].y[i] + sy };
+    });
+    cache.set(it.pins, out);
   });
 }
 
-/** An item's steadied pins (with the walk's sway when `steadyItems` saw its walk; on its own otherwise). */
+/** An item's steadied pins (with the other tags in view when `steadyItems` saw its walk; on its own otherwise). */
 export function steadyPins(pins: ItemPin[], round: boolean): ItemPin[] {
   const cache = steadyCache[round ? 1 : 0];
   const hit = cache.get(pins);
   if (hit) return hit;
   const { ts, xs, ys } = cleanPins(pins, round);
-  const out = ts.map((t, i) => ({ t, x: localFit(ts, xs, t, STEADY_S, xs[i]), y: localFit(ts, ys, t, STEADY_S, ys[i]) }));
+  const p = pins.length >= 3 ? smoothPath(ts, xs, ys) : { x: xs, y: ys };
+  const out = ts.map((t, i) => ({ t, x: p.x[i], y: p.y[i] }));
   cache.set(pins, out);
   return out;
+}
+
+/** A product with no outline is found by a tap this near its light (rad). */
+export const NO_SIZE = 0.035;
+
+/**
+ * Which shown product a tap at (yaw, pitch) is on: inside its outline (a
+ * little margin round it), the smallest such when outlines overlap; else the
+ * nearest light within `NO_SIZE`. Directions as the pins have them.
+ */
+export function itemHitAt<T extends { x: number; y: number; size?: { w: number; h: number } }>(shown: T[], yaw: number, pitch: number): T | null {
+  let best: T | null = null, area = Infinity, near: T | null = null, nearD = Infinity;
+  for (const s of shown) {
+    const dx = Math.abs(angleDiff(yaw, s.x)) * Math.cos(s.y), dy = Math.abs(pitch - s.y);
+    const w = (s.size?.w ?? 0) / 2 + 0.01, h = (s.size?.h ?? 0) / 2 + 0.01;
+    if (s.size && dx <= w && dy <= h && w * h < area) { best = s; area = w * h; }
+    const d = Math.hypot(dx, dy);
+    if (d < nearD) { nearD = d; near = s; }
+  }
+  return best ?? (near && nearD <= NO_SIZE ? near : null);
 }
 
 /** When an item is first seen: its first pin (0 for an old item with none). */
