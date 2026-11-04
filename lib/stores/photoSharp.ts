@@ -18,6 +18,10 @@ import { run, v360Yaw, photoFrame, sharpnessAt } from "./media";
 import type { ItemPin } from "@/lib/splats/walks";
 
 export const CANDIDATES = 12, MIN_PX = 480, MAX_PX = 1280, MAX_GROW = 1.25;
+/** A photo's side (px) when cut at the finder's own sighting: enlarged in ONE step, as the player does on screen. */
+export const SIGHTING_PX = 1024;
+/** Moments looked at round a sighting (s): the sharpest of them is cut. Small, so the product stays in the box. */
+export const AROUND = [-0.2, -0.1, 0, 0.1, 0.2];
 
 const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
 
@@ -51,6 +55,35 @@ export async function sharpestPhoto(input: string, srcW: number, pins: ItemPin[]
     `drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}:color=yellow@0.9:t=${Math.max(2, Math.round(n / 300))}`,
     "-threads", "1", "-q:v", "2", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
   return { jpeg, t: q.t };
+}
+
+/**
+ * ⚠️ AT THE FINDER'S OWN SIGHTING (owner, 2026-11-05; measured on the bookshop's
+ * blue books): along a light the camera is often far from the product, so the
+ * box drawn at the size the finder saw held a dozen books. At the sighting the
+ * box fits exactly, and the closest sighting (the largest box) has the most
+ * pixels. So: the product's closest sighting, the sharpest frame within
+ * ±0.2 s of it, from the source in the sighting's own times (the upload: the
+ * original's times), enlarged ONCE (v360 Lanczos, straight to `SIGHTING_PX`)
+ * with a light unsharp, and the yellow box. Nothing averaged or invented.
+ */
+export type Seen = { t: number; lon: number; lat: number; size: { w: number; h: number } };
+export async function sightingPhoto(input: string, seen: Seen, end = Infinity): Promise<{ jpeg: Uint8Array; t: number }> {
+  let best: { t: number; score: number } | null = null;
+  for (const dt of AROUND) {
+    const t = Math.max(0, Math.min(end - 0.05, seen.t + dt));
+    try {
+      const score = await sharpnessAt(input, t, seen.lon, seen.lat, seen.size);
+      if (!best || score > best.score) best = { t, score };
+    } catch { /* that moment is skipped */ }
+  }
+  const t = best?.t ?? seen.t, n = SIGHTING_PX;
+  const { fov, box } = photoFrame(seen.size, n);
+  const jpeg = new Uint8Array(await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(3), "-i", input, "-frames:v", "1", "-vf",
+    `v360=input=e:output=flat:yaw=${v360Yaw(seen.lon).toFixed(3)}:pitch=${deg(seen.lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}:interp=lanczos,` +
+    `unsharp=5:5:0.4:5:5:0,drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}:color=yellow@0.9:t=4`,
+    "-threads", "1", "-q:v", "2", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
+  return { jpeg, t };
 }
 
 /** A time in a cut walk → the same moment in the original (the upload's times), from the cut's `parts` in order. */

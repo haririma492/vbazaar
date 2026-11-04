@@ -513,17 +513,21 @@ quality and choice to break away and enter in a shop. (period)"*
   It speeds up, cruises at 1 rad/s and slows into the shelf. ⚠️ Only a
   deliberate sideways push of the stick or a drag cancels it: the slightest
   sideways had cancelled every turn for shoppers driving with the stick.
-- **Product photos: the sharpest single frame, at the video's own pixels**
-  (owner, 2026-11-04: *"improve the pixels of the product photos"*; then
-  2026-11-05: *"compare to screenshot I myself got when stopped the movie …
-  the latter is much better. The green rectangle … keep it"*). Combining 5
-  frames (cut at 512 px, averaged, blown up to 1024) was worse than a paused
-  frame and is dropped. Now (`lib/stores/photoSharp.ts`): up to 12 moments of
-  each light are measured for sharpness in the upload itself, at the
-  original's time even after a cut (`originalTime`); the sharpest is cut once
-  at as many pixels as the product covers in the source (`nativeSize`, at most
-  1.25× blown up), Lanczos, with the yellow box. Nothing averaged, sharpened or
-  invented; no AI upscaling (it invents letters). Resumable
+- **Product photos: cut where the finder saw the product** (owner, 2026-11-04:
+  *"improve the pixels of the product photos"*; then 2026-11-05: *"compare to
+  screenshot I myself got when stopped the movie … the latter is much better.
+  The green rectangle … keep it"*). Tried and dropped: combining 5 frames
+  (cut at 512, averaged, blown up to 1024), and the sharpest moment anywhere
+  along the light: away from the finder's moment the camera is further off and
+  the box (the size the finder saw) holds a dozen books. A product covers only
+  about 200 px of even an 8K video, so what matters is the moment and one clean
+  enlargement. Now (`lib/stores/photoSharp.ts`, `sightingPhoto`): the
+  product's CLOSEST sighting (`stores/<slug>/sightings.json`, the original's
+  times), the sharpest frame within ±0.2 s, from the upload, enlarged once to
+  1024 (v360 Lanczos, light unsharp), with the yellow box, which fits there.
+  Every product the finder saw gets one (all 302 on the bookshop, not only the
+  145 with lights); a sheet store's fall back to their light. Nothing averaged
+  or invented; no AI upscaling (it invents letters). Resumable
   (`stores/<slug>/photos-done.json`, `PHOTO_VERSION`).
 - **The Route optimizer** (owner, 2026-11-04: *"edit the ride - the route so
   there is not so much back and forth … smooth move from shelf to shelf in

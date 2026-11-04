@@ -33,8 +33,9 @@ import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
 import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
-import { sharpestPhoto, originalTime } from "./photoSharp";
+import { sharpestPhoto, sightingPhoto, originalTime, type Seen } from "./photoSharp";
 import { cutParts } from "@/lib/splats/cut-job";
+import { originalKeyOf } from "@/lib/splats/cut";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, capTracks, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
@@ -351,6 +352,9 @@ async function stepPhotos(s: StoreRecord, say: (note: string) => Promise<void>):
  * of paying for the search again. `stores/<slug>/sightings.json`, masters.
  */
 export type Sighting = { n: number; t: number; lon: number; lat: number; size: { w: number; h: number }; confidence: number };
+async function readSightingsOf(slug: string): Promise<Sighting[] | null> {
+  try { const t = await readMastersText(sightingsKey(slug)); const v = t ? JSON.parse(t) : null; return Array.isArray(v) ? (v as Sighting[]) : null; } catch { return null; }
+}
 export const sightingsKey = (slug: string) => `stores/${slug}/sightings.json`;
 async function saveSightings(slug: string, list: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }>): Promise<void> {
   const out: Sighting[] = list.map((x) => {
@@ -587,7 +591,8 @@ export async function storePhotosState(slug: string): Promise<{ state: "working"
   const c = await readCatalogue(sceneOf(slug));
   // Out of the products that have a light (a photo needs one to aim at); the rest keep the finder's photo.
   const walk = s?.out.walk ? (await readWalks()).walks[s.out.walk] : undefined;
-  const total = new Set((walk?.items ?? []).filter((it) => it.n && it.size && it.pins.length).map((it) => it.n)).size || (c?.products.length ?? 0);
+  void walk;
+  const total = c?.products.length ?? 0;
   let done = 0, at: string | null = null;
   try {
     const t = await readMastersText(`stores/${slug}/photos-done.json`);
@@ -601,7 +606,7 @@ export async function storePhotosState(slug: string): Promise<{ state: "working"
 }
 
 /** Bumped when the photos are made a new way: every store's are made again. */
-const PHOTO_VERSION = "#sharp-1";
+const PHOTO_VERSION = "#sighting-1";
 
 export async function recutPhotos(slug: string): Promise<string> {
   const s = await readStore(slug);
@@ -639,16 +644,35 @@ export async function recutPhotos(slug: string): Promise<string> {
     await writeMastersJson(doneKey, { version, done, at: new Date().toISOString() });
     photos.clear();
   };
-  for (const [n, it] of lights) {
+  // ⚠️ AT THE FINDER'S OWN SIGHTING (owner, 2026-11-05): every product it found has one, in the
+  // original's times (the upload's), where its box fits exactly; the closest (largest) is used. Products
+  // without one (a sheet store's) fall back to the sharpest moment along their light.
+  const closest = new Map<number, Seen>();
+  for (const x of (await readSightingsOf(slug)) ?? []) {
+    const had = closest.get(x.n);
+    if (!had || x.size.w * x.size.h > had.size.w * had.size.h) closest.set(x.n, { t: x.t, lon: x.lon, lat: x.lat, size: x.size });
+  }
+  // The sightings' source: the upload; else the walk as it was before any cut (the same times).
+  let seenInput = s.files.video ? input : null;
+  if (!seenInput && closest.size) {
+    const orig = originalKeyOf(walkKey);
+    seenInput = parts.length ? ((await webObjectExists(orig)) ? await presignGet(orig, "web", 6 * 3600) : null) : input;
+  }
+  for (const p of c.products) {
+    const n = p.n;
     if (done.includes(n)) continue;
-    // ⚠️ THE SHARPEST SINGLE FRAME, AT THE VIDEO'S OWN PIXELS (owner, 2026-11-05: a paused frame was
-    // sharper than the combined one): `sharpestPhoto` (photoSharp.ts), with the yellow box. Nothing is invented.
-    try { photos.set(n, await publishPhoto(slug, n, (await sharpestPhoto(input, srcW, it.pins, it.size!, timeOf)).jpeg)); made++; }
-    catch (e) { console.error("[crew] recut", slug, n, e); }
+    const seen = closest.get(n), it = lights.get(n);
+    try {
+      if (seen && seenInput) photos.set(n, await publishPhoto(slug, n, (await sightingPhoto(seenInput, seen)).jpeg));
+      else if (it) photos.set(n, await publishPhoto(slug, n, (await sharpestPhoto(input, srcW, it.pins, it.size!, timeOf)).jpeg));
+      else { done.push(n); continue; } // nothing to aim at: its photo stays as it is
+      made++;
+    } catch (e) { console.error("[crew] recut", slug, n, e); }
     if (photos.size >= 10) await flush();
   }
   await flush();
-  return `${made} product photos cut at their sharpest moment (${done.length} of ${lights.size} products with a light done).`;
+  await writeMastersJson(doneKey, { version, done, at: new Date().toISOString() });
+  return `${made} product photos cut where the finder saw them (${done.length} of ${c.products.length} done).`;
 }
 
 // ── Product finder (no sheet) ───────────────────────────────────────────────
