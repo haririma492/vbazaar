@@ -33,7 +33,7 @@ import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/ht
 import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { readJob } from "@/lib/stores/jobState";
-import { startCutJob } from "@/lib/splats/cut-job";
+import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
 
 export const runtime = "nodejs";
@@ -246,8 +246,17 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const r = await readRoute(s.slug);
     const job = await readJob("route");
     const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    // ⚠️ APPLIED (owner, 2026-11-05: "why after 20 hours still … says waiting for me"): once the walk is cut to
+    // this proposal, nothing waits for the owner. Known by the walk's cut record matching the proposal's parts.
+    let applied = false, cutting = false;
+    if (r && r.walk === s.out.walk) {
+      const done = await cutParts(r.walk).catch(() => []);
+      applied = done.length === r.parts.length && done.every((p, i) => Math.abs(p.from - r.parts[i].from) < 0.05 && Math.abs(p.to - r.parts[i].to) < 0.05);
+      const cj = cutJob(r.walk);
+      cutting = Boolean(cj && cj.state !== "done" && cj.state !== "failed");
+    }
     return ok({
-      route: r && r.walk === s.out.walk ? { ...r, previewUrl: r.preview && r2Config().publicBase ? `${r2Config().publicBase}/${r.preview}` : null } : null,
+      route: r && r.walk === s.out.walk ? { ...r, applied, cutting, previewUrl: r.preview && r2Config().publicBase ? `${r2Config().publicBase}/${r.preview}` : null } : null,
       working, note: working ? job?.note ?? "" : "",
     });
   }

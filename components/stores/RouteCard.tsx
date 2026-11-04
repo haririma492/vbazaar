@@ -17,7 +17,7 @@ type Join = { at: number; from: number; to: number; likeness: number; smooth: bo
 type Route = {
   walk: string; made: string; seconds: number; kept: number; parts: Array<{ from: number; to: number; soft?: { in?: boolean; out?: boolean } }>;
   joins: Join[]; dropped: { back: number; still: number; again: number }; products: number; lost: number[];
-  preview?: string; previewUrl?: string | null; notes: string[];
+  preview?: string; previewUrl?: string | null; notes: string[]; applied?: boolean; cutting?: boolean;
 };
 
 const mmss = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
@@ -73,12 +73,14 @@ export default function RouteCard({ api, operator }: { api: string; operator: bo
           </details>
           {route.notes.map((n, i) => <p key={i} className="text-amber-200/80">{n}</p>)}
           <p className="text-white/40">Planned {new Date(route.made).toLocaleString()}.</p>
+          {route.applied && <p className="text-emerald-300">✓ Applied: the walk is cut to this route; the original is kept. · اعمال شد</p>}
+          {route.cutting && <p className="text-amber-200">Cutting the walk to this route now… · در حال برش</p>}
         </div>
       )}
       {operator && (
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className={QUIET} onClick={() => void plan()}>{route ? "Plan again · دوباره" : "Plan the route · برنامه‌ریزی مسیر"}</button>
-          {route && !route.lost.length && !sure && <button type="button" className={KEY} onClick={() => setSure(true)}>Cut the walk to this route…</button>}
+          {route && !route.lost.length && !route.applied && !route.cutting && !sure && <button type="button" className={KEY} onClick={() => setSure(true)}>Cut the walk to this route…</button>}
           {sure && (
             <span className="flex flex-wrap items-center gap-2 text-[13px]">
               <b>Sure? The walk becomes this route; the original is kept.</b>

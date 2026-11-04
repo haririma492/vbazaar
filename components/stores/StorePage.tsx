@@ -290,7 +290,7 @@ function useAgentRows(api: string): Array<[string, StepView]> {
       try {
         const [ph, rt] = await Promise.all([
           postJson<{ photos: { state: string; done: number; total: number; at: string | null } }>(api, { action: "photos" }),
-          postJson<{ route: { kept: number; seconds: number; parts: unknown[]; joins: Array<{ smooth: boolean }>; lost: number[]; made: string } | null; working: boolean; note: string }>(api, { action: "route" }),
+          postJson<{ route: { kept: number; seconds: number; parts: unknown[]; joins: Array<{ smooth: boolean }>; lost: number[]; made: string; applied?: boolean; cutting?: boolean } | null; working: boolean; note: string }>(api, { action: "route" }),
         ]);
         const p = ph.photos, r = rt.route;
         const mm = (x: number) => `${Math.floor(x / 60)}:${String(Math.round(x % 60)).padStart(2, "0")}`;
@@ -301,6 +301,10 @@ function useAgentRows(api: string): Array<[string, StepView]> {
         };
         const route: StepView = rt.working
           ? { state: "working", tries: 0, at: null, note: `Planning: ${rt.note || "…"}` }
+          : r?.cutting
+            ? { state: "working", tries: 0, at: null, note: "Cutting the walk to the route you approved; the lights and doors move with it." }
+          : r?.applied
+            ? { state: "done", tries: 0, at: r.made, note: `Done: the walk is cut to the route you approved — ${mm(r.kept)} of ${mm(r.seconds)}, every product still shown. Nothing waits for you. The original is kept («Put the original back» in the walk editor).` }
           : r
             ? { state: "needs-you", tries: 0, at: r.made, note: `Planned: keeps ${mm(r.kept)} of ${mm(r.seconds)} in ${r.parts.length} parts, ${r.lost.length ? `${r.lost.length} products would be lost` : "every product still shown"}; ${r.joins.filter((j) => j.smooth).length} seamless joins, ${r.joins.filter((j) => !j.smooth).length} with a short dip. Watch the preview below («Route optimizer»), then say yes to cut — or plan again.` }
             : { state: "todo", tries: 0, at: null, note: "Not planned yet: «Plan the route» below." };

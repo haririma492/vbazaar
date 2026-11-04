@@ -181,6 +181,12 @@ export async function cutInfo(key: string): Promise<{ original: boolean; seconds
   return { original, seconds, parts: record?.parts ?? [] };
 }
 
+/** The parts the walk `key` was last cut to ([] if never cut). Reads only the cut's record: cheap. */
+export async function cutParts(key: string): Promise<Part[]> {
+  if (!isWalkKey(key)) return [];
+  return readCutRecord(JSON.parse((await readMastersText(backupKeyOf(key)).catch(() => null)) ?? "null"))?.parts ?? [];
+}
+
 /** Put the original video(s) and the walk as it was before the first cut back. */
 export function startRestoreJob(key: string): CutJob {
   const running = busy();
