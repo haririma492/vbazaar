@@ -80,7 +80,9 @@ export async function views(input: string, t: number, yaws: number[], pitch: num
     const each = yaws.map((y, i) => `[s${i}]v360=input=e:output=flat:yaw=${v360Yaw(y).toFixed(3)}:pitch=${deg(pitch)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}[o${i}]`);
     await run("ffmpeg", [
       "-v", "error", "-y", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-filter_complex", [split, ...each].join(";"),
-      ...yaws.flatMap((_, i) => ["-map", `[o${i}]`, "-frames:v", "1", "-q:v", "3", join(dir, `v${i}.jpg`)]),
+      // ⚠️ ONE THREAD PER PICTURE (2026-11-04): 8 outputs, each JPEG encoder starting a thread per core,
+      // ran the server out of threads ("ff_frame_thread_encoder_init failed") on the bookshop's first run.
+      ...yaws.flatMap((_, i) => ["-map", `[o${i}]`, "-frames:v", "1", "-threads", "1", "-q:v", "3", join(dir, `v${i}.jpg`)]),
     ]);
     return yaws.map((_, i) => new Uint8Array(readFileSync(join(dir, `v${i}.jpg`))));
   } finally {

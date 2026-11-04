@@ -350,7 +350,12 @@ const NEARBY_S = 15;
  * from the bucket: only that moment), or from the phone copy when it cannot.
  */
 async function momentViews(sharp: string | null, local: string, t: number): Promise<Uint8Array[]> {
-  const cut = async (src: string) => (await Promise.all(SHELF_PITCHES.map((pitch) => views(src, t, SHELF_HEADINGS, pitch, SHELF_FOV, LOOK_N)))).flat();
+  // One height after the other: two ffmpegs at once on the full-size walk ran the server out of threads (2026-11-04).
+  const cut = async (src: string) => {
+    const out: Uint8Array[] = [];
+    for (const pitch of SHELF_PITCHES) out.push(...(await views(src, t, SHELF_HEADINGS, pitch, SHELF_FOV, LOOK_N)));
+    return out;
+  };
   if (sharp) {
     try { return await cut(sharp); } catch (e) { console.error("[crew] sharp views", e); }
   }
