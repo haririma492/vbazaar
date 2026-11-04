@@ -513,8 +513,13 @@ quality and choice to break away and enter in a shop. (period)"*
   pixels of the product photos so when shoppers click on them they see a fully
   improved and readable version"*): the Insta360 SDK cannot sharpen a photo,
   only export a sharper video (`scripts/insta360/export-sharp.ps1`). Each
-  photo is cut from the upload at the sharpest of 8 moments of its light
-  (`sharpnessAt`), 1024 px. No AI upscaling: it invents letters on titles.
+  photo is cut from the upload at the sharpest of 8 moments of its light, and
+  the frames just round that moment are lined up and combined inside the
+  product's box (`lib/stores/fuse.ts`, `photoFuse.ts`; the background stays
+  the single sharpest frame, or it ghosts): less grain and blockiness, real
+  detail only, 1024 px. Measured: a clear but modest gain, not unreadable
+  titles made readable. No AI upscaling: it invents letters on titles.
+  About 30 s a product; resumable (`stores/<slug>/photos-done.json`).
 - **Every walk needs its 4K phone copy** (`<name>-phone.mp4`, 3840×1920
   H.264, same trim): the 8K H.265 export (the settings under "Splat scenes")
   plays on a computer but no phone can walk it — on the plaza, self-drive and

@@ -24,13 +24,14 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readWalks, uploadFile, webObjectExists, writeCatalogue, writeMastersJson, writeWalks } from "@/lib/splats/r2";
+import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readMastersText, readWalks, uploadFile, webObjectExists, writeCatalogue, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, looksFlat, MAX_ITEMS, type WalkItem, type Walks } from "@/lib/splats/walks";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
-import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, sharpnessAt, views } from "./media";
+import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
+import { fusedPhoto } from "./photoFuse";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
 import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, capTracks, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
@@ -535,8 +536,6 @@ async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Be
  * nothing spent (owner, 2026-11-04: "the photo is misleading because is not
  * zoomed enough"). Products with no light, or no outline, keep their photo.
  */
-/** Moments measured for sharpness before a product's photo is cut. */
-const PHOTO_CANDIDATES = 8;
 export async function recutPhotos(slug: string): Promise<string> {
   const s = await readStore(slug);
   if (!s?.out.walk) return "No walk.";
@@ -548,29 +547,36 @@ export async function recutPhotos(slug: string): Promise<string> {
   let input: string;
   try { input = s.files.video ? await presignGet(s.files.video.key, "master", 6 * 3600) : ((await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600))); }
   catch { input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600)); }
-  const lights = new Map<number, WalkItem[]>();
-  for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length) lights.set(it.n, [...(lights.get(it.n) ?? []), it]);
+  const lights = new Map<number, WalkItem>();
+  // Each product's longest light: the most moments to choose its sharpest from.
+  for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length && it.pins.length > (lights.get(it.n)?.pins.length ?? 0)) lights.set(it.n, it);
+  // ⚠️ RESUMABLE (2026-11-04): a whole store takes hours (about 30 s a product); what is done is kept
+  // (`stores/<slug>/photos-done.json`, by walk and version), so a restart carries on, not over.
+  const doneKey = `stores/${slug}/photos-done.json`;
+  const version = `${walkKey}#fused-1`;
+  let done: number[] = [];
+  try { const t = await readMastersText(doneKey); const v = t ? JSON.parse(t) : null; if (v?.version === version && Array.isArray(v.done)) done = v.done; } catch { /* from the start */ }
   const photos = new Map<number, string>();
-  for (const [n, its] of lights) {
-    // ⚠️ THE SHARPEST MOMENT (owner, 2026-11-04: "improve the pixels of the product photos so when shoppers
-    // click on them they see a fully improved and readable version"): up to `PHOTO_CANDIDATES` moments
-    // along the product's lights are measured (`sharpnessAt`: blur and motion smear score low), and the
-    // photo is cut at the sharpest. Nothing is invented: no upscaling that would make up letters.
-    const pins = its.flatMap((it) => it.pins.map((q) => ({ q, size: it.size! })));
-    const step = Math.max(1, Math.floor(pins.length / PHOTO_CANDIDATES));
-    let best = pins[Math.floor(pins.length / 2)], bestScore = -1;
-    for (const c of pins.filter((_, i) => i % step === 0).slice(0, PHOTO_CANDIDATES)) {
-      try {
-        const score = await sharpnessAt(input, c.q.t, c.q.x, c.q.y, c.size);
-        if (score > bestScore) { bestScore = score; best = c; }
-      } catch { /* that moment is skipped */ }
-    }
-    try { photos.set(n, await publishPhoto(slug, n, await productPhoto(input, best.q.t, best.q.x, best.q.y, best.size, 1024))); }
+  let made = 0;
+  const flush = async () => {
+    if (!photos.size) return;
+    const now = await readCatalogue(sceneOf(slug));
+    if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
+    done = [...new Set([...done, ...photos.keys()])];
+    await writeMastersJson(doneKey, { version, done });
+    photos.clear();
+  };
+  for (const [n, it] of lights) {
+    if (done.includes(n)) continue;
+    // ⚠️ THE SHARPEST MOMENT, FRAMES COMBINED (owner, 2026-11-04: "improve the pixels of the product
+    // photos so when shoppers click on them they see a fully improved and readable version"; "go ahead
+    // with building frame combination"): `fusedPhoto` (photoFuse.ts). Nothing is invented.
+    try { photos.set(n, await publishPhoto(slug, n, (await fusedPhoto(input, it.pins, it.size!)).jpeg)); made++; }
     catch (e) { console.error("[crew] recut", slug, n, e); }
+    if (photos.size >= 10) await flush();
   }
-  const now = await readCatalogue(sceneOf(slug));
-  if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
-  return `${photos.size} of ${c.products.length} product photos cut again, framed on the product, each at its sharpest moment.`;
+  await flush();
+  return `${made} product photos made from several frames at their sharpest moment (${done.length} of ${c.products.length} done).`;
 }
 
 // ── Product finder (no sheet) ───────────────────────────────────────────────
