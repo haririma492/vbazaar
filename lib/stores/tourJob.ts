@@ -45,19 +45,27 @@ export async function buildTour(slug: string): Promise<string> {
     if (!s || !walkKey) return "No walk.";
     await setJob("tour", { busy: true, key: walkKey, note: "reading the sightings" });
     const t = await readMastersText(`stores/${slug}/sightings.json`).catch(() => null);
-    const seen = (t ? (JSON.parse(t) as Seen[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size);
-    if (!seen.length) return "No sightings: the finder has not looked at this store's walk yet.";
+    let seen = (t ? (JSON.parse(t) as Seen[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size);
     // The lights, in the original's times.
     const parts = await cutParts(walkKey).catch(() => []);
     const back = (v: number) => (parts.length ? originalTime(parts, v) : v);
     const walk = (await readWalks()).walks[walkKey];
     const tracks = new Map<number, Track>();
+    const longest = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number } }>();
     for (const it of walk?.items ?? []) {
       if (!it.n || !it.pins.length) continue;
+      const pins = it.pins.map((p) => ({ t: back(p.t), x: p.x, y: p.y }));
       const tr = tracks.get(it.n) ?? { n: it.n, pins: [] };
-      tr.pins.push(...it.pins.map((p) => ({ t: back(p.t), x: p.x, y: p.y })));
+      tr.pins.push(...pins);
       tracks.set(it.n, tr);
+      if (it.size && pins.length > (longest.get(it.n)?.pins.length ?? 0)) longest.set(it.n, { pins, size: it.size });
     }
+    // ⚠️ A STORE FOUND BEFORE SIGHTINGS WERE KEPT (the bookshop, found 2026-11-04 before «sightings.json»
+    // existed): each light's middle moment stands in for its sighting, at the size the finder boxed.
+    if (!seen.length) {
+      seen = [...longest.entries()].map(([n, l]) => { const p = l.pins[l.pins.length >> 1]; return { n, t: p.t, lon: p.x, lat: p.y, size: l.size }; });
+    }
+    if (!seen.length) return "No sightings and no lights: the finder has not looked at this store's walk yet.";
     // The source in the sightings' times: the upload; else the walk before any cut.
     let src: string;
     if (s.files.video) src = await presignGet(s.files.video.key, "master", 6 * 3600);

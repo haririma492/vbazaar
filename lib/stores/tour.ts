@@ -33,7 +33,7 @@ export type Clip = {
 export type OnScreen = { n: number; t: number[]; x: number[]; y: number[] };
 export type TourPlan = { clips: Clip[]; items: OnScreen[]; seconds: number };
 
-export const STEP = 0.2, SHELF_SPREAD = 0.7, SHELF_GAP = 3, CLIP_MIN = 3, CLIP_MAX = 6, AIM_SMOOTH = 1.5;
+export const STEP = 0.2, SHELF_SPREAD = 0.6, SHELF_GAP = 3, SHELF_MIN = 3, MERGE_SPREAD = 1.0, CLIP_MIN = 3, CLIP_MAX = 6, AIM_SMOOTH = 1.5;
 export const FOV_MIN = (50 * Math.PI) / 180, FOV_MAX = (95 * Math.PI) / 180, ASPECT = 16 / 9, FADE = 0.25;
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -47,14 +47,38 @@ function midAngle(v: number[]): number {
 
 /** 1–2: the shelves, in walking order, each with its sightings. */
 export function shelvesOf(seen: Seen[]): Seen[][] {
-  const out: Seen[][] = [];
-  let cur: Seen[] = [];
+  // ⚠️ SEVERAL SHELVES AT ONCE (measured on the bookshop: 58 "shelves" of one product each when grouped
+  // strictly in time order): walking an aisle passes the left and the right shelf together, so each
+  // sighting joins the open shelf nearest in direction (seen within `SHELF_GAP`), else opens one.
+  let out: Seen[][] = [];
   for (const s of [...seen].sort((a, b) => a.t - b.t)) {
-    const last = cur[cur.length - 1];
-    if (last && s.t - last.t <= SHELF_GAP && Math.abs(wrap(s.lon - midAngle(cur.map((x) => x.lon)))) <= SHELF_SPREAD) cur.push(s);
-    else { if (cur.length) out.push(cur); cur = [s]; }
+    let best: { g: Seen[]; d: number } | null = null;
+    for (const g of out) {
+      if (s.t - g[g.length - 1].t > SHELF_GAP) continue;
+      const d = Math.abs(wrap(s.lon - midAngle(g.map((x) => x.lon))));
+      if (d <= SHELF_SPREAD && (!best || d < best.d)) best = { g, d };
+    }
+    if (best) best.g.push(s); else out.push([s]);
   }
-  if (cur.length) out.push(cur);
+  // A shelf of fewer than `SHELF_MIN` products joins the nearest shelf (direction) it overlaps in time.
+  const span = (g: Seen[]) => [g[0].t, g[g.length - 1].t];
+  const count = (g: Seen[]) => new Set(g.map((x) => x.n)).size;
+  for (let changed = true; changed;) {
+    changed = false;
+    for (const g of [...out].sort((a, b) => count(a) - count(b))) {
+      if (count(g) >= SHELF_MIN || !out.includes(g)) continue;
+      const [a0, a1] = span(g), mid = midAngle(g.map((x) => x.lon));
+      let best: { h: Seen[]; d: number } | null = null;
+      for (const h of out) {
+        if (h === g) continue;
+        const [b0, b1] = span(h);
+        if (b0 > a1 + SHELF_GAP || a0 > b1 + SHELF_GAP) continue;
+        const d = Math.abs(wrap(midAngle(h.map((x) => x.lon)) - mid));
+        if (d <= MERGE_SPREAD && (!best || d < best.d)) best = { h, d };
+      }
+      if (best) { best.h.push(...g); best.h.sort((x, y) => x.t - y.t); out = out.filter((x) => x !== g); changed = true; }
+    }
+  }
   // A shelf seen again: the two share most products. Keep the visit where they looked biggest.
   const area = (g: Seen[]) => median(g.map((s) => s.size.w * s.size.h));
   const kept: Seen[][] = [];
