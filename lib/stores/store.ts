@@ -323,7 +323,9 @@ export function checkUploadName(kind: UploadKind, name: string): string | null {
   }
   // ⚠️ THE RAW .insv, FOR THE AGENTS (owner, 2026-11-05: "sounds good lets do" — the test of reading the
   // camera's gyro and its unexported picture). Kept beside the walk; the walk itself is still the .mp4.
-  if (kind === "raw") return ext === "insv" ? null : "Here, the camera's own .insv file(s) of this same walk. · فایل ‎.insv دوربین.";
+  // …and the SDK's own stills of it (owner, 2026-11-05: Insta360 MediaSDK 3.2.0 on the owner's laptop exports
+  // chosen frames, AI-stitched and denoised, as PNG/JPG: the agents compare them with the .mp4 and use them).
+  if (kind === "raw") return ["insv", "png", "jpg", "jpeg"].includes(ext) ? null : "Here, the camera's own .insv of this walk, or the SDK's stills of it (.png / .jpg). · فایل ‎.insv یا عکس‌های SDK.";
   if (kind === "sheet") return ext === "xlsx" ? null : "The product list is an Excel workbook (.xlsx). · فهرست محصولات باید ‎.xlsx باشد.";
   return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A photo is .jpg, .png or .webp. · عکس باید jpg یا png یا webp باشد.";
 }
