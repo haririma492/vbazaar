@@ -25,7 +25,7 @@ const needsInfo = (p: Product) => p.priceCents === null || (!p.en && !p.fa);
 /** The name the owner gave, or that it has none yet (the crew names nothing, owner 2026-11-01). */
 const nameOf = (p: Product) => p.fa || p.en || "بدون نام · no name yet";
 
-export default function Products({ api, products, reload }: { api: string; products: Product[]; reload: () => Promise<void> }) {
+export default function Products({ api, products, reload, book = false }: { api: string; products: Product[]; reload: () => Promise<void>; book?: boolean }) {
   const [open, setOpen] = useState<number | null>(null);
   const waiting = products.filter(needsInfo).length;
   const fromVideo = products.some((p) => p.by === "video");
@@ -36,7 +36,7 @@ export default function Products({ api, products, reload }: { api: string; produ
       <p dir="ltr" className="mt-1 text-left text-[12px] text-white/50">
         {fromVideo ? "Found in the store's video. " : ""}Tap a product to give its name, unit, price, item # and description. Shoppers see them on its tag in the walk.
       </p>
-      {current && <ProductCard key={current.n} api={api} product={current} others={products.filter((p) => p.n !== current.n)} close={() => setOpen(null)} reload={reload} />}
+      {current && <ProductCard key={current.n} api={api} product={current} others={products.filter((p) => p.n !== current.n)} close={() => setOpen(null)} reload={reload} book={book} />}
       <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
         {products.map((p) => (
           <button key={p.n} type="button" onClick={() => setOpen(p.n)}
@@ -56,7 +56,7 @@ export default function Products({ api, products, reload }: { api: string; produ
   );
 }
 
-export function ProductCard({ api, product, others, close, reload }: { api: string; product: Product; others: Product[]; close: () => void; reload: () => Promise<void> }) {
+export function ProductCard({ api, product, others, close, reload, book = false }: { api: string; product: Product; others: Product[]; close: () => void; reload: () => Promise<void>; book?: boolean }) {
   const [step, setStep] = useState<Step>("name");
   const [en, setEn] = useState(product.en ?? "");
   const [fa, setFa] = useState(product.fa ?? "");
@@ -107,7 +107,10 @@ export function ProductCard({ api, product, others, close, reload }: { api: stri
 
       <div className="mt-3 space-y-2">
         {step === "name" && (<>
-          <Bi fa="نام این محصول؟" en="What is this product called? (as shoppers will read it)" className="text-[15px] font-bold" />
+          {book
+            // A bookshop (owner, 2026-11-05: change «نام این محصول؟» to "the name of this book?").
+            ? <Bi fa="the name of this book?" en="(as shoppers will read it)" className="text-[15px] font-bold" />
+            : <Bi fa="نام این محصول؟" en="What is this product called? (as shoppers will read it)" className="text-[15px] font-bold" />}
           <input autoFocus dir="rtl" placeholder="نام به فارسی — مثلاً باقلوای پسته‌ای" value={fa} onChange={(e) => setFa(e.target.value)} className={FIELD} />
           <input dir="ltr" placeholder="Name in English — e.g. Pistachio baklava" value={en} onChange={(e) => setEn(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter" && (en.trim() || fa.trim())) void save({ en, fa }, next); }} className={FIELD} />

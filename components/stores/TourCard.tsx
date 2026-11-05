@@ -33,6 +33,11 @@ export default function TourCard({ api, operator }: { api: string; operator: boo
     try { await postJson(api, { action: "shelfFind" }); setSaid({ ok: true, text: "The Shelf finder is looking at each shelf… about 10 minutes; then the photos and the tour are made again. · در حال جست‌وجوی قفسه‌ها…" }); }
     catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
   }
+  async function findGaps() {
+    if (!confirm("Look for the shelves the Shelf finder has not pictured yet? Up to 30 pictures, about $0.07 each (at most ~$2), from the store's AI budget.")) return;
+    try { await postJson(api, { action: "shelfFind", mode: "gaps", max: 30 }); setSaid({ ok: true, text: "Looking for the shelves not pictured yet… about 10 minutes; then rebuild the store map and the Shelf Tour. · در حال یافتن قفسه‌های تازه…" }); }
+    catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
+  }
   async function build() {
     try { await postJson(api, { action: "tourBuild" }); setSaid({ ok: true, text: "Building the Shelf Tour… a few minutes; this card updates by itself. · در حال ساخت…" }); void load(); }
     catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
@@ -57,6 +62,7 @@ export default function TourCard({ api, operator }: { api: string; operator: boo
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" className={tour ? QUIET : KEY} onClick={() => void build()}>{tour ? "Build again · دوباره" : "Build the Shelf Tour · ساخت"}</button>
           {tour && <button type="button" className={QUIET} onClick={() => void find()}>Find more products on these shelves (AI, about $2–3) · یافتن محصولات بیشتر</button>}
+          {tour && <button type="button" className={QUIET} onClick={() => void findGaps()}>Find the shelves not pictured yet (AI, up to ~$2) · یافتن قفسه‌های دیگر</button>}
         </div>
       )}
       {said && <Said ok={said.ok} text={said.text} />}

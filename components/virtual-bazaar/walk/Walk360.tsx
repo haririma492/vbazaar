@@ -58,6 +58,7 @@ import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
 import { ProductCard } from "@/components/stores/Products";
+import { isBookStore } from "@/lib/stores/store";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
@@ -517,7 +518,7 @@ export default function Walk360() {
    * questions (name, unit, price…), the same as on the store's page, and a
    * product still waiting for a name or a price glows amber.
    */
-  const [owner, setOwner] = useState<{ api: string; products: Product[] } | null>(null);
+  const [owner, setOwner] = useState<{ api: string; products: Product[]; book?: boolean } | null>(null);
   const [ownerCard, setOwnerCard] = useState<number | null>(null);
   /** The store's aisles (its shelf videos, in order), for Next / Previous. */
   const [aisles, setAisles] = useState<Aisle[]>([]);
@@ -1967,7 +1968,7 @@ export default function Walk360() {
       const token = readAdminToken();
       const res = await fetch(`/api/stores/${encodeURIComponent(slug)}`, { cache: "no-store", credentials: "same-origin", headers: token ? { "x-admin-token": token } : {} });
       const j = await res.json().catch(() => null);
-      setOwner(res.ok && j?.ok ? { api: `/api/stores/${encodeURIComponent(slug)}`, products: Array.isArray(j.products) ? j.products : [] } : null);
+      setOwner(res.ok && j?.ok ? { api: `/api/stores/${encodeURIComponent(slug)}`, products: Array.isArray(j.products) ? j.products : [], book: isBookStore(j.store?.category) } : null);
     } catch {
       setOwner(null); // a shopper: the basket card
     }
@@ -2343,7 +2344,7 @@ export default function Walk360() {
         if (!product) return null;
         return (
           <div dir="ltr" className="fixed bottom-24 left-1/2 z-40 max-h-[70vh] w-[min(30rem,calc(100%-1.5rem))] -translate-x-1/2 overflow-y-auto rounded-2xl bg-[#0f1418]/95 text-white shadow-2xl">
-            <ProductCard key={product.n} api={owner.api} product={product} others={owner.products.filter((p) => p.n !== product.n)} close={() => { setOwnerCard(null); setLit(null); }} reload={reloadOwner} />
+            <ProductCard key={product.n} api={owner.api} product={product} others={owner.products.filter((p) => p.n !== product.n)} close={() => { setOwnerCard(null); setLit(null); }} reload={reloadOwner} book={owner.book} />
           </div>
         );
       })()}

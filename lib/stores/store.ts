@@ -24,6 +24,9 @@
  * (`storeKey`). Pure: imports nothing, so `node --test` runs it.
  */
 
+/** A bookshop (by its category): its cards ask for a book's name, not a product's (owner, 2026-11-05). */
+export const isBookStore = (category: string | undefined) => /book|کتاب/i.test(category ?? "");
+
 export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{0,38}[a-z0-9])?$/;
 export const storeKey = (slug: string) => `stores/${slug}/store.json`;
 /** The scene (and product list) the store's walk is under: `store-<slug>`. */

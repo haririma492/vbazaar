@@ -242,7 +242,10 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "shelfFind") {
     // Operator, on the owner's yes (it spends from the store's AI budget): the Shelf finder. Background.
     if (who !== "operator") return fail(403, "The operator only.");
-    void findShelves(s.slug).then((note) => console.log("[shelf-find]", s.slug, note)).catch((e) => console.error("[shelf-find]", s.slug, e));
+    // «mode: "gaps"»: only where the walk saw products no shelf picture holds yet, at most «max» pictures (~$0.07 each).
+    const mode = body.mode === "gaps" ? "gaps" : "tour";
+    const max = Number(body.max) > 0 ? Math.min(80, Math.floor(Number(body.max))) : undefined;
+    void findShelves(s.slug, { mode, max }).then((note) => console.log("[shelf-find]", s.slug, note)).catch((e) => console.error("[shelf-find]", s.slug, e));
     return ok({ started: true });
   }
   if (body.action === "shelfFindState") {

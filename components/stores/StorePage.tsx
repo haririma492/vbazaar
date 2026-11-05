@@ -21,7 +21,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { BUDGET_CENTS, STEPS, STEP_SAY, type StoreRecord } from "@/lib/stores/store";
+import { BUDGET_CENTS, STEPS, STEP_SAY, isBookStore, type StoreRecord } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
 import { formatCents } from "@/lib/splats/catalogue";
 import { getJson, postJson, uploadInParts, uploadMusic } from "./upload";
@@ -251,7 +251,7 @@ export default function StorePage({ slug }: { slug: string }) {
         )}
       </Card>}
 
-      {page.products.length > 0 && <Products api={api} products={page.products} reload={load} />}
+      {page.products.length > 0 && <Products api={api} products={page.products} reload={load} book={isBookStore(page.store.category)} />}
 
       {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}

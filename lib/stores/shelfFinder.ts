@@ -16,7 +16,7 @@
 //      (`stores/<slug>/shelf-sightings.json`, the original's times);
 //   4. the Photo improver and the Shelf Tour are made again (free).
 // Spends from the store's purse (`purseOf`); stops when it is empty.
-import { readCatalogue, readWalks, presignGet, writeCatalogue, writeMastersJson, writeWalks, putSignImage, r2Config } from "@/lib/splats/r2";
+import { readCatalogue, readMastersText, readWalks, presignGet, writeCatalogue, writeMastersJson, writeWalks, putSignImage, r2Config } from "@/lib/splats/r2";
 import { MAX_ITEMS } from "@/lib/splats/walks";
 import type { Product } from "@/lib/splats/catalogue";
 import { sceneOf } from "./store";
@@ -27,11 +27,14 @@ import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, capTracks, follow, itemOf, keepTrack
 import { planTour, project, unproject, type Seen } from "./tour";
 import { buildTour, shelfSightingsKey, tourInputs } from "./tourJob";
 import { setJob } from "./jobState";
+import { gapShots, type Obs } from "./gapShots";
 
 /** The picture sent for a shelf (px): Claude's largest useful size, 16:9. */
 export const PIC_W = 1568, PIC_H = 882;
 /** A box with an existing product's place inside it (grown by this share) is that product. */
 const SAME_GROW = 0.15;
+/** At most this many pictures in a "gaps" run, unless the caller says (each one ~$0.07). */
+export const GAP_MAX = 30;
 
 const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -48,7 +51,13 @@ export function cutTime(parts: Array<{ from: number; to: number }>, t: number): 
   return null;
 }
 
-export async function findShelves(slug: string): Promise<string> {
+/**
+ * `mode`: "tour" looks at each shelf the Shelf Tour stops at (and replaces the shelf sightings); "gaps" looks only
+ * where the walk saw products that no shelf picture holds yet (`gapShots`), at most `max` pictures, and ADDS to
+ * the sightings kept (owner, 2026-11-05: "lets extend to all shelves, there are only 12 now").
+ */
+export async function findShelves(slug: string, opts: { mode?: "tour" | "gaps"; max?: number } = {}): Promise<string> {
+  const mode = opts.mode ?? "tour";
   if (busy) return "The Shelf finder is busy.";
   busy = true;
   try {
@@ -57,7 +66,20 @@ export async function findShelves(slug: string): Promise<string> {
     const { s, walkKey, seen, tracks, src, end, parts, entry, operator } = inp;
     const c = await readCatalogue(sceneOf(slug));
     if (!c) return "No product list.";
-    const plan = planTour(seen, [...tracks.values()], end, entry, operator);
+    const keptText = mode === "gaps" ? await readMastersText(shelfSightingsKey(slug)).catch(() => null) : null;
+    const kept: Array<Seen & { confidence: number }> = keptText ? (JSON.parse(keptText) as Array<Seen & { confidence: number }>).filter((x) => x && Number.isFinite(x.t)) : [];
+    let shots: Array<{ t: number; yaw: number; pitch: number; hfov: number; vfov: number }>;
+    if (mode === "gaps") {
+      const obs: Obs[] = seen.map((x) => ({ n: x.n, t: x.t, lon: x.lon, lat: x.lat, area: x.size.w * x.size.h }));
+      for (const tr of tracks.values()) { const p = [...tr.pins].sort((a, b) => a.t - b.t)[tr.pins.length >> 1]; if (p) obs.push({ n: tr.n, t: p.t, lon: p.x, lat: p.y, area: 0.0005 }); }
+      shots = gapShots(obs, new Set(kept.map((x) => x.n)), entry, opts.max ?? GAP_MAX)
+        // Never a picture of the camera operator (the Lock agent's `hide`).
+        .filter((g) => { const op = operator(g.t); return !op || Math.abs(Math.atan2(Math.sin(g.yaw - op.yaw), Math.cos(g.yaw - op.yaw))) > op.width / 2 + g.hfov / 2; });
+      if (!shots.length) return "Shelf finder (gaps): every product the walk saw is already in a shelf picture: nothing to look at.";
+    } else {
+      const plan = planTour(seen, [...tracks.values()], end, entry, operator);
+      shots = plan.clips.map((clip) => ({ ...clip.aim[clip.aim.length >> 1], hfov: clip.hfov, vfov: clip.vfov }));
+    }
     const purse = purseOf(s);
     const before = purse.spent();
     // Where each product of the list is at t (its light; else a sighting within a second).
@@ -72,12 +94,12 @@ export async function findShelves(slug: string): Promise<string> {
       return out;
     };
     let next = Math.max(0, ...c.products.map((p) => p.n)) + 1;
-    const found: Array<Seen & { confidence: number }> = [];
+    const found: Array<Seen & { confidence: number }> = [...kept];
     const fresh: Array<{ n: number; en: string; fa: string; t: number; lon: number; lat: number; size: { w: number; h: number } }> = [];
     let looked = 0, again = 0, stopped = "";
-    for (const [i, clip] of plan.clips.entries()) {
-      await setJob("shelfFind", { busy: true, key: walkKey, note: `looking at shelf ${i + 1} of ${plan.clips.length}: ${fresh.length} new so far` });
-      const a = clip.aim[clip.aim.length >> 1];
+    for (const [i, a] of shots.entries()) {
+      const clip = a;
+      await setJob("shelfFind", { busy: true, key: walkKey, note: `looking at ${mode === "gaps" ? "picture" : "shelf"} ${i + 1} of ${shots.length}: ${fresh.length} new so far` });
       const t = a.t;
       let pic: Uint8Array;
       try {
@@ -88,7 +110,7 @@ export async function findShelves(slug: string): Promise<string> {
       let list;
       try { list = await findOnShelf(purse, pic, PIC_W, PIC_H); }
       catch (e) {
-        if (e instanceof OverBudget) { stopped = ` Stopped at shelf ${i + 1} of ${plan.clips.length}: the store's AI budget is used up.`; break; }
+        if (e instanceof OverBudget) { stopped = ` Stopped at ${i + 1} of ${shots.length}: the store's AI budget is used up.`; break; }
         console.error("[shelf-find] look", slug, i, e); continue;
       }
       looked++;
@@ -112,7 +134,7 @@ export async function findShelves(slug: string): Promise<string> {
         found.push({ n, t, lon: Math.round(mid.lon * 10000) / 10000, lat: Math.round(mid.lat * 10000) / 10000, size, confidence: f.confidence });
       }
     }
-    // The sightings, kept (a new run replaces them: it looks at the same shelves again).
+    // The sightings, kept (a "tour" run replaces them: it looks at the same shelves again; a "gaps" run adds).
     await writeMastersJson(shelfSightingsKey(slug), found);
     // The new products join the list, each with a first photo (the Photo improver makes it again).
     await setJob("shelfFind", { busy: true, key: walkKey, note: `adding ${fresh.length} new products to the list` });
@@ -156,7 +178,7 @@ export async function findShelves(slug: string): Promise<string> {
     } catch (e) { console.error("[shelf-find] lights", slug, e); }
     void queuePhotos([slug]).catch(() => {});
     void buildTour(slug).then((note) => console.log("[tour]", slug, note)).catch((e) => console.error("[tour]", slug, e));
-    return `Shelf finder: looked at ${looked} shelves ($${((purse.spent() - before) / 100).toFixed(2)}); ${fresh.length} new products added, ${again} sightings of products already listed; ${lit} new products lit in the Free Tour. The photos and the Shelf Tour are being made again.${stopped}`;
+    return `Shelf finder${mode === "gaps" ? " (new shelves)" : ""}: looked at ${looked} ${mode === "gaps" ? "pictures" : "shelves"} ($${((purse.spent() - before) / 100).toFixed(2)}); ${fresh.length} new products added, ${again} sightings of products already listed; ${lit} new products lit in the Free Tour. The photos and the Shelf Tour are being made again.${stopped}`;
   } finally {
     busy = false;
     await setJob("shelfFind", { busy: false, key: null });
