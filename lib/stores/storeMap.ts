@@ -74,7 +74,7 @@ export type StoreMap = {
   products: Array<Placed & { shelf: string | null }>;
   order: string[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
-  quality: { products: number; triangulated: number; onShelf?: number; estimated: number; shelves: number; merged: number; meanSure: number; loopsClosed: number };
+  quality: { products: number; triangulated: number; onShelf?: number; walkedM?: number; estimated: number; shelves: number; merged: number; meanSure: number; loopsClosed: number };
   review: ReviewItem[];
   notes: string[];
 };
@@ -114,20 +114,40 @@ function smooth(v: number[], k: number): number[] {
   });
 }
 
+/** Readings are taken as the median over this (s): a single spike of the floor's slide is not a step. */
+export const MEDIAN_S = 1.0;
+/** Nobody walks a shop faster than this (m/s): a reading above it is noise, cut to it. */
+export const MAX_WALK = 1.2;
+
+function medianFilter(v: number[], k: number): number[] {
+  return v.map((_, i) => median(v.slice(Math.max(0, i - k), Math.min(v.length, i + k + 1))));
+}
+
 /**
  * 1: the camera's pose at every reading. Reading i is the move from i·dt to (i+1)·dt, so the pose
  * AFTER it belongs at (i+1)·dt. Same conventions as `blocksOf` (route.ts): heading `th` + = turned
  * right; a product at longitude `lon` lies at world angle `th + lon`; x along angle 0, y along +90°.
+ *
+ * ⚠️ HEADING LOCKED BY DEFAULT (owner's first map of Saraye Bamdad, 2026-11-05: the path came out a tangle
+ * of loops over ~18 m, shelves crossing). Insta360 Studio's direction lock keeps the exported panorama facing
+ * one way (measured on the bookshop: within ±15° while the camera turned ±110°), so the panorama's own frame
+ * is the world's and its heading is 0. Summing the horizon's measured turn added only its noise, and noise
+ * summed over 150 s is the swirl. `heading: "integrated"` keeps the old summing for a video without the lock.
+ * The floor's slide is taken as a median over `MEDIAN_S` and never faster than `MAX_WALK`.
  */
-export function integratePath(m: Motion): Pose[] {
-  const k = Math.max(1, Math.round(SMOOTH_S / m.dt));
-  const fwd = smooth(m.fwd, k), side = smooth(m.side, k), turn = smooth(m.turn, k);
+export function integratePath(m: Motion, opts: { heading?: "locked" | "integrated" } = {}): Pose[] {
+  const locked = (opts.heading ?? "locked") === "locked";
+  const km = Math.max(1, Math.round(MEDIAN_S / 2 / m.dt)), k = Math.max(1, Math.round(SMOOTH_S / m.dt));
+  const fwd = smooth(medianFilter(m.fwd, km), k), side = smooth(medianFilter(m.side, km), k), turn = smooth(m.turn, k);
   const out: Pose[] = [{ t: 0, x: 0, y: 0, th: 0, sure: m.sure[0] ?? 0 }];
   let th = 0, x = 0, y = 0;
   for (let i = 0; i < fwd.length; i++) {
-    th += turn[i] * m.dt;
-    x += (fwd[i] * Math.cos(th) - side[i] * Math.sin(th)) * m.dt;
-    y += (fwd[i] * Math.sin(th) + side[i] * Math.cos(th)) * m.dt;
+    if (!locked) th += turn[i] * m.dt;
+    let f = fwd[i], sd = side[i];
+    const v = Math.hypot(f, sd);
+    if (v > MAX_WALK) { f *= MAX_WALK / v; sd *= MAX_WALK / v; }
+    x += (f * Math.cos(th) - sd * Math.sin(th)) * m.dt;
+    y += (f * Math.sin(th) + sd * Math.cos(th)) * m.dt;
     out.push({ t: r3((i + 1) * m.dt), x, y, th, sure: m.sure[i] ?? 0 });
   }
   return out;
@@ -437,7 +457,7 @@ export function buildMap(inp: MapInputs): StoreMap {
     entrance: { x: r3(e.x), y: r3(e.y), th: r3(e.th), t: r3(inp.entry) },
     path: pathOut, loops: used, shelves: withIds, products, order,
     bounds: { minX: r3(Math.min(...xs, 0)), minY: r3(Math.min(...ys, 0)), maxX: r3(Math.max(...xs, 0)), maxY: r3(Math.max(...ys, 0)) },
-    quality: { products: products.length, triangulated: tri, onShelf, estimated: est, shelves: withIds.length, merged, meanSure: r3(median(closed.map((q) => q.sure))), loopsClosed: used.length },
+    quality: { products: products.length, triangulated: tri, onShelf, walkedM: r3(closed.slice(1).reduce((a, q, i) => a + Math.hypot(q.x - closed[i].x, q.y - closed[i].y), 0)), estimated: est, shelves: withIds.length, merged, meanSure: r3(median(closed.map((q) => q.sure))), loopsClosed: used.length },
     review, notes,
   };
 }

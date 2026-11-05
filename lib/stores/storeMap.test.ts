@@ -29,8 +29,8 @@ test("the path: walking straight ahead at 0.5 m/s for 20 s ends 10 m along x", (
   assert.equal(end.t, 20);
 });
 
-test("the path: turning right while walking bends towards +y (the same conventions as blocksOf)", () => {
-  const path = integratePath(straight(0.5, 10, 0.1));
+test("the path: turning right while walking bends towards +y when the heading is summed (the same conventions as blocksOf)", () => {
+  const path = integratePath(straight(0.5, 10, 0.1), { heading: "integrated" });
   const end = path[path.length - 1];
   assert.ok(end.y > 1 && Math.abs(end.th - 1) < 0.02, `${end.y} ${end.th}`);
 });
@@ -86,7 +86,7 @@ test("a repeated visit pulls the drifted end of a loop back onto its start", () 
     turn: [...out.turn, ...Array(turnN).fill(Math.PI / turnS), ...back.turn],
     sure: [...out.sure, ...Array(turnN).fill(0.9), ...back.sure],
   };
-  const path = integratePath(m);
+  const path = integratePath(m, { heading: "integrated" });
   const end = path[path.length - 1];
   assert.ok(Math.hypot(end.x, end.y) > 0.3, "drifted as set up");
   const loop: Loop = { a: 0, b: end.t, score: 0.95, shift: 0 };
@@ -203,4 +203,19 @@ test("a one-view product on a well-placed shelf lands where its ray meets the sh
   // A ray along the shelf, or meeting it behind the camera, does not count.
   assert.equal(rayMeetsShelf({ t: 0, x: 0, y: -2, dx: 1, dy: 0 }, { center: { x: 3.5, y: -2 }, dir: 0, length: 3 }), null);
   assert.equal(rayMeetsShelf({ t: 0, x: 3, y: 0, dx: 0, dy: 1 }, { center: { x: 3.5, y: -2 }, dir: 0, length: 3 }), null);
+});
+
+test("direction-locked video: the horizon's noisy turn readings do not swirl the path", () => {
+  // 150 s straight at 0.4 m/s, with turn readings of pure noise (±0.3 rad/s) and the odd 4 m/s spike.
+  let seed = 3;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5);
+  const m = straight(0.4, 150);
+  m.turn = m.turn.map(() => rnd() * 0.6);
+  for (let i = 10; i < m.fwd.length; i += 37) m.fwd[i] = 4.2;
+  const locked = integratePath(m), summed = integratePath(m, { heading: "integrated" });
+  const end = locked[locked.length - 1];
+  assert.ok(Math.abs(end.x - 60) < 1.5 && Math.abs(end.y) < 1e-9, `${end.x},${end.y}`);
+  assert.ok(locked.every((p) => p.th === 0));
+  // Summed, the same readings wander off the line.
+  assert.ok(Math.max(...summed.map((p) => Math.abs(p.y))) > 1);
 });

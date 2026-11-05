@@ -89,18 +89,27 @@ export default function MapCard({ api, operator }: { api: string; operator: bool
             </svg>
             <p className="text-white/55">Green numbers: the Shelf Tour&apos;s order (the Shelf Tour follows it the next time it is built). Yellow: shelves (faint: few products placed). Dots: products (white: triangulated; blue: one view, put on its shelf; hollow: estimated).</p>
             {map.notes.map((n, i) => <p key={i} className="text-white/45">{n}</p>)}
-            {map.review.length > 0 && (
-              <div>
-                <button type="button" className="text-[12px] text-amber-200/80 underline" onClick={() => setShowReview((v) => !v)}>
-                  {showReview ? "Hide" : "Show"} what needs a person: {map.review.length} · بررسی
-                </button>
-                {showReview && (
-                  <ul className="mt-1 max-h-56 space-y-0.5 overflow-auto text-[12px] text-white/65">
-                    {map.review.map((r, i) => <li key={i}>{r.kind === "shelf" ? "Shelf" : "Product #"}{r.id}: {r.why}</li>)}
-                  </ul>
-                )}
-              </div>
-            )}
+            {map.review.length > 0 && (() => {
+              // Grouped by reason: one line each, with the ids under it (473 single lines told nobody anything).
+              const groups = new Map<string, string[]>();
+              for (const r of map.review) groups.set(`${r.kind}|${r.why}`, [...(groups.get(`${r.kind}|${r.why}`) ?? []), r.id]);
+              return (
+                <div>
+                  <button type="button" className="text-[12px] text-amber-200/80 underline" onClick={() => setShowReview((v) => !v)}>
+                    {showReview ? "Hide" : "Show"} what needs a person: {[...groups.entries()].map(([k, ids]) => `${ids.length} ${k.startsWith("shelf") ? "shelves" : "products"}`).join(" · ")} · بررسی
+                  </button>
+                  {showReview && (
+                    <ul className="mt-1 max-h-64 space-y-1.5 overflow-auto text-[12px] text-white/65">
+                      {[...groups.entries()].map(([k, ids]) => (
+                        <li key={k}><span className="text-white/85">{ids.length} {k.startsWith("shelf") ? "shelves" : "products"}: {k.split("|")[1]}</span>
+                          <br /><span className="text-white/45">{k.startsWith("shelf") ? ids.join(", ") : ids.map((i) => `#${i}`).join(", ")}</span></li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              );
+            })()}
+            {q.walkedM !== undefined && <p className="text-white/45">The path is {q.walkedM.toFixed(1)} m long (estimated). If that is far longer than you walked, the distances are off and the map is not to be trusted yet.</p>}
           </>
         )}
       </div>
