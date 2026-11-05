@@ -98,6 +98,8 @@ const PEDAL_RATE = 1;
  */
 type Drive = "on" | "back";
 const SPEED_KEY = "vb.walk.speed";
+/** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
+const FILM_FPS = 25;
 /**
  * The walk's reversed copy and who is in charge of the picture. «idle»: the
  * walk's own video; «entering»: the reversed copy is seeking to the same spot
@@ -2137,7 +2139,7 @@ export default function Walk360() {
             follow={() => engine.current?.turn() ?? 0}
           />
           {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}
-          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-56 flex-col gap-1.5">
+          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-72 max-w-[calc(100vw-2.5rem)] flex-col gap-1.5">
             <div className="flex gap-1.5">
               {([["back", "◀ عقب · Back"], ["on", "▶ برو · Walk"]] as const).map(([k, label]) => (
                 <button
@@ -2156,6 +2158,11 @@ export default function Walk360() {
             {/* The speed bar (owner, 2026-11-04): slow end a creep, fast end a brisk walk. Moving it while stopped starts the walk. */}
             <label className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-black/60 px-3" title="سرعت · Speed">
               <span aria-hidden="true" className="text-[15px]">🐢</span>
+              {/* ⚠️ THE NUMBERS AND THE RECOMMENDED MARK (owner, 2026-11-05: "add some standard number such as frame/sec
+                  and lets set a recommended or default line that users better use"). The mark is `SPEED_DEFAULT`
+                  (0.3 m/s, a slow browse: spines readable); a tap on its label puts the bar back there. */}
+              <span className="relative flex min-w-0 flex-1 items-center">
+              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 h-4 w-0.5 -translate-y-1/2 rounded bg-emerald-300/90" style={{ left: `calc(${(placeOf(SPEED_DEFAULT) * 100).toFixed(1)}% - 1px)` }} />
               <input
                 type="range"
                 min={0}
@@ -2177,7 +2184,13 @@ export default function Walk360() {
                 }}
                 className="h-6 min-w-0 flex-1 accent-amber-300"
               />
+              </span>
               <span aria-hidden="true" className="text-[15px]">🐇</span>
+              <button type="button" title="Recommended speed · سرعت پیشنهادی" onClick={() => { setSpeed(SPEED_DEFAULT); try { localStorage.setItem(SPEED_KEY, String(SPEED_DEFAULT)); } catch { /* this visit only */ } }}
+                className={`shrink-0 whitespace-nowrap text-right text-[10px] leading-tight tabular-nums ${Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "text-emerald-200" : "text-white/70"}`}>
+                {speed.toFixed(2)} m/s · {Math.round(FILM_FPS * Math.abs(driveRate(speed, false, walkOf(walks, view.key)?.pace)))} fps
+                <br />{Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "✓ recommended" : "▮ recommended 0.30"}
+              </button>
             </label>
           </div>
 

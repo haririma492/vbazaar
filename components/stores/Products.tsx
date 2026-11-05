@@ -15,6 +15,7 @@ import { UNITS, UNIT_SAY, formatCents, type Product, type Unit } from "@/lib/spl
 import { postJson } from "./upload";
 import PhotoZoom from "@/components/common/PhotoZoom";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
+import { ReadTitleBox, slugFrom, useReadTitle } from "./readTitle";
 
 type Step = "name" | "unit" | "price" | "sku" | "note" | "done";
 const ORDER: Step[] = ["name", "unit", "price", "sku", "note", "done"];
@@ -58,6 +59,7 @@ export default function Products({ api, products, reload, book = false }: { api:
 
 export function ProductCard({ api, product, others, close, reload, book = false }: { api: string; product: Product; others: Product[]; close: () => void; reload: () => Promise<void>; book?: boolean }) {
   const [step, setStep] = useState<Step>("name");
+  const read = useReadTitle(slugFrom(api), product.n);
   const [en, setEn] = useState(product.en ?? "");
   const [fa, setFa] = useState(product.fa ?? "");
   const [price, setPrice] = useState(product.priceCents === null ? "" : (product.priceCents / 100).toFixed(2));
@@ -100,6 +102,12 @@ export function ProductCard({ api, product, others, close, reload, book = false 
           {product.fa && product.en && <div dir="ltr" className="text-left text-[13px] text-white/60">{product.en}</div>}
           {/* What the finder saw (owner, 2026-11-04: "which one is the intended product"): the books or item it boxed. */}
           {product.seen && <div dir="ltr" className="mt-0.5 text-left text-[12px] text-amber-200/80">The finder saw: {product.seen}</div>}
+          <ReadTitleBox t={read} />
+          {read && step === "name" && (read.fa || read.en) && (fa !== read.fa || en !== read.en) && (
+            <button type="button" className="mt-1 text-[12px] text-emerald-200 underline" onClick={() => { if (read.fa) setFa(read.fa); if (read.en) setEn(read.en); }}>
+              Use this title as the name · استفاده از این عنوان
+            </button>
+          )}
           <div className="mt-1 text-[12px] text-white/45">{step === "done" ? "All saved." : `Question ${i + 1} of 5`}</div>
         </div>
         <button type="button" aria-label="Close" className="text-[20px] text-white/60" onClick={close}>✕</button>

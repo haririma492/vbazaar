@@ -12,6 +12,7 @@
  * (`lib/basket.ts`, on the device), listed on /basket under the shop's name.
  */
 
+import { ReadTitleBox, slugFrom, useReadTitle } from "@/components/stores/readTitle";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { followProduct, followProduct360 } from "./followProduct";
@@ -111,6 +112,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   const name = product ? productName(product, lang) : lang === "fa" && item.label.fa ? item.label.fa : item.label.en;
   const other = product ? productName(product, lang === "fa" ? "en" : "fa") : item.label.fa ? (lang === "fa" ? item.label.en : item.label.fa) : "";
   const photo = product ? product.photo : item.image;
+  const read = useReadTitle(slugFrom(walkKey), item.n);
   const specialCents = item.special ? readPrice(item.special.now) : null;
   const total = product ? (specialCents !== null ? Math.round(specialCents * (weighed ? amount : 1)) : priceOf(product, weighed ? amount : 1)) : null;
   return (
@@ -145,6 +147,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
               <div className="mt-1.5 text-[20px] font-extrabold text-amber-200">{item.price}</div>
             ) : null}
             {product?.note && <p dir="auto" className="mt-1.5 whitespace-pre-line text-[13px] leading-snug text-white/75">{product.note}</p>}
+            <ReadTitleBox t={read} />
           </div>
           <button className="rounded-full px-2 text-[20px] text-white/60" aria-label={lang === "fa" ? "بستن" : "Close"} onClick={onClose}>×</button>
         </div>
