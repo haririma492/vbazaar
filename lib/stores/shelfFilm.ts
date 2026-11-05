@@ -1,7 +1,7 @@
 // THE SHELF TOUR, FILMED SHELF BY SHELF AND LEVEL BY LEVEL (owner, 2026-11-05;
 // the moves are `choreo.ts`, the shelves and levels `levels.ts`). Free: no AI.
 //
-// For each shelf (in walking order, inside the store only): one still of the
+// For each shelf (in the store map's order when there is one, else walking order; inside the store only): one still of the
 // whole shelf, cut from the upload at its closest moment (v360, Lanczos), is
 // filmed by the virtual camera of `choreograph` — whole shelf, each level in
 // turn (serpentine), whole shelf — rendered frame by frame here (`frameOf`)
@@ -21,6 +21,8 @@ import { project } from "./tour";
 import { planShelves, stillSize, type Boxed, type Frame } from "./levels";
 import { ASPECT, choreograph, frameOf, lengthOf, windowAt, type Box } from "./choreo";
 import { setJob } from "./jobState";
+import { orderShelvesByMap } from "./storeMap";
+import { readStoreMap } from "./mapJob";
 import { shelfSightingsKey, tourInputs, tourKey, tourRecordKey, type TourManifest } from "./tourJob";
 
 const OW = 1280, OH = 720, FPS = 25, STILL_W = 2400, STEP = 0.2, FADE = 0.5;
@@ -66,7 +68,8 @@ export async function buildShelfFilm(slug: string): Promise<string> {
     const t = await readMastersText(shelfSightingsKey(slug)).catch(() => null);
     const boxed = (t ? (JSON.parse(t) as Boxed[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size && x.t >= entry - 0.5);
     if (!boxed.length) return "No shelf pictures yet: run the Shelf finder first.";
-    const plan = planShelves(boxed);
+    // In the store map's order (`storeMap.ts`): the layout of the store, not the order it was filmed in.
+    const plan = orderShelvesByMap(planShelves(boxed), await readStoreMap(slug));
     if (!plan.length) return "No shelves found.";
     const src = await presignGet(s.files.video.key, "master", 6 * 3600);
     const files: string[] = [];

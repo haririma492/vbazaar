@@ -652,6 +652,20 @@ quality and choice to break away and enter in a shop. (period)"*
   buying)"*). The Free Tour is the 360° walk. The switch is at the top of both
   screens, shown on a store's walk once its Shelf Tour exists
   (`/api/tour/<slug>`); both add to the same basket.
+- **The store map** (owner, 2026-11-05, the "Computer Vision and Spatial
+  Mapping" brief: *"The photographer's actual walking route must NOT dictate
+  the shopper's virtual journey"*). `lib/stores/storeMap.ts` (tested) +
+  `mapJob.ts`, «Store map» card, `stores/<slug>/map.json`. Free, no AI: the
+  motion reader's path (dead reckoning), repeated visits matched by panorama
+  and the drift spread back, each product triangulated from a moving
+  camera's rays (or estimated, and said so), the Shelf finder's shelves as
+  floor segments with persistent ids `S1…` (partial views of one bookcase
+  merged), and the tour's order from the entrance by where a shopper stands.
+  The Shelf Tour builders follow that order when a map exists
+  (`orderShelvesByMap`). The YOLO / SAM / PaddleOCR / COLMAP / ORB-SLAM3
+  assessment, and the next steps (fixtures, then COLMAP only if the drift is
+  too large) are in `docs/research/cv-spatial.md`. YOLO (Ultralytics) is
+  AGPL-3.0 and ORB-SLAM3 is GPLv3: decide before adopting them.
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

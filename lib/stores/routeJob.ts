@@ -63,7 +63,7 @@ export async function readRoute(slug: string): Promise<RouteProposal | null> {
 const deg = (r: number) => ((r * 180) / Math.PI).toFixed(2);
 
 /** 1. How the camera moved, every 1/FPS s. */
-async function readMotion(src: string, dir: string, seconds: number): Promise<Motion> {
+export async function readMotion(src: string, dir: string, seconds: number): Promise<Motion> {
   const views = YAWS.map((y, i) => `[s${i}]v360=e:flat:yaw=${y}:pitch=-${deg(VIEW_PITCH)}:h_fov=${deg(VIEW_FOV)}:v_fov=${deg((VIEW_FOV * VIEW_H) / VIEW_W)}:w=${VIEW_W}:h=${VIEW_H},format=gray[v${i}]`).join(";");
   const graph = `[0:v]fps=${FPS},scale=1920:960,split=5${YAWS.map((_, i) => `[s${i}]`).join("")}[r];${views};${YAWS.map((_, i) => `[v${i}]`).join("")}hstack=inputs=4[o1];[r]crop=1920:240:0:360,scale=${RING_W}:${RING_H},format=gray[o2]`;
   const floorFile = join(dir, "floor.raw"), ringFile = join(dir, "ring.raw");

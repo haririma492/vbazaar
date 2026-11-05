@@ -36,6 +36,7 @@ import { buildTour, readTour } from "@/lib/stores/tourJob";
 import { buildShelfFilm } from "@/lib/stores/shelfFilm";
 import { findShelves } from "@/lib/stores/shelfFinder";
 import { buildShelves, readShelves } from "@/lib/stores/levelsJob";
+import { buildStoreMap, readStoreMap } from "@/lib/stores/mapJob";
 import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
@@ -271,6 +272,19 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       shelves: m ? { made: m.made, shelves: m.shelves.length, levels: m.shelves.reduce((x, sh) => x + sh.levels.length, 0) } : null,
       working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
     });
+  }
+  if (body.action === "mapBuild") {
+    // Operator: the store map (free: the camera's motion, the sightings, our own code; no AI). Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    void buildStoreMap(s.slug).then((note) => console.log("[map]", s.slug, note)).catch((e) => console.error("[map]", s.slug, e));
+    return ok({ started: true });
+  }
+  if (body.action === "map") {
+    // The store map (owner or operator): shelves, products, the camera's path, the tour's order, what to review.
+    const m = await readStoreMap(s.slug);
+    const job = await readJob("map");
+    const working = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    return ok({ map: m, working, note: working ? job?.note ?? "" : "" });
   }
   if (body.action === "sightingsDump") {
     // Operator: the store's sightings as kept (read only), for checking the planners.

@@ -20,6 +20,8 @@ import { run, v360Yaw } from "./media";
 import { project } from "./tour";
 import { planShelves, stillSize, type Boxed, type Frame } from "./levels";
 import { setJob } from "./jobState";
+import { orderShelvesByMap } from "./storeMap";
+import { readStoreMap } from "./mapJob";
 import { shelfSightingsKey, tourInputs } from "./tourJob";
 
 export type StillOut = { img: string; w: number; h: number; items: Array<{ n: number; x: number; y: number; w: number; h: number }> };
@@ -62,7 +64,8 @@ export async function buildShelves(slug: string): Promise<string> {
     if (!boxed.length) return "No shelf pictures yet: run «Find more products on these shelves» (the Shelf finder) first.";
     if (!s.files.video) return "No upload to cut the shelves from.";
     const src = await presignGet(s.files.video.key, "master", 6 * 3600);
-    const plan = planShelves(boxed);
+    // In the store map's order (`storeMap.ts`): the layout of the store, not the order it was filmed in.
+    const plan = orderShelvesByMap(planShelves(boxed), await readStoreMap(slug));
     if (!plan.length) return "No shelves found in the shelf pictures.";
     const stamp = Date.now(), base = `scenes/store-${slug}/shelves/${stamp}`;
     const cut = async (key: string, at: number, f: Frame, maxW: number) => {

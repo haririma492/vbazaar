@@ -30,6 +30,7 @@ import Products from "./Products";
 import RouteCard from "./RouteCard";
 import PhotosCard from "./PhotosCard";
 import TourCard from "./TourCard";
+import MapCard from "./MapCard";
 import WalkFrame from "./WalkFrame";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
@@ -255,6 +256,7 @@ export default function StorePage({ slug }: { slug: string }) {
       {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
+      {page.walkUrl && <MapCard api={api} operator={page.who === "operator"} />}
 
       {op && <Card><ChangePassword api={api} /></Card>}
       {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
