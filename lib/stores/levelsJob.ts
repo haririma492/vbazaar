@@ -20,7 +20,7 @@ import { run, v360Yaw } from "./media";
 import { project } from "./tour";
 import { planShelves, stillSize, type Boxed, type Frame } from "./levels";
 import { setJob } from "./jobState";
-import { shelfSightingsKey } from "./tourJob";
+import { shelfSightingsKey, tourInputs } from "./tourJob";
 
 export type StillOut = { img: string; w: number; h: number; items: Array<{ n: number; x: number; y: number; w: number; h: number }> };
 export type ShelvesManifest = {
@@ -55,7 +55,10 @@ export async function buildShelves(slug: string): Promise<string> {
     const s = await readStore(slug);
     if (!s) return "No store.";
     const t = await readMastersText(shelfSightingsKey(slug)).catch(() => null);
-    const boxed = (t ? (JSON.parse(t) as Boxed[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size);
+    // Inside the store only (owner, 2026-11-05): pictures from before its door were the window and the hallway.
+    const inp = await tourInputs(slug);
+    const entry = typeof inp === "string" ? 0 : inp.entry;
+    const boxed = (t ? (JSON.parse(t) as Boxed[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size && x.t >= entry - 0.5);
     if (!boxed.length) return "No shelf pictures yet: run «Find more products on these shelves» (the Shelf finder) first.";
     if (!s.files.video) return "No upload to cut the shelves from.";
     const src = await presignGet(s.files.video.key, "master", 6 * 3600);
