@@ -1,7 +1,7 @@
 // The Shelf tour's planning (`tour.ts`).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planTour, project, shelvesOf, type Seen } from "./tour.ts";
+import { clipLen, planTour, project, shelvesOf, type Seen } from "./tour.ts";
 
 const deg = Math.PI / 180;
 const s = (n: number, t: number, lonDeg: number, w = 0.1): Seen => ({ n, t, lon: lonDeg * deg, lat: 0, size: { w, h: w } });
@@ -31,7 +31,7 @@ test("the tour: a clip a shelf, every product on screen at some moment", () => {
   assert.equal(p.clips.length, 2);
   assert.ok(p.clips.every((c) => c.to - c.from >= 3 && c.to - c.from <= 6));
   assert.deepEqual(p.items.map((i) => i.n).sort(), [1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9]);
-  assert.ok(Math.abs(p.seconds - p.clips.reduce((x, c) => x + c.to - c.from, 0)) < 0.02);
+  assert.ok(Math.abs(p.seconds - p.clips.reduce((x, c) => x + clipLen(c), 0)) < 0.02, "half speed plus the opening still");
   assert.ok(p.clips.every((c) => c.aim.every((a) => a.yaw === c.aim[0].yaw && a.pitch === c.aim[0].pitch)), "a fixed camera: one direction a clip (v360 commands add up)");
 });
 

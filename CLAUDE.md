@@ -599,6 +599,10 @@ quality and choice to break away and enter in a shop. (period)"*
   at most 70°; ordered so the camera keeps to one side; and the camera
   operator (the Lock agent's `hide`) never in view: the clip turns away from
   them up to 35°, else it is dropped. Bookshop: 7 shelves, 53 s, 90 products.
+  Then (owner, 2026-11-05: *"Moves too fast whitin a shelf and between
+  shelves"*): each shelf at half the walking speed (`SLOW`, the frames between
+  made by ffmpeg's `minterpolate` mci, checked: spines stay readable), opening
+  on a 1 s still (`HOLD`), fading 0.5 s out and in (`FADE`).
 - **The Shelf finder** (owner, 2026-11-05: *"the Shelf Tour itself I guess will
   lead to discovery and identification of many more new books"*; *"yes"* to
   about $2–3). `lib/stores/shelfFinder.ts`, «Find more products on these

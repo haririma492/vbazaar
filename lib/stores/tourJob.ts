@@ -32,7 +32,7 @@ import { readStore } from "./bucket";
 import { probe, run } from "./media";
 import { originalTime } from "./photoSharp";
 import { setJob } from "./jobState";
-import { ASPECT, FADE, planTour, type OperatorAt, type Seen, type TourPlan, type Track } from "./tour";
+import { ASPECT, FADE, HOLD, SLOW, clipLen, planTour, type OperatorAt, type Seen, type TourPlan, type Track } from "./tour";
 
 export const TOUR_W = 1280, TOUR_H = Math.round(TOUR_W / ASPECT);
 export type TourManifest = Omit<TourPlan, "clips"> & {
@@ -69,10 +69,13 @@ export async function buildTour(slug: string): Promise<string> {
       const vf = [
         `v360=input=e:output=flat:yaw=${deg(a0.yaw)}:pitch=${deg(a0.pitch)}:h_fov=${deg(c.hfov)}:v_fov=${deg(c.vfov)}:w=${TOUR_W}:h=${TOUR_H}:interp=lanczos`,
         "fps=25",
-        `fade=t=in:st=0:d=${FADE}`, `fade=t=out:st=${Math.max(0, len - FADE).toFixed(3)}:d=${FADE}`,
+        // Half speed, the frames between computed (not repeated), then the opening still, then the fades.
+        `setpts=${SLOW}*PTS`, "minterpolate=fps=25:mi_mode=mci:mc_mode=aobmc:vsbmc=1",
+        `tpad=start_mode=clone:start_duration=${HOLD}`,
+        `fade=t=in:st=0:d=${FADE}`, `fade=t=out:st=${Math.max(0, clipLen(c) - FADE).toFixed(3)}:d=${FADE}`,
       ].join(",");
       await run("ffmpeg", ["-v", "error", "-y", "-ss", c.from.toFixed(3), "-t", len.toFixed(3), "-i", src, "-vf", vf, "-an",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "25", "-threads", "2", out]);
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "25", "-threads", "4", out]);
       files.push(out);
     }
     await setJob("tour", { busy: true, key: walkKey, note: "putting the shelves together" });
@@ -86,7 +89,7 @@ export async function buildTour(slug: string): Promise<string> {
     const manifest: TourManifest = {
       store: slug, walk: walkKey, video: publicUrl(videoKey), made: new Date().toISOString(), w: TOUR_W, h: TOUR_H,
       seconds: plan.seconds, items: plan.items,
-      clips: plan.clips.map((c) => { const len = c.to - c.from; const o = { shelf: c.shelf, at: Math.round(at * 100) / 100, len: Math.round(len * 100) / 100, products: c.products }; at += len; return o; }),
+      clips: plan.clips.map((c) => { const len = clipLen(c); const o = { shelf: c.shelf, at: Math.round(at * 100) / 100, len: Math.round(len * 100) / 100, products: c.products }; at += len; return o; }),
     };
     const mf = join(dir, "tour.json");
     writeFileSync(mf, JSON.stringify(manifest));

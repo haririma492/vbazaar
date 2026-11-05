@@ -39,7 +39,15 @@ export type TourPlan = { clips: Clip[]; items: OnScreen[]; seconds: number };
 // least `SHELF_MIN` products, 6–12 s each, one steady pan, ordered so the camera keeps to one side at a time.
 export const STEP = 0.2, SHELF_SPREAD = 0.9, SHELF_GAP = 5, SHELF_MIN = 6, MERGE_SPREAD = 1.3, CLIP_MIN = 6, CLIP_MAX = 12, AIM_SMOOTH = 1.5;
 // At most 70° (2026-11-05: at 95° a "shelf" was the whole room, desks and all).
-export const FOV_MIN = (50 * Math.PI) / 180, FOV_MAX = (70 * Math.PI) / 180, ASPECT = 16 / 9, FADE = 0.25;
+export const FOV_MIN = (50 * Math.PI) / 180, FOV_MAX = (70 * Math.PI) / 180, ASPECT = 16 / 9;
+/**
+ * ⚠️ SLOWER (owner, 2026-11-05: "Moves too fast whitin a shelf and between shelves"): each shelf plays at half
+ * the walking speed (`SLOW`, the frames between made by motion interpolation), opens on a still of
+ * `HOLD` s, and fades out and in over `FADE` s each side.
+ */
+export const SLOW = 2, HOLD = 1, FADE = 0.5;
+/** A clip's length in the tour (s). */
+export const clipLen = (c: { from: number; to: number }) => HOLD + (c.to - c.from) * SLOW;
 
 const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 const median = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s.length ? s[s.length >> 1] : 0; };
@@ -233,11 +241,15 @@ export function planTour(seenAll: Seen[], trackList: Track[], end: number, entry
       for (const [i, t] of steps.entries()) {
         const p = placeAt(n, t, tracks, firstSeen.get(n)!, shelfTracks);
         const s = p && project(p.x, p.y, aim[i].yaw, aim[i].pitch, hfov, vfov);
-        if (s) { o.t.push(Math.round((at + (t - from)) * 100) / 100); o.x.push(Math.round(s.x * 1000) / 1000); o.y.push(Math.round(s.y * 1000) / 1000); }
+        if (!s) continue;
+        const push = (tt: number) => { o.t.push(Math.round(tt * 100) / 100); o.x.push(Math.round(s.x * 1000) / 1000); o.y.push(Math.round(s.y * 1000) / 1000); };
+        // The opening still shows the first frame: the products stand where they are then.
+        if (i === 0) for (let h = 0; h < HOLD - 1e-9; h += STEP) push(at + h);
+        push(at + HOLD + (t - from) * SLOW);
       }
       if (o.t.length) items.set(n, o);
     }
-    at += to - from;
+    at += clipLen({ from, to });
   }
   return { clips, items: [...items.values()], seconds: Math.round(at * 100) / 100 };
 }
