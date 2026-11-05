@@ -21,7 +21,7 @@
  */
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
-import { presignGet, r2Config, readCatalogue, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
@@ -34,6 +34,7 @@ import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew"
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { buildTour, readTour } from "@/lib/stores/tourJob";
 import { findShelves } from "@/lib/stores/shelfFinder";
+import { buildShelves, readShelves } from "@/lib/stores/levelsJob";
 import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
@@ -249,6 +250,27 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       tour: r ? { made: r.made, seconds: r.seconds, shelves: r.clips.length, products: r.items.length, video: r.video, walk: r.walk } : null,
       working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
     });
+  }
+  if (body.action === "shelvesBuild") {
+    // Operator: the Shelf Tour by shelf and level (free: ffmpeg on the Shelf finder's boxes). Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    void buildShelves(s.slug).then((note) => console.log("[shelves]", s.slug, note)).catch((e) => console.error("[shelves]", s.slug, e));
+    return ok({ started: true });
+  }
+  if (body.action === "shelves") {
+    const m = await readShelves(s.slug);
+    const job = await readJob("shelves");
+    const working = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    return ok({
+      shelves: m ? { made: m.made, shelves: m.shelves.length, levels: m.shelves.reduce((x, sh) => x + sh.levels.length, 0) } : null,
+      working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
+    });
+  }
+  if (body.action === "sightingsDump") {
+    // Operator: the store's sightings as kept (read only), for checking the planners.
+    if (who !== "operator") return fail(403, "The operator only.");
+    const read = async (k: string) => { const t = await readMastersText(k).catch(() => null); return t ? JSON.parse(t) : null; };
+    return ok({ shelf: await read(`stores/${s.slug}/shelf-sightings.json`), finder: await read(`stores/${s.slug}/sightings.json`) });
   }
   if (body.action === "rawLinks") {
     // Operator: the store's raw .insv upload(s), each with a private link good for 6 h (the agents' test of
