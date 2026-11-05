@@ -8,6 +8,12 @@
  * (`tour.items`, interpolated), and a tap on or near it opens the walk's own
  * product card (`ItemCard`): name, price, «Add to basket» into the bazaar's
  * basket. «‹ Shelf» / «Shelf ›» jump between shelves; the walk stays a link.
+ *
+ * ⚠️ ONE SHELF AT A TIME, AS LONG AS THE SHOPPER LIKES (owner, 2026-11-05: "Do
+ * not move to next shelf until the user has asked. Let the user to explore one
+ * shelf back and forth fully"). A shelf plays through once and stops on its last
+ * frame (before its fade); the slider and the hold-down ◀ ▶ move along it, back
+ * and forth; only «Next shelf ›» / «‹ Previous shelf» change shelf.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -15,6 +21,7 @@ import { useSearchParams } from "next/navigation";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
 import { checkCatalogue, type Catalogue } from "@/lib/splats/catalogue";
 import type { Walk, WalkItem, WalkLabel } from "@/lib/splats/walks";
+import { FADE } from "@/lib/stores/tour";
 
 type OnScreen = { n: number; t: number[]; x: number[]; y: number[] };
 type Tour = {
@@ -47,6 +54,14 @@ export default function ShelfTour() {
   const [shown, setShown] = useState<Array<{ n: number; x: number; y: number }>>([]);
   const [clip, setClip] = useState(0);
   const [paused, setPaused] = useState(true);
+  const [now, setNow] = useState(0);
+  const clipRef = useRef(0);
+  const hold = useRef<number | null>(null);
+  /** The part of clip `k` a shopper moves in: inside its fades. */
+  const bounds = useCallback((k: number) => {
+    const c = tour?.clips[k];
+    return c ? { lo: c.at + FADE + 0.02, hi: c.at + c.len - FADE - 0.06 } : { lo: 0, hi: 0 };
+  }, [tour]);
   const video = useRef<HTMLVideoElement | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
 
@@ -69,9 +84,11 @@ export default function ShelfTour() {
       const on: Array<{ n: number; x: number; y: number }> = [];
       for (const o of tour.items) { const p = placeOn(o, t); if (p) on.push({ n: o.n, ...p }); }
       setShown(on);
-      let k = 0;
-      for (const [i, c] of tour.clips.entries()) if (t >= c.at - 0.01) k = i;
-      setClip(k);
+      setNow(t);
+      // The shelf's end is a wall: playing stops there; nothing moves on to the next shelf by itself.
+      const { lo, hi } = bounds(clipRef.current);
+      if (t > hi + 0.02) { v.pause(); v.currentTime = hi; }
+      else if (t < lo - 0.02 && !v.seeking) v.currentTime = lo;
     };
     const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: (now: number, m: { mediaTime: number }) => void) => number }).requestVideoFrameCallback?.bind(v);
     const tick = () => {
@@ -80,10 +97,38 @@ export default function ShelfTour() {
       else { draw(v.currentTime); id = requestAnimationFrame(tick); }
     };
     tick();
+    // The first shelf, ready at its start; it plays when the shopper taps ▶.
+    const first = () => { if (v.currentTime < bounds(0).lo) v.currentTime = bounds(0).lo; };
+    if (v.readyState >= 1) first(); else v.addEventListener("loadedmetadata", first, { once: true });
     const onSeek = () => draw(v.currentTime);
     v.addEventListener("seeked", onSeek);
     return () => { stop = true; cancelAnimationFrame(id); v.removeEventListener("seeked", onSeek); };
-  }, [tour]);
+  }, [tour, bounds]);
+
+  /** Play forward from here; at the shelf's end, from its start again. */
+  function play() {
+    const v = video.current;
+    if (!v) return;
+    const { lo, hi } = bounds(clipRef.current);
+    if (v.currentTime >= hi - 0.05) v.currentTime = lo;
+    void v.play();
+  }
+  /** Hold ◀: step back along the shelf (about walking speed) until let go. */
+  function holdBack(on: boolean) {
+    const v = video.current;
+    if (hold.current !== null) { clearInterval(hold.current); hold.current = null; }
+    if (!v || !on) return;
+    v.pause();
+    hold.current = window.setInterval(() => {
+      const { lo } = bounds(clipRef.current);
+      if (!v.seeking) v.currentTime = Math.max(lo, v.currentTime - 0.08);
+    }, 60);
+  }
+  function holdOn(on: boolean) {
+    const v = video.current;
+    if (!v) return;
+    if (on) play(); else v.pause();
+  }
 
   /** The video's picture inside the box (object-contain): where the fractions map to. */
   const rect = useCallback(() => {
@@ -107,13 +152,16 @@ export default function ShelfTour() {
       video.current?.pause();
       setCard({ id: `tour-${best.n}`, n: best.n, label: { en: `#${best.n}` }, pins: [] });
     } else if (video.current) {
-      if (video.current.paused) void video.current.play(); else video.current.pause();
+      if (video.current.paused) play(); else video.current.pause();
     }
   }
+  /** Only the shopper changes shelf: to the next or the previous one, which then plays through once. */
   function jump(d: number) {
     if (!tour || !video.current) return;
     const k = Math.max(0, Math.min(tour.clips.length - 1, clip + d));
-    video.current.currentTime = tour.clips[k].at + 0.3;
+    clipRef.current = k;
+    setClip(k);
+    video.current.currentTime = tour.clips[k].at;
     void video.current.play();
   }
 
@@ -146,18 +194,33 @@ export default function ShelfTour() {
         ))}
         {tour && paused && !card && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <span className="rounded-full bg-black/55 px-5 py-3 text-[16px] font-bold">▶ Play · tap a green light to buy</span>
+            <span className="rounded-full bg-black/55 px-5 py-3 text-[16px] font-bold">{now >= bounds(clip).hi - 0.1 ? "Drag along the shelf, or «Next shelf ›» · tap a green light to buy" : "▶ Tap to play · tap a green light to buy"}</span>
           </div>
         )}
         {card && tour && <ItemCard item={card} walkKey={tour.walk} walk={walk} catalogue={catalogue} onClose={() => setCard(null)} />}
       </div>
-      {tour && (
-        <div className="flex items-center justify-center gap-3 px-3 py-3 text-[15px]">
-          <button type="button" className="rounded-full border border-white/25 px-4 py-2" onClick={() => jump(-1)}>‹ Shelf</button>
-          <span className="tabular-nums text-white/75">Shelf {clip + 1} / {tour.clips.length}</span>
-          <button type="button" className="rounded-full border border-white/25 px-4 py-2" onClick={() => jump(1)}>Shelf ›</button>
-        </div>
-      )}
+      {tour && (() => {
+        const { lo, hi } = bounds(clip);
+        const btn = "rounded-full border border-white/25 px-4 py-2 select-none touch-none";
+        return (
+          <div className="space-y-2 px-3 py-3 text-[15px]" dir="ltr">
+            <div className="flex items-center gap-2">
+              <button type="button" className={btn} aria-label="Back along the shelf"
+                onPointerDown={() => holdBack(true)} onPointerUp={() => holdBack(false)} onPointerLeave={() => holdBack(false)} onPointerCancel={() => holdBack(false)}>◀</button>
+              <input type="range" className="min-w-0 flex-1 accent-[#00B8C8]" aria-label="Along the shelf"
+                min={lo} max={hi} step={0.04} value={Math.max(lo, Math.min(hi, now))}
+                onChange={(e) => { const v = video.current; if (v) { v.pause(); v.currentTime = Number(e.target.value); } }} />
+              <button type="button" className={btn} aria-label="On along the shelf"
+                onPointerDown={() => holdOn(true)} onPointerUp={() => holdOn(false)} onPointerLeave={() => { if (!paused) holdOn(false); }} onPointerCancel={() => holdOn(false)}>▶</button>
+            </div>
+            <div className="flex items-center justify-center gap-3">
+              <button type="button" className="rounded-full border border-white/25 px-4 py-2 disabled:opacity-40" disabled={clip === 0} onClick={() => jump(-1)}>‹ Previous shelf</button>
+              <span className="tabular-nums text-white/75">Shelf {clip + 1} / {tour.clips.length}</span>
+              <button type="button" className="rounded-full bg-[#00B8C8] px-4 py-2 font-bold text-[#06131c] disabled:opacity-40" disabled={clip === tour.clips.length - 1} onClick={() => jump(1)}>Next shelf ›</button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

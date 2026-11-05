@@ -75,7 +75,8 @@ export async function buildTour(slug: string): Promise<string> {
         `fade=t=in:st=0:d=${FADE}`, `fade=t=out:st=${Math.max(0, clipLen(c) - FADE).toFixed(3)}:d=${FADE}`,
       ].join(",");
       await run("ffmpeg", ["-v", "error", "-y", "-ss", c.from.toFixed(3), "-t", len.toFixed(3), "-i", src, "-vf", vf, "-an",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-r", "25", "-threads", "4", out]);
+        // A keyframe every 0.2 s and no B-frames: dragging along a shelf, backwards too, lands at once.
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "5", "-bf", "0", "-pix_fmt", "yuv420p", "-r", "25", "-threads", "4", out]);
       files.push(out);
     }
     await setJob("tour", { busy: true, key: walkKey, note: "putting the shelves together" });

@@ -603,6 +603,13 @@ quality and choice to break away and enter in a shop. (period)"*
   shelves"*): each shelf at half the walking speed (`SLOW`, the frames between
   made by ffmpeg's `minterpolate` mci, checked: spines stay readable), opening
   on a 1 s still (`HOLD`), fading 0.5 s out and in (`FADE`).
+  **One shelf at a time, as long as the shopper likes** (owner, 2026-11-05:
+  *"Do not move to next shelf until the user has asked. Let the user to explore
+  one shelf back and forth fully"*): a shelf plays through once and stops on its
+  last frame before the fade; a slider and hold-down ◀ ▶ move along it, back and
+  forth; only «Next shelf ›» / «‹ Previous shelf» change shelf
+  (`ShelfTour.tsx`). The tour is encoded with a keyframe every 0.2 s and no
+  B-frames, so dragging backwards lands at once.
 - **The Shelf finder** (owner, 2026-11-05: *"the Shelf Tour itself I guess will
   lead to discovery and identification of many more new books"*; *"yes"* to
   about $2–3). `lib/stores/shelfFinder.ts`, «Find more products on these
