@@ -610,6 +610,25 @@ quality and choice to break away and enter in a shop. (period)"*
   forth; only «Next shelf ›» / «‹ Previous shelf» change shelf
   (`ShelfTour.tsx`). The tour is encoded with a keyframe every 0.2 s and no
   B-frames, so dragging backwards lands at once.
+- **The Shelf Tour is now FILMED shelf by shelf and level by level, decoupled
+  from the walk** (owner, 2026-11-05: *"Did not recognize a shelf it moves
+  between shelves. It does not recognize one level of a shelf … we need
+  decouple the existing route and create a new route that is focused on each
+  shelf and each level of each shelf"*; then of the stills: *"they are useful
+  let's keep them but not a substitute for a shelf tour"*). `levels.ts` finds
+  each shelf (a wide empty gap parts two) and its levels (rows of boxed
+  products) in the Shelf finder's pictures; `shelfFilm.ts` cuts one still of
+  each whole shelf from the upload at its closest moment and films it with a
+  virtual camera (`choreo.ts`): whole shelf (2 s) → into level 1 → pan along
+  it → down to level 2 → pan back (serpentine) → … → whole shelf. Frames are
+  rendered in our own code (`frameOf`: 2×2 bilinear, sub-pixel; ffmpeg's crop
+  cannot change size per frame, it stalled) and encoded by ffmpeg. Measured on
+  a test shelf: median frame change 0.0028, no jumps. The lights' places come
+  from the same still. Inside the store only. The stills stay as «📷 Photos»
+  (`/vca/tour?s=<store>&view=photos`, `ShelfLevels.tsx`). Levels found from
+  boxes are approximate (a pile on a table, two boards merged when few books
+  on them were boxed); Claude outlining each board (~$0.30 a store) is the
+  offered fix.
 - **The Shelf finder** (owner, 2026-11-05: *"the Shelf Tour itself I guess will
   lead to discovery and identification of many more new books"*; *"yes"* to
   about $2–3). `lib/stores/shelfFinder.ts`, «Find more products on these

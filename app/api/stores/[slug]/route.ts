@@ -33,6 +33,7 @@ import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/ht
 import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { buildTour, readTour } from "@/lib/stores/tourJob";
+import { buildShelfFilm } from "@/lib/stores/shelfFilm";
 import { findShelves } from "@/lib/stores/shelfFinder";
 import { buildShelves, readShelves } from "@/lib/stores/levelsJob";
 import { readJob } from "@/lib/stores/jobState";
@@ -229,7 +230,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "tourBuild") {
     // Operator: the Shelf tour builder (free: ffmpeg on the sightings already found). Background.
     if (who !== "operator") return fail(403, "The operator only.");
-    void buildTour(s.slug).then((note) => console.log("[tour]", s.slug, note)).catch((e) => console.error("[tour]", s.slug, e));
+    // The film by shelf and level when the Shelf finder has looked at the shelves; else the camera's-path tour.
+    void (async () => {
+      const filmed = await buildShelfFilm(s.slug);
+      console.log("[tour]", s.slug, filmed);
+      if (/^No shelf pictures/.test(filmed)) console.log("[tour]", s.slug, await buildTour(s.slug));
+    })().catch((e) => console.error("[tour]", s.slug, e));
     return ok({ started: true });
   }
   if (body.action === "shelfFind") {

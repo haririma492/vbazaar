@@ -179,6 +179,7 @@ export default function ShelfTour() {
               <a className="rounded-full px-3 py-1 text-white/80" href={`/vca/walk?v=${encodeURIComponent(tour.walk)}`}>👣 Free Tour</a>
             </span>
           )}
+          <a className="text-white/80 underline" href={`/vca/tour?s=${encodeURIComponent(slug)}&view=photos`}>📷 Photos</a>
           <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
         </div>
       </div>
