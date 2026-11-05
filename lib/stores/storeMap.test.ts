@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   assignIds, buildMap, closeLoops, fitSegment, integratePath, mapOrder, oneBookcase, orderShelvesByMap, placeProducts, poseAt,
-  ringMatch, triangulate, rayOf, ASSUMED_DIST, type Loop, type MapShelf, type Observation, type Pose,
+  ringMatch, triangulate, rayOf, rayMeetsShelf, ASSUMED_DIST, type Loop, type MapShelf, type Observation, type Pose,
 } from "./storeMap";
 import type { Motion } from "./route";
 import type { Shelf } from "./levels";
@@ -183,4 +183,24 @@ test("ringMatch finds the same panorama turned round, and tells a different plac
   assert.ok(m.score > 0.99 && m.shift === 16, JSON.stringify(m));
   const other = new Uint8Array(w * h).map(() => rnd());
   assert.ok(ringMatch(other, a, w, h, 4).score < 0.5);
+});
+
+test("a one-view product on a well-placed shelf lands where its ray meets the shelf, not at a guessed distance", () => {
+  const path = integratePath(straight(0.5, 24));
+  // A shelf along y = −2 (x 2…5), fixed by 6 products seen as the camera walked; product 50 at x 3.2 seen once.
+  const shelf = [1, 2, 3, 4, 5, 6].map((n) => ({ n, x: 2 + (n - 1) * 0.6, y: -2 }));
+  const obs: Observation[] = shelf.flatMap((p) => seenFrom(path, p.n, p.x, p.y, Math.max(0, (p.x - 2.5) / 0.5), (p.x + 2.5) / 0.5));
+  const t1 = 6, cam = poseAt(path, t1)!;
+  obs.push({ n: 50, t: t1, lon: lonOf(cam, 3.2, -2) });
+  const ps = [...shelf, { n: 50, x: 3.2, y: -2 }];
+  const pic = shelfOf(t1, ps.map((p) => box(p.n, t1, lonOf(cam, p.x, p.y), 0)));
+  const map = buildMap({ store: "t", made: "x", path, loops: [], observations: obs, shelves: [pic], entry: 0, prev: null, unnamed: [] });
+  const p = map.products.find((q) => q.n === 50)!;
+  assert.equal(p.method, "on-shelf");
+  assert.ok(Math.hypot(p.x - 3.2, p.y + 2) < 0.08, `${p.x},${p.y}`);
+  assert.equal(map.quality.onShelf, 1);
+  assert.ok(!("ray" in p));
+  // A ray along the shelf, or meeting it behind the camera, does not count.
+  assert.equal(rayMeetsShelf({ t: 0, x: 0, y: -2, dx: 1, dy: 0 }, { center: { x: 3.5, y: -2 }, dir: 0, length: 3 }), null);
+  assert.equal(rayMeetsShelf({ t: 0, x: 3, y: 0, dx: 0, dy: 1 }, { center: { x: 3.5, y: -2 }, dir: 0, length: 3 }), null);
 });

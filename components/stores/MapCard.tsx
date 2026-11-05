@@ -58,7 +58,7 @@ export default function MapCard({ api, operator }: { api: string; operator: bool
           <>
             <p className="text-white/70">
               {q.shelves} shelves{q.merged ? ` (${q.merged} merged from partial views)` : ""} · {q.triangulated} of {q.products} products placed by triangulation
-              {q.estimated ? `, ${q.estimated} estimated` : ""} · {q.loopsClosed} repeated visit{q.loopsClosed === 1 ? "" : "s"} corrected · made {new Date(map.made).toLocaleString()}
+              {q.onShelf ? `, ${q.onShelf} placed on their shelf from one view` : ""}{q.estimated ? `, ${q.estimated} estimated` : ""} · {q.loopsClosed} repeated visit{q.loopsClosed === 1 ? "" : "s"} corrected · made {new Date(map.made).toLocaleString()}
             </p>
             <svg viewBox={`0 0 ${W} ${view.H}`} className="w-full rounded-lg bg-black/40" role="img" aria-label="Store map">
               <polyline fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth={1.5} points={map.path.map((p) => { const a = view.at(p); return `${a.x.toFixed(1)},${a.y.toFixed(1)}`; }).join(" ")} />
@@ -81,13 +81,13 @@ export default function MapCard({ api, operator }: { api: string; operator: bool
                   </g>
                 );
               })}
-              {map.products.map((p) => { const a = view.at(p); return p.method === "triangulated"
-                ? <circle key={`p${p.n}`} cx={a.x} cy={a.y} r={2} fill="rgba(255,255,255,0.8)" />
+              {map.products.map((p) => { const a = view.at(p); return p.method !== "estimated"
+                ? <circle key={`p${p.n}`} cx={a.x} cy={a.y} r={2} fill={p.method === "triangulated" ? "rgba(255,255,255,0.8)" : "rgba(147,197,253,0.85)"} />
                 : <circle key={`p${p.n}`} cx={a.x} cy={a.y} r={2.2} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={0.8} />; })}
               {(() => { const e = view.at(map.entrance); return <g><circle cx={e.x} cy={e.y} r={6} fill="rgb(34,197,94)" /><text x={e.x + 9} y={e.y + 4} fontSize={11} fill="rgb(134,239,172)">entrance</text></g>; })()}
               <text x={W - PAD} y={view.H - 8} textAnchor="end" fontSize={10} fill="rgba(255,255,255,0.45)">1 m ≈ {Math.round(view.scale)} px (estimated)</text>
             </svg>
-            <p className="text-white/55">Green numbers: the Shelf Tour&apos;s order (the Shelf Tour follows it the next time it is built). Yellow: shelves (faint: few products placed). Dots: products (hollow: estimated from one view).</p>
+            <p className="text-white/55">Green numbers: the Shelf Tour&apos;s order (the Shelf Tour follows it the next time it is built). Yellow: shelves (faint: few products placed). Dots: products (white: triangulated; blue: one view, put on its shelf; hollow: estimated).</p>
             {map.notes.map((n, i) => <p key={i} className="text-white/45">{n}</p>)}
             {map.review.length > 0 && (
               <div>

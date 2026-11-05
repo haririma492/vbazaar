@@ -50,7 +50,13 @@ export const MAP_VERSION = 1;
 export type Pose = { t: number; x: number; y: number; th: number; sure: number };
 export type Ray = { t: number; x: number; y: number; dx: number; dy: number };
 export type Observation = { n: number; t: number; lon: number };
-export type Placed = { n: number; x: number; y: number; method: "triangulated" | "estimated"; conf: number; rays: number; dist: number };
+export type Placed = {
+  n: number; x: number; y: number;
+  /** triangulated: rays from a moving camera crossed; on-shelf: one view, its ray met its shelf's line; estimated: one view, at `ASSUMED_DIST`. */
+  method: "triangulated" | "on-shelf" | "estimated"; conf: number; rays: number; dist: number;
+  /** For a one-view product: the ray it was seen along (not written to the map). */
+  ray?: Ray;
+};
 export type Loop = { a: number; b: number; score: number; shift: number };
 export type MapShelf = {
   id: string; t: number; center: { x: number; y: number }; dir: number; length: number;
@@ -68,7 +74,7 @@ export type StoreMap = {
   products: Array<Placed & { shelf: string | null }>;
   order: string[];
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
-  quality: { products: number; triangulated: number; estimated: number; shelves: number; merged: number; meanSure: number; loopsClosed: number };
+  quality: { products: number; triangulated: number; onShelf?: number; estimated: number; shelves: number; merged: number; meanSure: number; loopsClosed: number };
   review: ReviewItem[];
   notes: string[];
 };
@@ -221,7 +227,7 @@ export function placeProducts(obs: Observation[], path: Pose[]): Map<number, Pla
     }
     // One spot (or rays that do not agree): along the middle ray, at the assumed distance.
     const r = rays[rays.length >> 1];
-    out.set(n, { n, x: r3(r.x + r.dx * ASSUMED_DIST), y: r3(r.y + r.dy * ASSUMED_DIST), method: "estimated", conf: 0.2, rays: rays.length, dist: ASSUMED_DIST });
+    out.set(n, { n, x: r3(r.x + r.dx * ASSUMED_DIST), y: r3(r.y + r.dy * ASSUMED_DIST), method: "estimated", conf: 0.2, rays: rays.length, dist: ASSUMED_DIST, ray: r });
   }
   return out;
 }
@@ -359,6 +365,23 @@ export function mapOrder(shelves: Array<{ id: string; face: { x: number; y: numb
   return order.map((s) => s.id);
 }
 
+/**
+ * Where a ray meets a shelf's line, within the shelf's length (plus a little) and between `DIST_MIN` and `DIST_MAX`
+ * ahead of the camera; null when it misses, runs along the shelf, or meets it behind the camera.
+ */
+export function rayMeetsShelf(r: Ray, sh: { center: { x: number; y: number }; dir: number; length: number }): { x: number; y: number; dist: number } | null {
+  const ux = Math.cos(sh.dir), uy = Math.sin(sh.dir);
+  const den = r.dx * uy - r.dy * ux;
+  if (Math.abs(den) < 0.15) return null; // nearly along the shelf: the crossing is meaningless
+  const wx = sh.center.x - r.x, wy = sh.center.y - r.y;
+  const t = (wx * uy - wy * ux) / den;
+  if (t < DIST_MIN || t > DIST_MAX) return null;
+  const x = r.x + r.dx * t, y = r.y + r.dy * t;
+  const along = (x - sh.center.x) * ux + (y - sh.center.y) * uy;
+  if (Math.abs(along) > sh.length / 2 + 0.3) return null;
+  return { x, y, dist: t };
+}
+
 export type MapInputs = {
   store: string; made: string; path: Pose[]; loops: Loop[]; observations: Observation[];
   /** The Shelf finder's shelves (`planShelves`), or the tagger's sightings grouped by the same rules. */
@@ -376,15 +399,25 @@ export function buildMap(inp: MapInputs): StoreMap {
   const withIds = assignIds(out.map(({ pts: _p, viewer: _v, ...rest }) => rest), inp.prev?.shelves ?? []);
   const shelfOf = new Map<number, string>();
   for (const s of withIds) for (const n of s.products) if (!shelfOf.has(n)) shelfOf.set(n, s.id);
+  // A one-view product on a shelf whose line is fixed by triangulated products: where its ray meets that line.
+  let onShelf = 0;
+  for (const p of placed.values()) {
+    const sh = p.method === "estimated" && p.ray ? withIds.find((x) => x.id === shelfOf.get(p.n)) : undefined;
+    if (!sh || sh.placed < FIT_MIN) continue;
+    const hit = rayMeetsShelf(p.ray!, sh);
+    if (!hit) continue;
+    placed.set(p.n, { ...p, x: r3(hit.x), y: r3(hit.y), method: "on-shelf", conf: 0.5, dist: r3(hit.dist) });
+    onShelf++;
+  }
   const e = poseAt(closed, inp.entry) ?? closed[0] ?? { t: 0, x: 0, y: 0, th: 0, sure: 0 };
   const order = mapOrder(withIds, e);
-  const products = [...placed.values()].sort((a, b) => a.n - b.n).map((p) => ({ ...p, shelf: shelfOf.get(p.n) ?? null }));
+  const products = [...placed.values()].sort((a, b) => a.n - b.n).map(({ ray: _r, ...p }) => ({ ...p, shelf: shelfOf.get(p.n) ?? null }));
   const review: ReviewItem[] = [];
   for (const s of withIds) {
     if (!s.placed) review.push({ kind: "shelf", id: s.id, why: "No product on it could be placed by triangulation: its place on the map is estimated from one view." });
     else if (s.conf < SHELF_CONF_MIN) review.push({ kind: "shelf", id: s.id, why: `Only ${s.placed} of ${s.products.length} products placed by triangulation.` });
   }
-  for (const p of products) if (p.method === "estimated") review.push({ kind: "product", id: String(p.n), why: "Seen from one spot only: its place is estimated." });
+  for (const p of products) if (p.method === "estimated") review.push({ kind: "product", id: String(p.n), why: "Seen from one spot only, on no well-placed shelf: its place is estimated." });
   for (const n of inp.unnamed) review.push({ kind: "product", id: String(n), why: "No name: the title could not be read; the owner names it, or it is filmed again closer." });
   // Every point for the bounds: the path, the shelves' ends, the products.
   const xs: number[] = [], ys: number[] = [];
@@ -392,6 +425,7 @@ export function buildMap(inp: MapInputs): StoreMap {
   for (const s of withIds) for (const k of [-1, 1]) { xs.push(s.center.x + (k * Math.cos(s.dir) * s.length) / 2); ys.push(s.center.y + (k * Math.sin(s.dir) * s.length) / 2); }
   for (const p of products) { xs.push(p.x); ys.push(p.y); }
   const tri = products.filter((p) => p.method === "triangulated").length;
+  const est = products.filter((p) => p.method === "estimated").length;
   const pathOut: StoreMap["path"] = [];
   for (const q of closed) if (!pathOut.length || q.t - pathOut[pathOut.length - 1].t >= 0.5 - 1e-9) pathOut.push({ t: q.t, x: r3(q.x), y: r3(q.y) });
   const notes = [
@@ -403,7 +437,7 @@ export function buildMap(inp: MapInputs): StoreMap {
     entrance: { x: r3(e.x), y: r3(e.y), th: r3(e.th), t: r3(inp.entry) },
     path: pathOut, loops: used, shelves: withIds, products, order,
     bounds: { minX: r3(Math.min(...xs, 0)), minY: r3(Math.min(...ys, 0)), maxX: r3(Math.max(...xs, 0)), maxY: r3(Math.max(...ys, 0)) },
-    quality: { products: products.length, triangulated: tri, estimated: products.length - tri, shelves: withIds.length, merged, meanSure: r3(median(closed.map((q) => q.sure))), loopsClosed: used.length },
+    quality: { products: products.length, triangulated: tri, onShelf, estimated: est, shelves: withIds.length, merged, meanSure: r3(median(closed.map((q) => q.sure))), loopsClosed: used.length },
     review, notes,
   };
 }
