@@ -109,6 +109,16 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
 `/demo`, `/operator/splats`, and its APIs under `/api/splats`,
 `/api/operator/splats`, `/api/operator/check`, `/api/demo`.
 
+- **The walk videos are private** (owner, 2026-11-06: *"how can we make sure that the mp4 files and .insv
+  file … cannot be downloaded by anyone?"*, then *"everyone should be able to watch"*). Every video under
+  `scenes/` (walks, `-phone`/`-reverse` copies, Shelf tours, route previews, cut backups) lives in the PRIVATE
+  masters bucket (`isPrivateVideoKey`, `lib/splats/media.ts`; `r2.ts` writes them there and reads them from
+  there); the player gets them through `/api/media/<key>`, a redirect to a link signed for 6 h. No sign-in.
+  Uploads (`stores/…/uploads`, the .insv) were already private. Never build a public URL for a video
+  (`publicBase` + key): use `mediaPath(key)`. The 48 videos were moved and their public copies deleted on
+  2026-11-06 (operator action `videosPrivate`, `deletePublic`). A played video can still be screen-recorded,
+  and DRM would break the walk (a protected video cannot be drawn into WebGL). `R2_MASTERS_BUCKET` must stay
+  set, or videos fall back into the public bucket.
 - **The bazaar has its own basket** (owner, 2026-11-03: *"when adding to
   basket, create a vbazaar.app basket, now it goes to sarekooche"*). «Add to
   basket» on a walk's product keeps the line on the device (`lib/basket.ts`,
