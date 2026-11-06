@@ -11,7 +11,7 @@
  * on it (anywhere on the product) opens the walk's own card, «Add to basket».
  */
 
-import BrandBadge from "@/components/brand/BrandBadge";
+import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
 import { checkCatalogue, type Catalogue } from "@/lib/splats/catalogue";
@@ -88,7 +88,7 @@ export default function ShelfLevels({ slug, data, name, walkKey }: { slug: strin
     <div className="fixed inset-0 flex flex-col bg-black text-white">
       <div className="flex items-center justify-between gap-2 px-3 py-2 text-[14px]">
         {/* The bazaar's logo on the right (owner, 2026-11-06); the header is right-to-left, so it comes first. */}
-        <BrandBadge width={52} />
+        <TourBazaarLink />
         <div className="me-auto min-w-0 flex-1 truncate"><b>{name?.en ?? slug}</b>{name?.fa ? <span className="text-white/60"> · {name.fa}</span> : null}</div>
         <div className="flex shrink-0 items-center gap-3">
           <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">

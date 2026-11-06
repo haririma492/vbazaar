@@ -54,7 +54,7 @@
  */
 
 import StoreLogo from "@/components/brand/StoreLogo";
-import BrandBadge from "@/components/brand/BrandBadge";
+import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
@@ -2390,9 +2390,9 @@ export default function Walk360() {
         </>
       )}
 
-      {/* The bazaar's logo on the right, from the first screen (owner, 2026-11-06); the sound key and the
+      {/* The link to vbazaar.app (a bazaar sign) on the right, from the first screen (owner, 2026-11-06); the sound key and the
           website key sit below it. */}
-      {phase !== "loading" && <BrandBadge width={52} overlay className="absolute right-3 top-3 z-20" />}
+      {phase !== "loading" && <TourBazaarLink overlay className="absolute right-3 top-3 z-20" />}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (

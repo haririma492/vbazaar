@@ -17,7 +17,7 @@
  */
 
 import StoreLogo from "@/components/brand/StoreLogo";
-import BrandBadge from "@/components/brand/BrandBadge";
+import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
@@ -196,7 +196,7 @@ export default function ShelfTour() {
     <div className="fixed inset-0 flex flex-col bg-black text-white">
       <div className="flex items-center justify-between gap-2 px-3 py-2 text-[14px]">
         {/* The bazaar's logo on the right (owner, 2026-11-06); the header is right-to-left, so it comes first. */}
-        <BrandBadge width={52} />
+        <TourBazaarLink />
         <div className="me-auto min-w-0 flex-1 truncate"><b>{name}</b>{title?.fa ? <span className="text-white/60"> · {title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
         <div className="flex shrink-0 items-center gap-3">
           {tour && (
