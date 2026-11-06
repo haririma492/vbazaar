@@ -37,6 +37,9 @@ export type SiteProduct = {
   vendor?: string;
   /** Where the details came from: the site's own JSON, a shop platform's list, structured data, or share tags. */
   source: "json" | "shopify" | "woo" | "jsonld" | "meta";
+  /** Its page is in the sitemap but the site does not sell it (its own data says "not found": a draft). Shown with
+   *  its photos, never put on the store's list. */
+  unlisted?: boolean;
 };
 
 // ── robots.txt ────────────────────────────────────────────────────────────────
@@ -306,9 +309,16 @@ export function productFromHtml(html: string, url: string): SiteProduct | null {
       if (p) return { ...p, priceCents: price };
     }
   }
-  const title = metaOf(html, "og:title") || stripHtml(/<title>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? "");
-  if (!title) return null;
+  const site = metaOf(html, "og:site_name");
+  const raw = metaOf(html, "og:title") || stripHtml(/<title>([\s\S]*?)<\/title>/i.exec(html)?.[1] ?? "");
+  const title = genericTitle(raw, site) ? "" : raw;
   const image = metaOf(html, "og:image");
+  if (!title) {
+    // No name of its own (a draft: the site's page shows its generic title). Kept for its photo, marked unlisted.
+    if (!image) return null;
+    const img = bestImageUrl(image, url);
+    return { url, handle: handleOf(url), name: { en: "", fa: "" }, description: { en: "", fa: "" }, priceCents: null, compareAtCents: null, currency: "CAD", images: img ? [img] : [], variants: [], category: [], available: null, source: "meta", unlisted: true };
+  }
   const priceTag = metaOf(html, "product:price:amount") || metaOf(html, "og:price:amount");
   return productFromJson({
     name: title,
@@ -317,6 +327,17 @@ export function productFromHtml(html: string, url: string): SiteProduct | null {
     price: priceTag ? toCents(priceTag) : null,
     currency: metaOf(html, "product:price:currency") || metaOf(html, "og:price:currency"),
   }, url, "meta");
+}
+
+/**
+ * A page title that names no product: the site's own name, or a word like "Product" with it
+ * («Product | محصول | Shiraz Gallery Canada», what shirazgallery.ca shows for a draft).
+ */
+export function genericTitle(title: string, siteName = ""): boolean {
+  const parts = String(title || "").split(/\s*[|·•—–-]\s*/).map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const site = siteName.trim().toLowerCase();
+  const generic = new Set(["product", "products", "shop", "store", "home", "untitled", "محصول", "محصولات", "فروشگاه", "خانه"]);
+  return !parts.length || parts.every((x) => generic.has(x) || (site && x === site));
 }
 
 /** A product with its photos widened by the ones the sitemap lists for its page, main photo first. */
@@ -359,6 +380,7 @@ export type WebsiteRun = {
 export function summarize(products: SiteProduct[]) {
   return {
     products: products.length,
+    unlisted: products.filter((p) => p.unlisted).length,
     priced: products.filter((p) => p.priceCents !== null).length,
     onSale: products.filter((p) => p.compareAtCents !== null).length,
     photos: products.reduce((n, p) => n + p.images.length, 0),

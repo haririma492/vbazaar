@@ -98,7 +98,8 @@ async function explore(slug: string, origin: string, opts: { readDisallowed?: bo
     store: slug, site: origin, started: now(), finished: null, running: true, note: "Reading robots.txt…", method: "",
     robots: { disallow: [], sitemaps: [] }, ask: null, permission: null, endpoint: null, found: 0, done: [], failures: [], products: [],
     // Read again from the start, the photo copies and the last merge are kept: the owner's changes stay theirs.
-    ...(last?.site === origin ? { photos: last.photos, merged: last.merged, integrated: last.integrated } : {}),
+    // …and so is the operator's answer about robots.txt for this site.
+    ...(last?.site === origin ? { photos: last.photos, merged: last.merged, integrated: last.integrated, permission: last.permission } : {}),
   };
   if (opts.readDisallowed !== undefined) run.permission = { readDisallowed: opts.readDisallowed, by: opts.by || "operator", at: now() };
   const save = async (note?: string) => { if (note) run.note = note; await writeMastersJson(websiteKey(slug), run); };

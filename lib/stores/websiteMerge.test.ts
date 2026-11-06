@@ -64,3 +64,9 @@ test("a product gone from the site is counted, never taken off; a full list says
   assert.equal(m.full, true);
   assert.equal(m.products.length, 1);
 });
+
+test("a draft on the site is never put on the store's list", () => {
+  const m = mergeIntoCatalogue([], [site("https://s.ca/product/untitled", { unlisted: true, name: { en: "", fa: "" } })], [], photo);
+  assert.equal(m.added, 0);
+  assert.equal(m.products.length, 0);
+});

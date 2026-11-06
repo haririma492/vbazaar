@@ -114,6 +114,11 @@ test("a page's structured data, else its share tags", () => {
   assert.equal(b.priceCents, null);
   assert.equal(b.source, "meta");
   assert.equal(productFromHtml("<html></html>", "https://x.ca/"), null);
+  // shirazgallery.ca's drafts: the generic title is no name; kept for the photo, marked unlisted.
+  const draft = productFromHtml(`<meta property="og:title" content="Product | محصول | Shiraz Gallery Canada"/><meta property="og:site_name" content="Shiraz Gallery Canada"/><meta property="og:image" content="https://cdn.shopify.com/s/files/IMG-1408.png?v=1"/>`, "https://s.ca/product/untitled-aug18")!;
+  assert.equal(draft.unlisted, true);
+  assert.deepEqual(draft.name, { en: "", fa: "" });
+  assert.equal(draft.images.length, 1);
 });
 
 test("prices, languages and photos", () => {

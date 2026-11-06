@@ -53,6 +53,7 @@ export function mergeIntoCatalogue(existing: Product[], site: SiteProduct[], pre
   const free = () => { while (used.has(next)) next++; return next <= maxNumber ? next : null; };
 
   for (const s of site) {
+    if (s.unlisted) continue; // a draft on the site: not for sale there, not on the list
     const now = fieldsOf(s);
     const was = prevByUrl.get(s.url);
     const old = was ? fieldsOf(was) : null;
@@ -86,7 +87,7 @@ export function mergeIntoCatalogue(existing: Product[], site: SiteProduct[], pre
     if (more.length && JSON.stringify(e.more ?? []) !== JSON.stringify(more)) { e.more = more; changed = true; }
     if (changed) updated++; else unchanged++;
   }
-  const onSite = new Set(site.map((s) => s.url));
+  const onSite = new Set(site.filter((s) => !s.unlisted).map((s) => s.url));
   const gone = products.filter((p) => p.web && !onSite.has(p.web)).length;
   products.sort((a, b) => a.n - b.n);
   return { products, added, updated, unchanged, gone, full };

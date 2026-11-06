@@ -16,7 +16,7 @@ import type { SiteProduct, WebsiteRun } from "@/lib/stores/websiteRules";
 import { getJson, postJson } from "./upload";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
-type Summary = { products: number; priced: number; onSale: number; photos: number; withoutPhoto: number; described: number; farsi: number; categories: string[] };
+type Summary = { products: number; unlisted?: number; priced: number; onSale: number; photos: number; withoutPhoto: number; described: number; farsi: number; categories: string[] };
 type Page = { who: "owner" | "operator"; website: string | null; name: { en: string; fa: string }; run: WebsiteRun | null; summary: Summary };
 
 const money = (c: number | null, cur = "CAD") => (c === null ? "—" : `$${(c / 100).toFixed(2)}${cur && cur !== "CAD" ? ` ${cur}` : ""}`);
@@ -36,7 +36,19 @@ function ProductCard({ p }: { p: SiteProduct }) {
         {p.images.length > 1 && <span dir="ltr" className="absolute bottom-1 left-1 rounded bg-black/60 px-1.5 text-[11px] text-white">{img + 1}/{p.images.length}</span>}
         {p.compareAtCents !== null && <span className="absolute right-1 top-1 rounded bg-rose-600 px-1.5 text-[11px] font-bold text-white">SALE</span>}
       </button>
+      {p.images.length > 1 && (
+        <div className="flex flex-wrap gap-1 bg-black/30 p-1.5">
+          {p.images.map((u, k) => (
+            <button key={u} type="button" onClick={() => setImg(k)} aria-label={`Photo ${k + 1}`}
+              className={`h-10 w-10 overflow-hidden rounded bg-white ${k === img ? "ring-2 ring-amber-300" : "opacity-75"}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={u} alt="" loading="lazy" className="h-full w-full object-contain" />
+            </button>
+          ))}
+        </div>
+      )}
       <div className="flex flex-1 flex-col gap-1 p-3 text-[13px]">
+        {p.unlisted && <p className="text-[12px] text-amber-200">Draft on the store&apos;s site (not for sale there): shown for its photo, not put on the store&apos;s list.</p>}
         {p.name.fa && <p className="sk-font font-bold">{p.name.fa}</p>}
         {p.name.en && <p dir="ltr" className="text-left font-bold text-white/90">{p.name.en}</p>}
         <p dir="ltr" className="text-left">
@@ -71,6 +83,7 @@ export default function WebsitePage({ slug }: { slug: string }) {
   const [busy, setBusy] = useState(false);
   const [q, setQ] = useState("");
   const [shelf, setShelf] = useState("");
+  const [view, setView] = useState<"products" | "photos">("photos");
 
   const load = useCallback(async () => {
     try { setPage(await getJson<Page>(api)); setErr(null); }
@@ -195,11 +208,34 @@ export default function WebsitePage({ slug }: { slug: string }) {
             )}
             <button type="button" className={QUIET} onClick={csv}>Download the spreadsheet (.csv)</button>
           </div>
-          <p className="mt-2 text-[12px] text-white/45">{shown.length} shown. Tap a photo for the next one.</p>
+          <p className="mt-2 text-[12px] text-white/45">{shown.length} products shown{s.unlisted ? `, ${s.unlisted} of them drafts on the site` : ""}. A photo opens full size.</p>
         </Card>
       )}
 
-      {shown.length > 0 && (
+      {products.length > 0 && (
+        <div className="flex gap-2">
+          <button type="button" className={view === "photos" ? KEY : QUIET} onClick={() => setView("photos")}>All photos ({shown.reduce((n, p) => n + p.images.length, 0)}) · همهٔ عکس‌ها</button>
+          <button type="button" className={view === "products" ? KEY : QUIET} onClick={() => setView("products")}>Products ({shown.length}) · محصولات</button>
+        </div>
+      )}
+
+      {view === "photos" && shown.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+          {shown.flatMap((p) => p.images.map((u, k) => (
+            <a key={`${p.url}#${k}`} href={u} target="_blank" rel="noopener noreferrer" title={p.name.en || p.name.fa || p.handle}
+              className="group flex flex-col overflow-hidden rounded-lg border border-white/10 bg-black/25">
+              <span className="relative block aspect-square bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={u} alt={p.name.en || p.name.fa} loading="lazy" className="h-full w-full object-contain" />
+                {p.images.length > 1 && <span dir="ltr" className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">{k + 1}/{p.images.length}</span>}
+              </span>
+              <span dir="auto" className="line-clamp-2 px-1.5 py-1 text-[11px] leading-tight text-white/70">{p.name.en || p.name.fa || (p.unlisted ? "Draft (no name)" : p.handle)}</span>
+            </a>
+          )))}
+        </div>
+      )}
+
+      {view === "products" && shown.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {shown.map((p) => <ProductCard key={p.url} p={p} />)}
         </div>
