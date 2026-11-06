@@ -19,6 +19,7 @@
  *   POST { action: "productDrop", n }           not a product: off the list and off the walk
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
  *   POST { action: "widget" }                   the store's widget: { snippet, stats, plan, forOwner } (operator; the owner when switched on)
+ *   POST { action: "widgetRemake" }            (operator: the Free Tour preview made again now; returns how it was aimed)
  *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
  *   POST { action: "tidy" }                     the Tidy agent (operator; spends from the store's budget, at most $2): clutter hidden behind products
  *   POST { action: "tidyState" }                → { run, covers, ceiling }: the run, and every object hidden (its photo, what stands there)
@@ -54,6 +55,7 @@ import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readStats, widgetPlan } from "@/lib/stores/widget";
+import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
 import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
@@ -115,8 +117,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   if (body.action === "widget") {
     if (who !== "operator" && !ownerSeesWidget(s)) return fail(403, "The operator only.");
-    const [stats, plan] = await Promise.all([readStats(s.slug), widgetPlan(s.slug)]);
-    return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s) });
+    const [stats, plan, preview] = await Promise.all([readStats(s.slug), widgetPlan(s.slug), readPreview(s.slug)]);
+    return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s), preview: who === "operator" ? preview : undefined });
+  }
+  if (body.action === "widgetRemake") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    return ok({ preview: await remakePreview(s.slug, s.out.walk ?? null) });
   }
   if (body.action === "widgetOwner") {
     if (who !== "operator") return fail(403, "The operator only.");

@@ -11,7 +11,8 @@ import type { WidgetPlan, WidgetStats } from "@/lib/stores/widgetRules";
 import { postJson } from "./upload";
 import { Bi, Card, QUIET, Said } from "./ui";
 
-type Got = { snippet: string; stats: WidgetStats; plan: WidgetPlan | null; forOwner: boolean };
+type Preview = { made: string; error?: string; aim?: { yawDeg: number; hfovDeg: number; seconds: number; zones: number } } | null;
+type Got = { snippet: string; stats: WidgetStats; plan: WidgetPlan | null; forOwner: boolean; preview?: Preview };
 
 export default function WidgetCard({ api, slug, operator }: { api: string; slug: string; operator: boolean }) {
   const [got, setGot] = useState<Got | null>(null);
@@ -58,6 +59,19 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
           <p><b className="text-white">{got.stats.views}</b> seen · <b className="text-white">{got.stats.clicks}</b> walked in{got.stats.views ? ` (${Math.round((100 * got.stats.clicks) / got.stats.views)}%)` : ""}{got.stats.firstAt ? ` · counting since ${new Date(got.stats.firstAt).toLocaleDateString()}` : " · not seen anywhere yet"}</p>
           {days.length > 0 && <p className="text-[12px] text-white/50">{days.map(([d, v]) => `${d.slice(5)}: ${v.views}/${v.clicks}`).join(" · ")}</p>}
           {sites.length > 0 && <p className="text-[12px] text-white/50">On: {sites.map(([h, n]) => `${h} (${n})`).join(" · ")}</p>}
+        </div>
+      )}
+      {operator && got && (
+        <div dir="ltr" className="mt-3 text-left text-[12px] text-white/55">
+          {got.preview?.aim
+            ? `Free Tour preview: aimed at ${got.preview.aim.yawDeg}°, ${got.preview.aim.hfovDeg}° wide, ${got.preview.aim.seconds} s, kept clear of the camera operator (${got.preview.aim.zones} lock points) · made ${new Date(got.preview.made).toLocaleString()}`
+            : got.preview?.error ? `Free Tour preview not made: ${got.preview.error}` : "Free Tour preview: not made yet (it is made the first time the widget is shown)."}
+          <button type="button" className={`${QUIET} ms-2`} disabled={busy} onClick={async () => {
+            setBusy(true); setSaid(null);
+            try { await postJson(api, { action: "widgetRemake" }); setSaid({ ok: true, text: "✓ The preview was made again." }); await load(); }
+            catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
+            finally { setBusy(false); }
+          }}>Make the preview again</button>
         </div>
       )}
       {operator && got && (

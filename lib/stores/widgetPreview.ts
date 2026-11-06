@@ -20,7 +20,7 @@ import { hideAt, musicOf, phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
 import { run, v360Yaw } from "./media";
 import { PREVIEW_SECONDS, previewAim } from "./widgetRules";
 
-export type PreviewMeta = { walk: string; music: string | null; key: string | null; made: string; error?: string; lock?: string };
+export type PreviewMeta = { walk: string; music: string | null; key: string | null; made: string; error?: string; lock?: string; aim?: { yawDeg: number; hfovDeg: number; seconds: number; zones: number } };
 /** Raised when the way a preview is made changes, so every store's is made again (2: aimed away from the operator). */
 const PREVIEW_VERSION = 2;
 /** What the preview depends on besides the walk and its music: the Lock agent's zone, and this code's version. */
@@ -78,7 +78,8 @@ async function make(slug: string, walkKey: string, music: string | null, hide: W
     await run("ffmpeg", args);
     const key = `scenes/store-${slug}/widget-preview-${made.replace(/[-:.TZ]/g, "").slice(0, 14)}.mp4`;
     await uploadFile(key, out, "video/mp4");
-    await writeMastersJson(metaKey(slug), { walk: walkKey, music, key, made, lock } satisfies PreviewMeta);
+    const aimSaid = { yawDeg: Math.round((aim.yaw * 1800) / Math.PI) / 10, hfovDeg: Math.round((aim.hfov * 180) / Math.PI), seconds: T, zones: hide?.at?.length ?? (hide ? 1 : 0) };
+    await writeMastersJson(metaKey(slug), { walk: walkKey, music, key, made, lock, aim: aimSaid } satisfies PreviewMeta);
   } catch (e) {
     console.error("[widget] preview", slug, e);
     await writeMastersJson(metaKey(slug), { walk: walkKey, music, key: null, made, lock, error: (e as Error).message.slice(0, 300) } satisfies PreviewMeta).catch(() => undefined);
@@ -86,4 +87,13 @@ async function make(slug: string, walkKey: string, music: string | null, hide: W
     busy = null;
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/** «Make the preview again» (operator): forgets the clip and makes it now, waiting for it; what it did. */
+export async function remakePreview(slug: string, walkKey: string | null): Promise<PreviewMeta | null> {
+  if (!walkKey) return null;
+  while (busy) await new Promise((r) => setTimeout(r, 2000));
+  const walk = (await readWalks().catch(() => null))?.walks[walkKey];
+  await make(slug, walkKey, musicOf(walk)[0] ?? null, walk?.hide, lockSig(walk?.hide));
+  return readPreview(slug);
 }
