@@ -2306,8 +2306,6 @@ export default function Walk360() {
             </div>
           )}
 
-          {/* The bazaar's logo on the right (owner, 2026-11-06); the sound key and the website key sit below it. */}
-          <BrandBadge width={52} overlay className="absolute right-3 top-3 z-20" />
           {/* Inside a shop whose door names its website. */}
           {view.inside > 0 && view.site && !view.busy && (
             <button
@@ -2380,6 +2378,9 @@ export default function Walk360() {
         </>
       )}
 
+      {/* The bazaar's logo on the right, from the first screen (owner, 2026-11-06); the sound key and the
+          website key sit below it. */}
+      {phase !== "loading" && <BrandBadge width={52} overlay className="absolute right-3 top-3 z-20" />}
       {phase !== "loading" && (
         <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
