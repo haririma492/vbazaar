@@ -266,8 +266,6 @@ export default function StorePage({ slug }: { slug: string }) {
         )}
       </Card>}
 
-      {page.products.length > 0 && <Products api={api} products={page.products} reload={load} book={isBookStore(page.store.category)} />}
-
       {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
@@ -279,6 +277,9 @@ export default function StorePage({ slug }: { slug: string }) {
 
       {op && <Card><ChangePassword api={api} /></Card>}
       {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}
+
+      {/* The product list, long, at the very end: everything else is seen first (owner, 2026-11-06). */}
+      {page.products.length > 0 && <Products api={api} products={page.products} reload={load} book={isBookStore(page.store.category)} />}
     </div>
   );
 }
