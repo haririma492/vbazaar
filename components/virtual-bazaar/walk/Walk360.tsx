@@ -548,6 +548,9 @@ export default function Walk360() {
   const [spotSaid, setSpotSaid] = useState<string | null>(null);
   /** ?edit=1 in a browser not signed in as operator: ask here, rather than show nothing. */
   const [needSignIn, setNeedSignIn] = useState(false);
+  /** The browser would not give us WebGL (hardware acceleration off, or Chrome
+   *  has blocked it after a GPU crash): say so, instead of the page crashing. */
+  const [noWebGL, setNoWebGL] = useState(false);
   /** The walks as last read from (or saved to) the server: the `base` of a merged save. */
   const serverWalks = useRef<Walks>(emptyWalks());
 
@@ -570,7 +573,13 @@ export default function Walk360() {
     setSpotMode(params.get("spots") === "1" && Boolean(readAdminToken()));
     let disposed = false;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: false });
+    } catch {
+      setNoWebGL(true);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(el.clientWidth, el.clientHeight);
     el.appendChild(renderer.domElement);
@@ -2379,6 +2388,15 @@ export default function Walk360() {
       })()}
       {card && view.key && (
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => { setCard(null); setLit(null); }} />
+      )}
+
+      {noWebGL && (
+        <div dir="rtl" className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 p-6 text-center">
+          <div className="max-w-md text-white">
+            <p className="text-lg font-bold">این مرورگر اجازهٔ نمایش سه‌بعدی (WebGL) را نمی‌دهد.</p>
+            <p dir="ltr" className="mt-3 text-sm text-white/75">This browser will not show 3D (WebGL). Close every Chrome window and open it again. If it still fails: Chrome Settings → System → turn on «Use graphics acceleration when available», then relaunch. chrome://gpu shows whether WebGL is available.</p>
+          </div>
+        </div>
       )}
 
       {needSignIn && (
