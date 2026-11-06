@@ -156,7 +156,8 @@ export function WalkSound({ audioKeys, srcOf, specials = false }: {
       dir="ltr"
       onClick={toggle}
       aria-label={on ? "Sound off" : "Sound on"}
-      className="absolute right-3 top-[5.25rem] z-20 rounded-full border border-white/30 bg-black/60 px-3 py-1.5 text-[15px] text-white"
+      // Bottom left, above the time bar, 20% larger (owner, 2026-11-06: "move the audio sign to bottom left make it 20% larger").
+      className="absolute bottom-14 left-3 z-20 rounded-full border border-white/30 bg-black/60 px-[14px] py-[7px] text-[18px] text-white"
     >
       {on ? (waiting && audioKey ? "🔊 tap to hear" : "🔊") : "🔇"}
     </button>
