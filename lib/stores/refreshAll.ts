@@ -34,7 +34,10 @@ import { readIndex } from "./bucket";
 import { readTour } from "./tourJob";
 
 export type RefreshStep = { name: string; note: string; at: string };
-export type RefreshRun = { store: string; started: string; finished: string | null; steps: RefreshStep[]; running: boolean };
+export type RefreshRun = { store: string; started: string; finished: string | null; steps: RefreshStep[]; running: boolean; version?: number };
+/** Raised when the run's code changes in a way that should reach stores already run without a tour (2: lights with
+ *  no box size count, so stores tagged before 2026-11-04 get a tour). One retry per version, never every restart. */
+export const REFRESH_VERSION = 2;
 export const refreshKey = (slug: string) => `stores/${slug}/refresh.json`;
 export const REFRESH_STEPS = ["Door photo", "Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader"] as const;
 let busy: string | null = null;
@@ -71,14 +74,15 @@ export async function drainRefresh(): Promise<void> {
     draining = false;
   }
 }
-/** At start-up: stores whose products are tagged but that were never refreshed and have no Shelf Tour. */
+/** At start-up: stores whose products are tagged, with no Shelf Tour, not yet run by this version of the run. */
 export async function storesToRefresh(): Promise<string[]> {
   const out: string[] = [];
   for (const { slug } of await readIndex()) {
     const s = await readStore(slug).catch(() => null);
     if (!s?.out.walk || s.steps.tag.state !== "done") continue;
-    if (await readRefresh(slug)) continue;
     if (await readTour(slug)) continue;
+    const last = await readRefresh(slug);
+    if (last && (last.version ?? 1) >= REFRESH_VERSION) continue;
     out.push(slug);
   }
   return out;
@@ -93,7 +97,7 @@ export function startRefreshAll(slug: string): string {
 }
 
 async function refreshAll(slug: string): Promise<void> {
-  const run: RefreshRun = { store: slug, started: new Date().toISOString(), finished: null, steps: [], running: true };
+  const run: RefreshRun = { store: slug, started: new Date().toISOString(), finished: null, steps: [], running: true, version: REFRESH_VERSION };
   const save = () => writeMastersJson(refreshKey(slug), run).catch((e) => console.error("[refresh] save", slug, e));
   const step = async (name: string, f: () => Promise<string>) => {
     run.steps.push({ name, note: "working…", at: new Date().toISOString() });

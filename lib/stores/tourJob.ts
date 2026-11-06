@@ -108,6 +108,9 @@ export async function buildTour(slug: string): Promise<string> {
 
 export const shelfSightingsKey = (slug: string) => `stores/${slug}/shelf-sightings.json`;
 
+/** A light with no box: about a product's size seen from the aisle (radians; Saraye Bamdad's median is 0.14 × 0.23). */
+export const LIGHT_SIZE = { w: 0.15, h: 0.18 };
+
 /**
  * What a tour (and the Shelf finder) is made from: the sightings (the finder's, else each light's middle,
  * plus the Shelf finder's), every product's path, the source in the sightings' times and its length.
@@ -123,14 +126,18 @@ export async function tourInputs(slug: string): Promise<string | { s: NonNullabl
     const back = (v: number) => (parts.length ? originalTime(parts, v) : v);
     const walk = (await readWalks()).walks[walkKey];
     const tracks = new Map<number, Track>();
-    const longest = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number } }>();
+    const longest = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number }; sized: boolean }>();
     for (const it of walk?.items ?? []) {
       if (!it.n || !it.pins.length) continue;
       const pins = it.pins.map((p) => ({ t: back(p.t), x: p.x, y: p.y }));
       const tr = tracks.get(it.n) ?? { n: it.n, pins: [] };
       tr.pins.push(...pins);
       tracks.set(it.n, tr);
-      if (it.size && pins.length > (longest.get(it.n)?.pins.length ?? 0)) longest.set(it.n, { pins, size: it.size });
+      // ⚠️ A LIGHT PINNED BEFORE LIGHTS CARRIED THEIR BOX (stores tagged before 2026-11-04: HeloGolab, test3)
+      // has no size; it stands in at a typical product's (`LIGHT_SIZE`), or the store would have no tour at all.
+      const size = it.size ?? LIGHT_SIZE;
+      const prev = longest.get(it.n);
+      if (!prev || (it.size && !prev.sized) || (Boolean(it.size) === prev.sized && pins.length > prev.pins.length)) longest.set(it.n, { pins, size, sized: Boolean(it.size) });
     }
     // ⚠️ A STORE FOUND BEFORE SIGHTINGS WERE KEPT (the bookshop, found 2026-11-04 before «sightings.json»
     // existed): each light's middle moment stands in for its sighting, at the size the finder boxed.
