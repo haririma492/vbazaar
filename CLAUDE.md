@@ -666,6 +666,14 @@ quality and choice to break away and enter in a shop. (period)"*
   assessment, and the next steps (fixtures, then COLMAP only if the drift is
   too large) are in `docs/research/cv-spatial.md`. YOLO (Ultralytics) is
   AGPL-3.0 and ORB-SLAM3 is GPLv3: decide before adopting them.
+- **Haiku for reading, Opus for finding** (owner, 2026-11-06: *"Make the best
+  use of Haiku this is the poor-man-model so lets call it often"*). The title
+  reader and the spine reader (`shelfTitles.ts`: the owner's phone photos of
+  the shelves, «Book titles» card) run on Claude Haiku 5.5 (`CHEAP_MODEL` in
+  `lib/stores/ai.ts`, priced per model in `centsOf`): full-size photos, a zoom
+  pass on partly read titles, 5 close-ups a book. Opus 5.5 re-reads only the
+  partial titles, on the operator's press. Finding and boxing products stays on
+  Opus (a wrong box is a light on the wrong book).
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

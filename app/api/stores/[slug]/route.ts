@@ -232,7 +232,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     // Operator: the title reader on up to «limit» products not read yet (spends from the store's budget). Background.
     if (who !== "operator") return fail(403, "The operator only.");
     const limit = Number(body.limit) > 0 ? Math.floor(Number(body.limit)) : undefined;
-    void readTitles(s.slug, limit).then((note) => console.log("[titles]", s.slug, note)).catch((e) => console.error("[titles]", s.slug, e));
+    void readTitles(s.slug, limit, { escalate: body.escalate === true }).then((note) => console.log("[titles]", s.slug, note)).catch((e) => console.error("[titles]", s.slug, e));
     return ok({ started: true, limit: limit ?? "all" });
   }
   if (body.action === "tourBuild") {

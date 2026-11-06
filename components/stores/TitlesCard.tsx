@@ -14,17 +14,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { postJson } from "./upload";
 import { Bi, Card, FIELD, FilePick, QUIET, Said } from "./ui";
 import { uploadInParts } from "./upload";
-import { CENTS_A_TILE, mergeSpines, type SpineRow } from "@/lib/stores/shelfTitlesRules";
+import { CALLS_A_PHOTO, CENTS_A_TILE, mergeSpines, type SpineRow } from "@/lib/stores/shelfTitlesRules";
 import type { TitleList } from "@/lib/stores/titles";
 
 type Shelf = { rows: SpineRow[]; done: number; photos: number; updated: string | null; reading: boolean; note: string };
 /** One line of the list: from the video (a product's number) or from a shelf photo. */
 type Line = { key: string; title_fa: string; title_en: string; author: string; readable: string; confidence: number; n?: number; photo?: string };
-/** A phone photo is usually read as 4 tiles. */
-const TILES_A_PHOTO = 4;
+const CENTS_A_PHOTO = CALLS_A_PHOTO * CENTS_A_TILE;
 
-/** About this much a book (3 close-ups, one request): what the confirm names. */
-const CENTS_A_BOOK = 3;
+/** About this much a book (cents): Haiku 5.5 reading 5 close-ups; Opus 5.5 for a re-read of a partial one. */
+const CENTS_A_BOOK = 0.2, CENTS_A_REREAD = 4;
 
 const fold = (v: string) => v.toLowerCase().replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/‌/g, " ").replace(/\s+/g, " ").trim();
 
@@ -73,7 +72,7 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
 
   async function readMore() {
     const cost = (left * CENTS_A_BOOK) / 100;
-    if (!confirm(`Read the titles of the ${left} books not read yet? About $${cost.toFixed(2)} (${CENTS_A_BOOK}¢ a book), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
+    if (!confirm(`Read the titles of the ${left} books not read yet? About $${cost.toFixed(2)} (about ${CENTS_A_BOOK}¢ a book, read by Claude Haiku 5.5), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
     try { await postJson(api, { action: "titlesRead" }); setSaid({ ok: true, text: "Reading the titles… about 20 s a book; this list fills in as it goes. · در حال خواندن عنوان‌ها…" }); }
     catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
   }
@@ -122,11 +121,11 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
           />
           {shelf && shelf.photos > shelf.done && !shelf.reading && (
             <button type="button" className={QUIET} onClick={async () => {
-              const n = shelf.photos - shelf.done, cost = (n * TILES_A_PHOTO * CENTS_A_TILE) / 100;
-              if (!confirm(`Read every spine in the ${n} shelf photos not read yet? About $${cost.toFixed(2)} (about ${TILES_A_PHOTO * CENTS_A_TILE}¢ a photo), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
+              const n = shelf.photos - shelf.done, cost = (n * CENTS_A_PHOTO) / 100;
+              if (!confirm(`Read every spine in the ${n} shelf photos not read yet? About $${cost.toFixed(2)} (about ${CENTS_A_PHOTO.toFixed(1)}¢ a photo, read by Claude Haiku 5.5), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
               try { await postJson(api, { action: "shelfTitlesRead" }); setSaid({ ok: true, text: "Reading the spines… about a minute a photo; the list fills in as it goes. · در حال خواندن عطف کتاب‌ها…" }); void load(); }
               catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
-            }}>Read the spines in {shelf.photos - shelf.done} photos (about ${(((shelf.photos - shelf.done) * TILES_A_PHOTO * CENTS_A_TILE) / 100).toFixed(2)}) · خواندن عطف‌ها</button>
+            }}>Read the spines in {shelf.photos - shelf.done} photos (about ${(((shelf.photos - shelf.done) * CENTS_A_PHOTO) / 100).toFixed(2)}) · خواندن عطف‌ها</button>
           )}
         </div>
       )}
@@ -135,6 +134,16 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
           Read the titles not read yet ({left}, about ${((left * CENTS_A_BOOK) / 100).toFixed(2)}) · خواندن عنوان‌ها
         </button>
       )}
+      {operator && (() => {
+        const partial = (list?.rows ?? []).filter((r) => r.readable !== "full" && r.model === "claude-haiku-5-5").length;
+        return partial > 0 ? (
+          <button type="button" className={`${QUIET} mt-2`} onClick={async () => {
+            if (!confirm(`Re-read the ${partial} titles Haiku read only in part (or not at all) with the bigger model, Claude Opus 5.5? About $${((partial * CENTS_A_REREAD) / 100).toFixed(2)} (${CENTS_A_REREAD}¢ a book). A re-read is kept only when it is surer.`)) return;
+            try { await postJson(api, { action: "titlesRead", escalate: true }); setSaid({ ok: true, text: "Re-reading the partial titles with Opus… · در حال بازخوانی…" }); }
+            catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
+          }}>Re-read the {partial} partial titles with the bigger model (about ${((partial * CENTS_A_REREAD) / 100).toFixed(2)})</button>
+        ) : null;
+      })()}
       {said && <Said ok={said.ok} text={said.text} />}
     </Card>
   );

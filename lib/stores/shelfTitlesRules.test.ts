@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { bookKey, foldTitle, mergeSpines, tilesOf, TILE } from "./shelfTitlesRules";
+import { bookKey, foldTitle, mergeSpines, quartersOf, tilesOf, TILE } from "./shelfTitlesRules";
 
 test("a small photo is one tile; a 12 MP phone photo is overlapping tiles covering every pixel", () => {
   assert.deepEqual(tilesOf(1200, 900), [{ x: 0, y: 0, w: 1200, h: 900 }]);
@@ -30,4 +30,15 @@ test("merging keeps the surer reading and drops readings with no title", () => {
   const m = mergeSpines(rows);
   assert.equal(m.length, 2);
   assert.equal(m.find((r) => foldTitle(r.title_fa) === foldTitle("سووشون"))!.tile, 2);
+});
+
+test("the zoom pass: four overlapping quarters inside the tile, enlarged but never past a tile's size", () => {
+  const t = { x: 100, y: 50, w: 1568, h: 1568 };
+  const q = quartersOf(t);
+  assert.equal(q.length, 4);
+  for (const r of q) {
+    assert.ok(r.x >= t.x && r.y >= t.y && r.x + r.w <= t.x + t.w && r.y + r.h <= t.y + t.h);
+    assert.ok(r.w * r.scale <= TILE + 1 && r.scale > 1.5);
+  }
+  assert.ok(q[0].x + q[0].w > q[1].x, "they overlap");
 });

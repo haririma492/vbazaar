@@ -21,13 +21,16 @@ export type SpineRow = {
 /** A tile's longest side (px): Claude's useful picture size. */
 export const TILE = 1568;
 /**
- * A photo is first brought to at most this long a side (px). A 12 MP phone photo of a 1 m shelf section gives a
- * spine's letters ~40 px at full size; at 2800 still ~28 px (the video gave ~10), and it is 4 tiles, not 9 —
- * the cost is per tile.
+ * A photo is read at its own size up to this long a side (px): every pixel the phone took (a 12 MP photo, 4032
+ * px, is 9 tiles). With Claude Haiku 5.5 a tile costs a fraction of a cent (owner, 2026-11-06: "Make the best
+ * use of Haiku … lets call it often"), so nothing is thrown away to save requests. Only a 48 MP photo is brought
+ * down, to keep a run's length sane.
  */
-export const MAX_SIDE = 2800;
-/** About this much a tile (one request): what the operator is told before a run. */
-export const CENTS_A_TILE = 5;
+export const MAX_SIDE = 6000;
+/** About this much a request (cents, Haiku: a tile or a zoomed quarter): what the operator is told before a run. */
+export const CENTS_A_TILE = 0.25;
+/** A usual phone photo: 9 tiles, plus the zoomed quarters of the ~2 tiles with a partly read title. */
+export const CALLS_A_PHOTO = 17;
 /** Each tile shares this share of its size with the next. */
 export const OVERLAP = 0.15;
 
@@ -81,4 +84,16 @@ export function mergeSpines<T extends { title_fa: string; title_en: string; read
 export function readSize(w: number, h: number): { w: number; h: number } {
   const k = Math.min(1, MAX_SIDE / Math.max(w, h));
   return { w: Math.round(w * k), h: Math.round(h * k) };
+}
+
+/**
+ * THE ZOOM PASS: a tile where some title was only partly read is read again as four overlapping quarters, each
+ * enlarged (to at most `TILE` px): small print gets more pixels in front of the model. Cheap on Haiku.
+ */
+export function quartersOf(t: { x: number; y: number; w: number; h: number }): Array<{ x: number; y: number; w: number; h: number; scale: number }> {
+  const qw = Math.round(t.w * (0.5 + OVERLAP / 2)), qh = Math.round(t.h * (0.5 + OVERLAP / 2));
+  const scale = Math.min(2, TILE / Math.max(qw, qh));
+  const out: Array<{ x: number; y: number; w: number; h: number; scale: number }> = [];
+  for (const [fx, fy] of [[0, 0], [1, 0], [0, 1], [1, 1]]) out.push({ x: t.x + (fx ? t.w - qw : 0), y: t.y + (fy ? t.h - qh : 0), w: qw, h: qh, scale });
+  return out;
 }

@@ -10,6 +10,8 @@
 //   3       one entry per book (`mergeSpines`), the surer reading kept;
 //   output  `stores/<slug>/shelf-titles.json`: the rows, and which photos are done (a photo is read once; a run
 //           carries on where the last stopped, and a restart loses at most one photo).
+// Claude Haiku 5.5 reads (`CHEAP_MODEL`; a fraction of a cent a request), so a photo is read at full size and a
+// tile with a partly read title is read again zoomed in (`quartersOf`).
 // Spends from the store's AI budget (`purseOf`); stops when it is empty, and says so. One run at a time.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -20,7 +22,7 @@ import { run } from "./media";
 import { readSpines, OverBudget } from "./ai";
 import { purseOf } from "./crew";
 import { setJob } from "./jobState";
-import { mergeSpines, readSize, tilesOf, type SpineRow } from "./shelfTitlesRules";
+import { mergeSpines, quartersOf, readSize, tilesOf, type SpineRow } from "./shelfTitlesRules";
 
 export type ShelfTitles = { store: string; rows: SpineRow[]; done: string[]; spentCents: number; updated: string };
 export const shelfTitlesKey = (slug: string) => `stores/${slug}/shelf-titles.json`;
@@ -72,6 +74,16 @@ export async function readShelfPhotos(slug: string): Promise<string> {
           const books = await readSpines(purse, new Uint8Array(readFileSync(tile)));
           tiles++;
           for (const b of books) if (b.readable === "full" || b.readable === "partial") found.push({ ...b, readable: b.readable, photo: ph.key, tile: k });
+          // The zoom pass: a partly read title → the tile again as four enlarged quarters (Haiku is cheap: call it).
+          if (books.some((b) => b.readable === "partial")) {
+            for (const [qi, qr] of quartersOf(t).entries()) {
+              const zf = join(dir, `t${k}q${qi}.jpg`);
+              await run("ffmpeg", ["-v", "error", "-y", "-i", full, "-vf", `crop=${qr.w}:${qr.h}:${qr.x}:${qr.y},scale=iw*${qr.scale.toFixed(3)}:-2:flags=lanczos`, "-q:v", "2", zf]);
+              const more = await readSpines(purse, new Uint8Array(readFileSync(zf)));
+              tiles++;
+              for (const b of more) if (b.readable === "full" || b.readable === "partial") found.push({ ...b, readable: b.readable, photo: ph.key, tile: k });
+            }
+          }
         } catch (e) {
           failed = true;
           if (e instanceof OverBudget) { stopped = ` Stopped at photo ${i + 1} of ${todo.length}: the store's AI budget is used up.`; break; }

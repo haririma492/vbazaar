@@ -23,16 +23,19 @@ import { readStore } from "./bucket";
 import { cutInfo } from "@/lib/splats/cut-job";
 import { sceneOf } from "./store";
 import { productPhoto, sharpnessAt } from "./media";
-import { readTitle, OverBudget, type ReadTitle } from "./ai";
+import { readTitle, OverBudget, MODEL, CHEAP_MODEL, type ReadTitle } from "./ai";
 import { purseOf } from "./crew";
 import { tourInputs } from "./tourJob";
 
-export type TitleRow = ReadTitle & { n: number; t: number; photo?: string; seen?: string; at: string };
+export type TitleRow = ReadTitle & { n: number; t: number; photo?: string; seen?: string; at: string; /** Which model read it (absent: Opus 5.5, before 2026-11-06). */ model?: string };
 export type TitleList = { store: string; rows: TitleRow[]; spentCents: number; updated: string };
 
 const keyOf = (slug: string) => `stores/${slug}/titles.json`;
 /** Moments looked at along a product's path, and how many of the sharpest are sent to Claude. */
-const CANDIDATES = 8, READ_CROPS = 3;
+// Claude Haiku 5.5 reads (owner, 2026-11-06: "Make the best use of Haiku … lets call it often"): more moments are
+// measured and more close-ups, larger, go into each reading; a title read only in part can be re-read by Opus
+// (`escalate`, the operator's choice).
+const CANDIDATES = 12, READ_CROPS = 5, CROP_PX = 1024;
 
 export async function readTitleList(slug: string): Promise<TitleList | null> {
   try { const t = await readMastersText(keyOf(slug)); return t ? (JSON.parse(t) as TitleList) : null; } catch { return null; }
@@ -41,7 +44,12 @@ export async function readTitleList(slug: string): Promise<TitleList | null> {
 let busy = false;
 
 /** Read the titles of up to `limit` products not read yet (all when no limit). Returns what it did, in a sentence. */
-export async function readTitles(slug: string, limit?: number): Promise<string> {
+/**
+ * `escalate`: instead of new books, re-read the titles Haiku read only in part or not at all, with Opus 5.5 (~40x the
+ * cost a book, so only those, and only on the operator's press). A re-read replaces the row only when it is surer.
+ */
+export async function readTitles(slug: string, limit?: number, opts: { escalate?: boolean } = {}): Promise<string> {
+  const model = opts.escalate ? MODEL : CHEAP_MODEL;
   if (busy) return "The title reader is busy with another store.";
   busy = true;
   try {
@@ -60,7 +68,9 @@ export async function readTitles(slug: string, limit?: number): Promise<string> 
     try { src = s.files.video && !cut ? await presignGet(s.files.video.key, "master", 6 * 3600) : await presignGet(walkKey, "web", 6 * 3600); }
     catch { src = await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600); }
     const list: TitleList = (await readTitleList(slug)) ?? { store: slug, rows: [], spentCents: 0, updated: "" };
-    const done = new Set(list.rows.map((r) => r.n));
+    // A new run reads the books not read yet; an escalation, those read by Haiku and not in full.
+    const done = new Set(opts.escalate ? list.rows.filter((r) => r.readable === "full" || r.model !== CHEAP_MODEL).map((r) => r.n) : list.rows.map((r) => r.n));
+    const again = opts.escalate ? new Set(list.rows.filter((r) => !done.has(r.n)).map((r) => r.n)) : null;
     // ⚠️ EVERY BOOK FOUND, NOT ONLY THE LIT ONES (owner, 2026-11-05: "only 76 titles are typed, there are in excess
     // of 700 titles in this store"): 160 of the bookshop's 425 found books had no light and were never read. Those are
     // read from the moments the finder saw them (its sightings and the Shelf finder's, in the ORIGINAL recording's
@@ -79,7 +89,7 @@ export async function readTitles(slug: string, limit?: number): Promise<string> 
         fromSeen.set(x.n, f);
       }
     }
-    const todo = c.products.filter((p) => (firstLight.has(p.n) || fromSeen.has(p.n)) && !done.has(p.n)).slice(0, limit ?? Infinity);
+    const todo = c.products.filter((p) => (firstLight.has(p.n) || fromSeen.has(p.n)) && !done.has(p.n) && (!again || again.has(p.n))).slice(0, limit ?? Infinity);
     const purse = purseOf(s);
     const before = purse.spent();
     let read = 0, stopped = "";
@@ -99,12 +109,17 @@ export async function readTitles(slug: string, limit?: number): Promise<string> 
       if (!pick.length) continue;
       const crops: Uint8Array[] = [];
       for (const q of pick) {
-        try { crops.push(await productPhoto(from, q.t, q.x, q.y, it.size!, 768)); } catch (e) { console.error("[titles] crop", slug, p.n, e); }
+        try { crops.push(await productPhoto(from, q.t, q.x, q.y, it.size!, CROP_PX)); } catch (e) { console.error("[titles] crop", slug, p.n, e); }
       }
       if (!crops.length) continue;
       try {
-        const r = await readTitle(purse, crops);
-        list.rows.push({ ...r, n: p.n, t: pick[0].t, ...(p.photo ? { photo: p.photo } : {}), ...(p.seen ? { seen: p.seen } : {}), at: new Date().toISOString() });
+        const r = await readTitle(purse, crops, model);
+        const row: TitleRow = { ...r, n: p.n, t: pick[0].t, ...(p.photo ? { photo: p.photo } : {}), ...(p.seen ? { seen: p.seen } : {}), at: new Date().toISOString(), model };
+        const i = list.rows.findIndex((x) => x.n === p.n);
+        const rank = (x: ReadTitle) => (x.readable === "full" ? 2 : x.readable === "partial" ? 1 : 0) + x.confidence;
+        if (i < 0) list.rows.push(row);
+        // An escalation keeps the surer reading; either way the book is not offered for escalation again.
+        else list.rows[i] = rank(row) >= rank(list.rows[i]) ? row : { ...list.rows[i], model };
         read++;
       } catch (e) {
         if (e instanceof OverBudget) { stopped = " Stopped: the store's AI budget is used up."; break; }

@@ -51,6 +51,8 @@ own server as each file arrives. A new store waits for the operator's
 | Photo improver | Every product's photo is made from several frames at its sharpest moment, for every store | the walk + its lights → `product.photo` (1024 px, the product boxed) | `photoFuse.ts` + `fuse.ts`: 8 moments measured for sharpness, the frames round the sharpest lined up to a fraction of a pixel and averaged inside the product's box; queued after the products are found or re-pinned (`photos/pending.json`), carried on after a restart | none |
 | Route optimizer | A smooth forward route through the walk: no walking back, no second passes, every product still shown | the walk + its lights → a proposal (`stores/<slug>/route.json`) and a preview video; on the owner's yes, the walk editor's cut | `route.ts` (plan, tested) + `routeJob.ts`: motion read off the floor and the horizon 5 times a second; joins moved to the most alike pair of moments that still cut what the plan cuts; a join that cannot be seamless dips to black for 0.3 s each side (the length, and every light's time, unchanged). Smoothness too: each walk's motion kept (`Walk.motion`); the player evens the speed and eases sharp turns from it (`lib/splats/motion.ts`) | none |
 | Map builder | A 2D map of the store: where each shelf stands, persistent shelf ids, and the Shelf Tour's order by the layout (not by the filming) | the motion (the Route optimizer's reader, kept in `stores/<slug>/motion.json`), every sighting and light step, the Shelf finder's shelves → `stores/<slug>/map.json` (shelves `S1…`, products placed, the camera's path, the entrance, the order, what to review) | `storeMap.ts` (tested) + `mapJob.ts`: dead reckoning, repeated visits found by panorama matching and the drift spread back, each product triangulated from the rays of a moving camera (or estimated, and said so), partial views of one bookcase merged; `orderShelvesByMap` in the Shelf Tour builders. «Store map» card. Research and next steps: `docs/research/cv-spatial.md` | none |
+| Title reader | Each found book's title (and author) as printed, a list beside the products | 12 moments of each book measured for sharpness, the 5 sharpest close-ups (1024 px) from the recording → `stores/<slug>/titles.json`; «Book titles» card, CSV | `titles.ts`; one request a book; «Re-read the partial titles» sends only the partly read ones to Opus | **Haiku 5.5** (re-read: Opus 5.5) |
+| Spine reader | Every spine in the owner's phone photos of the shelves | «shelf» uploads → each photo at full size (up to 6000 px) in overlapping 1568 px tiles; a tile with a partly read title is read again as four enlarged quarters → `stores/<slug>/shelf-titles.json`, merged with the title reader's in the list | `shelfTitles.ts`, `shelfTitlesRules.ts` (tested); never guesses a title | **Haiku 5.5** |
 | Placer | The store's door goes on the hallway | door photo, spot → a door on the hallway walk, with `image` and `size` | none | none |
 | Checker | Writes the report and finds what is missing | everything → `report` on the record | none | none |
 | Messages | Does what the owner or operator writes, then answers | the thread → catalogue, tag, detail and walk changes | Claude with tools (`messages.ts`; cutting the video is for the operator only) | Opus 5.5, effort medium |
@@ -145,7 +147,13 @@ Git and sync it with `ant apply`, with one session per store and its
   are not logged yet.
 - **Rule 11:** prompts and tools are in Git, but a store's record does not yet
   say which commit built it.
-- **Rule 12:** all three AI uses run on Opus 5.5 until the test set exists.
-  Then try Sonnet 5.5 or Haiku 5.5 for the Photo matcher.
+- **Rule 12:** reading text (the title reader, the spine reader) runs on Claude
+  Haiku 5.5 (owner, 2026-11-06: *"Make the best use of Haiku this is the
+  poor-man-model so lets call it often"*): ~40x cheaper, so it is called more
+  (more close-ups, full-size photos, a zoom pass on partly read titles), and a
+  title it could not read can be re-read by Opus on the operator's press.
+  Finding and boxing products stays on Opus 5.5 until the test set shows Haiku's
+  boxes are as good: a wrong box puts a light on the wrong book. Haiku has no
+  server-side fallback on a refusal: that one picture is skipped.
 - **Rule 19:** there is no test bucket. Everything writes to the production
   buckets. Try new versions on a store that has not been published.
