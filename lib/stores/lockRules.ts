@@ -37,3 +37,31 @@ export function downForHead(seen: Seen[], halfVfov: number, margin = 5): number 
   const top = Math.max(...seen.map((s) => s.headLat));
   return Math.round(Math.min(-3, Math.max(-40, top + halfVfov + margin)) * 10) / 10;
 }
+
+/**
+ * WHEN THE LOCK AGENT LOOKS (owner, 2026-11-06: "lock agent has not done its work, I as photographer with orange
+ * jersey am visible when shopper turns 60 degree"). It looked at six fixed moments, and on Saraye Bamdad only the
+ * first two found the operator, so from 38 s on the colour follow was unanchored and drifted to the front of the
+ * walk by ~100 s. Now one look every `SEED_EVERY` seconds (at least `SEED_MIN`, at most `SEED_MAX`), in the
+ * middle of each stretch. A look is about half a cent; a 150 s walk is ~19 looks.
+ */
+export const SEED_EVERY = 8, SEED_MIN = 6, SEED_MAX = 30;
+export function seedTimes(seconds: number): number[] {
+  if (!(seconds > 0)) return [];
+  const n = Math.min(SEED_MAX, Math.max(SEED_MIN, Math.round(seconds / SEED_EVERY)));
+  return Array.from({ length: n }, (_, i) => ((i + 0.5) / n) * seconds);
+}
+
+/**
+ * A look that boxes someone more than this many degrees from where the looks either side put the operator boxed
+ * another person (a passer-by): dropped, so it never pulls the lock off the operator.
+ */
+export const SEED_JUMP = 70;
+const angDeg = (a: number, b: number) => Math.abs(((((a - b) * 180) / Math.PI + 540) % 360) - 180);
+/** Drops, in place, each look (radians) that disagrees with both its neighbours by more than `SEED_JUMP`. */
+export function dropStrays<T extends { t: number; yaw: number }>(locks: T[]): void {
+  locks.sort((a, b) => a.t - b.t);
+  if (locks.length < 3) return;
+  const keep = locks.filter((l, i) => [locks[i - 1], locks[i + 1]].filter(Boolean).some((m) => angDeg(l.yaw, m.yaw) <= SEED_JUMP));
+  if (keep.length >= 2) locks.splice(0, locks.length, ...keep);
+}

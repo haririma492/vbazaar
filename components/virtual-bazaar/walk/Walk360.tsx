@@ -98,7 +98,13 @@ const PEDAL_RATE = 1;
  */
 type Drive = "on" | "back";
 // ".v2": the default changed (0.3 → 0.225 m/s, 2026-11-06); a speed kept from before would have hidden it.
-const SPEED_KEY = "vb.walk.speed.v2";
+/**
+ * The view opens 15% closer than the 75° it was (owner, 2026-11-06: "lets make the free tour 15% closer to
+ * shelves (I moved myself closer and the result is better)"): everything 15% bigger on screen, i.e.
+ * tan(fov/2) ÷ 1.15 → 67.4°. Pinch and the wheel still zoom from there (30–100°).
+ */
+const START_FOV = 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(75 / 2)) / 1.15));
+const SPEED_KEY = "vb.walk.speed.v3"; // v3: the default moved again (0.225 → 0.18 m/s, 2026-11-06)
 /** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
 const FILM_FPS = 25;
 /**
@@ -565,7 +571,7 @@ export default function Walk360() {
     renderer.setSize(el.clientWidth, el.clientHeight);
     el.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, el.clientWidth / el.clientHeight, 0.1, 200);
+    const camera = new THREE.PerspectiveCamera(START_FOV, el.clientWidth / el.clientHeight, 0.1, 200);
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     const geometry = new THREE.SphereGeometry(50, 128, 64);
     geometry.scale(-1, 1, 1); // seen from inside

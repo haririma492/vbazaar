@@ -440,7 +440,7 @@ quality and choice to break away and enter in a shop. (period)"*
   Bamdad bookshop: *"Slow and Fast is not good enough, the slow end of this
   bar should be really slow"*): under the wheel, «◀ Back» · «▶ Walk», then a
   🐢—🐇 bar from 0.05 m/s (a creep, to read book spines) to 1.6 m/s,
-  logarithmic, starting at 0.225 m/s (owner, 2026-11-06: *"default speed for free tour needs to be 25% slower"*; it was 0.3) and kept on the device (`vb.walk.speed.v2`, so the new default reaches everyone); the bar shows m/s, fps and a recommended mark at the default.
+  logarithmic, starting at 0.18 m/s (owner, 2026-11-06: *"25% slower"*, then *"another 20% slower"*; it was 0.3) and kept on the device (`vb.walk.speed.v3`, so the new default reaches everyone); the view opens 15% closer (67.4° instead of 75°, `START_FOV`; owner: *"15% closer to shelves"*); the bar shows m/s, fps and a recommended mark at the default.
   Back walks at the bar's speed. It is a real speed on every walk (the walk's
   measured `pace`), never below 1/16× (slower froze); `lib/splats/pace.ts`.
 - **Tags stand as still as the books** (owner, 2026-11-04: *"not a single
@@ -650,6 +650,11 @@ quality and choice to break away and enter in a shop. (period)"*
 - **Saraye Bamdad was found before sightings were saved** (2026-11-04), so it
   has no `sightings.json`: its tour and photos stand on its lights (145
   products); the other 157 found then have no place recorded.
+- **The Lock agent looks every ~8 s** (owner, 2026-11-06: *"I as photographer with orange jersey am visible
+  when shopper turns 60 degree"*). Six fixed looks found the operator only twice on Saraye Bamdad, so the colour
+  follow drifted to the front of the walk. Now `seedTimes` (`lockRules.ts`): one look every 8 s (6–30), each
+  first on the frame turned half round (the operator is behind the camera, split across the panorama's edges),
+  a look far from both neighbours dropped as a passer-by (`dropStrays`), 18° margin (was 12).
 - **Two ways round a store: «🛒 Shelf Tour | 👣 Free Tour»** (owner,
   2026-11-05: *"1) The Shelf Tour (that is perfectly choreographed for
   shopping result) & 2) The Free Tour (that gives shopper feeling of walking
