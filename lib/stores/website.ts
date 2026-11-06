@@ -25,7 +25,8 @@ import { putSignImage, r2Config, readCatalogue, readMastersText, writeCatalogue,
 import { readStore, updateStore } from "./bucket";
 import { setJob } from "./jobState";
 import { run as runBin } from "./media";
-import { redo, sceneOf } from "./store";
+import { redo, sceneOf, setStep } from "./store";
+import { matchVideoToWebsite } from "./websiteMatch";
 import { mergeIntoCatalogue } from "./websiteMerge";
 import {
   fillEndpoint, findJsonEndpoints, handleOf, isDisallowed, parseRobots, parseSitemap, productFromHtml, productFromJson, productPages,
@@ -74,23 +75,39 @@ export function siteOf(website: string | undefined): { origin: string } | { erro
   try { return { origin: new URL(website).origin }; } catch { return { error: `“${website}” is not an address.` }; }
 }
 
-/** Start (or carry on) reading the store's site, in the background. */
+/** Start (or carry on) reading the store's site, in the background (the page's key). The Website step is kept in step. */
 export async function startWebsite(slug: string, opts: { readDisallowed?: boolean; fresh?: boolean; by?: string } = {}): Promise<{ started: boolean; note: string }> {
   if (busy) return { started: false, note: busy === slug ? "Already reading this store's site." : `Reading another store's site (${busy}); try again when it is done.` };
   const store = await readStore(slug);
   if (!store) return { started: false, note: "No such store." };
-  const site = siteOf(store.website);
-  if ("error" in site) return { started: false, note: site.error };
-  busy = slug;
-  void explore(slug, site.origin, opts).catch(async (e) => {
-    console.error("[website]", slug, e);
-    const run = await readWebsite(slug);
-    if (run) await writeMastersJson(websiteKey(slug), { ...run, running: false, finished: new Date().toISOString(), note: `Stopped: ${(e as Error).message}` });
-  }).finally(() => { busy = null; void setJob("website-explorer", { busy: false, key: null }); });
+  if ("error" in siteOf(store.website)) return { started: false, note: (siteOf(store.website) as { error: string }).error };
+  void exploreNow(slug, opts).then(async (run) => {
+    // Read from the page: the crew's Website step says so too (unless the crew itself is running it).
+    if (run && !run.ask) await updateStore(slug, (x) => (x.steps.website?.state === "working" ? null : setStep(x, "website", "done", run.note, new Date())));
+  }).catch((e) => console.error("[website]", slug, e));
   return { started: true, note: "Reading the site…" };
 }
 
-async function explore(slug: string, origin: string, opts: { readDisallowed?: boolean; fresh?: boolean; by?: string }) {
+/** Read the store's site now and wait for it (the crew's Website step): the run as it ended, or null. */
+export async function exploreNow(slug: string, opts: { readDisallowed?: boolean; fresh?: boolean; by?: string } = {}, say?: (note: string) => Promise<void>): Promise<WebsiteRun | null> {
+  while (busy && busy !== slug) await sleep(5000);
+  if (busy === slug) { while (busy === slug) await sleep(3000); return readWebsite(slug); }
+  const store = await readStore(slug);
+  const site = siteOf(store?.website);
+  if ("error" in site) throw new Error(site.error);
+  busy = slug;
+  try {
+    await explore(slug, site.origin, opts, say);
+  } catch (e) {
+    console.error("[website]", slug, e);
+    const run = await readWebsite(slug);
+    if (run) await writeMastersJson(websiteKey(slug), { ...run, running: false, finished: new Date().toISOString(), note: `Stopped: ${(e as Error).message}` });
+    throw e;
+  } finally { busy = null; void setJob("website-explorer", { busy: false, key: null }); }
+  return readWebsite(slug);
+}
+
+async function explore(slug: string, origin: string, opts: { readDisallowed?: boolean; fresh?: boolean; by?: string }, say?: (note: string) => Promise<void>) {
   const last = await readWebsite(slug);
   const prev = opts.fresh ? null : last;
   const now = () => new Date().toISOString();
@@ -102,7 +119,7 @@ async function explore(slug: string, origin: string, opts: { readDisallowed?: bo
     ...(last?.site === origin ? { photos: last.photos, merged: last.merged, integrated: last.integrated, permission: last.permission } : {}),
   };
   if (opts.readDisallowed !== undefined) run.permission = { readDisallowed: opts.readDisallowed, by: opts.by || "operator", at: now() };
-  const save = async (note?: string) => { if (note) run.note = note; await writeMastersJson(websiteKey(slug), run); };
+  const save = async (note?: string) => { if (note) { run.note = note; if (say) await say(note).catch(() => undefined); } await writeMastersJson(websiteKey(slug), run); };
   await setJob("website-explorer", { busy: true, key: slug, note: origin });
   await save("Reading robots.txt…");
 
@@ -212,15 +229,19 @@ export async function integrate(run: WebsiteRun, say: (note: string) => Promise<
   if (m.added || m.updated || !before) await writeCatalogue({ store, products: m.products });
   run.merged = run.products;
   // The products in the walk: the Tagger finds them again (it only runs once the store's walk is made).
+  // The products found in the video get the site's facts (`websiteMatch.ts`); their lights stay.
+  let matched = "";
+  try { matched = await matchVideoToWebsite(slug, say); } catch (e) { matched = ` Matching to the video stopped: ${(e as Error).message}`; }
   const s = await readStore(slug);
   let tagged = "";
-  if (s?.out.walk && (m.added || m.updated)) {
+  // The Tagger again only when the list is not the video's own find (that one already pinned its products' lights).
+  if (s?.out.walk && s.out.found !== s.out.walk && (m.added || m.updated)) {
     await updateStore(slug, (x) => redo(x, ["tag", "check"]));
     const { kick } = await import("./crew");
     kick();
     tagged = " The Tagger is finding them in the walk.";
   } else if (!s?.out.walk) tagged = " They get their lights in the tours once the store's walk is made.";
-  const note = `On the store's page: ${m.added} added, ${m.updated} updated, ${m.unchanged} already there${m.gone ? `, ${m.gone} no longer on the site (kept)` : ""}${m.full ? ", the list is full (999)" : ""}; ${copied} photos copied${failed ? `, ${failed} could not be` : ""}.${tagged}`;
+  const note = `On the store's page: ${m.added} added, ${m.updated} updated, ${m.unchanged} already there${m.gone ? `, ${m.gone} no longer on the site (kept)` : ""}${m.full ? ", the list is full (999)" : ""}; ${copied} photos copied${failed ? `, ${failed} could not be` : ""}.${matched}${tagged}`;
   return { at: new Date().toISOString(), note, added: m.added, updated: m.updated, gone: m.gone };
 }
 

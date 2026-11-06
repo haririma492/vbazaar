@@ -103,6 +103,7 @@ const STEP_RUN: Record<StepName, (s: StoreRecord, say: (note: string) => Promise
   video: stepVideo,
   lock: stepLock,
   catalogue: stepCatalogue,
+  website: stepWebsite,
   photos: stepPhotos,
   tag: stepTag,
   place: stepPlace,
@@ -130,6 +131,8 @@ async function runStep(slug: string, step: StepName) {
     // Everything built for Saraye Bamdad, for every store (owner, 2026-11-06): once the products are tagged, the
     // agents' run (`refreshAll.ts`: Shelf finder, store map, Shelf Tour, readers) is queued. A dynamic import:
     // refreshAll imports this file.
+    // A new product list: the website's facts go on it again (the Website step).
+    if (step === "catalogue") await updateStore(slug, (x) => (x.steps.website.state === "working" ? null : redo(x, ["website"])));
     if (step === "tag") void import("./refreshAll").then((m) => m.queueRefresh([slug])).catch((e) => console.error("[refresh] queue", slug, e));
   } catch (e) {
     const err = e as Error;
@@ -306,6 +309,17 @@ async function stepCatalogue(s: StoreRecord, say: (note: string) => Promise<void
   await writeCatalogue(c);
   const problems = sheet.problems.length ? ` ${sheet.problems.length} rows need a look: ${sheet.problems.slice(0, 5).join(" ")}` : "";
   return `${products.length} products from sheet «${sheet.sheet}»${fromSheet ? `, ${fromSheet} with the photo from the workbook` : ""}.${problems}`;
+}
+
+// ── Website Explorer (`website.ts`, owner 2026-11-06) ──────────────────────────
+
+/** The store's website read onto its product list, and the products found in the video given the site's facts. */
+async function stepWebsite(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
+  if (!s.website || !/^https:\/\//.test(s.website)) return "No website on the store's details: nothing to read. Add one under «مشخصات فروشگاه» and run this step again.";
+  const { exploreNow } = await import("./website");
+  const run = await exploreNow(s.slug, {}, say);
+  if (run?.ask) throw new NeedsYou(`Waiting for your answer on /stores/${s.slug}/website: ${run.ask.why}`);
+  return run?.note ?? "The website was read.";
 }
 
 // ── Photo matcher ───────────────────────────────────────────────────────────
@@ -667,8 +681,8 @@ export async function recutPhotos(slug: string): Promise<string> {
   for (const p of c.products) {
     const n = p.n;
     if (done.includes(n)) continue;
-    // A product from the store's own website keeps the store's photo: a studio shot beats a crop of the video.
-    if (p.by === "website" && p.photo) { done.push(n); continue; }
+    // A product with the store's own website photo keeps it: a studio shot beats a crop of the video.
+    if ((p.by === "website" || p.web) && p.photo) { done.push(n); continue; }
     const seen = closest.get(n), it = lights.get(n);
     try {
       if (seen && seenInput) photos.set(n, await publishPhoto(slug, n, (await sightingPhoto(seenInput, seen)).jpeg));

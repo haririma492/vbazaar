@@ -50,8 +50,8 @@ export type Bi = { en: string; fa: string };
 export type UploadKind = "video" | "sheet" | "photo" | "door" | "raw" | "shelf";
 export type Uploaded = { key: string; name: string; size: number; at: string };
 
-export type StepName = "video" | "lock" | "catalogue" | "photos" | "tag" | "place" | "check";
-export const STEPS: StepName[] = ["video", "lock", "catalogue", "photos", "tag", "place", "check"];
+export type StepName = "video" | "lock" | "catalogue" | "website" | "photos" | "tag" | "place" | "check";
+export const STEPS: StepName[] = ["video", "lock", "catalogue", "website", "photos", "tag", "place", "check"];
 export type StepState = "todo" | "working" | "done" | "failed" | "needs-you";
 export type Step = { state: StepState; tries: number; note: string; at: string | null };
 
@@ -60,6 +60,7 @@ export const STEP_SAY: Record<StepName, Bi> = {
   video: { en: "Video agent — web and phone copies", fa: "ویدیو — نسخه وب و موبایل" },
   lock: { en: "Lock agent — keeps the camera operator out of view", fa: "قفل زاویهٔ فیلم‌بردار" },
   catalogue: { en: "Catalogue agent — the product list", fa: "فهرست محصولات" },
+  website: { en: "Website Explorer — the store's website on its products: names, prices, descriptions, photos", fa: "اطلاعات وبسایت فروشگاه روی محصولات" },
   photos: { en: "Photo matcher — each photo to its product", fa: "تطبیق عکس‌ها با محصولات" },
   tag: { en: "Tagger — price tags on the products in the video", fa: "برچسب قیمت روی محصولات" },
   place: { en: "Placer — the store's door on the hallway", fa: "درِ فروشگاه در راهرو" },
@@ -71,6 +72,8 @@ export const NEEDS: Record<StepName, StepName[]> = {
   video: [],
   lock: ["video"],
   catalogue: [],
+  // After the products are found in the video (the finder sees everything in the store), so each can be matched.
+  website: ["catalogue"],
   photos: ["catalogue"],
   tag: ["video", "photos"],
   place: ["video"],
@@ -80,7 +83,7 @@ export const NEEDS: Record<StepName, StepName[]> = {
 /** A new upload of this kind sends these steps back to do (and nothing else). */
 export const REDO: Record<UploadKind, StepName[]> = {
   video: ["video", "lock", "tag", "place", "check"],
-  sheet: ["catalogue", "photos", "tag", "check"],
+  sheet: ["catalogue", "website", "photos", "tag", "check"],
   photo: ["photos", "tag", "check"],
   door: ["place", "check"],
   // Shelf photos are read on the operator's «Read the spines» (it spends): no crew step goes back.

@@ -86,6 +86,11 @@ plan and the Managed Agents decision are in
   never over a field the owner changed, never removing one; copies each main photo to our bucket; runs the Tagger
   again. Both tours' product card shows the extra photos. A later merchant sheet replaces the list (as before);
   run «Put on the store's page again» to add the site's products back. `lib/stores/website*.ts`.
+  **It is a crew step, «website», for every store, existing and new** (owner, 2026-11-06: *"for any new store or
+  when re-doing it all add the website info synergy to virtual store"*): after the Catalogue agent, and again after
+  every new product list. Its last part matches each product found in the video to its website product (Haiku
+  compares the photos, ≥ 0.75), so the product keeps its lights and gets the site's name, price, description and
+  photos; the website copy leaves the list. A store with no https website: the step says so and is done.
 - **The store widget** (owner, 2026-11-06: *"a preview / widget is the verdict … place the widget code on the store
   page … only for operator with a flag/key … if we need the owner also to see it"*; *"this will apply to all
   stores, existing and new"*). Two lines on the store's own site (`snippet`): `/widget.js` frames `/w/<slug>`, a

@@ -49,6 +49,8 @@ test("the crew runs in order: nothing before the uploads, the video and the list
   s = addUpload(s, "sheet", file("list.xlsx"));
   assert.equal(nextStep(s), "catalogue");
   s = setStep(s, "catalogue", "done", "", now);
+  assert.equal(nextStep(s), "website", "the store's website onto the list, once the list is made");
+  s = setStep(s, "website", "done", "", now);
   assert.equal(nextStep(s), "photos");
   s = setStep(s, "photos", "done", "", now);
   assert.equal(nextStep(s), null, "the tagger waits for the video");
