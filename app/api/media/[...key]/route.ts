@@ -9,7 +9,7 @@
  * refuses a HEAD.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { presignGet, r2Config, webObjectExists } from "@/lib/splats/r2";
+import { presignGet, r2Config, readBucket, webObjectExists } from "@/lib/splats/r2";
 import { isServableVideoKey } from "@/lib/splats/media";
 
 export const runtime = "nodejs";
@@ -30,11 +30,17 @@ function refuse(key: string): NextResponse | null {
   return null;
 }
 
+/**
+ * ⚠️ KEYED ON THE BUCKET TOO: a video moved into the private bucket must stop
+ * being handed out as its old public link, which stops working the moment the
+ * public copy is deleted.
+ */
 async function linkFor(key: string): Promise<string> {
-  const had = signed.get(key);
+  const id = `${await readBucket("web", key)}|${key}`;
+  const had = signed.get(id);
   if (had && had.until > Date.now()) return had.url;
   const url = await presignGet(key, "web", LINK_SECONDS);
-  signed.set(key, { url, until: Date.now() + REUSE_MS });
+  signed.set(id, { url, until: Date.now() + REUSE_MS });
   if (signed.size > 5000) for (const [k, v] of signed) if (v.until <= Date.now()) signed.delete(k);
   return url;
 }
@@ -44,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: { key?: string
   const no = refuse(key);
   if (no) return no;
   try {
-    if (!signed.has(key) && !(await webObjectExists(key))) return NextResponse.json({ ok: false, error: "No such video." }, { status: 404, headers: NO_STORE });
+    if (!(await webObjectExists(key))) return NextResponse.json({ ok: false, error: "No such video." }, { status: 404, headers: NO_STORE });
     // `private`: a shared cache must never hand one visitor's link to another for longer than it lasts.
     return NextResponse.redirect(new URL(await linkFor(key), req.url), { status: 302, headers: { "cache-control": "private, max-age=600" } });
   } catch (e) {
