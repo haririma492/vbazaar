@@ -6,7 +6,7 @@
  * upload (or replace) and take out. The walk plays 1 → 2 → 3, then from 1 again (`WalkSound`).
  *
  * OR TUNE IN TO NIKOO.TV (owner, 2026-11-06: "in addition to uploading 3 audio file lets have the choice of
- * tuning into a music channel from nikoo.tv"): channel 3 or 4 plays live instead (`Walk.radio`, `lib/radio.ts`).
+ * tuning into a music channel from nikoo.tv"): channel 4 plays live instead (only 4: "only channel 4 nikoo") (`Walk.radio`, `lib/radio.ts`).
  * The uploaded tracks are kept, and play again when the store goes back to them.
  */
 
@@ -25,7 +25,7 @@ function whenOf(key: string): string {
   return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}` : key.split("/").pop() ?? key;
 }
 
-const FA_CH: Record<RadioChannel, string> = { 3: "۳", 4: "۴" };
+const FA_CH: Record<RadioChannel, string> = { 4: "۴" };
 
 export default function MusicCard({ api, tracks, radio, reload }: {
   api: string; tracks: Track[]; radio: RadioChannel | null; reload: () => Promise<void>;
@@ -70,8 +70,8 @@ export default function MusicCard({ api, tracks, radio, reload }: {
         </div>
         {radio && (
           <p dir="ltr" className="text-left text-[12px] text-white/55">
-            Shoppers join whatever channel {radio} is airing at that moment, as on nikoo.tv. The tracks below are kept and play
-            again if you go back to them.
+            Shoppers join whatever channel {radio} is airing at that moment, as on nikoo.tv. While it airs a YouTube programme the
+            walk plays the tracks below instead (or nothing, if there are none). The tracks are kept either way.
           </p>
         )}
       </div>

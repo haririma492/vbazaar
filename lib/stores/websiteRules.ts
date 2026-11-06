@@ -1,6 +1,6 @@
 // THE WEBSITE EXPLORER'S RULES (owner, 2026-11-06: "create an agent … in charge of extracting all information
 // needed for virtual store from a store's website such as product photos with good quality, product names,
-// product prices, product descriptions … lets start with our new store ShirazGalery").
+// product prices, product descriptions … lets start with our new store ShirazGallery").
 //
 // Pure: imports nothing, so `node --test` runs it. The server half (fetching, the queue, the bucket) is
 // `website.ts`; the result is shown at `/stores/<slug>/website`.

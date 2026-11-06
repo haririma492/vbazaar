@@ -2,19 +2,19 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PREVIEW_FOV, addHit, emptyStats, ownerSeesWidget, planWidget, previewAim, siteOf, snippet } from "./widgetRules";
 
-const facts = { live: true, walk: "scenes/store-shirazgalery/walk-1.mp4", tourVideo: "/api/media/scenes/store-shirazgalery/tour.mp4", photos: ["https://media.x/a.jpg", "https://media.x/b.jpg"], door: "https://media.x/door.jpg" };
+const facts = { live: true, walk: "scenes/store-shirazgallery/walk-1.mp4", tourVideo: "/api/media/scenes/store-shirazgallery/tour.mp4", photos: ["https://media.x/a.jpg", "https://media.x/b.jpg"], door: "https://media.x/door.jpg" };
 
 test("the snippet: our frame, and a plain counted link for a site without scripts", () => {
-  const s = snippet("shirazgalery");
-  assert.ok(s.includes('data-vbazaar-store="shirazgalery"'));
-  assert.ok(s.includes('href="https://vbazaar.app/w/shirazgalery/go"'));
+  const s = snippet("shirazgallery");
+  assert.ok(s.includes('data-vbazaar-store="shirazgallery"'));
+  assert.ok(s.includes('href="https://vbazaar.app/w/shirazgallery/go"'));
   assert.ok(s.includes('src="https://vbazaar.app/widget.js"'));
 });
 
 test("a published store: the Shelf Tour's loop, and the key opens its Free Tour on vbazaar.app", () => {
-  const p = planWidget("shirazgalery", facts);
+  const p = planWidget("shirazgallery", facts);
   assert.deepEqual(p.preview, { kind: "video", src: facts.tourVideo });
-  assert.equal(p.go, "/vca/walk?v=scenes%2Fstore-shirazgalery%2Fwalk-1.mp4");
+  assert.equal(p.go, "/vca/walk?v=scenes%2Fstore-shirazgallery%2Fwalk-1.mp4");
   assert.equal(p.soon, false);
 });
 
@@ -27,7 +27,7 @@ test("no Shelf Tour: the door, then the product photos; nothing: the name on a c
 
 test("a store not published, or with nothing to visit: «Coming soon», and the key opens the bazaar's front door", () => {
   for (const f of [{ ...facts, live: false }, { ...facts, walk: null, tourVideo: null }]) {
-    const p = planWidget("shirazgalery", f);
+    const p = planWidget("shirazgallery", f);
     assert.equal(p.soon, true);
     assert.equal(p.go, "/");
   }

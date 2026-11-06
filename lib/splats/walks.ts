@@ -211,7 +211,7 @@ export type Walk = {
    * nikoo.tv"): 3 = موسیقی جهان, 4 = نغمه‌های نوستالژیک فرانسه و ایتالیا (`lib/radio.ts`). The walk joins what
    * the channel airs this minute. The uploaded tracks are kept, and play again when this is taken off.
    */
-  radio?: 3 | 4;
+  radio?: 4;
   /**
    * Bumped by each cut of the video (`cut.ts`): the file keeps its name but
    * changes, and files are cached "forever" by name, so the player asks for
@@ -566,8 +566,9 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       } else problems.push(`${key}: «playlist» is up to ${MAX_TRACKS} sounds uploaded for a walk.`);
     }
     if (r.radio !== undefined && r.radio !== null) {
-      if (r.radio === 3 || r.radio === 4) walk.radio = r.radio;
-      else problems.push(`${key}: «radio» is Nikoo.tv channel 3 or 4.`);
+      // Only channel 4 now (owner, 2026-11-06): a walk set to 3 before then plays 4.
+      if (r.radio === 3 || r.radio === 4) walk.radio = 4;
+      else problems.push(`${key}: «radio» is Nikoo.tv channel 4.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -1265,8 +1266,8 @@ export function setTrack(w: Walks, key: string, slot: number, audio: string | nu
 }
 
 /** A walk's background sound (a `walkAudioKey`); null: none. */
-/** The walk tuned in to Nikoo.tv channel 3 or 4, or back to its own tracks (null). */
-export function setRadio(w: Walks, key: string, radio: 3 | 4 | null): Walks {
+/** The walk tuned in to Nikoo.tv channel 4, or back to its own tracks (null). */
+export function setRadio(w: Walks, key: string, radio: 4 | null): Walks {
   const walk = w.walks[key] ?? { doors: [] };
   const { radio: _r, ...rest } = walk;
   return { ...w, walks: { ...w.walks, [key]: radio ? { ...rest, radio } : rest } };

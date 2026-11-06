@@ -49,7 +49,8 @@ test("YouTube ids: host anchored", () => {
 test("titles, channels, position", () => {
   assert.equal(cleanTitle("YouTube video oW4VJZvND-Q"), null);
   assert.equal(cleanTitle(" La Pared "), "La Pared");
-  assert.equal(radioChannelOf("3"), 3);
+  assert.equal(radioChannelOf("4"), 4);
+  assert.equal(radioChannelOf("3"), null, "only channel 4");
   assert.equal(radioChannelOf(5), null);
   assert.equal(positionAt({ offsetSec: 100, at: AT }, AT + 2500), 102.5);
 });

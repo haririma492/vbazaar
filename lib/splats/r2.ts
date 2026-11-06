@@ -33,6 +33,7 @@ import { WALKS_KEY, emptyWalks, mergeConflicts, mergeWalks, parseWalks, type Wal
 import { catalogueKey, checkCatalogue, type Catalogue } from "./catalogue";
 import { OFFLINE_BASE, offlineDir, offlineJson, offlineKeys } from "./offline";
 import { isPrivateVideoKey } from "./media";
+import { fixWord, isTextKey } from "./wordFixRules";
 
 const env = (k: string) => (process.env[k] || "").trim();
 
@@ -591,6 +592,104 @@ export function startVideoMove(deletePublic: boolean): VideoMove {
     }
   })();
   return move;
+}
+
+// ── A word corrected everywhere in the buckets (`wordFixRules.ts`) ───────────
+
+export type WordFix = {
+  state: "idle" | "running" | "done" | "failed";
+  from: string; to: string; apply: boolean; deleteOld: boolean;
+  /** Objects whose KEY holds the word: copied to the corrected key (and, with `deleteOld`, the old one removed). */
+  renamed: Array<{ bucket: string; from: string; to: string; size: number }>;
+  /** Text files whose CONTENT held it: rewritten. */
+  edited: Array<{ bucket: string; key: string; count: number }>;
+  failed: Array<{ key: string; error: string }>;
+  started: string | null; finished: string | null;
+};
+let wordFix: WordFix = { state: "idle", from: "", to: "", apply: false, deleteOld: false, renamed: [], edited: [], failed: [], started: null, finished: null };
+export const wordFixStatus = () => wordFix;
+
+/**
+ * Every object in both buckets: a key holding `from` is copied (inside R2) to the corrected key; a text file
+ * holding it is rewritten. Without `apply` nothing is written and the plan is reported. The old objects are KEPT
+ * unless `deleteOld` (run it once the copies are checked); a copy already there at the same size is skipped, so
+ * a run can be repeated. One run at a time, in the background.
+ */
+export function startWordFix(from: string, to: string, apply: boolean, deleteOld: boolean): WordFix {
+  if (wordFix.state === "running") return wordFix;
+  wordFix = { state: "running", from, to, apply, deleteOld, renamed: [], edited: [], failed: [], started: new Date().toISOString(), finished: null };
+  void (async () => {
+    try {
+      const { webBucket, mastersBucket } = r2Config();
+      const count = (t: string) => (t.match(new RegExp(from, "gi")) ?? []).length;
+      for (const bucket of [...new Set([webBucket, mastersBucket])]) {
+        for (const o of await listAll(bucket, "")) {
+          try {
+            const next = fixWord(o.key, from, to);
+            const text = isTextKey(o.key) && o.size < 20 * 1024 * 1024;
+            if (next !== o.key) {
+              wordFix.renamed.push({ bucket, from: o.key, to: next, size: o.size });
+              if (!apply) continue;
+              const there = await s3().send(new HeadObjectCommand({ Bucket: bucket, Key: next })).catch(() => null);
+              const head = await s3().send(new HeadObjectCommand({ Bucket: bucket, Key: o.key }));
+              if (text) {
+                const body = await (await s3().send(new GetObjectCommand({ Bucket: bucket, Key: o.key }))).Body?.transformToString() ?? "";
+                await s3().send(new PutObjectCommand({ Bucket: bucket, Key: next, Body: fixWord(body, from, to), ContentType: head.ContentType, CacheControl: head.CacheControl }));
+              } else if (!there || there.ContentLength !== o.size) {
+                await copyRenamed(bucket, o.key, next, o.size, head.ContentType, head.CacheControl);
+                const check = await s3().send(new HeadObjectCommand({ Bucket: bucket, Key: next }));
+                if (check.ContentLength !== o.size) throw new Error(`the copy is ${check.ContentLength} bytes, the original ${o.size}`);
+              }
+              where.delete(next);
+              if (deleteOld) { await s3().send(new DeleteObjectCommand({ Bucket: bucket, Key: o.key })); where.delete(o.key); }
+            } else if (text) {
+              const body = await (await s3().send(new GetObjectCommand({ Bucket: bucket, Key: o.key }))).Body?.transformToString() ?? "";
+              const n = count(body);
+              if (!n) continue;
+              wordFix.edited.push({ bucket, key: o.key, count: n });
+              if (!apply) continue;
+              const head = await s3().send(new HeadObjectCommand({ Bucket: bucket, Key: o.key }));
+              await s3().send(new PutObjectCommand({ Bucket: bucket, Key: o.key, Body: fixWord(body, from, to), ContentType: head.ContentType, CacheControl: head.CacheControl }));
+            }
+          } catch (e) {
+            wordFix.failed.push({ key: `${bucket}/${o.key}`, error: (e as Error).message || String(e) });
+          }
+        }
+      }
+      wordFix.state = "done";
+    } catch (e) {
+      wordFix.failed.push({ key: "", error: (e as Error).message || String(e) });
+      wordFix.state = "failed";
+    } finally {
+      wordFix.finished = new Date().toISOString();
+    }
+  })();
+  return wordFix;
+}
+
+/** One object copied to a NEW key in the same bucket, inside R2; in 1 GiB parts past 4 GiB. */
+async function copyRenamed(bucket: string, from: string, to: string, size: number, contentType?: string, cacheControl?: string) {
+  const CopySource = `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`;
+  const GiB = 1024 ** 3;
+  if (size <= 4 * GiB) {
+    await s3().send(new CopyObjectCommand({ Bucket: bucket, Key: to, CopySource }));
+    return;
+  }
+  const { UploadId } = await s3().send(new CreateMultipartUploadCommand({ Bucket: bucket, Key: to, ContentType: contentType, CacheControl: cacheControl }));
+  if (!UploadId) throw new Error("R2 gave no upload id");
+  try {
+    const parts: Array<{ PartNumber: number; ETag: string }> = [];
+    for (let i = 0, start = 0; start < size; i++, start += GiB) {
+      const end = Math.min(size, start + GiB) - 1;
+      const out = await s3().send(new UploadPartCopyCommand({ Bucket: bucket, Key: to, UploadId, PartNumber: i + 1, CopySource, CopySourceRange: `bytes=${start}-${end}` }));
+      if (!out.CopyPartResult?.ETag) throw new Error(`no ETag for part ${i + 1}`);
+      parts.push({ PartNumber: i + 1, ETag: out.CopyPartResult.ETag });
+    }
+    await s3().send(new CompleteMultipartUploadCommand({ Bucket: bucket, Key: to, UploadId, MultipartUpload: { Parts: parts } }));
+  } catch (e) {
+    await s3().send(new AbortMultipartUploadCommand({ Bucket: bucket, Key: to, UploadId })).catch(() => {});
+    throw e;
+  }
 }
 
 /** Every object under a prefix, however many (`listPrefix` stops at 2,000 for the screen). */

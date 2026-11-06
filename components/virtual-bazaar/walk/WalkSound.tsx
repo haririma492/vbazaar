@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_WALK_AUDIO_BYTES, audioTypeOf } from "@/lib/splats/keys";
 import { setAudio, walkOf, type Walks } from "@/lib/splats/walks";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
-import { RADIO, positionAt, type RadioChannel, type RadioNow } from "@/lib/radio";
+import { positionAt, type RadioChannel, type RadioNow } from "@/lib/radio";
 
 const MUTE_KEY = "walk-sound";
 
@@ -73,10 +73,10 @@ export function WalkSound({ audioKeys, srcOf, specials = false, radio = null }: 
   srcOf: (key: string) => Promise<string | null>;
   /** The walk has items on special, which speak: the key is shown for them too. */
   specials?: boolean;
-  /** Tuned in to Nikoo.tv channel 3 or 4 (`Walk.radio`): that plays live instead of `audioKeys`. */
+  /** Tuned in to Nikoo.tv channel 4 (`Walk.radio`): that plays live instead of `audioKeys`. */
   radio?: RadioChannel | null;
 }) {
-  if (radio) return <RadioSound ch={radio} />;
+  if (radio) return <RadioSound ch={radio} audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
   return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
 }
 
@@ -173,17 +173,17 @@ function TrackSound({ audioKeys, srcOf, specials }: { audioKeys: string[]; srcOf
 }
 
 const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14px] py-[7px] text-[18px] text-white";
-const FA_CH: Record<RadioChannel, string> = { 3: "۳", 4: "۴" };
-
 /**
- * NIKOO.TV LIVE IN THE WALK (owner, 2026-11-06): the walk tuned in to channel 3 or 4 joins what that channel is
- * airing THIS minute, at the second it has reached, like a radio, and asks again when the programme ends.
- * - A file on our bucket (channel 3's library, most of the time) plays in an ordinary <audio>.
- * - A YouTube programme (channel 4, often) plays in YouTube's own player, which stays VISIBLE in a small card:
- *   YouTube's terms do not allow a hidden or tiny player, so 🔇 takes the card away rather than hiding it.
- * - Something this cannot play (a live HLS stream, nothing on air) is said, never silence with no reason.
+ * NIKOO.TV CHANNEL 4 LIVE IN THE WALK (owner, 2026-11-06): the walk tuned in joins what the channel is airing THIS
+ * minute, at the second it has reached, like a radio, and asks again when the programme ends. Only the 🔊 key is
+ * shown: no label, no player (owner: "remove all the label on the music … remove the youtube iframe too").
+ * - A file on our bucket (most of channel 4: 625 of its 1,060 programmes, measured 2026-11-06) plays in an <audio>.
+ * - A YouTube programme cannot be heard without YouTube's own player, which YouTube does not allow hidden, and
+ *   nikoo.tv keeps no copy of it: while one is on air the walk plays the store's own tracks instead (or nothing).
  */
-function RadioSound({ ch }: { ch: RadioChannel }) {
+function RadioSound({ ch, audioKeys, srcOf, specials }: {
+  ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean;
+}) {
   const [on, setOn] = useState(true);
   const [now, setNow] = useState<RadioNow | null>(null);
   const [waiting, setWaiting] = useState(false);
@@ -203,15 +203,15 @@ function RadioSound({ ch }: { ch: RadioChannel }) {
       if (gone) return;
       const r = j?.radio ?? null;
       // The reading's clock is the server's: shift it onto this device's, so the join point is right here.
-      const fixed = r && j?.serverTime ? { ...r, at: r.at + (Date.now() - j.serverTime), endsAt: r.endsAt ? r.endsAt + (Date.now() - j.serverTime) : null } : r;
+      const skew = j?.serverTime ? Date.now() - j.serverTime : 0;
+      const fixed = r ? { ...r, at: r.at + skew, endsAt: r.endsAt ? r.endsAt + skew : null } : null;
       setNow(fixed);
-      const wait = fixed?.endsAt ? Math.min(Math.max(fixed.endsAt - Date.now() + 1500, 3000), 300_000) : fixed?.kind === "none" ? 60_000 : 300_000;
+      const wait = fixed?.endsAt ? Math.min(Math.max(fixed.endsAt - Date.now() + 1500, 3000), 300_000) : fixed?.kind === "file" ? 300_000 : 60_000;
       timer = setTimeout(() => setTick((t) => t + 1), wait);
     })();
     return () => { gone = true; if (timer) clearTimeout(timer); };
   }, [ch, tick]);
 
-  // A file: one <audio>, joined at the channel's position.
   const fileUrl = now?.kind === "file" ? now.url : null;
   useEffect(() => {
     if (!fileUrl || !now) return;
@@ -220,8 +220,10 @@ function RadioSound({ ch }: { ch: RadioChannel }) {
     el.volume = WALK_MUSIC_VOLUME;
     audio.current = el;
     const reading = now;
-    const seek = () => { try { el.currentTime = positionAt(reading, Date.now()); } catch { /* not seekable yet */ } };
-    const onMeta = () => { seek(); if (readOn()) start(el); };
+    const onMeta = () => {
+      try { el.currentTime = positionAt(reading, Date.now()); } catch { /* not seekable yet */ }
+      if (readOn()) start(el);
+    };
     const onEnded = () => setTick((t) => t + 1);
     const onError = () => { if (++failures.current <= 3) setTimeout(() => setTick((t) => t + 1), 5000); };
     const onPlaying = () => { failures.current = 0; };
@@ -259,6 +261,9 @@ function RadioSound({ ch }: { ch: RadioChannel }) {
     });
   }
 
+  // Not a file this minute (a YouTube programme, nothing on air, nikoo.tv unreachable): the store's own tracks.
+  if (now && now.kind !== "file") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
+
   const toggle = () => {
     const next = !on;
     setOn(next);
@@ -269,48 +274,11 @@ function RadioSound({ ch }: { ch: RadioChannel }) {
     if (next) { if (now) { try { el.currentTime = positionAt(now, Date.now()); } catch { /* */ } } start(el); }
     else el.pause();
   };
-
-  const label = now?.now?.fa ?? now?.now?.en ?? null;
-  const nextLabel = now?.next?.fa ?? now?.next?.en ?? null;
-  const yt = on && now?.kind === "youtube" && now.youtubeId ? now : null;
-  // Fixed at the moment the programme starts here; a later reading of the same video does not reload the player.
-  const ytStart = useRef<{ id: string; sec: number } | null>(null);
-  if (yt && ytStart.current?.id !== yt.youtubeId) ytStart.current = { id: yt.youtubeId!, sec: Math.floor(positionAt(yt, Date.now())) };
-
   return (
-    <>
-      {yt && ytStart.current && (
-        <div dir="ltr" className="absolute bottom-28 left-3 z-20 overflow-hidden rounded-xl border border-white/20 bg-black/80 shadow-xl">
-          <iframe
-            key={yt.youtubeId}
-            title={`Nikoo.tv channel ${ch}`}
-            width={200}
-            height={200}
-            src={`https://www.youtube.com/embed/${yt.youtubeId}?autoplay=1&playsinline=1&rel=0&enablejsapi=1&start=${ytStart.current.sec}`}
-            allow="autoplay; encrypted-media"
-            onLoad={(e) => {
-              // The same level as the walk's own music.
-              e.currentTarget.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(WALK_MUSIC_VOLUME * 100)] }), "*");
-            }}
-          />
-        </div>
-      )}
-      <div dir="ltr" className="absolute bottom-14 left-3 z-20 flex max-w-[calc(100%-1.5rem)] items-center gap-2">
-        <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
-          {on ? (waiting ? "🔊 tap to hear" : "🔊") : "🔇"}
-        </button>
-        <div className="min-w-0 rounded-xl border border-white/15 bg-black/60 px-3 py-1 text-white">
-          <div dir="rtl" className="truncate text-[12px] font-bold">📻 کانال {FA_CH[ch]} نیکو · {RADIO[ch].fa}</div>
-          {now?.kind === "none" ? (
-            <div dir="rtl" className="truncate text-[11px] text-amber-200/90">الان از این کانال چیزی شنیده نمی‌شود</div>
-          ) : label ? (
-            <div dir="rtl" className="truncate text-[11px] text-white/70">اکنون: <bdi>{label}</bdi></div>
-          ) : nextLabel ? (
-            <div dir="rtl" className="truncate text-[11px] text-white/55">بعدی: <bdi>{nextLabel}</bdi></div>
-          ) : null}
-        </div>
-      </div>
-    </>
+    <button type="button" dir="ltr" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"}
+      className={`absolute bottom-14 left-3 z-20 ${SOUND_KEY_CLASS}`}>
+      {on ? (waiting ? "🔊 tap to hear" : "🔊") : "🔇"}
+    </button>
   );
 }
 

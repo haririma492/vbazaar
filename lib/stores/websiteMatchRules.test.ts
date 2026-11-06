@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Product } from "@/lib/splats/catalogue";
 import { applyMatches, joinProduct, shortlist } from "./websiteMatchRules";
 
-// ShirazGalery, 2026-11-06: products the crew found in the walk, and the website's.
+// ShirazGallery, 2026-11-06: products the crew found in the walk, and the website's.
 const video: Product[] = [
   { n: 3, unit: "piece", priceCents: null, by: "video", seen: "Stainless steel stock pots", photo: "https://m/p3.jpg" },
   { n: 1, unit: "piece", priceCents: null, by: "video", seen: "Grey wok with cream rim and glass lid", photo: "https://m/p1.jpg" },

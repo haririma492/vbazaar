@@ -46,7 +46,7 @@ type Page = {
   products: Product[];
   walkUrl: string | null;
   music?: Track[];
-  radio?: 3 | 4 | null;
+  radio?: 4 | null;
 };
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };

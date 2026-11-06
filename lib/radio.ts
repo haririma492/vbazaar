@@ -9,12 +9,13 @@
  * Pure: the route and the walk's player both read this. Imports nothing, so `node --test` can load it.
  */
 
-export type RadioChannel = 3 | 4;
-export const RADIO_CHANNELS: RadioChannel[] = [3, 4];
-export const DEFAULT_RADIO_CHANNEL: RadioChannel = 3;
+// Only channel 4 (owner, 2026-11-06: "only channel 4 nikoo"). Channel 3's entry stays in `RADIO` for the record.
+export type RadioChannel = 4;
+export const RADIO_CHANNELS: RadioChannel[] = [4];
+export const DEFAULT_RADIO_CHANNEL: RadioChannel = 4;
 
 /** The two channels, in nikoo.tv's own words, and where nikoo.tv says what each is airing. */
-export const RADIO: Record<RadioChannel, { fa: string; en: string; statePath: string }> = {
+export const RADIO: Record<3 | 4, { fa: string; en: string; statePath: string }> = {
   3: { fa: "موسیقی جهان", en: "World Music", statePath: "/api/channels/state?id=world-greats" },
   // Channel 4 is nikoo.tv's main broadcast: it lives on the old pipeline, not in `nikoo_channel`.
   4: { fa: "نغمه‌های نوستالژیک فرانسه و ایتالیا", en: "French & Italian Nostalgic Melodies", statePath: "/api/olgoo-live/state" },
@@ -22,7 +23,7 @@ export const RADIO: Record<RadioChannel, { fa: string; en: string; statePath: st
 
 export function radioChannelOf(v: unknown): RadioChannel | null {
   const n = typeof v === "string" ? Number(v) : v;
-  return n === 3 || n === 4 ? n : null;
+  return n === 4 ? 4 : null;
 }
 
 /**
@@ -31,7 +32,7 @@ export function radioChannelOf(v: unknown): RadioChannel | null {
  * so and the shopper can switch channel.
  */
 export type RadioNow = {
-  ch: RadioChannel;
+  ch: 3 | 4;
   kind: "file" | "youtube" | "none";
   url: string | null;
   youtubeId: string | null;
@@ -93,7 +94,7 @@ function pair(fa: unknown, en: unknown, artistFa?: unknown, artistEn?: unknown) 
  * One channel's state, as nikoo.tv answered it at `at`, into what the walk plays. Both routes are read here,
  * so a change to either shape is one place to fix. Never throws: a shape it cannot read is `none` with a reason.
  */
-export function readChannelState(ch: RadioChannel, json: unknown, at: number): RadioNow {
+export function readChannelState(ch: 3 | 4, json: unknown, at: number): RadioNow {
   const s = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
   const base: RadioNow = { ch, kind: "none", url: null, youtubeId: null, offsetSec: 0, at, endsAt: null, now: null, next: null };
   if (s.ok === false) return { ...base, reason: "the channel is off air" };

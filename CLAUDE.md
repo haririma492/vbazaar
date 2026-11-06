@@ -726,17 +726,24 @@ quality and choice to break away and enter in a shop. (period)"*
   rewritten SOUND ONLY under a new key (`lib/stores/music.ts`, `soundOnly`; «musicClean» redoes a walk's
   tracks): the owner's two MP3s carried embedded cover pictures, and with one element per track loading at
   once Chrome and Edge crashed ("Out of Memory") on the walk.
-- **A store walk can tune in to a live Nikoo.tv music channel** (owner, 2026-11-06: *"music will not be from a fixed
+- **A store walk can tune in to Nikoo.tv channel 4 live** (owner, 2026-11-06: *"music will not be from a fixed
   audio, rather from two live music channels of nikoo.tv"*, then *"in addition to uploading 3 audio file lets have the
-  choice of tuning into a music channel"*). The store page's music card picks: the store's own tracks, channel 3
-  (موسیقی جهان) or channel 4 (نغمه‌های نوستالژیک فرانسه و ایتالیا) — `Walk.radio`, action `musicRadio`. The walk joins
-  what the channel airs this minute, at the second it has reached, and asks again when the programme ends.
-  `/api/radio?ch=3|4` reads nikoo.tv's own state routes server-side (no CORS there; 10 s cache, one read for every
-  shopper; `NIKOO_BASE_URL` overrides the host); `lib/radio.ts` (pure, `radio.test.ts`) reads both shapes. A file
-  programme (channel 3's library mp4s on assets.mokran.tv, byte ranges checked) plays in an `<audio>`; a YouTube
-  programme (channel 4, often) plays in YouTube's own player in a **visible 200×200 card**, since YouTube's terms
-  forbid a hidden player, and 🔇 removes the card. A live HLS stream cannot play here and is said. The uploaded tracks
-  are kept; «stop the music» clears the channel too. Not in the Shelf Tour (no music there) nor the widget teaser.
+  choice of tuning into a music channel"*, then *"only channel 4 nikoo … remove all the label on the music … remove the
+  youtube iframe too"*). The store page's music card picks: the store's own tracks or channel 4 (نغمه‌های نوستالژیک
+  فرانسه و ایتالیا) — `Walk.radio` (a stored 3 reads as 4), action `musicRadio`. The walk joins what the channel airs
+  this minute, at the second it has reached, and asks again when the programme ends. `/api/radio?ch=4` reads
+  nikoo.tv's state server-side (no CORS there; 10 s cache; `NIKOO_BASE_URL` overrides the host); `lib/radio.ts`
+  (pure, `radio.test.ts`). Only the 🔊 key shows: no label, no player. A file programme (625 of channel 4's 1,060,
+  on assets/video.mokran.tv) plays in an `<audio>`. A YouTube programme (the other 435) cannot be heard without
+  YouTube's own player, which YouTube does not allow hidden, and nikoo.tv keeps no copy of them: while one is on
+  air the walk plays the store's uploaded tracks, or nothing. The fix for that is on nikoo.tv (rehost those
+  programmes' audio to R2), not here. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
+- **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
+  of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
+  (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the
+  corrected key, every text file mentioning it rewritten (store record, index, walks.json, catalogues, tours). A dry
+  run without `apply`; the old objects stay until `deleteOld`. Renaming a store's slug this way changes its page
+  address (`/stores/<slug>`) and the widget snippet.
 - **Both tours open on the store's door photo for 7 s** (owner, 2026-11-06: *"start both free tour and shelf tour
   with the photo of the front of the door for 7 sec"*; it was 4 s, Free Tour only): `DOOR_PHOTO_MS` in
   `lib/splats/walks.ts`, `doorPhotoOf` for both.

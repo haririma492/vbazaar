@@ -40,7 +40,7 @@ import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { checkCatalogue } from "@/lib/splats/catalogue";
 import { cutInfo, cutJob, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
 import { REFLECT_CENTS, beforeKeyOf, shadowStatusOf, startShadowAgent, undoReflections } from "@/lib/stores/reflect";
-import { startVideoMove, videoMoveStatus, webObjectExists as shadowKept } from "@/lib/splats/r2";
+import { startVideoMove, startWordFix, videoMoveStatus, wordFixStatus, webObjectExists as shadowKept } from "@/lib/splats/r2";
 import { isPrivateVideoKey, mediaPath } from "@/lib/splats/media";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
@@ -124,6 +124,13 @@ export async function POST(req: NextRequest) {
   // The walk videos into the private bucket (`lib/splats/media.ts`). `deletePublic: true` also removes the public copies.
   if (action === "videosPrivate") return ok({ job: startVideoMove(body.deletePublic === true) });
   if (action === "videosPrivateStatus") return ok({ job: videoMoveStatus() });
+  // A word corrected everywhere in the buckets (owner, 2026-11-06: the one-l spelling → "gallery"). Dry run unless `apply`.
+  if (action === "wordFix") {
+    const from = typeof body.from === "string" ? body.from.trim() : "", to = typeof body.to === "string" ? body.to.trim() : "";
+    if (!/^[a-z]{3,40}$/i.test(from) || !/^[a-z]{3,40}$/i.test(to) || from.toLowerCase() === to.toLowerCase()) return fail(400, "A word to replace and its correction, letters only.");
+    return ok({ job: startWordFix(from, to, body.apply === true, body.deleteOld === true) });
+  }
+  if (action === "wordFixStatus") return ok({ job: wordFixStatus() });
 
   // Training on a rented GPU (`lib/splats/train.ts`): RunPod's words, not R2's.
   if (action === "train" || action === "trainStatus" || action === "trainCancel" || action === "trainLog") {
