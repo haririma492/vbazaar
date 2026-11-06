@@ -25,6 +25,7 @@ import { sceneOf } from "./store";
 import { productPhoto, sharpnessAt } from "./media";
 import { readTitle, OverBudget, type ReadTitle } from "./ai";
 import { purseOf } from "./crew";
+import { tourInputs } from "./tourJob";
 
 export type TitleRow = ReadTitle & { n: number; t: number; photo?: string; seen?: string; at: string };
 export type TitleList = { store: string; rows: TitleRow[]; spentCents: number; updated: string };
@@ -60,25 +61,45 @@ export async function readTitles(slug: string, limit?: number): Promise<string> 
     catch { src = await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600); }
     const list: TitleList = (await readTitleList(slug)) ?? { store: slug, rows: [], spentCents: 0, updated: "" };
     const done = new Set(list.rows.map((r) => r.n));
-    const todo = c.products.filter((p) => firstLight.has(p.n) && !done.has(p.n)).slice(0, limit ?? Infinity);
+    // ⚠️ EVERY BOOK FOUND, NOT ONLY THE LIT ONES (owner, 2026-11-05: "only 76 titles are typed, there are in excess
+    // of 700 titles in this store"): 160 of the bookshop's 425 found books had no light and were never read. Those are
+    // read from the moments the finder saw them (its sightings and the Shelf finder's, in the ORIGINAL recording's
+    // times, so from the upload / the walk before any cut).
+    const fromSeen = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number } }>();
+    let srcSeen: string | null = null;
+    const inp = await tourInputs(slug).catch(() => "no inputs");
+    if (typeof inp !== "string") {
+      srcSeen = inp.src;
+      for (const x of inp.seen) {
+        if (firstLight.has(x.n)) continue;
+        const f = fromSeen.get(x.n) ?? { pins: [], size: x.size };
+        f.pins.push({ t: x.t, x: x.lon, y: x.lat });
+        // The biggest view's size: the camera closest.
+        if (x.size.w * x.size.h > f.size.w * f.size.h) f.size = x.size;
+        fromSeen.set(x.n, f);
+      }
+    }
+    const todo = c.products.filter((p) => (firstLight.has(p.n) || fromSeen.has(p.n)) && !done.has(p.n)).slice(0, limit ?? Infinity);
     const purse = purseOf(s);
     const before = purse.spent();
     let read = 0, stopped = "";
     for (const p of todo) {
-      const it = firstLight.get(p.n)!;
+      const light = firstLight.get(p.n);
+      const it = light ? { pins: light.pins, size: light.size } : fromSeen.get(p.n)!;
+      const from = light ? src : srcSeen!;
       // ⚠️ THE BEST THIS RECORDING CAN GIVE (owner, 2026-11-04: "we have to do the best possible with
       // this recording"): up to 8 moments along the product's path, and the 3 sharpest are read.
       const step = Math.max(1, Math.floor(it.pins.length / CANDIDATES));
       const candidates = it.pins.filter((_, i) => i % step === 0).slice(0, CANDIDATES);
       const scored: Array<{ q: (typeof it.pins)[number]; score: number }> = [];
       for (const q of candidates) {
-        try { scored.push({ q, score: await sharpnessAt(src, q.t, q.x, q.y, it.size!) }); } catch { /* that moment is skipped */ }
+        try { scored.push({ q, score: await sharpnessAt(from, q.t, q.x, q.y, it.size!) }); } catch { /* that moment is skipped */ }
       }
       const pick = scored.sort((a, b) => b.score - a.score).slice(0, READ_CROPS).map((x) => x.q).sort((a, b) => a.t - b.t);
       if (!pick.length) continue;
       const crops: Uint8Array[] = [];
       for (const q of pick) {
-        try { crops.push(await productPhoto(src, q.t, q.x, q.y, it.size!, 768)); } catch (e) { console.error("[titles] crop", slug, p.n, e); }
+        try { crops.push(await productPhoto(from, q.t, q.x, q.y, it.size!, 768)); } catch (e) { console.error("[titles] crop", slug, p.n, e); }
       }
       if (!crops.length) continue;
       try {
