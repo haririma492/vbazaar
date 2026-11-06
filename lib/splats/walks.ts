@@ -280,7 +280,56 @@ export type Walk = {
   doorPhoto?: string;
   /** The store's logo, at the top left of both tours (owner, 2026-11-06). https:// only. */
   logo?: string;
+  /** Junk hidden by the Tidy agent: a made-up stand with a store product on it, drawn over it (`lib/stores/tidy.ts`). */
+  covers?: WalkCover[];
 };
+
+/**
+ * THE TIDY AGENT'S COVERS (owner, 2026-11-06: "objects on the scene that need to be removed or replaced with some
+ * product photo: e.g. an ugly old chair, someone's sweater on the desk, some paper … replace them with some products
+ * that are on a software made place or the original table where the stuff was so they are not hanging in the air").
+ * A cover follows the junk (`pins`, its middle, like a product's light) and is drawn standing on what it stood on:
+ * its bottom is the junk's bottom. `image` is the cover itself (a riser or plinth with the product's photo on a
+ * card, composed on the server, transparent round it); a tap opens product `n`'s card. Nothing in the video is
+ * changed, so taking a cover off («Bring it back») is exact.
+ */
+export type CoverBase = "table" | "floor" | "wall";
+export type WalkCover = {
+  id: string;
+  /** The product put in its place (the store's list). */
+  n: number;
+  /** The junk's middle, followed through the walk. */
+  pins: ItemPin[];
+  /** The junk's outline (radians across and up), as Claude boxed it. */
+  size: { w: number; h: number };
+  base: CoverBase;
+  /** The cover's picture (https PNG), `coverSize(size, base)` in shape. */
+  image: string;
+  /** What was hidden, in a few words, and a photo of it as it was (https). */
+  what: string;
+  photo: string;
+};
+/** How much bigger than the junk a cover is, so none of it shows round the edges; its bottom goes this share of the junk's height below. */
+export const COVER_GROW = { w: 1.3, h: 1.3, below: 0.06 };
+/** A cover's outline (radians) for junk of `size`. */
+export function coverSize(size: { w: number; h: number }): { w: number; h: number } {
+  return { w: size.w * COVER_GROW.w, h: size.h * (COVER_GROW.h + COVER_GROW.below) };
+}
+/**
+ * The covers on screen at `t`, each as a product item the walk already knows how to draw and open: at the
+ * middle of the cover (whose bottom is the junk's bottom), its outline the cover's, its number the product's.
+ */
+export function coversAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem & { cover: WalkCover }; x: number; y: number }> {
+  const out: Array<{ item: WalkItem & { cover: WalkCover }; x: number; y: number }> = [];
+  for (const c of walk?.covers ?? []) {
+    const at = itemAt({ id: c.id, label: { en: c.what }, pins: c.pins }, t, round);
+    if (!at) continue;
+    const cs = coverSize(c.size);
+    const bottom = at.y - c.size.h / 2 - c.size.h * COVER_GROW.below;
+    out.push({ item: { id: `cover-${c.id}`, label: { en: c.what }, n: c.n, pins: c.pins, size: cs, cover: c }, x: at.x, y: bottom + cs.h / 2 });
+  }
+  return out;
+}
 /**
  * The door photo shown as this walk begins: its own `doorPhoto`, else the
  * photo on any door that leads into it (a store placed before the field
@@ -623,6 +672,29 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       });
     }
     if (kept.length) walk.items = kept.sort((a, b) => itemTime(a) - itemTime(b));
+    if (r.covers !== undefined && r.covers !== null) {
+      if (!Array.isArray(r.covers)) problems.push(`${key}: «covers» must be a list.`);
+      else {
+        const covers: WalkCover[] = [];
+        for (const c of r.covers.slice(0, MAX_ITEMS)) {
+          const x = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
+          const id = typeof x.id === "string" ? x.id : "";
+          const z = (x.size && typeof x.size === "object" ? x.size : {}) as Record<string, unknown>;
+          const pins = Array.isArray(x.pins) ? (x.pins as Array<Record<string, unknown>>).filter((q) => q && finite(q.t) && q.t >= 0 && finite(q.x) && finite(q.y)) : [];
+          const base = x.base === "floor" || x.base === "wall" ? x.base : "table";
+          if (!DOOR_ID_RE.test(id) || typeof x.n !== "number" || !Number.isInteger(x.n) || !pins.length || pins.length > MAX_ITEM_PINS
+            || !finite(z.w) || !finite(z.h) || z.w <= 0 || z.h <= 0 || z.w > 2 || z.h > 2 || !isSiteUrl(x.image) || !isSiteUrl(x.photo)) {
+            problems.push(`${key}, cover «${id || "?"}»: it needs an id, a product number, its pins, its outline and two https pictures.`);
+            continue;
+          }
+          covers.push({
+            id, n: x.n, base, size: { w: z.w, h: z.h }, image: x.image as string, photo: x.photo as string, what: str(x.what, 120) || "Something that did not fit",
+            pins: sortItemPins(pins.map((q) => ({ t: q.t as number, x: q.x as number, y: q.y as number }))),
+          });
+        }
+        if (covers.length) walk.covers = covers;
+      }
+    }
     walks[key] = walk;
   }
   const out: Walks = { walks };

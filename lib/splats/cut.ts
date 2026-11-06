@@ -134,7 +134,14 @@ export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: 
     if (!old && it.pins.length && !added.length) lost.push(`the dot of «${it.label.en}» (placed after the last cut)`);
     return { ...it, pins: old ? old.pins : added };
   });
-  return { walk: { ...now, doors, ...(items.length ? { items } : {}) }, lost };
+  const keptCovers = new Map((record.walk.covers ?? []).map((c) => [c.id, c]));
+  const covers = (now.covers ?? []).flatMap((c) => {
+    const old = keptCovers.get(c.id);
+    if (old) return [{ ...c, pins: old.pins }];
+    const pins = c.pins.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
+    return pins.length ? [{ ...c, pins }] : [];
+  });
+  return { walk: { ...now, doors, ...(items.length ? { items } : {}), ...(covers.length ? { covers } : {}) }, lost };
 }
 
 /** The walk's doors and dots moved to the new video's times (see the head of this file). */
@@ -153,7 +160,12 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
     if (it.pins.length && !pins.length) dropped.push(`the dot of «${it.label.en}» (kept in the list, place it again)`);
     return { ...it, pins };
   });
-  return { walk: { ...walk, doors, ...(items ? { items } : {}) }, dropped };
+  // The Tidy agent's covers move with the picture too; one whose junk was cut out goes with it.
+  const covers = walk.covers?.flatMap((c) => {
+    const pins = c.pins.flatMap((p) => { const pt = mapTime(p.t, parts); return pt === null ? [] : [{ ...p, t: pt }]; });
+    return pins.length ? [{ ...c, pins }] : [];
+  });
+  return { walk: { ...walk, doors, ...(items ? { items } : {}), ...(covers ? { covers } : {}) }, dropped };
 }
 
 /** Where the original is kept by the first cut. */

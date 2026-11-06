@@ -74,7 +74,7 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  entryOf, faceOf, itemHitAt, itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  entryOf, faceOf, itemHitAt, itemsAt, coversAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -312,6 +312,22 @@ function lightTexture(kind: Light): THREE.CanvasTexture {
 }
 /** The dot's width on the sphere (`MARK_R` away): about 1.25° across (15% smaller than the dot of the glowing light). */
 const LIGHT_W = 0.47;
+
+/**
+ * THE TIDY AGENT'S COVERS (owner, 2026-11-06): a store product on a made-up stand, drawn over clutter in the video
+ * (`lib/stores/tidy.ts`). One texture per picture, shared by every walk that shows it, so it is loaded once.
+ */
+const coverTextures = new Map<string, THREE.Texture>();
+function coverTexture(url: string): THREE.Texture {
+  const had = coverTextures.get(url);
+  if (had) return had;
+  const loader = new THREE.TextureLoader();
+  loader.setCrossOrigin("anonymous");
+  const t = loader.load(url);
+  t.colorSpace = THREE.SRGBColorSpace;
+  coverTextures.set(url, t);
+  return t;
+}
 
 const TAG_W = 560;
 function tagTexture(item: WalkItem, listPrice?: string): { texture: THREE.CanvasTexture; aspect: number; foot: number } {
@@ -1239,6 +1255,30 @@ export default function Walk360() {
           (m.sprite.material as THREE.SpriteMaterial).opacity = item === itemPreview ? 0.8 : 1;
         }
       }
+      // Clutter hidden by the Tidy agent: the cover stands where the junk stood (its bottom on the junk's bottom);
+      // under the products' lights, and a tap anywhere on it opens the product it shows.
+      for (const { item, x, y } of ready && !flat ? coversAt(walk, t, true) : []) {
+        const id = `${current!.key}#cover#${item.cover.id}#${item.cover.image}`;
+        wantSprites.add(id);
+        let m = itemSprites.get(id);
+        if (!m) {
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: coverTexture(item.cover.image), depthTest: false, depthWrite: false, transparent: true }));
+          sprite.userData.shared = true;
+          sprite.renderOrder = 9;
+          m = { sprite, item, x, y };
+          itemSprites.set(id, m);
+          scene.add(sprite);
+        }
+        const size = item.size!;
+        m.item = item;
+        m.x = x;
+        m.y = y;
+        m.size = size;
+        m.sprite.scale.set(2 * MARK_R * Math.tan(size.w / 2), 2 * MARK_R * Math.tan(size.h / 2), 1);
+        const h = x - current!.spin;
+        const cp = Math.cos(y);
+        m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
+      }
       // The open card's product, outlined (360°: lines on the picture; flat: the button's border).
       const lit = highlightId ? [...itemSprites.values()].find((m) => m.item.id === highlightId) : undefined;
       if (lit) drawOutline(lit.x, lit.y, lit.size ?? { w: 0.05, h: 0.05 });
@@ -1570,7 +1610,7 @@ export default function Walk360() {
         itemPick({ t: current.video.currentTime, x: wrapAngle(worldYaw + current.spin), y: Math.asin(THREE.MathUtils.clamp(d.y, -1, 1)) });
         return;
       }
-      const itemHit = raycaster.intersectObjects([...itemSprites.values()].map((m) => m.sprite), false)[0];
+      const itemHit = raycaster.intersectObjects([...itemSprites.values()].filter((m) => !("cover" in m.item)).map((m) => m.sprite), false)[0];
       // A special's tag first; then anywhere on a product's outline (or near its light).
       let im = itemHit && [...itemSprites.values()].find((m) => m.sprite === itemHit.object);
       if (!im) {

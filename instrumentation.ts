@@ -11,6 +11,9 @@ export async function register() {
     // The Shadow agent carries on a walk a restart cut off (`lib/stores/reflect.ts`).
     const { resumeShadowAgent } = await import("./lib/stores/reflect");
     setTimeout(() => void resumeShadowAgent().catch((e) => console.error("[shadow] resume", e)), 20_000);
+    // A Tidy agent run a restart cut off carries on (`lib/stores/tidy.ts`).
+    const { resumeTidy } = await import("./lib/stores/tidy");
+    setTimeout(() => void resumeTidy().catch((e) => console.error("[tidy] resume", e)), 50_000);
     // Walks still waiting for their walking speed (`lib/stores/lock.ts`).
     const { drainPace } = await import("./lib/stores/lock");
     setTimeout(() => void drainPace().catch((e) => console.error("[pace] resume", e)), 25_000);

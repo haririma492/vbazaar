@@ -155,6 +155,15 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
   2026-11-06 (operator action `videosPrivate`, `deletePublic`). A played video can still be screen-recorded,
   and DRM would break the walk (a protected video cannot be drawn into WebGL). `R2_MASTERS_BUCKET` must stay
   set, or videos fall back into the public bucket.
+- **The Tidy agent** (owner, 2026-11-06: *"identify ugly unfitted junk or object and replace them with some products
+  that are on a software made place or th original table where the stuff was so they are not hanging in the air at
+  the end of store page there has to be a list of photos of those removed objects"*). Operator starts it on the
+  store's page («Find and hide clutter», at most $2 of the store's budget, `TIDY_CENTS`). Claude (Opus) boxes clutter
+  in 6 views a moment and says what it stands on; each is followed like a light and gets a store product on a stand
+  composed by ffmpeg (riser on a table, plinth on the floor, card on a wall), its bottom on the junk's bottom
+  (`Walk.covers`, `lib/stores/tidy.ts`, `tidyRules.ts`). The 360° player draws covers under the lights; a tap opens
+  the product. The video is not changed: «Bring it back» (remembered, `tidy-kept.json`) and «Another product» are on
+  the list at the end of `/stores/<slug>`. A cut moves covers with the picture (`cut.ts`). Not yet in the Shelf Tour.
 - **The bazaar has its own basket** (owner, 2026-11-03: *"when adding to
   basket, create a vbazaar.app basket, now it goes to sarekooche"*). «Add to
   basket» on a walk's product keeps the line on the device (`lib/basket.ts`,

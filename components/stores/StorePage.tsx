@@ -33,6 +33,7 @@ import TourCard from "./TourCard";
 import MapCard from "./MapCard";
 import TitlesCard from "./TitlesCard";
 import RefreshAllCard from "./RefreshAllCard";
+import TidyCard from "./TidyCard";
 import WalkFrame from "./WalkFrame";
 import WidgetCard from "./WidgetCard";
 import MusicCard, { type Track } from "./MusicCard";
@@ -271,6 +272,9 @@ export default function StorePage({ slug }: { slug: string }) {
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <MapCard api={api} operator={page.who === "operator"} />}
       {page.products.length > 0 && <TitlesCard api={api} operator={page.who === "operator"} products={page.products.length} spentCents={page.store.spentCents} budgetCents={BUDGET_CENTS} book={isBookStore(page.store.category)} />}
+
+      {/* The Tidy agent and the objects it removed, at the end of the page (owner, 2026-11-06). */}
+      {page.walkUrl && <TidyCard api={api} operator={op} products={page.products} spentCents={page.store.spentCents} budgetCents={BUDGET_CENTS} />}
 
       {op && <Card><ChangePassword api={api} /></Card>}
       {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}

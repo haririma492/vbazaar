@@ -20,6 +20,10 @@
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
  *   POST { action: "widget" }                   the store's widget: { snippet, stats, plan, forOwner } (operator; the owner when switched on)
  *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
+ *   POST { action: "tidy" }                     the Tidy agent (operator; spends from the store's budget, at most $2): clutter hidden behind products
+ *   POST { action: "tidyState" }                → { run, covers, ceiling }: the run, and every object hidden (its photo, what stands there)
+ *   POST { action: "tidyDrop", id }             «Bring it back»: that cover off, and the spot left alone by later runs
+ *   POST { action: "tidyProduct", id, n }       product #n stands in that cover's place instead
  *   PUT ?key&uploadId&partNumber                (a part through this server, when the browser may not PUT to R2)
  */
 import { mediaPath } from "@/lib/splats/media";
@@ -51,6 +55,7 @@ import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readStats, widgetPlan } from "@/lib/stores/widget";
 import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
+import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -423,6 +428,24 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       route: r && r.walk === s.out.walk ? { ...r, applied, cutting, previewUrl: r.preview ? mediaPath(r.preview) : null } : null,
       working, note: working ? job?.note ?? "" : "",
     });
+  }
+  if (body.action === "tidy") {
+    // Operator, on the owner's yes (it spends from the store's AI budget, at most $2): the Tidy agent. Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    const why = await startTidy(s.slug);
+    return why ? fail(409, why) : ok({ started: true });
+  }
+  if (body.action === "tidyState") {
+    return ok(await tidyForPage(s.slug, s.out.walk));
+  }
+  if (body.action === "tidyDrop") {
+    if (typeof body.id !== "string" || !body.id) return fail(400, "Which cover?");
+    return ok({ note: await dropCover(s.slug, body.id) });
+  }
+  if (body.action === "tidyProduct") {
+    const n = Number(body.n);
+    if (typeof body.id !== "string" || !body.id || !Number.isInteger(n) || n < 1) return fail(400, "Which cover, and which product number?");
+    return ok({ note: await coverProduct(s.slug, body.id, n) });
   }
   if (body.action === "routeApply") {
     // Operator, on the owner's yes: the proposal is cut (the walk editor's cut: lights and doors move, the original kept).
