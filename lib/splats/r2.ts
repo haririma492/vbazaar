@@ -22,7 +22,7 @@
  */
 
 import {
-  AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CopyObjectCommand, CreateMultipartUploadCommand,
+  AbortMultipartUploadCommand, CompleteMultipartUploadCommand, CopyObjectCommand, CreateMultipartUploadCommand, DeleteObjectCommand, UploadPartCopyCommand,
   GetBucketCorsCommand, GetObjectCommand, HeadObjectCommand, ListObjectsV2Command, ListPartsCommand, PutBucketCorsCommand, PutObjectCommand,
   S3Client, UploadPartCommand, type CORSRule,
 } from "@aws-sdk/client-s3";
@@ -32,6 +32,7 @@ import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
 import { WALKS_KEY, emptyWalks, mergeConflicts, mergeWalks, parseWalks, type Walks } from "./walks";
 import { catalogueKey, checkCatalogue, type Catalogue } from "./catalogue";
 import { OFFLINE_BASE, offlineDir, offlineJson, offlineKeys } from "./offline";
+import { isPrivateVideoKey } from "./media";
 
 const env = (k: string) => (process.env[k] || "").trim();
 
@@ -61,6 +62,43 @@ function s3(): S3Client {
 
 export const bucketFor = (kind: SplatKind) => (kind === "master" ? r2Config().mastersBucket : r2Config().webBucket);
 
+// ── The walk videos are private (`media.ts`, owner 2026-11-06) ──────────────
+//
+// A "web" key that is a video (`isPrivateVideoKey`) is WRITTEN to the masters
+// bucket, which has no public address. It is READ from there too — or, for a
+// video not yet moved (`moveVideosPrivate`), from the public bucket, so nothing
+// stops playing while the move runs.
+
+/** The bucket a key is written to. */
+function writeBucket(kind: SplatKind, key: string): string {
+  return kind === "master" || isPrivateVideoKey(key) ? r2Config().mastersBucket : r2Config().webBucket;
+}
+
+const where = new Map<string, { bucket: string; until: number }>();
+async function headIn(bucket: string, key: string): Promise<boolean> {
+  try {
+    await s3().send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+    return true;
+  } catch (e) {
+    const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (err.name === "NotFound" || err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) return false;
+    throw e;
+  }
+}
+
+/** The bucket a key is read from: the private one for a video that is there, else the public one. */
+export async function readBucket(kind: SplatKind, key: string): Promise<string> {
+  const { webBucket, mastersBucket } = r2Config();
+  if (kind === "master" || !isPrivateVideoKey(key) || webBucket === mastersBucket) return bucketFor(kind);
+  const known = where.get(key);
+  if (known && known.until > Date.now()) return known.bucket;
+  // Found privately: remembered for good. Not found: the public copy, asked again in a minute.
+  const priv = await headIn(mastersBucket, key);
+  where.set(key, priv ? { bucket: mastersBucket, until: Infinity } : { bucket: webBucket, until: Date.now() + 60_000 });
+  return priv ? mastersBucket : webBucket;
+}
+const wrote = (key: string) => { if (isPrivateVideoKey(key)) where.set(key, { bucket: r2Config().mastersBucket, until: Infinity }); };
+
 /** A signed part URL lives this long: one 64 MiB part on a slow link, with room to spare. */
 const PART_URL_SECONDS = 60 * 60;
 /** A download link for a master, to hand to whoever converts it. */
@@ -68,7 +106,7 @@ const LINK_SECONDS = 24 * 60 * 60;
 
 export async function startUpload(kind: SplatKind, key: string): Promise<string> {
   const out = await s3().send(new CreateMultipartUploadCommand({
-    Bucket: bucketFor(kind),
+    Bucket: writeBucket(kind, key),
     Key: key,
     ContentType: contentTypeFor(key),
     // Scene files are immutable per name: a new optimization is a new file name.
@@ -81,7 +119,7 @@ export async function startUpload(kind: SplatKind, key: string): Promise<string>
 export function signPart(kind: SplatKind, key: string, uploadId: string, partNumber: number): Promise<string> {
   return getSignedUrl(
     s3(),
-    new UploadPartCommand({ Bucket: bucketFor(kind), Key: key, UploadId: uploadId, PartNumber: partNumber }),
+    new UploadPartCommand({ Bucket: writeBucket(kind, key), Key: key, UploadId: uploadId, PartNumber: partNumber }),
     { expiresIn: PART_URL_SECONDS },
   );
 }
@@ -96,7 +134,7 @@ export async function uploadPartBytes(
   kind: SplatKind, key: string, uploadId: string, partNumber: number, body: Uint8Array,
 ): Promise<string> {
   const out = await s3().send(new UploadPartCommand({
-    Bucket: bucketFor(kind), Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body, ContentLength: body.length,
+    Bucket: writeBucket(kind, key), Key: key, UploadId: uploadId, PartNumber: partNumber, Body: body, ContentLength: body.length,
   }));
   if (!out.ETag) throw new Error("R2 gave no ETag for the part");
   return out.ETag;
@@ -133,7 +171,7 @@ export async function listParts(kind: SplatKind, key: string, uploadId: string) 
   let marker: string | undefined;
   for (;;) {
     const out = await s3().send(new ListPartsCommand({
-      Bucket: bucketFor(kind), Key: key, UploadId: uploadId, PartNumberMarker: marker,
+      Bucket: writeBucket(kind, key), Key: key, UploadId: uploadId, PartNumberMarker: marker,
     }));
     for (const p of out.Parts ?? []) {
       if (p.PartNumber && p.ETag) parts.push({ partNumber: p.PartNumber, etag: p.ETag, size: p.Size ?? 0 });
@@ -147,17 +185,18 @@ export async function completeUpload(
   kind: SplatKind, key: string, uploadId: string, parts: Array<{ partNumber: number; etag: string }>,
 ) {
   await s3().send(new CompleteMultipartUploadCommand({
-    Bucket: bucketFor(kind),
+    Bucket: writeBucket(kind, key),
     Key: key,
     UploadId: uploadId,
     MultipartUpload: {
       Parts: [...parts].sort((a, b) => a.partNumber - b.partNumber).map((p) => ({ PartNumber: p.partNumber, ETag: p.etag })),
     },
   }));
+  wrote(key);
 }
 
 export async function abortUpload(kind: SplatKind, key: string, uploadId: string) {
-  await s3().send(new AbortMultipartUploadCommand({ Bucket: bucketFor(kind), Key: key, UploadId: uploadId }));
+  await s3().send(new AbortMultipartUploadCommand({ Bucket: writeBucket(kind, key), Key: key, UploadId: uploadId }));
 }
 
 export type SplatObject = { key: string; kind: SplatKind; size: number; lastModified: string | null };
@@ -186,11 +225,14 @@ export async function listSplats(): Promise<SplatObject[]> {
       .map((o) => ({ key: o.key, kind: o.key.startsWith("masters/") ? "master" as const : "web" as const, size: o.size, lastModified: null }));
   }
   const { webBucket, mastersBucket } = r2Config();
-  const [masters, scenes] = await Promise.all([
+  const [masters, scenes, videos] = await Promise.all([
     listPrefix(mastersBucket, "masters/", "master"),
     listPrefix(webBucket, "scenes/", "web"),
+    // The private walk videos: "web" files that live in the masters bucket.
+    webBucket === mastersBucket ? Promise.resolve([]) : listPrefix(mastersBucket, "scenes/", "web"),
   ]);
-  return [...scenes, ...masters];
+  const moved = new Set(videos.map((o) => o.key));
+  return [...scenes.filter((o) => !moved.has(o.key)), ...videos, ...masters];
 }
 
 /** A master's body as a stream (and its size), or null when it is not there — for `/api/demo`. */
@@ -208,7 +250,7 @@ export async function readMaster(key: string): Promise<{ body: ReadableStream; s
 /** A time-limited download link — for a master, the way to hand it to the converter without a key. */
 export function downloadLink(kind: SplatKind, key: string): Promise<string> {
   if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`); // relative: the caller makes it whole
-  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }), { expiresIn: LINK_SECONDS });
+  return readBucket(kind, key).then((Bucket) => getSignedUrl(s3(), new GetObjectCommand({ Bucket, Key: key }), { expiresIn: LINK_SECONDS }));
 }
 
 /** The CORS rule the browser upload needs: PUT from these origins, and ETag readable. */
@@ -249,29 +291,22 @@ export async function installCors(origins: string[]) {
 export async function downloadToFile(key: string, path: string, kind: SplatKind = "web"): Promise<number> {
   const { createWriteStream } = await import("node:fs");
   const { pipeline } = await import("node:stream/promises");
-  const out = await s3().send(new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }));
+  const out = await s3().send(new GetObjectCommand({ Bucket: await readBucket(kind, key), Key: key }));
   if (!out.Body) throw new Error(`«${key}» is empty`);
   await pipeline(out.Body as NodeJS.ReadableStream, createWriteStream(path));
   return out.ContentLength ?? 0;
 }
 
-/** Whether the web bucket holds `key`. */
+/** Whether the web bucket holds `key` (a video: the private bucket, or the public one before the move). */
 export async function webObjectExists(key: string): Promise<boolean> {
-  try {
-    await s3().send(new HeadObjectCommand({ Bucket: r2Config().webBucket, Key: key }));
-    return true;
-  } catch (e) {
-    const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
-    if (err.name === "NotFound" || err.name === "NoSuchKey" || err.$metadata?.httpStatusCode === 404) return false;
-    throw e;
-  }
+  return headIn(await readBucket("web", key), key);
 }
 
 /** A local file put into the web bucket at `key` (one request: R2 takes up to ~5 GB that way). */
 export async function uploadFile(key: string, path: string, contentType = "application/octet-stream"): Promise<void> {
   const { createReadStream, statSync } = await import("node:fs");
   await s3().send(new PutObjectCommand({
-    Bucket: r2Config().webBucket,
+    Bucket: writeBucket("web", key),
     Key: key,
     Body: createReadStream(path),
     ContentLength: statSync(path).size,
@@ -279,6 +314,7 @@ export async function uploadFile(key: string, path: string, contentType = "appli
     // A new copy gets a new name: this one never changes.
     CacheControl: "public, max-age=31536000, immutable",
   }));
+  wrote(key);
 }
 
 /**
@@ -286,11 +322,12 @@ export async function uploadFile(key: string, path: string, contentType = "appli
  * through this server; up to 5 GB) — a cut walk's original kept, and put back.
  */
 export async function copyWebObject(from: string, to: string, contentType?: string): Promise<void> {
-  const bucket = r2Config().webBucket;
+  const src = await readBucket("web", from);
   await s3().send(new CopyObjectCommand({
-    Bucket: bucket, Key: to, CopySource: `${bucket}/${from.split("/").map(encodeURIComponent).join("/")}`,
+    Bucket: writeBucket("web", to), Key: to, CopySource: `${src}/${from.split("/").map(encodeURIComponent).join("/")}`,
     ...(contentType ? { MetadataDirective: "REPLACE", ContentType: contentType, CacheControl: "public, max-age=31536000, immutable" } : {}),
   }));
+  wrote(to);
 }
 
 /** The tour (`lib/splats/tour.ts`) as the bucket holds it; an empty one before the first save. */
@@ -435,14 +472,14 @@ export async function writeWalks(walks: Walks, base?: Walks): Promise<{ walks: W
  */
 export function presignGetAny(key: string, seconds: number): Promise<string> {
   if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`); // relative: the caller makes it whole
-  const bucket = /^(masters|training)\//.test(key) ? r2Config().mastersBucket : r2Config().webBucket;
-  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: seconds });
+  const bucket = /^(masters|training)\//.test(key) ? Promise.resolve(r2Config().mastersBucket) : readBucket("web", key);
+  return bucket.then((Bucket) => getSignedUrl(s3(), new GetObjectCommand({ Bucket, Key: key }), { expiresIn: seconds }));
 }
 
 /** A GET link for a key in the web or the masters bucket, as `downloadToFile` reads it. */
 export function presignGet(key: string, kind: SplatKind, seconds: number): Promise<string> {
   if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`);
-  return getSignedUrl(s3(), new GetObjectCommand({ Bucket: bucketFor(kind), Key: key }), { expiresIn: seconds });
+  return readBucket(kind, key).then((Bucket) => getSignedUrl(s3(), new GetObjectCommand({ Bucket, Key: key }), { expiresIn: seconds }));
 }
 
 /**
@@ -469,4 +506,101 @@ export async function writeMastersJson(key: string, value: unknown): Promise<voi
   await s3().send(new PutObjectCommand({
     Bucket: r2Config().mastersBucket, Key: key, Body: JSON.stringify(value), ContentType: "application/json", CacheControl: "no-store",
   }));
+}
+
+// ── Moving the walk videos into the private bucket (`media.ts`) ─────────────
+
+export type VideoMove = {
+  state: "idle" | "running" | "done" | "failed";
+  /** Videos still in the public bucket when this run started. */
+  total: number; moved: number; bytes: number; failed: Array<{ key: string; error: string }>;
+  current: string | null; started: string | null; finished: string | null; deletePublic: boolean;
+};
+let move: VideoMove = { state: "idle", total: 0, moved: 0, bytes: 0, failed: [], current: null, started: null, finished: null, deletePublic: false };
+export const videoMoveStatus = () => move;
+
+/** One object copied between buckets inside R2 (nothing passes through this server); in 1 GiB parts past 5 GB. */
+async function copyAcross(srcBucket: string, dstBucket: string, key: string, size: number, contentType?: string) {
+  const CopySource = `${srcBucket}/${key.split("/").map(encodeURIComponent).join("/")}`;
+  const GiB = 1024 ** 3;
+  if (size <= 4 * GiB) {
+    await s3().send(new CopyObjectCommand({ Bucket: dstBucket, Key: key, CopySource }));
+    return;
+  }
+  const { UploadId } = await s3().send(new CreateMultipartUploadCommand({ Bucket: dstBucket, Key: key, ContentType: contentType, CacheControl: "public, max-age=31536000, immutable" }));
+  if (!UploadId) throw new Error("R2 gave no upload id");
+  try {
+    const parts: Array<{ PartNumber: number; ETag: string }> = [];
+    for (let i = 0, start = 0; start < size; i++, start += GiB) {
+      const end = Math.min(size, start + GiB) - 1;
+      const out = await s3().send(new UploadPartCopyCommand({ Bucket: dstBucket, Key: key, UploadId, PartNumber: i + 1, CopySource, CopySourceRange: `bytes=${start}-${end}` }));
+      if (!out.CopyPartResult?.ETag) throw new Error(`no ETag for part ${i + 1}`);
+      parts.push({ PartNumber: i + 1, ETag: out.CopyPartResult.ETag });
+    }
+    await s3().send(new CompleteMultipartUploadCommand({ Bucket: dstBucket, Key: key, UploadId, MultipartUpload: { Parts: parts } }));
+  } catch (e) {
+    await s3().send(new AbortMultipartUploadCommand({ Bucket: dstBucket, Key: key, UploadId })).catch(() => {});
+    throw e;
+  }
+}
+
+/**
+ * Every video under `scenes/` in the public bucket copied to the private one,
+ * the copy's size checked, and — only with `deletePublic` — the public copy
+ * then deleted. Resumable: a video already moved is skipped (and, with
+ * `deletePublic`, its public copy removed once the private one is checked).
+ * One run at a time, in the background.
+ */
+export function startVideoMove(deletePublic: boolean): VideoMove {
+  if (move.state === "running") return move;
+  const { webBucket, mastersBucket } = r2Config();
+  if (webBucket === mastersBucket) {
+    move = { ...move, state: "failed", failed: [{ key: "", error: "R2_MASTERS_BUCKET is not set: there is no private bucket to move the videos into." }] };
+    return move;
+  }
+  move = { state: "running", total: 0, moved: 0, bytes: 0, failed: [], current: null, started: new Date().toISOString(), finished: null, deletePublic };
+  void (async () => {
+    try {
+      const pub = (await listAll(webBucket, "scenes/")).filter((o) => isPrivateVideoKey(o.key));
+      move.total = pub.length;
+      for (const o of pub) {
+        move.current = o.key;
+        try {
+          const head = await s3().send(new HeadObjectCommand({ Bucket: mastersBucket, Key: o.key })).catch(() => null);
+          if (!head || head.ContentLength !== o.size) {
+            const src = await s3().send(new HeadObjectCommand({ Bucket: webBucket, Key: o.key }));
+            await copyAcross(webBucket, mastersBucket, o.key, o.size, src.ContentType);
+            const check = await s3().send(new HeadObjectCommand({ Bucket: mastersBucket, Key: o.key }));
+            if (check.ContentLength !== o.size) throw new Error(`the private copy is ${check.ContentLength} bytes, the public one ${o.size}`);
+          }
+          where.set(o.key, { bucket: mastersBucket, until: Infinity });
+          if (deletePublic) await s3().send(new DeleteObjectCommand({ Bucket: webBucket, Key: o.key }));
+          move.moved++;
+          move.bytes += o.size;
+        } catch (e) {
+          move.failed.push({ key: o.key, error: (e as Error).message || String(e) });
+        }
+      }
+      move.state = move.failed.length && !move.moved ? "failed" : "done";
+    } catch (e) {
+      move.failed.push({ key: "", error: (e as Error).message || String(e) });
+      move.state = "failed";
+    } finally {
+      move.current = null;
+      move.finished = new Date().toISOString();
+    }
+  })();
+  return move;
+}
+
+/** Every object under a prefix, however many (`listPrefix` stops at 2,000 for the screen). */
+async function listAll(bucket: string, prefix: string): Promise<Array<{ key: string; size: number }>> {
+  const out: Array<{ key: string; size: number }> = [];
+  let token: string | undefined;
+  do {
+    const page = await s3().send(new ListObjectsV2Command({ Bucket: bucket, Prefix: prefix, ContinuationToken: token }));
+    for (const o of page.Contents ?? []) if (o.Key) out.push({ key: o.Key, size: o.Size ?? 0 });
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return out;
 }

@@ -40,7 +40,8 @@ import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
 import { checkCatalogue } from "@/lib/splats/catalogue";
 import { cutInfo, cutJob, startCutJob, startRestoreJob } from "@/lib/splats/cut-job";
 import { REFLECT_CENTS, beforeKeyOf, shadowStatusOf, startShadowAgent, undoReflections } from "@/lib/stores/reflect";
-import { webObjectExists as shadowKept } from "@/lib/splats/r2";
+import { startVideoMove, videoMoveStatus, webObjectExists as shadowKept } from "@/lib/splats/r2";
+import { isPrivateVideoKey, mediaPath } from "@/lib/splats/media";
 import { startStreamJob, streamJob } from "@/lib/splats/stream-job";
 import { isRetouchPreset, retouchJob, startRetouchJob } from "@/lib/splats/retouch-job";
 import { trainLogUrl, trainSummary, trainer } from "@/lib/splats/train-job";
@@ -76,6 +77,7 @@ function r2Summary() {
 }
 
 const publicUrl = (key: string) => {
+  if (isPrivateVideoKey(key)) return mediaPath(key);
   const base = r2Config().publicBase;
   return base ? `${base}/${key}` : null;
 };
@@ -118,6 +120,10 @@ export async function POST(req: NextRequest) {
   }
 
   const action = body?.action;
+
+  // The walk videos into the private bucket (`lib/splats/media.ts`). `deletePublic: true` also removes the public copies.
+  if (action === "videosPrivate") return ok({ job: startVideoMove(body.deletePublic === true) });
+  if (action === "videosPrivateStatus") return ok({ job: videoMoveStatus() });
 
   // Training on a rented GPU (`lib/splats/train.ts`): RunPod's words, not R2's.
   if (action === "train" || action === "trainStatus" || action === "trainCancel" || action === "trainLog") {

@@ -63,6 +63,7 @@ import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
+import { isPrivateVideoKey, mediaPath, toMediaUrl } from "@/lib/splats/media";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { SPEED_DEFAULT, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
@@ -200,7 +201,10 @@ function hasPhoneCopy(url: string): Promise<boolean> {
 /** `rev`: the walk's cut count (`Walk.rev`) — a cut video keeps its name, so the address changes instead. */
 async function srcFor(key: string, rev?: number): Promise<string | null> {
   if (isPhoneVideoKey(key)) return `/api/splats/walks/video?key=${encodeURIComponent(key)}`;
-  const base = await sceneBase();
+  // ⚠️ THE WALK VIDEOS ARE PRIVATE (owner, 2026-11-06): every one is played
+  // through `/api/media`, which hands this visitor a link that expires
+  // (`lib/splats/media.ts`), never from the public bucket.
+  const base = isPrivateVideoKey(key) ? "/api/media" : await sceneBase();
   if (!base) return null;
   const r = rev ? `?r=${rev}` : "";
   // ⚠️ EVERY SHOPPER WALKS THE 4K COPY (owner, 2026-11-03: "Easy & convenient
@@ -699,7 +703,7 @@ export default function Walk360() {
       });
       layer.ready.catch(() => {}); // a preload nobody used fails quietly
       void (async () => {
-        const src = opts.src !== undefined ? opts.src : opts.key ? await srcFor(opts.key, walkOf(walksNow, opts.key)?.rev) : null;
+        const src = opts.src !== undefined ? (opts.src && toMediaUrl(opts.src)) : opts.key ? await srcFor(opts.key, walkOf(walksNow, opts.key)?.rev) : null;
         if (layer.released) return;
         if (!src) return layer.fail("No address for the video: is NEXT_PUBLIC_SPLAT_BASE_URL set?");
         video.src = src;
@@ -769,7 +773,7 @@ export default function Walk360() {
       const base = await sceneBase();
       if (!base || !l.key || l.released) return;
       const r = walkOf(walksNow, l.key)?.rev;
-      const url = `${base}/${reverseKeyOf(l.key)}${r ? `?r=${r}` : ""}`;
+      const url = `${mediaPath(reverseKeyOf(l.key))}${r ? `?r=${r}` : ""}`;
       if (!(await hasPhoneCopy(url)) || l.released) return;
       const v = document.createElement("video");
       v.crossOrigin = "anonymous";

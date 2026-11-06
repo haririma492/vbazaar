@@ -20,6 +20,7 @@
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
  *   PUT ?key&uploadId&partNumber                (a part through this server, when the browser may not PUT to R2)
  */
+import { mediaPath } from "@/lib/splats/media";
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
 import { presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
@@ -383,7 +384,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       cutting = Boolean(cj && cj.state !== "done" && cj.state !== "failed");
     }
     return ok({
-      route: r && r.walk === s.out.walk ? { ...r, applied, cutting, previewUrl: r.preview && r2Config().publicBase ? `${r2Config().publicBase}/${r.preview}` : null } : null,
+      route: r && r.walk === s.out.walk ? { ...r, applied, cutting, previewUrl: r.preview ? mediaPath(r.preview) : null } : null,
       working, note: working ? job?.note ?? "" : "",
     });
   }

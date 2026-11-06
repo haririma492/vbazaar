@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { readTour } from "@/lib/stores/tourJob";
 import { readWalks } from "@/lib/splats/r2";
+import { toMediaUrl } from "@/lib/splats/media";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,5 +16,6 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
   const { plan: _plan, ...tour } = r;
   void _plan;
   const walk = (await readWalks().catch(() => null))?.walks[r.walk] ?? null;
-  return NextResponse.json({ ok: true, tour, title: walk?.title ?? null }, { headers: NO_STORE });
+  // A tour made before the videos went private names the public address: played through /api/media now.
+  return NextResponse.json({ ok: true, tour: { ...tour, video: toMediaUrl(tour.video) }, title: walk?.title ?? null }, { headers: NO_STORE });
 }
