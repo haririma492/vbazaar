@@ -40,11 +40,12 @@ import { buildStoreMap, readStoreMap } from "@/lib/stores/mapJob";
 import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
+import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "raw"];
+const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "raw", "shelf"];
 
 async function open(req: NextRequest, slug: string) {
   if (!SLUG_RE.test(slug)) return { error: fail(404, "No such store.") };
@@ -221,6 +222,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     kick();
     return ok({ store: next ? forPage(next) : null });
   }
+  if (body.action === "shelfTitlesRead") {
+    // Operator: read every spine in the shelf photos not read yet (spends from the store's budget). Background.
+    if (who !== "operator") return fail(403, "The operator only.");
+    void readShelfPhotos(s.slug).then((note) => console.log("[spines]", s.slug, note)).catch((e) => console.error("[spines]", s.slug, e));
+    return ok({ started: true });
+  }
   if (body.action === "titlesRead") {
     // Operator: the title reader on up to «limit» products not read yet (spends from the store's budget). Background.
     if (who !== "operator") return fail(403, "The operator only.");
@@ -304,7 +311,14 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
   if (body.action === "titles") {
     // The titles read so far (owner or operator).
-    return ok({ titles: await readTitleList(s.slug) });
+    // …and the titles read off the shelf photos (`shelfTitles.ts`), with how many photos are read.
+    const shelf = await readShelfTitles(s.slug);
+    const job = await readJob("shelfTitles");
+    const reading = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    return ok({
+      titles: await readTitleList(s.slug),
+      shelf: { rows: shelf?.rows ?? [], done: shelf?.done.length ?? 0, photos: (s.files.shelf ?? []).length, updated: shelf?.updated ?? null, reading, note: reading ? job?.note ?? "" : "" },
+    });
   }
   if (body.action === "photosRecut") {
     // Operator: the product photos cut again, framed on each product (free, no AI). Runs in the background.

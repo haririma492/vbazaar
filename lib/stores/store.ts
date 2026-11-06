@@ -46,7 +46,8 @@ export const MAX_TRIES = 3;
 
 export type Bi = { en: string; fa: string };
 
-export type UploadKind = "video" | "sheet" | "photo" | "door" | "raw";
+/** `shelf`: phone photos of the shelves, for reading every spine (owner, 2026-11-06: "build that"; `shelfTitles.ts`). */
+export type UploadKind = "video" | "sheet" | "photo" | "door" | "raw" | "shelf";
 export type Uploaded = { key: string; name: string; size: number; at: string };
 
 export type StepName = "video" | "lock" | "catalogue" | "photos" | "tag" | "place" | "check";
@@ -82,6 +83,8 @@ export const REDO: Record<UploadKind, StepName[]> = {
   sheet: ["catalogue", "photos", "tag", "check"],
   photo: ["photos", "tag", "check"],
   door: ["place", "check"],
+  // Shelf photos are read on the operator's «Read the spines» (it spends): no crew step goes back.
+  shelf: [],
   raw: [],
 };
 
@@ -120,7 +123,7 @@ export type StoreRecord = {
   createdAt: string;
   updatedAt: string;
   /** `raw`: the camera's own .insv file(s) of the walk, for the agents only (its gyro; the unexported picture). Shoppers never see it. */
-  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; raw?: Uploaded[] };
+  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; raw?: Uploaded[]; shelf?: Uploaded[] };
   steps: Record<StepName, Step>;
   /** What the crew made. */
   out: {
@@ -329,6 +332,7 @@ export function checkUploadName(kind: UploadKind, name: string): string | null {
   // …and the SDK's own stills of it (owner, 2026-11-05: Insta360 MediaSDK 3.2.0 on the owner's laptop exports
   // chosen frames, AI-stitched and denoised, as PNG/JPG: the agents compare them with the .mp4 and use them).
   if (kind === "raw") return ["insv", "png", "jpg", "jpeg"].includes(ext) ? null : "Here, the camera's own .insv of this walk, or the SDK's stills of it (.png / .jpg). · فایل ‎.insv یا عکس‌های SDK.";
+  if (kind === "shelf") return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A shelf photo is .jpg, .png or .webp (an iPhone sends its photos as .jpg when uploaded from a browser). · عکس قفسه باید jpg یا png باشد.";
   if (kind === "sheet") return ext === "xlsx" ? null : "The product list is an Excel workbook (.xlsx). · فهرست محصولات باید ‎.xlsx باشد.";
   return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A photo is .jpg, .png or .webp. · عکس باید jpg یا png یا webp باشد.";
 }
@@ -341,7 +345,7 @@ export function uploadKey(slug: string, kind: UploadKind, name: string, now: Dat
 }
 
 export const isUploadKeyOf = (slug: string, key: string) =>
-  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|raw)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
+  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|raw|shelf)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
 
 /** The upload recorded: a video, sheet or door replaces the last one; photos add up. Then the steps it affects go back to do. */
 export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded): StoreRecord {
@@ -352,6 +356,8 @@ export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded): Sto
     else files.photos.push(file);
   } else if (kind === "raw") {
     files.raw = [...(files.raw ?? []).filter((p) => p.name !== file.name), file];
+  } else if (kind === "shelf") {
+    files.shelf = [...(files.shelf ?? []).filter((p) => p.name !== file.name), file];
   } else files[kind] = file;
   return redo({ ...s, files, updatedAt: file.at }, REDO[kind]);
 }
