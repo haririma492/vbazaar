@@ -46,7 +46,7 @@ import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
-import { recordOwner } from "@/lib/stores/ownerVisits";
+import { readOwnerVisits, recordOwner } from "@/lib/stores/ownerVisits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,6 +79,8 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     status: statusOf(o.s),
     products: c?.products ?? [],
     walkUrl: o.s.out.walk ? `/vca/walk?v=${encodeURIComponent(o.s.out.walk)}` : null,
+    // The owner's sign-ins and visits, for the operator only (owner, 2026-11-06: "where is the stat … here").
+    ...(o.who === "operator" ? { ownerVisits: await readOwnerVisits(o.s.slug) } : {}),
   });
 }
 

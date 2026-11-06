@@ -44,7 +44,28 @@ type Page = {
   products: Product[];
   walkUrl: string | null;
   music?: Track[];
+  /** The owner's sign-ins and visits (`lib/stores/ownerVisits.ts`); only sent to the operator. */
+  ownerVisits?: { logins: number; visits: number; lastLogin: string | null; lastVisit: string | null; firstAt: string | null; recent: Array<{ kind: "login" | "visit"; at: string }> };
 };
+
+/** The owner's use of this page, for the operator (owner, 2026-11-06). Counting started 6 Nov 2026. */
+function OwnerVisitsCard({ v }: { v: NonNullable<Page["ownerVisits"]> }) {
+  const when = (at: string | null) => (at ? new Date(at).toLocaleString() : "never");
+  return (
+    <Card>
+      <Bi fa="بازدید صاحب فروشگاه" en="The owner's visits to this page" className="text-[15px] font-bold text-amber-100" />
+      <p dir="ltr" className="mt-1 text-left text-[13px] text-white/75">
+        {v.logins} sign-ins with the password · {v.visits} visits · last here {when(v.lastVisit)} · last sign-in {when(v.lastLogin)}
+      </p>
+      {v.recent.length > 0 && (
+        <ul dir="ltr" className="mt-1 text-left text-[12px] text-white/50">
+          {v.recent.slice(0, 8).map((e, i) => <li key={i}>{e.kind === "login" ? "🔑 signed in" : "👁 visited"} · {when(e.at)}</li>)}
+        </ul>
+      )}
+      <p dir="ltr" className="mt-1 text-left text-[11px] text-white/35">A visit counts once, then again after 30 min away. Your own visits are not counted. Counting started 6 Nov 2026.</p>
+    </Card>
+  );
+}
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };
 
@@ -181,6 +202,8 @@ export default function StorePage({ slug }: { slug: string }) {
           </button>
         )}
       </header>
+
+      {op && page.ownerVisits && <OwnerVisitsCard v={page.ownerVisits} />}
 
       {!op && page.walkUrl && <WalkFrame url={page.walkUrl} />}
 
