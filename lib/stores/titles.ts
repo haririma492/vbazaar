@@ -17,7 +17,7 @@
 // store's own budget (`purseOf`). A run can be limited to the first N products
 // (a pilot), and products already read are not read again.
 
-import { presignGet, readCatalogue, readMastersText, readWalks, writeMastersJson } from "@/lib/splats/r2";
+import { presignGet, readCatalogue, readMastersText, readWalks, writeCatalogue, writeMastersJson } from "@/lib/splats/r2";
 import { phoneKeyOf, type WalkItem } from "@/lib/splats/walks";
 import { readStore } from "./bucket";
 import { cutInfo } from "@/lib/splats/cut-job";
@@ -133,8 +133,32 @@ export async function readTitles(slug: string, limit?: number, opts: { escalate?
     list.rows.sort((a, b) => a.n - b.n);
     await writeMastersJson(keyOf(slug), list);
     const full = list.rows.filter((r) => r.readable === "full").length, partial = list.rows.filter((r) => r.readable === "partial").length;
-    return `Read ${read} products ($${((purse.spent() - before) / 100).toFixed(2)}): of ${list.rows.length} read so far, ${full} titles read in full, ${partial} in part, ${list.rows.length - full - partial} not readable.${stopped}`;
+    const named = await nameFromTitles(slug).catch(() => 0);
+    return `Read ${read} products ($${((purse.spent() - before) / 100).toFixed(2)}): of ${list.rows.length} read so far, ${full} titles read in full, ${partial} in part, ${list.rows.length - full - partial} not readable; ${named} unnamed products named from their full titles.${stopped}`;
   } finally {
     busy = false;
   }
+}
+
+/**
+ * TITLES BECOME NAMES (owner, 2026-11-06: "The text of titles need to get populated in the product card so when
+ * shopper or owner click the title is already populated so for most items the owner need only to add price").
+ * Every product with NO name yet takes the title read IN FULL off its book (Farsi and English as printed). A name
+ * the owner gave is never touched; a title read only in part is not made a name (it is offered in the owner's
+ * card instead, to check). Free. Returns how many were named.
+ */
+export async function nameFromTitles(slug: string): Promise<number> {
+  const list = await readTitleList(slug);
+  const c = await readCatalogue(sceneOf(slug));
+  if (!list || !c) return 0;
+  const full = new Map(list.rows.filter((r) => r.readable === "full" && (r.title_fa.trim() || r.title_en.trim())).map((r) => [r.n, r]));
+  let named = 0;
+  const products = c.products.map((p) => {
+    const r = full.get(p.n);
+    if (!r || p.en?.trim() || p.fa?.trim()) return p;
+    named++;
+    return { ...p, ...(r.title_fa.trim() ? { fa: r.title_fa.trim() } : {}), ...(r.title_en.trim() ? { en: r.title_en.trim() } : {}) };
+  });
+  if (named) await writeCatalogue({ ...c, products });
+  return named;
 }

@@ -97,7 +97,8 @@ const PEDAL_RATE = 1;
  * `pace`. The bar's place is kept on the device.
  */
 type Drive = "on" | "back";
-const SPEED_KEY = "vb.walk.speed";
+// ".v2": the default changed (0.3 → 0.225 m/s, 2026-11-06); a speed kept from before would have hidden it.
+const SPEED_KEY = "vb.walk.speed.v2";
 /** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
 const FILM_FPS = 25;
 /**
@@ -2189,7 +2190,7 @@ export default function Walk360() {
               <button type="button" title="Recommended speed · سرعت پیشنهادی" onClick={() => { setSpeed(SPEED_DEFAULT); try { localStorage.setItem(SPEED_KEY, String(SPEED_DEFAULT)); } catch { /* this visit only */ } }}
                 className={`shrink-0 whitespace-nowrap text-right text-[10px] leading-tight tabular-nums ${Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "text-emerald-200" : "text-white/70"}`}>
                 {speed.toFixed(2)} m/s · {Math.round(FILM_FPS * Math.abs(driveRate(speed, false, walkOf(walks, view.key)?.pace)))} fps
-                <br />{Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "✓ recommended" : "▮ recommended 0.30"}
+                <br />{Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "✓ recommended" : `▮ recommended ${SPEED_DEFAULT.toFixed(2)}`}
               </button>
             </label>
           </div>

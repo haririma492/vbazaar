@@ -32,7 +32,8 @@
  */
 export const SPEED_MIN = 0.05, SPEED_MAX = 1.6;
 /** Where the bar starts: the old «Slow» (owner, 2026-11-03). */
-export const SPEED_DEFAULT = 0.3;
+// 25% slower than the 0.3 m/s it was (owner, 2026-11-06: "default speed for free tour needs to be 25% slower").
+export const SPEED_DEFAULT = 0.225;
 /** A walk not measured yet is taken as filmed at this pace (m/s): the old multiples. */
 export const PACE_FALLBACK = 1;
 /**

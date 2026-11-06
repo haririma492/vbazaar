@@ -39,7 +39,7 @@ import { buildShelves, readShelves } from "@/lib/stores/levelsJob";
 import { buildStoreMap, readStoreMap } from "@/lib/stores/mapJob";
 import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
-import { readTitleList, readTitles } from "@/lib/stores/titles";
+import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
 
@@ -222,6 +222,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     });
     kick();
     return ok({ store: next ? forPage(next) : null });
+  }
+  if (body.action === "titlesName") {
+    // Operator: the unnamed products take their titles read in full (free; owners' names untouched).
+    if (who !== "operator") return fail(403, "The operator only.");
+    return ok({ named: await nameFromTitles(s.slug) });
   }
   if (body.action === "refreshAll") {
     // Operator: every agent in order (`refreshAll.ts`), in the background. Spends a little, asked on the card.

@@ -440,7 +440,7 @@ quality and choice to break away and enter in a shop. (period)"*
   Bamdad bookshop: *"Slow and Fast is not good enough, the slow end of this
   bar should be really slow"*): under the wheel, «◀ Back» · «▶ Walk», then a
   🐢—🐇 bar from 0.05 m/s (a creep, to read book spines) to 1.6 m/s,
-  logarithmic, starting at the old Slow (0.3 m/s) and kept on the device.
+  logarithmic, starting at 0.225 m/s (owner, 2026-11-06: *"default speed for free tour needs to be 25% slower"*; it was 0.3) and kept on the device (`vb.walk.speed.v2`, so the new default reaches everyone); the bar shows m/s, fps and a recommended mark at the default.
   Back walks at the bar's speed. It is a real speed on every walk (the walk's
   measured `pace`), never below 1/16× (slower froze); `lib/splats/pace.ts`.
 - **Tags stand as still as the books** (owner, 2026-11-04: *"not a single
@@ -502,6 +502,11 @@ quality and choice to break away and enter in a shop. (period)"*
   product are measured for sharpness, the 3 sharpest close-ups from the upload
   go to Claude, who reads the title and author or says it cannot. Kept as a
   list beside the products (`stores/<slug>/titles.json`), never over a name.
+  **Titles become names** (owner, 2026-11-06: *"so for most items the owner
+  need only to add price"*): a product with NO name takes its title read IN
+  FULL (`nameFromTitles`, after every title-reader run; «titlesName» to do it
+  now). A partly read title only fills the owner's card fields, to check. An
+  owner's name is never overwritten.
 - **Into a store, the view turns 90° right, at the door** (owner, 2026-11-04,
   then 2026-11-05: *"at sec 33 when camera goes inside the store the camera
   should turn right 90 degree and view the shelves but still looking

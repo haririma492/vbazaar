@@ -10,7 +10,7 @@
  * see on the product's tag and card in the walk.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { UNITS, UNIT_SAY, formatCents, type Product, type Unit } from "@/lib/splats/catalogue";
 import { postJson } from "./upload";
 import PhotoZoom from "@/components/common/PhotoZoom";
@@ -62,6 +62,10 @@ export function ProductCard({ api, product, others, close, reload, book = false 
   const read = useReadTitle(slugFrom(api), product.n);
   const [en, setEn] = useState(product.en ?? "");
   const [fa, setFa] = useState(product.fa ?? "");
+  // No name yet: the title read off the book fills the fields (in part too), for the owner to check and keep.
+  useEffect(() => {
+    if (read && !product.en?.trim() && !product.fa?.trim()) { setFa((v) => v || read.fa); setEn((v) => v || read.en); }
+  }, [read, product.en, product.fa]);
   const [price, setPrice] = useState(product.priceCents === null ? "" : (product.priceCents / 100).toFixed(2));
   const [sku, setSku] = useState(product.sku ?? "");
   const [note, setNote] = useState(product.note ?? "");
