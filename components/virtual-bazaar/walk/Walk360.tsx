@@ -70,7 +70,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
-  DEFAULT_PITCH, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, DOOR_PHOTO_MS, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
   entryOf, faceOf, itemHitAt, itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -499,7 +499,7 @@ export default function Walk360() {
   const [phase, setPhase] = useState<"loading" | "ready" | "walking" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  /** The store's door photo, up for its first 4 s (owner, 2026-11-03). */
+  /** The store's door photo, up for its first `DOOR_PHOTO_MS` (7 s; owner, 2026-11-03 and 2026-11-06). */
   const [doorPhoto, setDoorPhoto] = useState<{ url: string; out: boolean } | null>(null);
   const doorShown = useRef<string | null>(null);
   const [time, setTime] = useState({ now: 0, total: 0 });
@@ -2076,10 +2076,10 @@ export default function Walk360() {
     if (phase !== "walking" || editing || spotMode || !view.key || !photoNow) return;
     if (doorShown.current === view.key) return;
     doorShown.current = view.key;
-    engine.current?.hold(4000);
+    engine.current?.hold(DOOR_PHOTO_MS);
     setDoorPhoto({ url: photoNow, out: false });
-    const fade = setTimeout(() => setDoorPhoto((d) => (d ? { ...d, out: true } : d)), 3500);
-    const done = setTimeout(() => setDoorPhoto(null), 4000);
+    const fade = setTimeout(() => setDoorPhoto((d) => (d ? { ...d, out: true } : d)), DOOR_PHOTO_MS - 500);
+    const done = setTimeout(() => setDoorPhoto(null), DOOR_PHOTO_MS);
     return () => { clearTimeout(fade); clearTimeout(done); };
   }, [phase, editing, spotMode, view.key, photoNow]);
   useEffect(() => {

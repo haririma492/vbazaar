@@ -20,7 +20,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
 import { checkCatalogue, type Catalogue } from "@/lib/splats/catalogue";
-import type { Walk, WalkItem, WalkLabel } from "@/lib/splats/walks";
+import { DOOR_PHOTO_MS, doorPhotoOf, parseWalks, type Walk, type WalkItem, type WalkLabel } from "@/lib/splats/walks";
 import { FADE } from "@/lib/stores/tour";
 
 type OnScreen = { n: number; t: number[]; x: number[]; y: number[] };
@@ -64,6 +64,23 @@ export default function ShelfTour() {
   }, [tour]);
   const video = useRef<HTMLVideoElement | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
+  // The store's door photo opens the tour, as it opens the Free Tour (`DOOR_PHOTO_MS`, 7 s; owner, 2026-11-06).
+  const [door, setDoor] = useState<{ url: string; out: boolean } | null>(null);
+  const doorDone = useRef(false);
+  useEffect(() => {
+    if (!tour || doorDone.current) return;
+    doorDone.current = true;
+    let fade = 0, done = 0;
+    void fetch("/api/splats/walks", { cache: "no-store" }).then((r) => r.json()).then((j) => {
+      const url = j?.ok ? doorPhotoOf(parseWalks(j.walks), tour.walk) : undefined;
+      if (!url) return;
+      video.current?.pause();
+      setDoor({ url, out: false });
+      fade = window.setTimeout(() => setDoor((d) => (d ? { ...d, out: true } : d)), DOOR_PHOTO_MS - 500);
+      done = window.setTimeout(() => setDoor(null), DOOR_PHOTO_MS);
+    }).catch(() => { /* no photo: the tour starts at once */ });
+    return () => { clearTimeout(fade); clearTimeout(done); };
+  }, [tour]);
 
   useEffect(() => {
     if (!slug) { setErr("No store given."); return; }
@@ -140,6 +157,7 @@ export default function ShelfTour() {
   }, [tour]);
 
   function tap(e: React.MouseEvent) {
+    if (door) return; // the door photo is up: the tour starts after it
     const r = rect();
     if (!r) return;
     const px = e.clientX - r.b.left, py = e.clientY - r.b.top;
@@ -188,6 +206,12 @@ export default function ShelfTour() {
         {tour && (
           <video ref={video} src={tour.video} className="absolute inset-0 h-full w-full object-contain" playsInline preload="auto"
             onPlay={() => setPaused(false)} onPause={() => setPaused(true)} />
+        )}
+        {door && (
+          <div className={`pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black transition-opacity duration-500 ${door.out ? "opacity-0" : "opacity-100"}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={door.url} alt="" className="max-h-full max-w-full object-contain" />
+          </div>
         )}
         {r && shown.map((s) => (
           <span key={s.n} className="pointer-events-none absolute rounded-full bg-[#22e05a]"

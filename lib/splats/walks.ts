@@ -50,6 +50,12 @@ export const PRELOAD_DT = 6;
 export const DEFAULT_PITCH = -0.08;
 /** A door photo's width at its moment when none is given (radians of view, ~30°). */
 export const DOOR_SIZE = 0.52;
+/**
+ * How long the store's door photo opens a Free Tour and a Shelf Tour (ms): 7 s (owner, 2026-11-06: "start both
+ * free tour and shelf tour with the photo of the front of the door for 7 sec"; it was 4 s, Free Tour only).
+ * It fades out over its last half second.
+ */
+export const DOOR_PHOTO_MS = 7000;
 export const MAX_PINS = 24;
 /** An item's dot, followed through the video every 0.2 s for up to 15 s either way (`followProduct`). */
 export const MAX_ITEM_PINS = 200;

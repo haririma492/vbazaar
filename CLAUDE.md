@@ -650,6 +650,9 @@ quality and choice to break away and enter in a shop. (period)"*
 - **Saraye Bamdad was found before sightings were saved** (2026-11-04), so it
   has no `sightings.json`: its tour and photos stand on its lights (145
   products); the other 157 found then have no place recorded.
+- **Both tours open on the store's door photo for 7 s** (owner, 2026-11-06: *"start both free tour and shelf tour
+  with the photo of the front of the door for 7 sec"*; it was 4 s, Free Tour only): `DOOR_PHOTO_MS` in
+  `lib/splats/walks.ts`, `doorPhotoOf` for both.
 - **The Lock agent looks every ~8 s** (owner, 2026-11-06: *"I as photographer with orange jersey am visible
   when shopper turns 60 degree"*). Six fixed looks found the operator only twice on Saraye Bamdad, so the colour
   follow drifted to the front of the walk. Now `seedTimes` (`lockRules.ts`): one look every 8 s (6–30), each
