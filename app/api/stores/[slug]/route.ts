@@ -18,6 +18,8 @@
  *   POST { action: "product", n, unit?, price?, sku?, note?, en?, fa? }  a product's details, from the store's page
  *   POST { action: "productDrop", n }           not a product: off the list and off the walk
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
+ *   POST { action: "widget" }                   the store's widget: { snippet, stats, plan, forOwner } (operator; the owner when switched on)
+ *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
  *   PUT ?key&uploadId&partNumber                (a part through this server, when the browser may not PUT to R2)
  */
 import { mediaPath } from "@/lib/splats/media";
@@ -47,6 +49,8 @@ import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
 import { recordOwner } from "@/lib/stores/ownerVisits";
+import { readStats, widgetPlan } from "@/lib/stores/widget";
+import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,6 +106,17 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (next?.live) await updateStore(s.slug, (x) => redo(x, ["place"]));
     kick();
     return ok({ store: next ? forPage(next) : null });
+  }
+
+  if (body.action === "widget") {
+    if (who !== "operator" && !ownerSeesWidget(s)) return fail(403, "The operator only.");
+    const [stats, plan] = await Promise.all([readStats(s.slug), widgetPlan(s.slug)]);
+    return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s) });
+  }
+  if (body.action === "widgetOwner") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const next = await updateStore(s.slug, (x) => ({ ...x, widgetForOwner: body.on === true }));
+    return ok({ forOwner: next ? ownerSeesWidget(next) : false });
   }
 
   if (body.action === "upload") {

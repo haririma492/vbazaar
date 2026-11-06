@@ -145,6 +145,9 @@ export type StoreRecord = {
   spentCents: number;
   /** Shoppers see it once the operator presses «Publish». */
   live: boolean;
+  /** The store's owner sees the widget card (its code, preview and counts) on their page: the operator's switch
+   *  (owner, 2026-11-06: "only for operator with a flag/key … if we need the owner also to see it or not"). */
+  widgetForOwner?: boolean;
   thread: ThreadEntry[];
   report?: Report;
 };

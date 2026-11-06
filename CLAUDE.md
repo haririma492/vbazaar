@@ -86,6 +86,14 @@ plan and the Managed Agents decision are in
   never over a field the owner changed, never removing one; copies each main photo to our bucket; runs the Tagger
   again. Both tours' product card shows the extra photos. A later merchant sheet replaces the list (as before);
   run «Put on the store's page again» to add the site's products back. `lib/stores/website*.ts`.
+- **The store widget** (owner, 2026-11-06: *"a preview / widget is the verdict … place the widget code on the store
+  page … only for operator with a flag/key … if we need the owner also to see it"*; *"this will apply to all
+  stores, existing and new"*). Two lines on the store's own site (`snippet`): `/widget.js` frames `/w/<slug>`, a
+  TEASER only (the Shelf Tour's silent loop or the product photos, the store's name, our mark, one key to
+  `/w/<slug>/go`, counted, then the visit on vbazaar.app). The moat: the walk, the tours and the basket are never
+  on the store's site; a full embed would be a separate paid white-label product. Unpublished: «Coming soon».
+  Card on `/stores/<slug>` for the operator; `widgetForOwner` on the record shows it to the owner.
+  `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
 - **Owners' visits are counted** (owner, 2026-11-06: *"we need to count store owners using their password and
   visiting their page"*, *"lets add that statistics to vbazaar.app/stores"*): each sign-in with the store's
   password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit
