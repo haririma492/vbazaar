@@ -1467,8 +1467,12 @@ export default function Walk360() {
       },
       goToItem(item) {
         if (!current || busy || !item.pins.length) return;
-        // The middle of its pins: the product well inside the stretch it is seen in.
-        const pin = item.pins[Math.floor((item.pins.length - 1) / 2)];
+        // The middle of its pins INSIDE the store (a product is often first seen through the window, from the street),
+        // well inside the stretch it is seen in.
+        const w = current.key ? walksNow?.walks[current.key] ?? null : null;
+        const inside = w ? item.pins.filter((q) => q.t >= entryOf(w)) : [];
+        const use = inside.length ? inside : item.pins;
+        const pin = use[Math.floor((use.length - 1) / 2)];
         dropTwin();
         current.video.pause();
         rate = 0;
