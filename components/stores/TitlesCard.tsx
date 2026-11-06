@@ -27,7 +27,12 @@ const CENTS_A_BOOK = 0.2, CENTS_A_REREAD = 4;
 
 const fold = (v: string) => v.toLowerCase().replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/‌/g, " ").replace(/\s+/g, " ").trim();
 
-export default function TitlesCard({ api, operator, products, spentCents, budgetCents }: { api: string; operator: boolean; products: number; spentCents: number; budgetCents: number }) {
+export default function TitlesCard({ api, operator, products, spentCents, budgetCents, book = false }: { api: string; operator: boolean; products: number; spentCents: number; budgetCents: number; book?: boolean }) {
+  // The words follow the store (owner, 2026-11-06: "this text should depend on the type of store … when in doubt
+  // change it to products"): books only in a bookshop (`isBookStore`), products everywhere else.
+  const w = book
+    ? { fa: "فهرست عنوان کتاب‌ها", en: "Book titles", items: "books", item: "book", spines: "spines", spinesFa: "عطف کتاب‌ها", search: "Search a title or author" }
+    : { fa: "فهرست نام محصولات", en: "Product names", items: "products", item: "product", spines: "labels", spinesFa: "برچسب محصولات", search: "Search a name" };
   const [list, setList] = useState<TitleList | null>(null);
   const [shelf, setShelf] = useState<Shelf | null>(null);
   const [q, setQ] = useState("");
@@ -65,24 +70,24 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
     const blob = new Blob(["﻿" + [head.join(","), ...body].join("\r\n")], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `book-titles${farsiOnly ? "-farsi" : ""}.csv`;
+    a.download = `${book ? "book-titles" : "product-names"}${farsiOnly ? "-farsi" : ""}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }
 
   async function readMore() {
     const cost = (left * CENTS_A_BOOK) / 100;
-    if (!confirm(`Read the titles of the ${left} books not read yet? About $${cost.toFixed(2)} (about ${CENTS_A_BOOK}¢ a book, read by Claude Haiku 5.5), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
-    try { await postJson(api, { action: "titlesRead" }); setSaid({ ok: true, text: "Reading the titles… about 20 s a book; this list fills in as it goes. · در حال خواندن عنوان‌ها…" }); }
+    if (!confirm(`Read the ${book ? "titles" : "names"} of the ${left} ${w.items} not read yet? About $${cost.toFixed(2)} (about ${CENTS_A_BOOK}¢ a ${w.item}, read by Claude Haiku 5.5), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
+    try { await postJson(api, { action: "titlesRead" }); setSaid({ ok: true, text: `Reading the ${book ? "titles" : "names"}… about 20 s a ${w.item}; this list fills in as it goes. · در حال خواندن…` }); }
     catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
   }
 
   return (
     <Card>
-      <Bi fa="فهرست عنوان کتاب‌ها" en="Book titles — read off the video by the title reader (OCR); a list beside the products, never over their names" className="text-[15px] font-bold text-amber-100" />
+      <Bi fa={w.fa} en={`${w.en} — read off the video by the title reader (OCR); a list beside the products, never over their names`} className="text-[15px] font-bold text-amber-100" />
       <div dir="ltr" className="mt-2 space-y-2 text-left text-[13px]">
         <p className="text-white/70">
-          {read ? `${read} of ${products} books read: ${full} in full, ${partial} in part, ${read - full - partial} not readable.` : `Not run on this store yet (${products} books).`}
+          {read ? `${read} of ${products} ${w.items} read: ${full} in full, ${partial} in part, ${read - full - partial} not readable.` : `Not run on this store yet (${products} ${w.items}).`}
           {list?.updated ? ` · last saved ${new Date(list.updated).toLocaleString()}` : ""}
         </p>
         {(shelf?.rows.length ?? 0) > 0 && <p className="text-white/70">From the shelf photos: {shelf!.rows.length} titles ({shelf!.done} of {shelf!.photos} photos read). Together: {merged.length} different titles, {merged.filter((r) => r.title_fa.trim()).length} in Farsi.</p>}
@@ -90,7 +95,7 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
         {merged.length > 0 && (
           <>
             <div className="flex flex-wrap items-center gap-2">
-              <input className={`${FIELD} max-w-xs`} dir="auto" placeholder="Search a title or author · جست‌وجو" value={q} onChange={(e) => setQ(e.target.value)} />
+              <input className={`${FIELD} max-w-xs`} dir="auto" placeholder={`${w.search} · جست‌وجو`} value={q} onChange={(e) => setQ(e.target.value)} />
               <label className="flex items-center gap-1.5 text-white/70"><input type="checkbox" checked={farsiOnly} onChange={(e) => setFarsiOnly(e.target.checked)} /> Farsi titles only · فقط فارسی</label>
               <button type="button" className={QUIET} onClick={csv} disabled={!rows.length}>Download CSV ({rows.length}) · دانلود</button>
             </div>
@@ -113,19 +118,19 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
       {operator && (
         <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
           <FilePick
-            fa="عکس قفسه‌ها با گوشی — برای خواندن همهٔ عنوان‌ها" en="Shelf photos (phone) — to read every title"
+            fa={book ? "عکس قفسه‌ها با گوشی — برای خواندن همهٔ عنوان‌ها" : "عکس قفسه‌ها با گوشی — برای خواندن همهٔ نام‌ها"} en={book ? "Shelf photos (phone) — to read every title" : "Shelf photos (phone) — to read every product name"}
             accept=".jpg,.jpeg,.png,.webp,image/*" multiple
-            hint="One photo per shelf section, about 1 m away, square on, the whole section in the picture, no flash glare. Every spine must be in focus: tap the screen on the books before taking it. About 60–100 photos for 700 books. Each is read once; upload more any time."
+            hint={`One photo per shelf section, about 1 m away, square on, the whole section in the picture, no flash glare. Every ${book ? "spine" : "label"} must be in focus: tap the screen on the ${w.items} before taking it.${book ? " About 60–100 photos for 700 books." : ""} Each is read once; upload more any time.`}
             current={shelf?.photos ? `${shelf.photos} photos uploaded, ${shelf.done} read` : null}
             send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: "shelf" }, file, onProgress); await load(); }}
           />
           {shelf && shelf.photos > shelf.done && !shelf.reading && (
             <button type="button" className={QUIET} onClick={async () => {
               const n = shelf.photos - shelf.done, cost = (n * CENTS_A_PHOTO) / 100;
-              if (!confirm(`Read every spine in the ${n} shelf photos not read yet? About $${cost.toFixed(2)} (about ${CENTS_A_PHOTO.toFixed(1)}¢ a photo, read by Claude Haiku 5.5), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
-              try { await postJson(api, { action: "shelfTitlesRead" }); setSaid({ ok: true, text: "Reading the spines… about a minute a photo; the list fills in as it goes. · در حال خواندن عطف کتاب‌ها…" }); void load(); }
+              if (!confirm(`Read every ${book ? "spine" : "label"} in the ${n} shelf photos not read yet? About $${cost.toFixed(2)} (about ${CENTS_A_PHOTO.toFixed(1)}¢ a photo, read by Claude Haiku 5.5), from the store's AI budget ($${(room / 100).toFixed(2)} left). It stops by itself if the budget runs out.`)) return;
+              try { await postJson(api, { action: "shelfTitlesRead" }); setSaid({ ok: true, text: `Reading the ${w.spines}… about a minute a photo; the list fills in as it goes. · در حال خواندن ${w.spinesFa}…` }); void load(); }
               catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
-            }}>Read the spines in {shelf.photos - shelf.done} photos (about ${(((shelf.photos - shelf.done) * CENTS_A_PHOTO) / 100).toFixed(2)}) · خواندن عطف‌ها</button>
+            }}>Read the {w.spines} in {shelf.photos - shelf.done} photos (about ${(((shelf.photos - shelf.done) * CENTS_A_PHOTO) / 100).toFixed(2)}) · خواندن {book ? "عطف‌ها" : "برچسب‌ها"}</button>
           )}
         </div>
       )}
@@ -138,7 +143,7 @@ export default function TitlesCard({ api, operator, products, spentCents, budget
         const partial = (list?.rows ?? []).filter((r) => r.readable !== "full" && r.model === "claude-haiku-5-5").length;
         return partial > 0 ? (
           <button type="button" className={`${QUIET} mt-2`} onClick={async () => {
-            if (!confirm(`Re-read the ${partial} titles Haiku read only in part (or not at all) with the bigger model, Claude Opus 5.5? About $${((partial * CENTS_A_REREAD) / 100).toFixed(2)} (${CENTS_A_REREAD}¢ a book). A re-read is kept only when it is surer.`)) return;
+            if (!confirm(`Re-read the ${partial} titles Haiku read only in part (or not at all) with the bigger model, Claude Opus 5.5? About $${((partial * CENTS_A_REREAD) / 100).toFixed(2)} (${CENTS_A_REREAD}¢ a ${w.item}). A re-read is kept only when it is surer.`)) return;
             try { await postJson(api, { action: "titlesRead", escalate: true }); setSaid({ ok: true, text: "Re-reading the partial titles with Opus… · در حال بازخوانی…" }); }
             catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
           }}>Re-read the {partial} partial titles with the bigger model (about ${((partial * CENTS_A_REREAD) / 100).toFixed(2)})</button>

@@ -259,7 +259,7 @@ export default function StorePage({ slug }: { slug: string }) {
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <MapCard api={api} operator={page.who === "operator"} />}
-      {page.products.length > 0 && <TitlesCard api={api} operator={page.who === "operator"} products={page.products.length} spentCents={page.store.spentCents} budgetCents={BUDGET_CENTS} />}
+      {page.products.length > 0 && <TitlesCard api={api} operator={page.who === "operator"} products={page.products.length} spentCents={page.store.spentCents} budgetCents={BUDGET_CENTS} book={isBookStore(page.store.category)} />}
 
       {op && <Card><ChangePassword api={api} /></Card>}
       {page.who === "owner" && <button type="button" className={QUIET} onClick={async () => { await fetch(`${api}/login`, { method: "DELETE" }); setState("out"); }}>خروج · Sign out</button>}

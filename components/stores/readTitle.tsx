@@ -37,11 +37,11 @@ export function useReadTitle(slug: string, n: number | undefined): ReadTitleSay 
   return t;
 }
 
-export function ReadTitleBox({ t }: { t: ReadTitleSay | null }) {
+export function ReadTitleBox({ t, book = false }: { t: ReadTitleSay | null; book?: boolean }) {
   if (!t) return null;
   return (
     <div className="mt-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5">
-      <div className="text-[11px] text-white/50">عنوان خوانده‌شده از روی کتاب · Title as read from the book{t.readable === "partial" ? " (in part)" : ""}</div>
+      <div className="text-[11px] text-white/50">{book ? "عنوان خوانده‌شده از روی کتاب · Title as read from the book" : "نام خوانده‌شده از روی محصول · Name as read from the product"}{t.readable === "partial" ? " (in part)" : ""}</div>
       {t.fa && <div dir="rtl" className="text-right text-[16px] font-bold leading-snug">{t.fa}</div>}
       {t.en && <div dir="ltr" className="text-[13px] text-white/75">{t.en}</div>}
       {t.author && <div dir="auto" className="text-[12px] text-white/60">{t.author}</div>}

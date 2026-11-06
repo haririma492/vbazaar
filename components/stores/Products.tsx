@@ -106,7 +106,7 @@ export function ProductCard({ api, product, others, close, reload, book = false 
           {product.fa && product.en && <div dir="ltr" className="text-left text-[13px] text-white/60">{product.en}</div>}
           {/* What the finder saw (owner, 2026-11-04: "which one is the intended product"): the books or item it boxed. */}
           {product.seen && <div dir="ltr" className="mt-0.5 text-left text-[12px] text-amber-200/80">The finder saw: {product.seen}</div>}
-          <ReadTitleBox t={read} />
+          <ReadTitleBox t={read} book={book} />
           {read && step === "name" && (read.fa || read.en) && (fa !== read.fa || en !== read.en) && (
             <button type="button" className="mt-1 text-[12px] text-emerald-200 underline" onClick={() => { if (read.fa) setFa(read.fa); if (read.en) setEn(read.en); }}>
               Use this title as the name · استفاده از این عنوان
