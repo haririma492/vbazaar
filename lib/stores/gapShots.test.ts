@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { gapShots, SHOT_MIN, type Obs } from "./gapShots";
+import { gapShots, SHOT_MIN, SWEEP_DT, sweepShots, type Obs } from "./gapShots";
 
 const o = (n: number, t: number, lon: number, lat = 0, area = 0.01): Obs => ({ n, t, lon, lat, area });
 
@@ -33,4 +33,17 @@ test("the seed is where a product looked biggest, and the picture is never aimed
   const [s] = gapShots(obs, new Set(), 0, 5);
   assert.equal(s.t, 30);
   assert.ok(s.pitch <= 0.4 + 1e-9);
+});
+
+test("the stretches nobody looked at get pictures of both sides (Saraye Bamdad: nothing after 1:43)", () => {
+  // Seen every second from 35 s to 96 s; the cut walk keeps 0–96.7 and 109.7–133.2; the store starts at 33 s.
+  const seen = Array.from({ length: 62 }, (_, i) => 35 + i);
+  const shots = sweepShots(seen, [{ from: 0, to: 96.7 }, { from: 109.7, to: 133.2 }], 33, 152);
+  assert.ok(shots.length > 0);
+  assert.ok(shots.every((s) => s.t >= 109.7 && s.t < 133.2), "only where nothing was seen, and only in what the cut kept");
+  assert.equal(shots.length % 2, 0, "both sides at each moment");
+  const times = [...new Set(shots.map((s) => s.t))];
+  assert.equal(times.length, Math.floor((133.2 - 0.2 - (109.7 + SWEEP_DT / 2)) / SWEEP_DT) + 1);
+  // Not cut: the whole recording after the door.
+  assert.ok(sweepShots([], [], 10, 20).every((s) => s.t >= 10 && s.t < 20));
 });

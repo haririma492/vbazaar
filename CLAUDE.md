@@ -657,6 +657,13 @@ quality and choice to break away and enter in a shop. (period)"*
   `stores/<slug>/shelf-sightings.json` (used by the tour and the Photo
   improver). Then the photos and the tour are made again. The lights cap is
   500 (it was 250: the bookshop's 250 lights covered only 145 products).
+- **No light cap a store reaches; the stretches nobody looked at are looked at** (owner, 2026-11-06: *"why is it
+  that the green lights on books are mostly on the first half of the free tour … is there a cap on their number?
+  remove if so"*). Saraye Bamdad's first find was capped at 250 lights, the rest of the recording (after 1:43)
+  had none, and the Shelf finder's «gaps» only looked round products already seen. `MAX_ITEMS` is 2000 (a guard
+  against a broken run only), and «gaps» now also sweeps (`sweepShots`, `gapShots.ts`): every 2 s of the
+  recording inside the store, kept by the cut, with nothing seen within 1.5 s, a picture of each side, in the
+  same ceiling (30 pictures, ~$2). «Refresh all agents» runs it.
 - **Saraye Bamdad was found before sightings were saved** (2026-11-04), so it
   has no `sightings.json`: its tour and photos stand on its lights (145
   products); the other 157 found then have no place recorded.

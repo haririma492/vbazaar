@@ -52,3 +52,33 @@ export function gapShots(obs: Obs[], pictured: Set<number>, entry: number, max: 
   }
   return shots.sort((a, b) => b.products.length - a.products.length).slice(0, Math.max(0, max)).sort((a, b) => a.t - b.t);
 }
+
+/**
+ * THE STRETCHES NOBODY LOOKED AT (owner, 2026-11-06: "why is it that the green lights on books are mostly on the
+ * first half of the free tour and they literally non-existent toward the end"). `gapShots` only looks round
+ * products the walk already saw, so a stretch where the first finder's lights were capped away (Saraye Bamdad:
+ * the old 250-light cap, nothing after 1:43 of the recording) was never looked at again. Here: every `SWEEP_DT`
+ * seconds of the recording inside the store, kept in the cut walk (`parts`, original times; [] = not cut), with no
+ * product seen within `SHOT_DT`, one picture of each side (`SWEEP_YAWS`, the panorama's heading held by Insta360
+ * Studio's direction lock). The caller still drops a picture that would show the camera operator, and caps the
+ * count.
+ */
+export const SWEEP_DT = 2;
+export const SWEEP_YAWS = [Math.PI / 2, -Math.PI / 2];
+export function sweepShots(seenAt: number[], parts: Array<{ from: number; to: number }>, entry: number, end: number): Shot[] {
+  const ranges = parts.length ? parts.map((p) => [p.from, p.to] as const) : [[0, end] as const];
+  const seen = [...seenAt].filter(Number.isFinite).sort((a, b) => a - b);
+  const near = (t: number) => {
+    let lo = 0, hi = seen.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (seen[m] < t) lo = m + 1; else hi = m; }
+    return (lo < seen.length && seen[lo] - t <= SHOT_DT) || (lo > 0 && t - seen[lo - 1] <= SHOT_DT);
+  };
+  const shots: Shot[] = [];
+  for (const [a, b] of ranges) {
+    for (let t = Math.max(a, entry) + SWEEP_DT / 2; t < b - 0.2; t += SWEEP_DT) {
+      if (near(t)) continue;
+      for (const yaw of SWEEP_YAWS) shots.push({ t: Math.round(t * 100) / 100, yaw, pitch: 0, hfov: SHOT_HFOV, vfov: SHOT_VFOV, products: [] });
+    }
+  }
+  return shots;
+}

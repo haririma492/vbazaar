@@ -27,7 +27,7 @@ import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, capTracks, follow, itemOf, keepTrack
 import { planTour, project, unproject, type Seen } from "./tour";
 import { buildTour, shelfSightingsKey, tourInputs } from "./tourJob";
 import { setJob } from "./jobState";
-import { gapShots, type Obs } from "./gapShots";
+import { gapShots, sweepShots, type Obs } from "./gapShots";
 
 /** The picture sent for a shelf (px): Claude's largest useful size, 16:9. */
 export const PIC_W = 1568, PIC_H = 882;
@@ -72,9 +72,14 @@ export async function findShelves(slug: string, opts: { mode?: "tour" | "gaps"; 
     if (mode === "gaps") {
       const obs: Obs[] = seen.map((x) => ({ n: x.n, t: x.t, lon: x.lon, lat: x.lat, area: x.size.w * x.size.h }));
       for (const tr of tracks.values()) { const p = [...tr.pins].sort((a, b) => a.t - b.t)[tr.pins.length >> 1]; if (p) obs.push({ n: tr.n, t: p.t, lon: p.x, lat: p.y, area: 0.0005 }); }
-      shots = gapShots(obs, new Set(kept.map((x) => x.n)), entry, opts.max ?? GAP_MAX)
-        // Never a picture of the camera operator (the Lock agent's `hide`).
-        .filter((g) => { const op = operator(g.t); return !op || Math.abs(Math.atan2(Math.sin(g.yaw - op.yaw), Math.cos(g.yaw - op.yaw))) > op.width / 2 + g.hfov / 2; });
+      // Never a picture of the camera operator (the Lock agent's `hide`).
+      const clear = (g: { t: number; yaw: number; hfov: number }) => { const op = operator(g.t); return !op || Math.abs(Math.atan2(Math.sin(g.yaw - op.yaw), Math.cos(g.yaw - op.yaw))) > op.width / 2 + g.hfov / 2; };
+      const cap = opts.max ?? GAP_MAX;
+      const round = gapShots(obs, new Set(kept.map((x) => x.n)), entry, cap).filter(clear);
+      // Then the stretches of the store nobody has looked at at all, both sides, in the rest of the ceiling.
+      const looked = [...obs.map((o) => o.t), ...kept.map((x) => x.t)];
+      const sweep = sweepShots(looked, parts, entry, end).filter(clear);
+      shots = [...round, ...sweep.slice(0, Math.max(0, cap - round.length))].sort((x, y) => x.t - y.t);
       if (!shots.length) return "Shelf finder (gaps): every product the walk saw is already in a shelf picture: nothing to look at.";
     } else {
       const plan = planTour(seen, [...tracks.values()], end, entry, operator);
