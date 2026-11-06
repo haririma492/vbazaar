@@ -16,6 +16,7 @@
  * and forth; only «Next shelf ›» / «‹ Previous shelf» change shelf.
  */
 
+import BrandBadge from "@/components/brand/BrandBadge";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
@@ -189,7 +190,9 @@ export default function ShelfTour() {
   return (
     <div className="fixed inset-0 flex flex-col bg-black text-white">
       <div className="flex items-center justify-between gap-2 px-3 py-2 text-[14px]">
-        <div className="min-w-0 truncate"><b>{name}</b>{title?.fa ? <span className="text-white/60"> · {title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
+        {/* The bazaar's logo on the right (owner, 2026-11-06); the header is right-to-left, so it comes first. */}
+        <BrandBadge width={52} />
+        <div className="me-auto min-w-0 flex-1 truncate"><b>{name}</b>{title?.fa ? <span className="text-white/60"> · {title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
         <div className="flex shrink-0 items-center gap-3">
           {tour && (
             <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">

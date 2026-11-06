@@ -53,6 +53,7 @@
  *   …&edit=1                                place doors (operator token, like /vca/splat)
  */
 
+import BrandBadge from "@/components/brand/BrandBadge";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
@@ -2306,12 +2307,14 @@ export default function Walk360() {
             </div>
           )}
 
+          {/* The bazaar's logo on the right (owner, 2026-11-06); the sound key and the website key sit below it. */}
+          <BrandBadge width={52} overlay className="absolute right-3 top-3 z-20" />
           {/* Inside a shop whose door names its website. */}
           {view.inside > 0 && view.site && !view.busy && (
             <button
               dir="ltr"
               onClick={() => openSite(view.site)}
-              className={`absolute right-4 z-10 top-16 rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white`}
+              className={`absolute right-4 z-10 top-[8.5rem] rounded-full border border-sky-300/70 bg-sky-400/25 px-4 py-2 text-[14px] font-semibold text-white`}
             >
               🌐 Visit the website · وبسایت فروشگاه
             </button>
