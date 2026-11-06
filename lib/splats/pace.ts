@@ -35,6 +35,15 @@ export const SPEED_MIN = 0.05, SPEED_MAX = 1.6;
 // 0.3 m/s, then 25% slower (owner, 2026-11-06), then another 20% slower (owner, 2026-11-06: "lets make
 // default speed another 20% slower"): 0.3 × 0.75 × 0.8 = 0.18 m/s.
 export const SPEED_DEFAULT = 0.18;
+/**
+ * THE DEFAULT IS A FRAME RATE (owner, 2026-11-06: "make the default speed 7 fps"): the bar starts where the walk
+ * plays 7 of its 25 frames a second, whatever pace it was filmed at. `speedForFps` turns that into the bar's m/s.
+ */
+export const DEFAULT_FPS = 7;
+export function speedForFps(fps: number, pace: number | null | undefined, filmFps = 25): number {
+  const p = pace && Number.isFinite(pace) && pace > 0 ? pace : PACE_FALLBACK;
+  return speedAt(placeOf((fps / filmFps) * p));
+}
 /** A walk not measured yet is taken as filmed at this pace (m/s): the old multiples. */
 export const PACE_FALLBACK = 1;
 /**

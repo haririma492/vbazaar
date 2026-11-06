@@ -43,10 +43,11 @@
 
 /* The logo (owner, 2026-11-01; new version the same day: sky, CN Tower, trees). A new file name per version, so no browser keeps the old one. */
 /* Half its first size, at the top right (owner, 2026-11-02), in either language: `direction: ltr` so flex-end is the right. */
-.vb-logo { padding: 20px 5% 0; display: flex; justify-content: space-between; align-items: center; gap: 16px; direction: ltr; }
+/* Top LEFT, 30% larger, on a black band with more room round it (owner, 2026-11-06). row-reverse puts the logo (the second child) on the left. */
+.vb-logo { padding: 32px 5%; display: flex; flex-direction: row-reverse; justify-content: space-between; align-items: center; gap: 24px; direction: ltr; background: #000; }
 /* «Registration has begun» beside the logo, on its left (owner, 2026-11-03). */
 .vb-news { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; padding: 16px; border: 1px solid rgba(212, 168, 67, 0.45); border-radius: 18px; background: rgba(13, 31, 60, 0.6); color: #fff; }
 .vb-news b { font-size: clamp(18px, 3vw, 34px); font-weight: 700; color: var(--gold-light); line-height: 1.2; }
 .vb-news span { font-size: clamp(13px, 1.8vw, 20px); color: rgba(255, 255, 255, 0.85); line-height: 1.4; }
 .vb-news:hover { border-color: var(--gold-light); }
-.vb-logo img { width: min(360px, 46%); height: auto; border-radius: 18px; background: #f8f4ec; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }
+.vb-logo img { width: min(468px, 60%); height: auto; border-radius: 18px; background: #f8f4ec; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35); }

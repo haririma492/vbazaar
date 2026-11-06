@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CAMERA_HEIGHT, RATE_MIN, SPEED_DEFAULT, SPEED_MAX, SPEED_MIN, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, driveRate, frameShift, groundMove, paceOf, placeOf, speedAt } from "./pace.ts";
+import { CAMERA_HEIGHT, RATE_MIN, SPEED_DEFAULT, SPEED_MAX, SPEED_MIN, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, driveRate, frameShift, groundMove, paceOf, placeOf, speedAt, speedForFps } from "./pace.ts";
 
 /** A floor with texture: smooth-ish noise, the same at every point every time. */
 function floorAt(x: number, y: number): number {
@@ -93,4 +93,10 @@ test("the speed bar's slow end is really slow, and its slow half has room", () =
   assert.ok(Math.abs(speedAt(placeOf(SPEED_DEFAULT)) - SPEED_DEFAULT) < 0.002, "the bar starts at the old Slow");
   // On the bookshop's walk (filmed at 0.56 m/s) the slow end plays at under a tenth.
   assert.ok(driveRate(SPEED_MIN, false, 0.56) < 0.1);
+});
+
+test("the default is 7 fps on any walk", () => {
+  for (const pace of [0.4, 1, 1.3, null]) {
+    assert.equal(Math.round(25 * driveRate(speedForFps(7, pace), false, pace)), 7);
+  }
 });

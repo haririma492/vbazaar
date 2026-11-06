@@ -67,7 +67,7 @@ import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { isPrivateVideoKey, mediaPath, toMediaUrl } from "@/lib/splats/media";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
-import { SPEED_DEFAULT, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
+import { DEFAULT_FPS, SPEED_DEFAULT, driveRate, placeOf, speedAt, speedForFps } from "@/lib/splats/pace";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
@@ -106,7 +106,7 @@ type Drive = "on" | "back";
  * tan(fov/2) ÷ 1.15 → 67.4°. Pinch and the wheel still zoom from there (30–100°).
  */
 const START_FOV = 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(75 / 2)) / 1.15));
-const SPEED_KEY = "vb.walk.speed.v3"; // v3: the default moved again (0.225 → 0.18 m/s, 2026-11-06)
+const SPEED_KEY = "vb.walk.speed.v4"; // v4: the default is 7 fps on every walk (owner, 2026-11-06), so everyone starts there
 /** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
 const FILM_FPS = 25;
 /**
@@ -512,11 +512,13 @@ export default function Walk360() {
   const [dragT, setDragT] = useState<number | null>(null);
   const [drive, setDrive] = useState<Drive | null>(null);
   const [speed, setSpeed] = useState(SPEED_DEFAULT);
+  /** Whether the shopper chose a speed (kept on the device); until then the bar follows each walk's 7 fps. */
+  const speedChosen = useRef(false);
   useEffect(() => {
     try {
       const v = Number(localStorage.getItem(SPEED_KEY));
-      if (v > 0) setSpeed(speedAt(placeOf(v)));
-    } catch { /* no storage: the bar starts at the old Slow */ }
+      if (v > 0) { speedChosen.current = true; setSpeed(speedAt(placeOf(v))); }
+    } catch { /* no storage: the bar starts at 7 fps */ }
   }, []);
   /** The item whose card is open (a tap on its dot). */
   const [card, setCard] = useState<WalkItem | null>(null);
@@ -2115,6 +2117,11 @@ export default function Walk360() {
 
   /** Frames a second the walk plays at, at speed `v` (m/s) on this walk. */
   const fpsOf = (v: number) => Math.round(FILM_FPS * Math.abs(driveRate(v, false, walkOf(walks, view.key)?.pace)));
+  const walkPace = walkOf(walks, view.key)?.pace;
+  // The default is 7 fps on this walk (owner, 2026-11-06), until the shopper moves the bar.
+  useEffect(() => {
+    if (!speedChosen.current) setSpeed(speedForFps(DEFAULT_FPS, walkPace, FILM_FPS));
+  }, [walkPace]);
   return (
     <div className="fixed inset-0 bg-black">
       <div ref={host} className="absolute inset-0" />
@@ -2188,12 +2195,8 @@ export default function Walk360() {
             <label className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-black/60 px-3" title="سرعت · Speed">
               {/* "سرعت حرکت" (owner, 2026-11-06: 'add farsi "speed of move" SORATE HAREKAT'). */}
               <span dir="rtl" className="shrink-0 whitespace-nowrap text-[11px] text-white/80">سرعت حرکت</span>
-              <span aria-hidden="true" className="text-[15px]">🐢</span>
-              {/* ⚠️ THE NUMBERS AND THE RECOMMENDED MARK (owner, 2026-11-05: "add some standard number such as frame/sec
-                  and lets set a recommended or default line that users better use"). The mark is `SPEED_DEFAULT`
-                  (0.3 m/s, a slow browse: spines readable); a tap on its label puts the bar back there. */}
+              {/* The bar fills the row: no 🐢/🐇 and no recommended mark (owner, 2026-11-06); the walk starts at 7 fps. */}
               <span className="relative flex min-w-0 flex-1 items-center">
-              <span aria-hidden="true" className="pointer-events-none absolute top-1/2 h-4 w-0.5 -translate-y-1/2 rounded bg-emerald-300/90" style={{ left: `calc(${(placeOf(SPEED_DEFAULT) * 100).toFixed(1)}% - 1px)` }} />
               <input
                 type="range"
                 min={0}
@@ -2209,6 +2212,7 @@ export default function Walk360() {
                   }
                 }}
                 onChange={(e) => {
+                  speedChosen.current = true;
                   const v = speedAt(Number(e.target.value));
                   setSpeed(v);
                   try { localStorage.setItem(SPEED_KEY, String(v)); } catch { /* kept for this visit only */ }
@@ -2216,13 +2220,8 @@ export default function Walk360() {
                 className="h-6 min-w-0 flex-1 accent-amber-300"
               />
               </span>
-              <span aria-hidden="true" className="text-[15px]">🐇</span>
-              <button type="button" title="Recommended speed · سرعت پیشنهادی" onClick={() => { setSpeed(SPEED_DEFAULT); try { localStorage.setItem(SPEED_KEY, String(SPEED_DEFAULT)); } catch { /* this visit only */ } }}
-                className={`shrink-0 whitespace-nowrap text-right text-[10px] leading-tight tabular-nums ${Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "text-emerald-200" : "text-white/70"}`}>
-                {/* Only frames a second (owner, 2026-11-06: "in rate only keep frame per sec (fps) remove the other rate"). */}
-                {fpsOf(speed)} fps
-                <br />{Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "✓ recommended" : `▮ recommended ${fpsOf(SPEED_DEFAULT)} fps`}
-              </button>
+              {/* Only the frame rate (owner, 2026-11-06: "remove the word recommended and extend the bar on its place"). */}
+              <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-white/70">{fpsOf(speed)} fps</span>
             </label>
           </div>
 
