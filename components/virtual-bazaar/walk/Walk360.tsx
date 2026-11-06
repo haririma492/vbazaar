@@ -536,7 +536,12 @@ export default function Walk360() {
   const doorShown = useRef<string | null>(null);
   /** A product link (`?p=<n>`, the Instagram pathway): open the walk facing that product, its card open. */
   const deepItem = useRef<number | null>(null);
-  useEffect(() => { deepItem.current = productParam(new URLSearchParams(window.location.search).get("p")); }, []);
+  /** Set once for the whole visit: the door photo is skipped on a product link (`deepItem` is cleared once used). */
+  const deepLinked = useRef(false);
+  useEffect(() => {
+    deepItem.current = productParam(new URLSearchParams(window.location.search).get("p"));
+    deepLinked.current = deepItem.current !== null;
+  }, []);
   const [time, setTime] = useState({ now: 0, total: 0 });
   /** Where the shopper's finger holds the bar (null: not holding it). The bar shows this, never the video's catching-up time. */
   const [dragT, setDragT] = useState<number | null>(null);
@@ -2194,7 +2199,7 @@ export default function Walk360() {
     if (phase !== "walking" || editing || spotMode || !view.key || !photoNow) return;
     if (doorShown.current === view.key) return;
     doorShown.current = view.key;
-    if (deepItem.current) return; // a product link goes straight to the product
+    if (deepLinked.current) return; // a product link goes straight to the product
     engine.current?.hold(DOOR_PHOTO_MS);
     setDoorPhoto({ url: photoNow, out: false });
     const fade = setTimeout(() => setDoorPhoto((d) => (d ? { ...d, out: true } : d)), DOOR_PHOTO_MS - 500);
