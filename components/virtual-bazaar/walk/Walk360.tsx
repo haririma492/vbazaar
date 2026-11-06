@@ -2431,8 +2431,8 @@ export default function Walk360() {
       )}
 
       {/* The link to vbazaar.app (a bazaar sign) on the right, from the first screen (owner, 2026-11-06); the sound key and the
-          website key sit below it. */}
-      {phase !== "loading" && <TourBazaarLink overlay className="absolute right-3 top-3 z-20" />}
+          website key sit below it. z-40: above the «Start walking» screen (z-30), so it works before the walk starts too. */}
+      {phase !== "loading" && <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (

@@ -6,7 +6,8 @@
  * The sign is a line drawing of a single pointed Persian arch, an iwan, in its frame (option C of four the owner
  * was shown). It is drawn as SVG in the link's own colour, so it is sharp at any size and needs no image.
  *
- * Owner, same day: no arrow; the arch in the green of the old logo's sign; the text warm white. Dark green lines
+ * Owner, same day: no arrow; the arch in the green of the old logo's sign; the text warm white (a little whiter, #FFF9EE, later the same day). The arch is filled green: its frame, columns
+ * and top, the opening left light (owner, same day). Dark green lines
  * all but vanish on the badge's dark backing (looked at), so the arch sits on a small warm-white tile.
  *
  * Why it reads as a link: the address is underlined, the whole badge has a warm-white border, and hover /
@@ -26,15 +27,13 @@ export default function TourBazaarLink({ overlay = false, className = "" }: { ov
       dir="ltr"
       title="Open vbazaar.app in a new tab"
       aria-label="Virtual Bazaar, open vbazaar.app in a new tab"
-      className={`group flex shrink-0 cursor-pointer flex-col items-center gap-1 rounded-lg border border-[#FFF4E0]/70 px-2 py-1 text-[#FFF4E0] transition-colors hover:border-[#FFF4E0] hover:bg-[#FFF4E0]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${overlay ? "bg-black/60 shadow-lg" : "bg-white/5"} ${className}`}
+      className={`group flex shrink-0 cursor-pointer flex-col items-center gap-1 rounded-lg border border-[#FFF9EE]/70 px-2 py-1 text-[#FFF9EE] transition-colors hover:border-[#FFF9EE] hover:bg-[#FFF9EE]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${overlay ? "bg-black/60 shadow-lg" : "bg-white/5"} ${className}`}
     >
-      <span className="rounded bg-[#FFF4E0] px-[3px] py-px">
-      <svg width="44" height="30" viewBox="0 0 44 30" fill="none" stroke={SIGN_GREEN} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {/* a single pointed Persian arch (an iwan) in its frame, on the ground line */}
-        <path d="M8 28 V2 H36 V28" />
-        <path d="M13 28 V15 Q13 9 22 5 Q31 9 31 15 V28" />
-        <path d="M4 28 H40" />
-        <path d="M8 6 H36" opacity="0.55" />
+      <span className="rounded bg-[#FFF9EE] px-[3px] py-px">
+      <svg width="44" height="30" viewBox="0 0 44 30" aria-hidden="true">
+        {/* a single pointed Persian arch (an iwan): its frame, columns and top filled green, the opening left light */}
+        <path fill={SIGN_GREEN} fillRule="evenodd" d="M8 2 H36 V28 H8 Z M13.5 28 V15 Q13.5 9.4 22 5.6 Q30.5 9.4 30.5 15 V28 Z" />
+        <path d="M4 28 H40" stroke={SIGN_GREEN} strokeWidth="1.8" strokeLinecap="round" />
       </svg>
       </span>
       <span className="whitespace-nowrap text-[11px] font-bold leading-none tracking-wide underline decoration-2 underline-offset-2">
