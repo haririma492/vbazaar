@@ -274,6 +274,15 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
     return () => { window.removeEventListener("pointerdown", go, true); window.removeEventListener("keydown", go, true); };
   }, [tapped]);
 
+  // ⚠️ The start second is fixed ONCE per programme (and when the sound comes back on). It was worked out from the
+  // clock in the render, and the walk re-renders all the time: the address changed every second, so the player
+  // reloaded every second (owner, 2026-11-06: "broken and intermittent every 1 sec").
+  const ytId = now?.kind === "youtube" ? now.youtubeId : null;
+  const ytStart = useRef<{ key: string; sec: number } | null>(null);
+  const startKey = ytId && on && tapped ? ytId : null;
+  if (!startKey) ytStart.current = null;
+  else if (ytStart.current?.key !== startKey && now) ytStart.current = { key: startKey, sec: Math.floor(positionAt(now, Date.now())) };
+
   // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
   if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
   const yt = now?.kind === "youtube" && now.youtubeId ? now : null;
@@ -299,8 +308,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
           width={1}
           height={1}
           className="pointer-events-none absolute bottom-0 left-0 opacity-0"
-          // The start second is taken when the player is made; a later reading of the same video does not remake it.
-          src={`https://www.youtube.com/embed/${yt.youtubeId}?autoplay=1&playsinline=1&controls=0&rel=0&enablejsapi=1&start=${Math.floor(positionAt(yt, Date.now()))}`}
+          src={`https://www.youtube.com/embed/${yt.youtubeId}?autoplay=1&playsinline=1&controls=0&rel=0&enablejsapi=1&start=${ytStart.current?.sec ?? 0}`}
           allow="autoplay; encrypted-media"
           onLoad={(e) => {
             e.currentTarget.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(WALK_MUSIC_VOLUME * 100)] }), "*");
