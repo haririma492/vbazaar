@@ -12,6 +12,7 @@ import { createStore, readIndex, readStore } from "@/lib/stores/bucket";
 import { hashPassword, isOperator } from "@/lib/stores/auth";
 import { fail, ok } from "@/lib/stores/http";
 import { kick } from "@/lib/stores/crew";
+import { readOwnerVisits } from "@/lib/stores/ownerVisits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +25,9 @@ export async function GET(req: NextRequest) {
   for (const e of await readIndex()) {
     const s = await readStore(e.slug);
     if (!s) continue;
-    stores.push({ slug: s.slug, name: s.name, status: statusOf(s), live: s.live, spot: s.out.spot ?? null, spent: s.spentCents, steps: s.steps, createdAt: s.createdAt });
+    const v = await readOwnerVisits(s.slug);
+    stores.push({ slug: s.slug, name: s.name, status: statusOf(s), live: s.live, spot: s.out.spot ?? null, spent: s.spentCents, steps: s.steps, createdAt: s.createdAt,
+      owner: { logins: v.logins, visits: v.visits, lastLogin: v.lastLogin, lastVisit: v.lastVisit } });
   }
   return ok({ stores });
 }

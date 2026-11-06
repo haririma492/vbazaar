@@ -7,7 +7,19 @@ import { STEPS } from "@/lib/stores/store";
 import { getJson } from "./upload";
 import { Bi, Card, KEY, QUIET, Said } from "./ui";
 
-type Row = { slug: string; name: { en: string; fa: string }; status: { en: string; fa: string; tone: string }; live: boolean; spot: string | null; spent: number; steps: Record<string, { state: string }> };
+type Row = { slug: string; name: { en: string; fa: string }; status: { en: string; fa: string; tone: string }; live: boolean; spot: string | null; spent: number; steps: Record<string, { state: string }>; owner?: Owner };
+type Owner = { logins: number; visits: number; lastLogin: string | null; lastVisit: string | null };
+
+/** "3 h ago" — when the owner was last here. */
+function ago(at: string | null): string {
+  if (!at) return "never";
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(at)) / 60_000));
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} h ago`;
+  return `${Math.round(h / 24)} days ago`;
+}
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };
 
@@ -33,6 +45,22 @@ export default function StoresList() {
         </div>
       </header>
       <Said text={err} />
+      {/* How the owners use their pages (owner, 2026-11-06: "count store owners using their password and visiting
+          their page"). A visit is a sitting: the page is open, then 30 min with nothing. The operator is never counted. */}
+      {rows && rows.length > 0 && (() => {
+        const o = rows.map((r) => r.owner);
+        const logins = o.reduce((a, x) => a + (x?.logins ?? 0), 0), visits = o.reduce((a, x) => a + (x?.visits ?? 0), 0);
+        const came = o.filter((x) => (x?.visits ?? 0) > 0).length;
+        return (
+          <Card>
+            <Bi fa="صاحبان فروشگاه‌ها" en="Store owners" className="text-[15px] font-bold text-amber-100" />
+            <p dir="ltr" className="mt-1 text-left text-[13px] text-white/70">
+              {came} of {rows.length} owners have opened their page · {logins} sign-ins with the password · {visits} visits in all
+            </p>
+            <p dir="ltr" className="mt-0.5 text-left text-[11px] text-white/40">A visit counts once, then again after 30 min away. Your own visits (operator) are not counted. Counting started 6 Nov 2026.</p>
+          </Card>
+        );
+      })()}
       {rows && rows.length === 0 && <Card><Bi fa="هنوز فروشگاهی نیست." en="No stores yet. «New store» asks its questions one at a time." /></Card>}
       {rows?.map((r) => {
         const done = STEPS.filter((n) => r.steps[n]?.state === "done").length;
@@ -45,6 +73,9 @@ export default function StoresList() {
               </div>
               <p dir="ltr" className="mt-1 text-left text-[12px] text-white/45">
                 {done}/{STEPS.length} steps · {r.spot ? `hallway ${r.spot}` : "no spot yet"} · AI ${(r.spent / 100).toFixed(2)}
+              </p>
+              <p dir="ltr" className={`mt-0.5 text-left text-[12px] ${r.owner?.visits ? "text-sky-200/80" : "text-white/35"}`}>
+                Owner: {r.owner?.logins ?? 0} sign-ins · {r.owner?.visits ?? 0} visits · last here {ago(r.owner?.lastVisit ?? null)}
               </p>
             </Card>
           </a>

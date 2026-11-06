@@ -75,6 +75,12 @@ plan and the Managed Agents decision are in
   - `/stores/areas` covers outside, the lobby and the hallway in walking
     order (each walk carries on into the next, `Walk.next`), plus the
     hallway's door spots, marked on its walk with `?spots=1`.
+- **Owners' visits are counted** (owner, 2026-11-06: *"we need to count store owners using their password and
+  visiting their page"*, *"lets add that statistics to vbazaar.app/stores"*): each sign-in with the store's
+  password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit
+  counts once, then again after 30 min away; the operator is never counted). `stores/<slug>/owner-visits.json`
+  (`lib/stores/ownerVisits.ts`, rule in `ownerVisitsRules.ts`); shown on `/stores`, a total at the top and a line
+  per store. Counting started 2026-11-06; nothing before it was recorded.
 - **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,
   3840×1920 or larger, 25 fps, 8-bit, H.264 or H.265; owner's laptop could not
   export 8K, 2026-11-03). The crew makes its own web and phone copies, so the

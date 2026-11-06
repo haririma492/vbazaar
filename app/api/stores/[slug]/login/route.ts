@@ -11,6 +11,7 @@ import { SLUG_RE } from "@/lib/stores/store";
 import { readStore } from "@/lib/stores/bucket";
 import { checkPassword, cookieName, ownerCookie } from "@/lib/stores/auth";
 import { fail, ok } from "@/lib/stores/http";
+import { recordOwner } from "@/lib/stores/ownerVisits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     await sleep(800);
     return fail(401, "That password is not this store's. · رمز درست نیست.");
   }
+  // Counted for the operator's list (`/stores`): a sign-in with the store's password.
+  recordOwner(s.slug, "login");
   const c = ownerCookie(s.slug);
   const res = ok();
   res.cookies.set(c.name, c.value, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: c.maxAge });

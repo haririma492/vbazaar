@@ -46,6 +46,7 @@ import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
+import { recordOwner } from "@/lib/stores/ownerVisits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -66,6 +67,8 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   const o = await open(req, params.slug);
   if ("error" in o) return o.error;
   kick();
+  // The owner opening (or keeping open) their page: counted once a sitting (`lib/stores/ownerVisits.ts`). Never the operator.
+  if (o.who === "owner") recordOwner(o.s.slug, "visit");
   const c = await readCatalogue(sceneOf(o.s.slug)).catch(() => null);
   const walk = o.s.out.walk ? (await readWalks().catch(() => null))?.walks[o.s.out.walk] : undefined;
   const base = r2Config().publicBase;
