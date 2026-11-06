@@ -198,6 +198,12 @@ export type Walk = {
    */
   audio?: string;
   /**
+   * The store's music, up to `MAX_TRACKS` keys like `audio`'s (owner, 2026-11-06: "lets operator to add upto 3
+   * .mp3 music to the store walk that should be played uninterrupted one after another in the same order music
+   * 1, 2, 3"): played 1 → 2 → 3, then from 1 again. When set it is the walk's sound and `audio` is not used.
+   */
+  playlist?: string[];
+  /**
    * Bumped by each cut of the video (`cut.ts`): the file keeps its name but
    * changes, and files are cached "forever" by name, so the player asks for
    * `<file>?r=<rev>`.
@@ -487,6 +493,11 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       if (typeof r.tagsFrom === "number" && Number.isFinite(r.tagsFrom) && r.tagsFrom > 0) walk.tagsFrom = r.tagsFrom;
       else problems.push(`${key}: «tagsFrom» must be seconds into the video.`);
     }
+    if (r.playlist !== undefined && r.playlist !== null) {
+      if (Array.isArray(r.playlist) && r.playlist.length <= MAX_TRACKS && r.playlist.every((k) => isAudioKey(k))) {
+        if (r.playlist.length) walk.playlist = r.playlist as string[];
+      } else problems.push(`${key}: «playlist» is up to ${MAX_TRACKS} sounds uploaded for a walk.`);
+    }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
       else problems.push(`${key}: «audio» is not a sound uploaded for a walk.`);
@@ -620,6 +631,7 @@ export function keysNamed(w: Walks): string[] {
   for (const walk of Object.values(w.walks)) {
     for (const d of walk.doors) if (d.to) s.add(d.to);
     if (walk.audio) s.add(walk.audio);
+    for (const a of walk.playlist ?? []) s.add(a);
   }
   if (w.start) s.add(w.start);
   return [...s];
@@ -1131,6 +1143,30 @@ export function setTagsFrom(w: Walks, key: string, t: number | null): Walks {
   return withWalk(w, key, (walk) => {
     const { tagsFrom: _drop, ...rest } = walk;
     return t && t > 0 ? { ...rest, tagsFrom: Math.round(t * 100) / 100 } : rest;
+  });
+}
+
+/** At most this many tracks of music on a walk (owner, 2026-11-06). */
+export const MAX_TRACKS = 3;
+/** What a walk plays, in order: its playlist, else its one looped sound, else nothing. */
+export function musicOf(walk: Walk | null | undefined): string[] {
+  if (!walk) return [];
+  if (walk.playlist?.length) return walk.playlist.slice(0, MAX_TRACKS);
+  return walk.audio ? [walk.audio] : [];
+}
+/**
+ * Track `slot` (0 = music 1) set to `audio`, or taken out (null). The walk's old single `audio` becomes music 1
+ * the first time, so nothing it played is lost. A gap closes up (music 3 of two plays third → second).
+ */
+export function setTrack(w: Walks, key: string, slot: number, audio: string | null): Walks {
+  if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_TRACKS) return w;
+  return withWalk(w, key, (walk) => {
+    const list: Array<string | null> = musicOf(walk).slice();
+    while (list.length <= slot) list.push(null);
+    list[slot] = audio;
+    const playlist = list.filter((x): x is string => Boolean(x));
+    const { audio: _a, playlist: _p, ...rest } = walk;
+    return playlist.length ? { ...rest, playlist } : rest;
   });
 }
 

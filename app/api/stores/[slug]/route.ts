@@ -9,7 +9,8 @@
  *        complete / abort with that key. Complete records it and the crew starts on it.
  *        kind: video (operator only) · sheet · photo · door
  *   POST { action: "music", type, size }        → { key, url, headers } (PUT the .mp3/.m4a there)
- *   POST { action: "musicDone", key }           (the walk plays it, looped)
+ *   POST { action: "musicDone", key, slot }     (music 1–3: slot 0–2; played in order, then from 1)
+ *   POST { action: "musicClear", slot }         (that track taken out)
  *   POST { action: "message", text }            (to the crew; answered on the page)
  *   POST { action: "password", password }       (a new password for the store)
  *   POST { action: "publish" | "unpublish" }    (operator: shoppers see the store, or not)
@@ -23,6 +24,7 @@ import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
 import { presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
+import { MAX_TRACKS, musicOf, setTrack } from "@/lib/splats/walks";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
   type StepName, type UploadKind,
@@ -63,7 +65,10 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   if ("error" in o) return o.error;
   kick();
   const c = await readCatalogue(sceneOf(o.s.slug)).catch(() => null);
+  const walk = o.s.out.walk ? (await readWalks().catch(() => null))?.walks[o.s.out.walk] : undefined;
+  const base = r2Config().publicBase;
   return ok({
+    music: musicOf(walk).map((key) => ({ key, url: base ? `${base}/${key}` : null })),
     who: o.who,
     store: forPage(o.s),
     status: statusOf(o.s),
@@ -126,9 +131,18 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "musicDone") {
     const key = String(body.key ?? "");
     if (!isWalkAudioKey(key) || !key.startsWith(`scenes/${sceneOf(s.slug)}/audio/`) || !s.out.walk) return fail(400, "Not this store's music.");
+    const slot = body.slot === undefined ? 0 : Number(body.slot);
+    if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_TRACKS) return fail(400, `Music 1 to ${MAX_TRACKS}.`);
     const walks = await readWalks();
-    const w = walks.walks[s.out.walk] ?? { doors: [] };
-    await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: { ...w, audio: key } } }, walks);
+    const base = walks.walks[s.out.walk] ? walks : { ...walks, walks: { ...walks.walks, [s.out.walk]: { doors: [] } } };
+    await writeWalks(setTrack(base, s.out.walk, slot, key), walks);
+    return ok();
+  }
+  if (body.action === "musicClear") {
+    const slot = Number(body.slot);
+    if (!s.out.walk || !Number.isInteger(slot) || slot < 0 || slot >= MAX_TRACKS) return fail(400, `Music 1 to ${MAX_TRACKS}.`);
+    const walks = await readWalks();
+    if (walks.walks[s.out.walk]) await writeWalks(setTrack(walks, s.out.walk, slot, null), walks);
     return ok();
   }
 

@@ -66,8 +66,9 @@ function writeOn(on: boolean) {
   }
 }
 
-export function WalkSound({ audioKey, srcOf, specials = false }: {
-  audioKey: string | null;
+export function WalkSound({ audioKeys, srcOf, specials = false }: {
+  /** What the walk plays, in order (`musicOf`): one looped, or up to 3 one after another, then from the first. */
+  audioKeys: string[];
   srcOf: (key: string) => Promise<string | null>;
   /** The walk has items on special, which speak: the key is shown for them too. */
   specials?: boolean;
@@ -78,30 +79,48 @@ export function WalkSound({ audioKey, srcOf, specials = false }: {
 
   useEffect(() => setOn(readOn()), []);
 
-  // The walk's sound: a new walk (a door, the next aisle) swaps it.
+  const listKey = audioKeys.join("|");
+  const audioKey = audioKeys[0] ?? null;
+  // The walk's sound: a new walk (a door, the next aisle) swaps it. Several tracks (owner, 2026-11-06: "played
+  // uninterrupted one after another in the same order music 1, 2, 3"): the next is loaded while one plays and
+  // starts the moment it ends; after the last, the first again.
   useEffect(() => {
-    if (!audioKey) return;
+    const keys = listKey ? listKey.split("|") : [];
+    if (!keys.length) return;
     let gone = false;
-    const el = new Audio();
-    el.loop = true;
-    el.preload = "auto";
-    // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
-    el.volume = WALK_MUSIC_VOLUME;
-    audio.current = el;
-    void srcOf(audioKey).then((src) => {
-      if (gone || !src) return;
-      el.src = src;
-      if (readOn()) start(el);
+    const make = () => {
+      const el = new Audio();
+      el.preload = "auto";
+      // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
+      el.volume = WALK_MUSIC_VOLUME;
+      return el;
+    };
+    const els = keys.map(() => make());
+    let i = 0;
+    if (keys.length === 1) els[0].loop = true;
+    audio.current = els[0];
+    const onEnded = (k: number) => () => {
+      if (gone || k !== i) return;
+      i = (i + 1) % keys.length;
+      const next = els[i];
+      next.currentTime = 0;
+      audio.current = next;
+      if (readOn()) start(next);
+    };
+    const offs = els.map((el, k) => { const f = onEnded(k); el.addEventListener("ended", f); return () => el.removeEventListener("ended", f); });
+    void Promise.all(keys.map((k) => srcOf(k))).then((srcs) => {
+      if (gone) return;
+      srcs.forEach((src, k) => { if (src) els[k].src = src; });
+      if (srcs[0] && readOn()) start(els[0]);
     });
     return () => {
       gone = true;
-      el.pause();
-      el.removeAttribute("src");
-      el.load();
-      if (audio.current === el) audio.current = null;
+      offs.forEach((f) => f());
+      for (const el of els) { el.pause(); el.removeAttribute("src"); el.load(); }
+      audio.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioKey, srcOf]);
+  }, [listKey, srcOf]);
 
   function start(el: HTMLAudioElement) {
     el.play().then(() => setWaiting(false), () => {

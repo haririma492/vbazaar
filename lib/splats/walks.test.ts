@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   doorPhotoOf,
   DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, itemHitAt, entryOf, faceOf, rightShelfOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, itemHitAt, entryOf, faceOf, rightShelfOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setTrack, musicOf, MAX_TRACKS, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -589,4 +589,25 @@ test("the turn is 90° right whatever the products (owner, 2026-11-05); the meas
   const walk = { doors: [], items: [{ id: "a", label: { en: "A" }, pins: shelf }] };
   assert.equal(faceOf(walk, "scenes/store-x/walk.mp4"), Math.PI / 2);
   assert.ok(rightShelfOf(walk)! < Math.PI / 4);
+});
+
+test("a store walk plays up to 3 tracks of music, in order (owner, 2026-11-06)", () => {
+  const K = "scenes/store-ax/walk-1.mp4";
+  const A = "scenes/store-ax/audio/sound-20261106-100000.mp3", B = "scenes/store-ax/audio/sound-20261106-100100.mp3", C = "scenes/store-ax/audio/sound-20261106-100200.mp3";
+  // The old single sound becomes music 1.
+  let w = setAudio(emptyWalks(), K, A);
+  w = setTrack(w, K, 1, B);
+  assert.deepEqual(musicOf(walkOf(w, K)), [A, B]);
+  assert.equal(walkOf(w, K)!.audio, undefined);
+  w = setTrack(w, K, 2, C);
+  assert.deepEqual(musicOf(walkOf(w, K)), [A, B, C]);
+  assert.deepEqual(parseWalks(JSON.parse(JSON.stringify(w))), w);
+  assert.ok(keysNamed(w).includes(C));
+  // Taken out: the gap closes up; all out: no music.
+  w = setTrack(w, K, 1, null);
+  assert.deepEqual(musicOf(walkOf(w, K)), [A, C]);
+  assert.equal(setTrack(w, K, MAX_TRACKS, B), w, "no fourth slot");
+  w = setTrack(setTrack(w, K, 0, null), K, 0, null);
+  assert.deepEqual(musicOf(walkOf(w, K)), []);
+  assert.equal(checkWalks({ walks: { [K]: { doors: [], playlist: [A, B, C, A] } } }).problems.length, 1, "four is too many");
 });

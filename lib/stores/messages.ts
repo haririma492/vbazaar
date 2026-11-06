@@ -161,7 +161,7 @@ function toolsFor(t: Target, who: ThreadEntry["from"], did: string[]) {
         const walks = await readWalks();
         const w = t.walk ? walks.walks[t.walk] : undefined;
         if (!w || !t.walk) return "The walk is not made yet.";
-        const { audio: _, ...rest } = w;
+        const { audio: _, playlist: _p, ...rest } = w;
         await writeWalks({ ...walks, walks: { ...walks.walks, [t.walk]: rest } }, walks);
         did.push("the music is off");
         return "Done.";

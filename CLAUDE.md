@@ -650,6 +650,12 @@ quality and choice to break away and enter in a shop. (period)"*
 - **Saraye Bamdad was found before sightings were saved** (2026-11-04), so it
   has no `sightings.json`: its tour and photos stand on its lights (145
   products); the other 157 found then have no place recorded.
+- **A store walk plays up to 3 tracks of music, in order** (owner, 2026-11-06: *"lets operator to add upto 3
+  .mp3 music to the store walk that should be played uninterrupted one after another in the same order music 1,
+  2, 3"*): `Walk.playlist` (`MAX_TRACKS`, `musicOf`, `setTrack` in `lib/splats/walks.ts`), three slots on the
+  store page («Music 1/2/3», `MusicCard.tsx`, actions `musicDone {slot}` / `musicClear`). `WalkSound` loads every
+  track, starts the next the moment one ends, and goes back to 1 after the last; one track loops as before. The
+  old single `audio` becomes music 1 the first time a slot is set.
 - **Both tours open on the store's door photo for 7 s** (owner, 2026-11-06: *"start both free tour and shelf tour
   with the photo of the front of the door for 7 sec"*; it was 4 s, Free Tour only): `DOOR_PHOTO_MS` in
   `lib/splats/walks.ts`, `doorPhotoOf` for both.

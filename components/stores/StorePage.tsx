@@ -24,7 +24,7 @@ import { useCallback, useEffect, useState } from "react";
 import { BUDGET_CENTS, STEPS, STEP_SAY, isBookStore, type StoreRecord } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
 import { formatCents } from "@/lib/splats/catalogue";
-import { getJson, postJson, uploadInParts, uploadMusic } from "./upload";
+import { getJson, postJson, uploadInParts } from "./upload";
 import { UPLOAD_CARDS } from "./Intake";
 import Products from "./Products";
 import RouteCard from "./RouteCard";
@@ -34,6 +34,7 @@ import MapCard from "./MapCard";
 import TitlesCard from "./TitlesCard";
 import RefreshAllCard from "./RefreshAllCard";
 import WalkFrame from "./WalkFrame";
+import MusicCard, { type Track } from "./MusicCard";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
 type Page = {
@@ -42,6 +43,7 @@ type Page = {
   status: { en: string; fa: string; tone: string };
   products: Product[];
   walkUrl: string | null;
+  music?: Track[];
 };
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };
@@ -247,11 +249,7 @@ export default function StorePage({ slug }: { slug: string }) {
           send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: "raw" }, file, onProgress); await load(); }}
         />
         {page.walkUrl && (
-          <FilePick
-            fa="موسیقی پس‌زمینه فروشگاه" en="Background music for the store's walk (.mp3 / .m4a)" accept=".mp3,.m4a,audio/mpeg,audio/mp4"
-            hint="Only music you have the right to use. It loops while shoppers are in the store; «stop the music» in the message box turns it off."
-            send={async (file) => { await uploadMusic(api, {}, file); await load(); }}
-          />
+          <MusicCard api={api} tracks={page.music ?? []} reload={load} />
         )}
       </Card>}
 
