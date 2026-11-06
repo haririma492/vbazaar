@@ -54,7 +54,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     const byN = new Map<number, Product>((cat?.products ?? []).map((p) => [p.n, p]));
     matching = Object.entries(verdicts).map(([n, v]) => {
       const p = byN.get(Number(n));
-      return { n: Number(n), seen: p?.seen ?? "", photo: p?.more?.[0] ?? p?.photo ?? null, matched: Boolean(v.web), name: v.web ? p?.en ?? "" : "", confidence: v.confidence, why: v.why };
+      return { n: Number(n), seen: p?.seen ?? "", photo: p?.more?.[0] ?? p?.photo ?? null, matched: Boolean(v.web) && Boolean(p?.web), name: v.web ? p?.en ?? "" : "", confidence: v.confidence, why: v.why, unsure: !v.web && v.confidence < 0.8 && !v.why.startsWith("no website product"), opus: v.model === "claude-opus-5-5" };
     }).sort((a, b) => Number(b.matched) - Number(a.matched) || a.n - b.n);
   }
   return ok({ who: o.who, website: o.s.website ?? null, name: o.s.name, run: shown, summary: summarize(run?.products ?? []), matching });
@@ -64,9 +64,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   const o = await open(req, params.slug);
   if ("error" in o) return o.error;
   if (o.who !== "operator") return fail(403, "The operator starts the explorer.");
-  const body = (await req.json().catch(() => ({}))) as { action?: string; fresh?: boolean; readDisallowed?: boolean };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; fresh?: boolean; readDisallowed?: boolean; opus?: boolean };
   if (body.action === "integrate") return ok({ note: await integrateAgain(o.s.slug) });
-  if (body.action === "rematch") return ok({ note: (await rematch(o.s.slug)) || "Nothing to compare." });
+  if (body.action === "rematch") {
+    // In the background: comparing a few dozen products takes minutes, longer than a request may wait.
+    void rematch(o.s.slug, body.opus === true).catch((e) => console.error("[website] rematch", e));
+    return ok({ note: "Comparing… the verdicts below fill in over the next minutes." });
+  }
   if (body.action !== "run") return fail(400, "Unknown action.");
   const r = await startWebsite(o.s.slug, {
     fresh: body.fresh === true,

@@ -17,7 +17,7 @@ import { getJson, postJson } from "./upload";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
 type Summary = { products: number; unlisted?: number; priced: number; onSale: number; photos: number; withoutPhoto: number; described: number; farsi: number; categories: string[] };
-type Match = { n: number; seen: string; photo: string | null; matched: boolean; name: string; confidence: number; why: string };
+type Match = { n: number; seen: string; photo: string | null; matched: boolean; name: string; confidence: number; why: string; unsure?: boolean; opus?: boolean };
 type Page = { who: "owner" | "operator"; website: string | null; name: { en: string; fa: string }; run: WebsiteRun | null; summary: Summary; matching?: Match[] | null };
 
 const money = (c: number | null, cur = "CAD") => (c === null ? "—" : `$${(c / 100).toFixed(2)}${cur && cur !== "CAD" ? ` ${cur}` : ""}`);
@@ -250,10 +250,20 @@ export default function WebsitePage({ slug }: { slug: string }) {
           </p>
           <button type="button" className={`${QUIET} mt-2`} disabled={busy} onClick={async () => {
             setBusy(true); setSaid(null);
-            try { const r = await postJson<{ note: string }>(api, { action: "rematch" }); setSaid({ ok: true, text: r.note }); await load(); }
+            try { const r = await postJson<{ note: string }>(api, { action: "rematch" }); setSaid({ ok: true, text: r.note }); setTimeout(load, 60000); }
             catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
             finally { setBusy(false); }
           }}>Compare the unmatched again (a cent or two of the store&apos;s AI budget)</button>
+          {page.matching.some((m) => m.unsure && !m.opus) && (
+            <button type="button" className={`${QUIET} ms-2 mt-2`} disabled={busy} onClick={async () => {
+              const n = page.matching!.filter((m) => m.unsure && !m.opus).length;
+              if (!window.confirm(`Opus looks again at the ${n} unsure ones: about $${(n * 0.02).toFixed(2)} of the store's AI budget.`)) return;
+              setBusy(true); setSaid(null);
+              try { const r = await postJson<{ note: string }>(api, { action: "rematch", opus: true }); setSaid({ ok: true, text: r.note }); setTimeout(load, 60000); }
+              catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
+              finally { setBusy(false); }
+            }}>Look again with Opus at the {page.matching.filter((m) => m.unsure && !m.opus).length} unsure ones (~${(page.matching.filter((m) => m.unsure && !m.opus).length * 0.02).toFixed(2)})</button>
+          )}
           <details className="mt-2">
             <summary className="cursor-pointer text-[13px]">Every verdict</summary>
             <ul dir="ltr" className="mt-2 space-y-1.5 text-left text-[12px]">
@@ -264,7 +274,7 @@ export default function WebsitePage({ slug }: { slug: string }) {
                     <img src={m.photo} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded bg-white object-contain" />
                   )}
                   <span className={m.matched ? "text-emerald-200" : "text-white/60"}>
-                    #{m.n} {m.seen || "—"} → {m.matched ? m.name : "no match"} <span className="text-white/40">({Math.round(m.confidence * 100)}%: {m.why})</span>
+                    #{m.n} {m.seen || "—"} → {m.matched ? m.name : "no match"} <span className="text-white/40">({Math.round(m.confidence * 100)}%{m.opus ? ", Opus" : ""}: {m.why})</span>
                   </span>
                 </li>
               ))}

@@ -9,11 +9,11 @@
 import { readCatalogue, readMastersText, readWalks, writeCatalogue, writeMastersJson } from "@/lib/splats/r2";
 import { readStore, updateStore } from "./bucket";
 import { BUDGET_CENTS, sceneOf } from "./store";
-import { OverBudget, sameProduct, type Purse } from "./ai";
+import { MODEL, OverBudget, sameProduct, type Purse } from "./ai";
 import { jpegOf } from "./media";
 import { MATCH_SURE, applyMatches, shortlist } from "./websiteMatchRules";
 
-export type Verdict = { into: number | null; web: string | null; confidence: number; why: string; at: string };
+export type Verdict = { into: number | null; web: string | null; confidence: number; why: string; at: string; model?: string };
 const memoKey = (slug: string) => `stores/${slug}/website-match.json`;
 
 async function bytesOf(url: string | undefined, px: number): Promise<Uint8Array | null> {
@@ -34,7 +34,7 @@ function purse(slug: string, spentAtStart: number): Purse {
   };
 }
 
-export async function matchVideoToWebsite(slug: string, say: (note: string) => Promise<void> = async () => undefined): Promise<string> {
+export async function matchVideoToWebsite(slug: string, say: (note: string) => Promise<void> = async () => undefined, model?: string): Promise<string> {
   const store = sceneOf(slug);
   const c = await readCatalogue(store);
   if (!c) return "";
@@ -63,10 +63,10 @@ export async function matchVideoToWebsite(slug: string, say: (note: string) => P
     if (!seen) continue;
     try {
       const photos = await Promise.all(cands.map((p) => bytesOf(p.photo, 320)));
-      const r = await sameProduct(wallet, { jpeg: seen, looks: v.seen ?? "" }, cands.map((p, k) => ({ jpeg: photos[k], name: p.en || p.fa || `#${p.n}`, price: p.priceCents === null ? "" : `$${(p.priceCents / 100).toFixed(2)}` })));
+      const r = await sameProduct(wallet, { jpeg: seen, looks: v.seen ?? "" }, cands.map((p, k) => ({ jpeg: photos[k], name: p.en || p.fa || `#${p.n}`, price: p.priceCents === null ? "" : `$${(p.priceCents / 100).toFixed(2)}` })), model);
       asked++;
       const pick = r.choice !== null && r.confidence >= MATCH_SURE ? cands[r.choice - 1] : null;
-      memo[String(v.n)] = { into: pick?.n ?? null, web: pick?.web ?? null, confidence: r.confidence, why: r.why, at: new Date().toISOString() };
+      memo[String(v.n)] = { into: pick?.n ?? null, web: pick?.web ?? null, confidence: r.confidence, why: r.why, at: new Date().toISOString(), ...(model ? { model } : {}) };
       if (pick) matches.set(v.n, pick.n);
     } catch (e) {
       if (e instanceof OverBudget) { stopped = " Stopped: the store's AI budget is used up."; break; }
@@ -92,10 +92,14 @@ export async function readVerdicts(slug: string): Promise<Record<string, Verdict
   try { const t = await readMastersText(memoKey(slug)); return t ? JSON.parse(t) : {}; } catch { return {}; }
 }
 
-/** «Compare the unmatched again»: the «none» verdicts forgotten (the matches stay), then the matcher runs. */
-export async function rematch(slug: string): Promise<string> {
+/**
+ * «Compare the unmatched again»: the «none» verdicts forgotten (the matches stay), then the matcher runs. `opus`: only
+ * the unsure ones (a «none» answered below 0.8, with candidates to compare), looked at by Opus, the stronger eye.
+ */
+export async function rematch(slug: string, opus = false): Promise<string> {
   const memo = await readVerdicts(slug);
-  const kept = Object.fromEntries(Object.entries(memo).filter(([, v]) => v.into !== null));
+  const forget = (v: Verdict) => v.into === null && (!opus || (v.confidence < 0.8 && v.model !== MODEL && !v.why.startsWith("no website product")));
+  const kept = Object.fromEntries(Object.entries(memo).filter(([, v]) => !forget(v)));
   await writeMastersJson(memoKey(slug), kept);
-  return (await matchVideoToWebsite(slug)).trim();
+  return (await matchVideoToWebsite(slug, undefined, opus ? MODEL : undefined)).trim();
 }
