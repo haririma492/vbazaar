@@ -2093,6 +2093,8 @@ export default function Walk360() {
   /** An aisle's name, from its shelf id: «Aisle 3a» (the walk's title is the shop's name, the same on every aisle). */
   const aisleName = (i: number) => (aisles[i] ? `Aisle ${aisles[i].shelf.replace(/^0+(?=\d)/, "")}` : "");
 
+  /** Frames a second the walk plays at, at speed `v` (m/s) on this walk. */
+  const fpsOf = (v: number) => Math.round(FILM_FPS * Math.abs(driveRate(v, false, walkOf(walks, view.key)?.pace)));
   return (
     <div className="fixed inset-0 bg-black">
       <div ref={host} className="absolute inset-0" />
@@ -2164,6 +2166,8 @@ export default function Walk360() {
             </div>
             {/* The speed bar (owner, 2026-11-04): slow end a creep, fast end a brisk walk. Moving it while stopped starts the walk. */}
             <label className="flex h-9 items-center gap-2 rounded-full border border-white/25 bg-black/60 px-3" title="سرعت · Speed">
+              {/* "سرعت حرکت" (owner, 2026-11-06: 'add farsi "speed of move" SORATE HAREKAT'). */}
+              <span dir="rtl" className="shrink-0 whitespace-nowrap text-[11px] text-white/80">سرعت حرکت</span>
               <span aria-hidden="true" className="text-[15px]">🐢</span>
               {/* ⚠️ THE NUMBERS AND THE RECOMMENDED MARK (owner, 2026-11-05: "add some standard number such as frame/sec
                   and lets set a recommended or default line that users better use"). The mark is `SPEED_DEFAULT`
@@ -2195,8 +2199,9 @@ export default function Walk360() {
               <span aria-hidden="true" className="text-[15px]">🐇</span>
               <button type="button" title="Recommended speed · سرعت پیشنهادی" onClick={() => { setSpeed(SPEED_DEFAULT); try { localStorage.setItem(SPEED_KEY, String(SPEED_DEFAULT)); } catch { /* this visit only */ } }}
                 className={`shrink-0 whitespace-nowrap text-right text-[10px] leading-tight tabular-nums ${Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "text-emerald-200" : "text-white/70"}`}>
-                {speed.toFixed(2)} m/s · {Math.round(FILM_FPS * Math.abs(driveRate(speed, false, walkOf(walks, view.key)?.pace)))} fps
-                <br />{Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "✓ recommended" : `▮ recommended ${SPEED_DEFAULT.toFixed(2)}`}
+                {/* Only frames a second (owner, 2026-11-06: "in rate only keep frame per sec (fps) remove the other rate"). */}
+                {fpsOf(speed)} fps
+                <br />{Math.abs(speed - SPEED_DEFAULT) < 0.005 ? "✓ recommended" : `▮ recommended ${fpsOf(SPEED_DEFAULT)} fps`}
               </button>
             </label>
           </div>
