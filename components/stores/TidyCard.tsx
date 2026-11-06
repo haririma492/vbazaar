@@ -4,8 +4,9 @@
  * THE TIDY AGENT on the store's page (owner, 2026-11-06: "an agent that identify ugly unfitted junk or object and
  * replace them with some products … at the end of store page there has to be a list of photos of those removed
  * objects"). The operator starts it (it spends from the store's budget, at most $2, asked first); the list under it
- * is every object hidden, as it was filmed, beside what stands in its place now. Each one: «Bring it back» or
- * «Another product», one question each (`lib/stores/tidy.ts`).
+ * is every object hidden, as it was filmed, beside what stands in its place now. Each one, for the operator:
+ * «Bring it back» or «Another product», one question each (`lib/stores/tidy.ts`). The owner sees the card and its
+ * list, read only (owner, 2026-11-06: "let the owner see the result of this feature but not able to run it").
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -52,7 +53,6 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
     } catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
   }
 
-  if (!operator && !st?.covers.length) return null;
   return (
     <Card>
       <div className="flex flex-wrap items-center gap-3">
@@ -81,7 +81,7 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
                 </div>
                 <div className="mt-1 text-[13px]"><b>{c.what}</b> <span className="text-white/45">at {clock(c.t)}</span></div>
                 <div className="text-[12px] text-white/60">Now: #{c.n} {nameOf(c.n)}, {BASE[c.base]}</div>
-                {ask?.id === c.id ? (
+                {!operator ? null : ask?.id === c.id ? (
                   <div className="mt-2 space-y-2">
                     {ask.kind === "back" ? (
                       <p className="text-[13px]">Bring «{c.what}» back into the walk, as it was filmed? Later runs will leave it.</p>
@@ -106,6 +106,9 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
             ))}
           </ul>
         </>
+      )}
+      {st && !st.run && !st.covers.length && (
+        <p className="mt-2 text-[13px] text-white/55">Not run on this store yet. · هنوز اجرا نشده است.</p>
       )}
       {said && <Said ok={said.ok} text={said.text} />}
     </Card>

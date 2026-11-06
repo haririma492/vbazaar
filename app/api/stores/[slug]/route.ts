@@ -24,8 +24,8 @@
  *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
  *   POST { action: "tidy" }                     the Tidy agent (operator; spends from the store's budget, at most $2): clutter hidden behind products
  *   POST { action: "tidyState" }                → { run, covers, ceiling }: the run, and every object hidden (its photo, what stands there)
- *   POST { action: "tidyDrop", id }             «Bring it back»: that cover off, and the spot left alone by later runs
- *   POST { action: "tidyProduct", id, n }       product #n stands in that cover's place instead
+ *   POST { action: "tidyDrop", id }             «Bring it back» (operator): that cover off, and the spot left alone by later runs
+ *   POST { action: "tidyProduct", id, n }       product #n stands in that cover's place instead (operator)
  *   PUT ?key&uploadId&partNumber                (a part through this server, when the browser may not PUT to R2)
  */
 import { mediaPath } from "@/lib/splats/media";
@@ -454,10 +454,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     return ok(await tidyForPage(s.slug, s.out.walk));
   }
   if (body.action === "tidyDrop") {
+    // The owner sees the Tidy agent's result; changing it is the operator's (owner, 2026-11-06).
+    if (who !== "operator") return fail(403, "The operator only.");
     if (typeof body.id !== "string" || !body.id) return fail(400, "Which cover?");
     return ok({ note: await dropCover(s.slug, body.id) });
   }
   if (body.action === "tidyProduct") {
+    if (who !== "operator") return fail(403, "The operator only.");
     const n = Number(body.n);
     if (typeof body.id !== "string" || !body.id || !Number.isInteger(n) || n < 1) return fail(400, "Which cover, and which product number?");
     return ok({ note: await coverProduct(s.slug, body.id, n) });
