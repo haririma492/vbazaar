@@ -6,9 +6,38 @@ import { useEffect, useState } from "react";
 import { STEPS } from "@/lib/stores/store";
 import { getJson } from "./upload";
 import { Bi, Card, KEY, QUIET, Said } from "./ui";
+import { stayOf, type OwnerSession } from "@/lib/stores/ownerVisitsRules";
+
+/** «Thu 6 Nov, 14:05» — when a visit began, on the operator's clock. */
+const when = (at: string) => new Date(at).toLocaleString(undefined, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+
+/**
+ * ONE LINE PER VISIT, WITH ITS STAY (owner, 2026-11-06: "create one record per visit and indicate the stay on the
+ * site on each instance"). Newest first; the stay is to the minute (the page is seen every 8 s, stored once a minute).
+ */
+function Visits({ sessions }: { sessions: OwnerSession[] }) {
+  if (!sessions.length) return null;
+  return (
+    <details className="mt-1 px-4 pb-3 text-[12px]" dir="ltr">
+      <summary className="cursor-pointer text-left text-sky-200/80">Visits by the owner ({sessions.length}) · بازدیدها</summary>
+      <table className="mt-1 w-full text-left text-white/75">
+        <thead className="text-white/45"><tr><th className="py-0.5 pr-3 font-normal">Came</th><th className="py-0.5 pr-3 font-normal">Stayed</th><th className="py-0.5 font-normal">Signed in</th></tr></thead>
+        <tbody>
+          {sessions.map((v) => (
+            <tr key={v.start} className="border-t border-white/5">
+              <td className="py-0.5 pr-3">{when(v.start)}</td>
+              <td className="py-0.5 pr-3">{stayOf(v)}</td>
+              <td className="py-0.5">{v.login ? "with the password" : "already signed in"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
+  );
+}
 
 type Row = { slug: string; name: { en: string; fa: string }; status: { en: string; fa: string; tone: string }; live: boolean; spot: string | null; spent: number; steps: Record<string, { state: string }>; owner?: Owner };
-type Owner = { logins: number; visits: number; lastLogin: string | null; lastVisit: string | null };
+type Owner = { logins: number; visits: number; lastLogin: string | null; lastVisit: string | null; sessions?: OwnerSession[] };
 
 /** "3 h ago" — when the owner was last here. */
 function ago(at: string | null): string {
@@ -57,7 +86,7 @@ export default function StoresList() {
             <p dir="ltr" className="mt-1 text-left text-[13px] text-white/70">
               {came} of {rows.length} owners have opened their page · {logins} sign-ins with the password · {visits} visits in all
             </p>
-            <p dir="ltr" className="mt-0.5 text-left text-[11px] text-white/40">A visit counts once, then again after 30 min away. Your own visits (operator) are not counted. Counting started 6 Nov 2026.</p>
+            <p dir="ltr" className="mt-0.5 text-left text-[11px] text-white/40">A visit counts once, then again after 30 min away; under each store, every visit with how long the owner stayed (recorded from 6 Nov 2026, the stay from this change on). Your own visits (operator) are not counted.</p>
           </Card>
         );
       })()}
@@ -65,7 +94,8 @@ export default function StoresList() {
       {rows?.map((r) => {
         const done = STEPS.filter((n) => r.steps[n]?.state === "done").length;
         return (
-          <a key={r.slug} href={`/stores/${r.slug}`} className="block">
+          <div key={r.slug}>
+          <a href={`/stores/${r.slug}`} className="block">
             <Card className="transition hover:bg-white/[0.07]">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="sk-font text-[17px] font-bold">{r.name.fa || r.name.en} <span dir="ltr" className="text-[13px] font-normal text-white/50">· {r.name.en}</span></span>
@@ -79,6 +109,8 @@ export default function StoresList() {
               </p>
             </Card>
           </a>
+          <Visits sessions={r.owner?.sessions ?? []} />
+          </div>
         );
       })}
     </div>

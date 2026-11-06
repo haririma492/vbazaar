@@ -104,7 +104,10 @@ plan and the Managed Agents decision are in
   password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit
   counts once, then again after 30 min away; the operator is never counted). `stores/<slug>/owner-visits.json`
   (`lib/stores/ownerVisits.ts`, rule in `ownerVisitsRules.ts`); shown on `/stores`, a total at the top and a line
-  per store. Counting started 2026-11-06; nothing before it was recorded.
+  per store. Counting started 2026-11-06; nothing before it was recorded. **One record per visit, with its stay**
+  (owner, 2026-11-06: *"create one record per visit and indicate the stay on the site on each instance"*):
+  `sessions` (start, end, signed in with the password or not; newest first, 200 kept), the end moved on as the page
+  polls and stored once a minute; under each store on `/stores`, «Visits by the owner» lists them (`stayOf`).
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,

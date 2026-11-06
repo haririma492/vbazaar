@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     if (!s) continue;
     const v = await readOwnerVisits(s.slug);
     stores.push({ slug: s.slug, name: s.name, status: statusOf(s), live: s.live, spot: s.out.spot ?? null, spent: s.spentCents, steps: s.steps, createdAt: s.createdAt,
-      owner: { logins: v.logins, visits: v.visits, lastLogin: v.lastLogin, lastVisit: v.lastVisit } });
+      owner: { logins: v.logins, visits: v.visits, lastLogin: v.lastLogin, lastVisit: v.lastVisit, sessions: v.sessions ?? [] } });
   }
   return ok({ stores });
 }
