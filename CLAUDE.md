@@ -653,9 +653,12 @@ quality and choice to break away and enter in a shop. (period)"*
 - **A store walk plays up to 3 tracks of music, in order** (owner, 2026-11-06: *"lets operator to add upto 3
   .mp3 music to the store walk that should be played uninterrupted one after another in the same order music 1,
   2, 3"*): `Walk.playlist` (`MAX_TRACKS`, `musicOf`, `setTrack` in `lib/splats/walks.ts`), three slots on the
-  store page («Music 1/2/3», `MusicCard.tsx`, actions `musicDone {slot}` / `musicClear`). `WalkSound` loads every
-  track, starts the next the moment one ends, and goes back to 1 after the last; one track loops as before. The
-  old single `audio` becomes music 1 the first time a slot is set.
+  store page («Music 1/2/3», `MusicCard.tsx`, actions `musicDone {slot}` / `musicClear`). `WalkSound` plays them through
+  ONE audio element: when a track ends it takes the next one's address, after the last the first again; one
+  track loops as before. The old single `audio` becomes music 1 the first time a slot is set. ⚠️ Every upload is
+  rewritten SOUND ONLY under a new key (`lib/stores/music.ts`, `soundOnly`; «musicClean» redoes a walk's
+  tracks): the owner's two MP3s carried embedded cover pictures, and with one element per track loading at
+  once Chrome and Edge crashed ("Out of Memory") on the walk.
 - **Both tours open on the store's door photo for 7 s** (owner, 2026-11-06: *"start both free tour and shelf tour
   with the photo of the front of the door for 7 sec"*; it was 4 s, Free Tour only): `DOOR_PHOTO_MS` in
   `lib/splats/walks.ts`, `doorPhotoOf` for both.

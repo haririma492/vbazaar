@@ -26,6 +26,7 @@ import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } f
 import { presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
 import { MAX_TRACKS, musicOf, setTrack } from "@/lib/splats/walks";
+import { soundOnly } from "@/lib/stores/music";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
   type StepName, type UploadKind,
@@ -134,10 +135,25 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (!isWalkAudioKey(key) || !key.startsWith(`scenes/${sceneOf(s.slug)}/audio/`) || !s.out.walk) return fail(400, "Not this store's music.");
     const slot = body.slot === undefined ? 0 : Number(body.slot);
     if (!Number.isInteger(slot) || slot < 0 || slot >= MAX_TRACKS) return fail(400, `Music 1 to ${MAX_TRACKS}.`);
+    // Sound only (embedded cover pictures left out: they crashed Chrome and Edge, 2026-11-06).
+    const clean = await soundOnly(key, sceneOf(s.slug)).catch((e) => { console.error("[music]", key, e); return key; });
     const walks = await readWalks();
     const base = walks.walks[s.out.walk] ? walks : { ...walks, walks: { ...walks.walks, [s.out.walk]: { doors: [] } } };
-    await writeWalks(setTrack(base, s.out.walk, slot, key), walks);
+    await writeWalks(setTrack(base, s.out.walk, slot, clean), walks);
     return ok();
+  }
+  if (body.action === "musicClean") {
+    // Operator: every track of the walk rewritten with its sound only (free).
+    if (who !== "operator") return fail(403, "The operator only.");
+    if (!s.out.walk) return fail(409, "No walk.");
+    const walks = await readWalks();
+    const tracks = musicOf(walks.walks[s.out.walk]);
+    const clean = [] as string[];
+    for (const k of tracks) clean.push(await soundOnly(k, sceneOf(s.slug)));
+    let w2 = walks;
+    clean.forEach((k, i) => { w2 = setTrack(w2, s.out.walk!, i, k); });
+    await writeWalks(w2, walks);
+    return ok({ before: tracks, after: clean });
   }
   if (body.action === "musicClear") {
     const slot = Number(body.slot);

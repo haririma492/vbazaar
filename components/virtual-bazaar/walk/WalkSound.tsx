@@ -82,42 +82,45 @@ export function WalkSound({ audioKeys, srcOf, specials = false }: {
   const listKey = audioKeys.join("|");
   const audioKey = audioKeys[0] ?? null;
   // The walk's sound: a new walk (a door, the next aisle) swaps it. Several tracks (owner, 2026-11-06: "played
-  // uninterrupted one after another in the same order music 1, 2, 3"): the next is loaded while one plays and
-  // starts the moment it ends; after the last, the first again.
+  // uninterrupted one after another in the same order music 1, 2, 3"): ONE audio element; when a track ends it
+  // takes the next one's address and plays on, after the last the first again. (A first version kept an element
+  // per track, all loading at once; the owner's Chrome and Edge ran out of memory with two tracks. One element
+  // holds one track at a time.) One track simply loops.
   useEffect(() => {
     const keys = listKey ? listKey.split("|") : [];
     if (!keys.length) return;
     let gone = false;
-    const make = () => {
-      const el = new Audio();
-      el.preload = "auto";
-      // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
-      el.volume = WALK_MUSIC_VOLUME;
-      return el;
-    };
-    const els = keys.map(() => make());
+    const el = new Audio();
+    el.preload = "auto";
+    // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
+    el.volume = WALK_MUSIC_VOLUME;
+    el.loop = keys.length === 1;
+    audio.current = el;
     let i = 0;
-    if (keys.length === 1) els[0].loop = true;
-    audio.current = els[0];
-    const onEnded = (k: number) => () => {
-      if (gone || k !== i) return;
-      i = (i + 1) % keys.length;
-      const next = els[i];
-      next.currentTime = 0;
-      audio.current = next;
-      if (readOn()) start(next);
+    const load = async (k: number, play: boolean) => {
+      const src = await srcOf(keys[k]);
+      if (gone || !src) return;
+      el.src = src;
+      if (play && readOn()) start(el);
     };
-    const offs = els.map((el, k) => { const f = onEnded(k); el.addEventListener("ended", f); return () => el.removeEventListener("ended", f); });
-    void Promise.all(keys.map((k) => srcOf(k))).then((srcs) => {
-      if (gone) return;
-      srcs.forEach((src, k) => { if (src) els[k].src = src; });
-      if (srcs[0] && readOn()) start(els[0]);
-    });
+    let failed = 0; // tracks in a row that would not play: when all have failed, the music stops (no loop of errors)
+    const onEnded = () => { if (gone) return; failed = 0; i = (i + 1) % keys.length; void load(i, true); };
+    // A track that will not play is passed over (never stuck on it), unless it is the only one.
+    const onError = () => { if (gone || keys.length === 1 || ++failed >= keys.length) return; i = (i + 1) % keys.length; void load(i, true); };
+    const onPlaying = () => { failed = 0; };
+    el.addEventListener("ended", onEnded);
+    el.addEventListener("error", onError);
+    el.addEventListener("playing", onPlaying);
+    void load(0, true);
     return () => {
       gone = true;
-      offs.forEach((f) => f());
-      for (const el of els) { el.pause(); el.removeAttribute("src"); el.load(); }
-      audio.current = null;
+      el.removeEventListener("ended", onEnded);
+      el.removeEventListener("error", onError);
+      el.removeEventListener("playing", onPlaying);
+      el.pause();
+      el.removeAttribute("src");
+      el.load();
+      if (audio.current === el) audio.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listKey, srcOf]);
