@@ -20,6 +20,8 @@
  *   POST { action: "productDrop", n }           not a product: off the list and off the walk
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
  *   POST { action: "widget" }                   the store's widget: { snippet, stats, plan, forOwner } (operator; the owner when switched on)
+ *   POST { action: "instagram" }              (the Reel, the walk link, one link per lit product)
+ *   POST { action: "reelMake" }               (the vertical Instagram Reel made again, in the background)
  *   POST { action: "widgetRemake" }            (operator: the Free Tour preview made again now; returns how it was aimed)
  *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
  *   POST { action: "tidy" }                     the Tidy agent (operator; spends from the store's budget, at most $2): clutter hidden behind products
@@ -31,7 +33,7 @@
 import { mediaPath } from "@/lib/splats/media";
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
-import { presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
 import { MAX_TRACKS, musicOf, setRadio, setTrack } from "@/lib/splats/walks";
 import { soundOnly } from "@/lib/stores/music";
@@ -57,6 +59,8 @@ import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readStats, widgetPlan } from "@/lib/stores/widget";
 import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
+import { readReel, startReel } from "@/lib/stores/reel";
+import { productLink, walkLink } from "@/lib/stores/productLink";
 import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
@@ -121,6 +125,23 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (who !== "operator" && !ownerSeesWidget(s)) return fail(403, "The operator only.");
     const [stats, plan, preview] = await Promise.all([readStats(s.slug), widgetPlan(s.slug), readPreview(s.slug)]);
     return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s), preview: who === "operator" ? preview : undefined });
+  }
+  // INSTAGRAM (owner, 2026-11-06: the Instagram pathway): the store's vertical Reel, the walk's link for the bio, and
+  // one link per lit product (opens the walk facing it, its card open). The owner's too: it is their marketing.
+  if (body.action === "instagram") {
+    if (!s.out.walk) return ok({ reel: null, walkLink: null, products: [] });
+    const [reel, walks, c] = await Promise.all([readReel(s.slug), readWalks().catch(() => null), readCatalogue(sceneOf(s.slug)).catch(() => null)]);
+    const lit = new Set((walks?.walks[s.out.walk]?.items ?? []).filter((it) => it.n && it.pins.length).map((it) => it.n as number));
+    const products = (c?.products ?? []).filter((p) => lit.has(p.n)).map((p) => ({
+      n: p.n, name: p.en || p.fa || `#${p.n}`, fa: p.fa ?? null, photo: p.photo ?? null, link: productLink(s.out.walk!, p.n),
+    }));
+    const download = reel?.key ? await presignDownload(reel.key, `${s.slug}-reel.mp4`).catch(() => null) : null;
+    return ok({ reel: reel ? { ...reel, download } : null, walkLink: walkLink(s.out.walk), products });
+  }
+  if (body.action === "reelMake") {
+    if (!s.out.walk) return fail(409, "The store's walk is not made yet.");
+    if (!startReel(s.slug, s.out.walk)) return fail(409, "Another store's Reel is being made right now; try again in a minute.");
+    return ok({ started: true });
   }
   if (body.action === "widgetRemake") {
     if (who !== "operator") return fail(403, "The operator only.");

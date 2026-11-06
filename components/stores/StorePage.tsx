@@ -36,6 +36,7 @@ import RefreshAllCard from "./RefreshAllCard";
 import TidyCard from "./TidyCard";
 import WalkFrame from "./WalkFrame";
 import WidgetCard from "./WidgetCard";
+import InstagramCard from "./InstagramCard";
 import MusicCard, { type Track } from "./MusicCard";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
@@ -211,6 +212,7 @@ export default function StorePage({ slug }: { slug: string }) {
       )}
       {/* The store's widget for its own website: the operator's, and the owner's too when the operator switches it on. */}
       {(op || page.store.widgetForOwner === true) && <WidgetCard api={api} slug={slug} operator={op} />}
+      {page.walkUrl && <InstagramCard api={api} name={page.store.name.en || page.store.name.fa} />}
       {op && page.walkUrl && <RefreshAllCard api={api} spentCents={s.spentCents} budgetCents={BUDGET_CENTS} />}
 
       {op && <Card>

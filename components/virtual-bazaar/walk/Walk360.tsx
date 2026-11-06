@@ -62,6 +62,8 @@ import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
 import { ProductCard } from "@/components/stores/Products";
 import { isBookStore } from "@/lib/stores/store";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
+import ShareToStory from "./ShareToStory";
+import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
@@ -437,6 +439,10 @@ type Engine = {
   setLockOff: (off: boolean) => void;
   /** Jump to a door's moment and face it. */
   goTo: (door: WalkDoor) => void;
+  /** Jump to a product's moment and face its light (a product link, `?p=`). */
+  goToItem: (item: WalkItem) => void;
+  /** The view on screen as a picture, taken right after the next frame is drawn (the «Share» key). */
+  snapshot: () => Promise<Blob | null>;
   /** Edit mode: the next tap on the picture is a sign pin (null: taps are a visitor's again). */
   setPick: (f: ((pin: SignPin) => void) | null) => void;
   /** Edit mode: the door being placed, its sign shown as it is pinned. */
@@ -528,6 +534,9 @@ export default function Walk360() {
   /** The store's door photo, up for its first `DOOR_PHOTO_MS` (7 s; owner, 2026-11-03 and 2026-11-06). */
   const [doorPhoto, setDoorPhoto] = useState<{ url: string; out: boolean } | null>(null);
   const doorShown = useRef<string | null>(null);
+  /** A product link (`?p=<n>`, the Instagram pathway): open the walk facing that product, its card open. */
+  const deepItem = useRef<number | null>(null);
+  useEffect(() => { deepItem.current = productParam(new URLSearchParams(window.location.search).get("p")); }, []);
   const [time, setTime] = useState({ now: 0, total: 0 });
   /** Where the shopper's finger holds the bar (null: not holding it). The bar shows this, never the video's catching-up time. */
   const [dragT, setDragT] = useState<number | null>(null);
@@ -1451,6 +1460,22 @@ export default function Walk360() {
         if (!current.flat) turnYaw += angleDiff(sign.yaw - current.spin, heading());
         pitch = sign.pitch;
       },
+      goToItem(item) {
+        if (!current || busy || !item.pins.length) return;
+        // The middle of its pins: the product well inside the stretch it is seen in.
+        const pin = item.pins[Math.floor((item.pins.length - 1) / 2)];
+        dropTwin();
+        current.video.pause();
+        rate = 0;
+        current.video.currentTime = Math.max(0, pin.t);
+        if (!current.flat) {
+          turnYaw += angleDiff(pin.x - current.spin, heading());
+          pitch = pin.y;
+        }
+      },
+      snapshot() {
+        return new Promise<Blob | null>((resolve) => { snapWanted.push(resolve); });
+      },
     };
 
     // ── The first video: ?src, ?v, or the walk visitors start on ──────────
@@ -1547,6 +1572,8 @@ export default function Walk360() {
     let yaw = 0;
     let pitch = 0;
     let turnYaw = 0;
+    /** «Share»: who is waiting for the next frame drawn, as a picture. */
+    const snapWanted: Array<(b: Blob | null) => void> = [];
     /** Where the view is turning to by itself (rad from the video's forward), till there or the shopper turns. */
     let faceTo: number | null = null;
     /** The turn ease last applied, and on which walk (`turnEase`). */
@@ -1959,6 +1986,11 @@ export default function Walk360() {
       updateItems();
       nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);
       renderer.render(scene, camera);
+      // The «Share» key: the frame just drawn, read before the browser clears it.
+      if (snapWanted.length) {
+        const waiting = snapWanted.splice(0);
+        renderer.domElement.toBlob((b) => waiting.forEach((r) => r(b)), "image/jpeg", 0.92);
+      }
       report();
     });
 
@@ -2100,6 +2132,19 @@ export default function Walk360() {
     return () => engine.current?.setOnItem(null);
   }, []);
 
+  // A product link: once the walk is walking and its products are known, go to it and open its card.
+  useEffect(() => {
+    const n = deepItem.current;
+    if (!n || phase !== "walking" || !view.key) return;
+    const item = (walkOf(walks, view.key)?.items ?? []).find((it) => it.n === n && it.pins.length);
+    if (!item) return;
+    deepItem.current = null;
+    setDrive(null);
+    engine.current?.goToItem(item);
+    setLit(item.id);
+    setCard(item);
+  }, [phase, walks, view.key]);
+
   // Stepping into a shop (or back out) ends the drive: the visitor looks round first.
   useEffect(() => {
     setDrive(null);
@@ -2149,6 +2194,7 @@ export default function Walk360() {
     if (phase !== "walking" || editing || spotMode || !view.key || !photoNow) return;
     if (doorShown.current === view.key) return;
     doorShown.current = view.key;
+    if (deepItem.current) return; // a product link goes straight to the product
     engine.current?.hold(DOOR_PHOTO_MS);
     setDoorPhoto({ url: photoNow, out: false });
     const fade = setTimeout(() => setDoorPhoto((d) => (d ? { ...d, out: true } : d)), DOOR_PHOTO_MS - 500);
@@ -2433,6 +2479,15 @@ export default function Walk360() {
       {/* The link to vbazaar.app (a bazaar sign) on the right, from the first screen (owner, 2026-11-06); the sound key and the
           website key sit below it. z-40: above the «Start walking» screen (z-30), so it works before the walk starts too. */}
       {phase !== "loading" && <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />}
+      {/* «Share to Story» (the Instagram pathway): inside a store's walk, for shoppers; not while editing. */}
+      {phase === "walking" && !editing && !spotMode && view.key && /^scenes\/store-/.test(view.key) && (
+        <ShareToStory
+          className="absolute right-4 top-[12rem] z-20"
+          snapshot={() => engine.current?.snapshot() ?? Promise.resolve(null)}
+          title={walkOf(walks, view.key)?.title ?? { en: "the Virtual Bazaar" }}
+          link={() => `${window.location.origin}/vca/walk?v=${encodeURIComponent(view.key!)}${card?.n ? `&p=${card.n}` : ""}`}
+        />
+      )}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (

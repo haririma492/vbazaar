@@ -483,6 +483,13 @@ export function presignGet(key: string, kind: SplatKind, seconds: number): Promi
   return readBucket(kind, key).then((Bucket) => getSignedUrl(s3(), new GetObjectCommand({ Bucket, Key: key }), { expiresIn: seconds }));
 }
 
+/** A link that SAVES the file under `filename` (the Instagram Reel's «Download»), signed for an hour. */
+export function presignDownload(key: string, filename: string): Promise<string> {
+  if (offlineDir()) return Promise.resolve(`${OFFLINE_BASE}/${key}`);
+  const safe = filename.replace(/[^A-Za-z0-9._-]/g, "-");
+  return readBucket("web", key).then((Bucket) => getSignedUrl(s3(), new GetObjectCommand({ Bucket, Key: key, ResponseContentDisposition: `attachment; filename="${safe}"` }), { expiresIn: 3600 }));
+}
+
 /**
  * A PUT link into the masters bucket (private) — where the GPU machine writes
  * its status, log, cameras and the trained .ply. Signed WITHOUT a content

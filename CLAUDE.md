@@ -99,6 +99,20 @@ plan and the Managed Agents decision are in
   on the store's site; a full embed would be a separate paid white-label product. Unpublished: «Coming soon».
   Card on `/stores/<slug>` for the operator; `widgetForOwner` on the record shows it to the owner.
   `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
+- **Instagram: three pathways into the walk** (owner, 2026-11-06: *"come up with some modern, trendy, cutting-edge
+  technology that Instagram friendly and can link the two sides"*, then *"Let's do that for saraye-bamdad"*). Instagram
+  holds no widget or 360°, so every post is a teaser whose link opens the walk. An «Instagram» card on
+  `/stores/<slug>` (owner and operator, `InstagramCard.tsx`, actions `instagram` / `reelMake`): (1) **the Reel**, a
+  vertical 1080×1920 30 fps clip cut by ffmpeg from the walk (`lib/stores/reel.ts`, plan in `reelRules.ts`): from the
+  door turn (`entryOf`), up to 30 s, looking at the shelf side with the most lights, never toward the camera operator
+  (the Lock zone, 10° margin; narrower view if needed, null if no clear 10 s); no sound (post with Instagram's own
+  music); a private video, downloaded through a signed attachment link (`presignDownload`); plus a ready caption.
+  (2) **The bio link** (`walkLink`). (3) **A link per lit product** (`productLink`, `/vca/walk?v=<walk>&p=<n>`): the
+  walk opens facing that product (`goToItem`, the middle of its pins), its card open, the door photo skipped.
+  **«📸 Share to Story»** on every store walk (`walk/ShareToStory.tsx`): the frame on screen (`snapshot`, read right
+  after `renderer.render`) on a 9:16 card with the store's name and vbazaar.app, to the phone's share sheet (or saved);
+  the link (the walk, or the open product) is copied for Instagram's link sticker. Not built yet: «comment WALK →
+  automatic DM» (needs a Meta app, its review and each store's Business account).
 - **Owners' visits are counted** (owner, 2026-11-06: *"we need to count store owners using their password and
   visiting their page"*, *"lets add that statistics to vbazaar.app/stores"*): each sign-in with the store's
   password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit
