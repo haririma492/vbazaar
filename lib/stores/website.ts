@@ -323,7 +323,14 @@ async function readProduct(origin: string, page: SitemapEntry, endpoint: string,
   const g = await get(page.loc, "text/html");
   if (g.status !== 200) return { why: "error" in g ? g.error : `the site answered ${g.status}` };
   const p = productFromHtml(g.text, page.loc);
-  if (!p) return { why: "no product on the page" };
+  if (!p) {
+    // A draft whose page has no photo tag: its photos are still in the sitemap, and every photo is wanted.
+    if (page.images.length) return withSitemapImages({
+      url: page.loc, handle: handleOf(page.loc), name: { en: "", fa: "" }, description: { en: "", fa: "" }, priceCents: null, compareAtCents: null,
+      currency: "CAD", images: [], variants: [], category: [], available: null, source: "meta", unlisted: true,
+    }, page.images);
+    return { why: "no product on the page" };
+  }
   const out = withSitemapImages(p, page.images);
   return draft ? { ...out, unlisted: true, name: { en: "", fa: "" }, priceCents: null } : out;
 }
