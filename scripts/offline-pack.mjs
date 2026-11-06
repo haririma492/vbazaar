@@ -123,6 +123,8 @@ async function main() {
     const walk = walks.walks[key];
     const rev = walk?.rev ? `?r=${walk.rev}` : "";
     if (key.startsWith("masters/")) await take(key, `${SITE}/api/splats/walks/video?key=${encodeURIComponent(key)}`);
+    // The walk videos are private (lib/splats/media.ts): fetched through the site's own route, which signs a link.
+    else if (/\.(mp4|mov|m4v|webm)$/i.test(key)) await take(key, `${SITE}/api/media/${key}${rev}`);
     else await take(key, `${base}/${key}${rev}`);
     if (walk?.audio) await take(walk.audio, `${base}/${walk.audio}`);
   }
