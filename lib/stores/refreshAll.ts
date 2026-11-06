@@ -1,6 +1,7 @@
 // ONE KEY FOR EVERY AGENT (owner, 2026-11-06: "going forward add ONE KEY for me to initiate all agent
 // refreshment"). The operator's «Refresh all agents» runs the store's agents in the order each needs the last:
 //
+//   0  Door photo                the store's door photo opens both tours (free)
 //   1  Shelf finder, gaps mode   the bookcases no shelf picture holds yet (Opus, at most 30 pictures ~$2)
 //   2  Store map                 the shelves on the floor plan, ids kept (free)
 //   3  Shelf Tour                filmed shelf by shelf in the map's order (free; the camera's-path tour if
@@ -15,6 +16,7 @@
 // card shows the steps done); press the key again to finish.
 import { readMastersText, writeMastersJson } from "@/lib/splats/r2";
 import { readStore } from "./bucket";
+import { prepareDoorPhoto } from "./crew";
 import { findShelves } from "./shelfFinder";
 import { buildStoreMap } from "./mapJob";
 import { buildShelfFilm } from "./shelfFilm";
@@ -25,7 +27,7 @@ import { readShelfPhotos, readShelfTitles } from "./shelfTitles";
 export type RefreshStep = { name: string; note: string; at: string };
 export type RefreshRun = { store: string; started: string; finished: string | null; steps: RefreshStep[]; running: boolean };
 export const refreshKey = (slug: string) => `stores/${slug}/refresh.json`;
-export const REFRESH_STEPS = ["Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader"] as const;
+export const REFRESH_STEPS = ["Door photo", "Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader"] as const;
 let busy: string | null = null;
 
 export async function readRefresh(slug: string): Promise<RefreshRun | null> {
@@ -54,16 +56,21 @@ async function refreshAll(slug: string): Promise<void> {
   };
   await save();
   // 1: wait for this one (its usual follow-ups are run here in order instead: no tour built behind our back).
-  await step(REFRESH_STEPS[0], () => findShelves(slug, { mode: "gaps", rebuild: false }));
-  await step(REFRESH_STEPS[1], () => buildStoreMap(slug));
-  await step(REFRESH_STEPS[2], async () => {
+  await step(REFRESH_STEPS[0], async () => {
+    const st = await readStore(slug);
+    if (!st?.files.door) return "No door photo uploaded.";
+    return (await prepareDoorPhoto(st)) ? "The door photo opens both tours (7 s)." : "No door photo.";
+  });
+  await step(REFRESH_STEPS[1], () => findShelves(slug, { mode: "gaps", rebuild: false }));
+  await step(REFRESH_STEPS[2], () => buildStoreMap(slug));
+  await step(REFRESH_STEPS[3], async () => {
     const filmed = await buildShelfFilm(slug);
     return /^No shelf pictures/.test(filmed) ? `${filmed} → ${await buildTour(slug)}` : filmed;
   });
-  await step(REFRESH_STEPS[3], () => readTitles(slug));
+  await step(REFRESH_STEPS[4], () => readTitles(slug));
   const s = await readStore(slug);
   const unread = (s?.files.shelf ?? []).length - ((await readShelfTitles(slug))?.done.length ?? 0);
-  await step(REFRESH_STEPS[4], async () => (unread > 0 ? readShelfPhotos(slug) : "No shelf photos waiting to be read."));
+  await step(REFRESH_STEPS[5], async () => (unread > 0 ? readShelfPhotos(slug) : "No shelf photos waiting to be read."));
   run.running = false;
   run.finished = new Date().toISOString();
   await save();

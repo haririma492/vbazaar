@@ -30,7 +30,7 @@ import {
 import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
-import { kick, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
+import { kick, prepareDoorPhoto, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { buildTour, readTour } from "@/lib/stores/tourJob";
 import { buildShelfFilm } from "@/lib/stores/shelfFilm";
@@ -222,6 +222,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     });
     kick();
     return ok({ store: next ? forPage(next) : null });
+  }
+  if (body.action === "doorPhoto") {
+    // Operator: the door photo made public and set as the walk's opening photo (free).
+    if (who !== "operator") return fail(403, "The operator only.");
+    return ok({ image: (await prepareDoorPhoto(s)) ?? null });
   }
   if (body.action === "titlesName") {
     // Operator: the unnamed products take their titles read in full (free; owners' names untouched).

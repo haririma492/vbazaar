@@ -788,7 +788,31 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
 
 // ── Placer ──────────────────────────────────────────────────────────────────
 
+/**
+ * The store's door photo, made public and set as its walk's opening photo (`Walk.doorPhoto`), whether or not the
+ * store has a door spot yet (owner, 2026-11-06: "start both free tour and shelf tour with the photo of the front
+ * of the door"; Saraye Bamdad's photo sat unused because the Placer had no free spot). Returns its address.
+ */
+export async function prepareDoorPhoto(s: StoreRecord, say: (note: string) => Promise<void> = async () => {}): Promise<string | undefined> {
+  let image = s.out.doorImage;
+  if (s.files.door && !image?.includes(s.files.door.key.split("/").pop()!.slice(0, 15))) {
+    await say("Preparing the door photo…");
+    const key = `scenes/${sceneOf(s.slug)}/door-${s.files.door.key.split("/").pop()!.slice(0, 15)}.jpg`;
+    await putSignImage(key, "image/jpeg", await jpegOf(await readUpload(s.files.door.key), 1600));
+    image = publicUrl(key);
+    await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, doorImage: image } }));
+  }
+  if (image && s.out.walk) {
+    const walks = await readWalks();
+    const w = walks.walks[s.out.walk];
+    if (w && w.doorPhoto !== image) await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: { ...w, doorPhoto: image } } }, walks);
+  }
+  return image;
+}
+
 async function stepPlace(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
+  await prepareDoorPhoto(s, say);
+  s = (await readStore(s.slug)) ?? s;
   const b = await readBazaar();
   const spot = spotFor(b, s.slug);
   if (!spot) throw new NeedsYou("No free door spot for this store: on /stores/areas, upload an area's walk (the hallway, or outside if the store opens onto the street) and mark its door spots. · جای خالی برای در فروشگاه نیست.");
