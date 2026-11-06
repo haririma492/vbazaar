@@ -106,6 +106,8 @@ type Drive = "on" | "back";
  * tan(fov/2) ÷ 1.15 → 67.4°. Pinch and the wheel still zoom from there (30–100°).
  */
 const START_FOV = 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtils.degToRad(75 / 2)) / 1.15));
+/** How fast holding the wheel's middle zooms (the field of view changes by e^rate a second). */
+const ZOOM_RATE = 0.8;
 const SPEED_KEY = "vb.walk.speed.v4"; // v4: the default is 7 fps on every walk (owner, 2026-11-06), so everyone starts there
 /** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
 const FILM_FPS = 25;
@@ -392,6 +394,8 @@ type View = {
 type Engine = {
   video: () => HTMLVideoElement;
   setMove: (x: number, y: number) => void;
+  /** The wheel's middle held: −1 zoom in, 1 zoom out, 0 not held. */
+  setZoom: (z: number) => void;
   setGyro: (on: boolean) => void;
   /** Self-drive on or back (at `setSpeed`'s speed), or null: only the wheel's pedals and the keys walk. */
   setDrive: (drive: Drive | null) => void;
@@ -1318,6 +1322,9 @@ export default function Walk360() {
         stickY = y;
         if (y !== 0) kick(); // the pedal is pressed inside a tap
       },
+      setZoom(z) {
+        zoomHold = z;
+      },
       setGyro(on) {
         gyroOn = on;
       },
@@ -1520,6 +1527,7 @@ export default function Walk360() {
     // ── Looking: finger, wheel/pinch, phone ───────────────────────────────
     const pointers = new Map<number, { x: number; y: number }>();
     let pinch = 0;
+    let zoomHold = 0;
     const zoom = (f: number) => {
       camera.fov = THREE.MathUtils.clamp(camera.fov * f, 30, 100);
       camera.updateProjectionMatrix();
@@ -1700,6 +1708,8 @@ export default function Walk360() {
     renderer.setAnimationLoop(() => {
       const dt = Math.min(clock.getDelta(), 0.1);
       const ease = 1 - Math.exp(-dt / EASE_S);
+      // The wheel's middle held: zoom in or out, smoothly, as long as it is held (same limits as pinch).
+      if (zoomHold) zoom(Math.exp(zoomHold * ZOOM_RATE * dt));
       const shape = (v: number) => Math.sign(v) * v * v;
 
       let wantTurn = shape(stickX);
@@ -2171,7 +2181,8 @@ export default function Walk360() {
         <>
           <SteeringWheel
             className="bottom-[9.25rem] right-5"
-            onMove={(x, y) => engine.current?.setMove(x, y)}
+            onMove={(x) => engine.current?.setMove(x, 0)}
+            onZoom={(z) => engine.current?.setZoom(z)}
             follow={() => engine.current?.turn() ?? 0}
           />
           {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}

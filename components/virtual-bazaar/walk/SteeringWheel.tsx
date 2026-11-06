@@ -12,7 +12,9 @@ import { useEffect, useRef, useState } from "react";
  * - Not held, it turns as the photographer turned at this moment of the walk
  *   (`follow`, radians per second, + right) — riding along, the wheel moves
  *   with the road.
- * - The cap in the middle is the pedals: hold ▲ to walk on, ▼ to walk back.
+ * - The cap in the middle zooms (owner, 2026-11-06: "make the two arrows inside the wheel for ZOOM IN & ZOOM
+ *   OUT the top for zoom in and bottom for zoom out"): hold ▲ IN, ▼ OUT. Walking is «▶ Walk» / «◀ Back» and
+ *   the keys. (It was the pedals: ▲ walk on, ▼ walk back.)
  *
  * Everything that moves is drawn straight to the SVG each frame, not through
  * React state: the wheel turns at the screen's rate without re-rendering.
@@ -25,7 +27,9 @@ const FULL_TURN = 0.7;
 /** How quickly the wheel settles where it is going (s). */
 const SETTLE_S = 0.18;
 
-export default function SteeringWheel({ onMove, follow, className = "" }: {
+export default function SteeringWheel({ onMove, onZoom, follow, className = "" }: {
+  /** The middle held: −1 zoom in (top), 1 zoom out (bottom), 0 let go. */
+  onZoom?: (z: number) => void;
   /** x: steering, −1 (full left) … 1 (full right); y: −1 walk on, 1 walk back, 0 stand. */
   onMove: (x: number, y: number) => void;
   /** The photographer's turn now, in radians per second (+ right). */
@@ -46,6 +50,8 @@ export default function SteeringWheel({ onMove, follow, className = "" }: {
   followRef.current = follow;
   const moveRef = useRef(onMove);
   moveRef.current = onMove;
+  const zoomRef = useRef(onZoom);
+  zoomRef.current = onZoom;
 
   useEffect(() => {
     let raf = 0;
@@ -71,9 +77,11 @@ export default function SteeringWheel({ onMove, follow, className = "" }: {
     let y = 0;
     for (const v of s.pedals.values()) y = v;
     if (x !== s.x || y !== s.y) {
+      const zoomed = y !== s.y;
       s.x = x;
       s.y = y;
-      moveRef.current(x, y);
+      if (zoomRef.current) { moveRef.current(x, 0); if (zoomed) zoomRef.current(y); }
+      else moveRef.current(x, y);
     }
     setPedal(y);
   };
@@ -116,7 +124,7 @@ export default function SteeringWheel({ onMove, follow, className = "" }: {
     <div
       ref={root}
       role="group"
-      aria-label="Steering wheel: turn the rim to steer; hold the middle — top to walk on, bottom to walk back"
+      aria-label={onZoom ? "Steering wheel: turn the rim to steer; hold the middle — top to zoom in, bottom to zoom out" : "Steering wheel: turn the rim to steer; hold the middle — top to walk on, bottom to walk back"}
       className={`absolute h-40 w-40 touch-none select-none ${className}`}
       onPointerDown={down}
       onPointerMove={move}
@@ -142,8 +150,20 @@ export default function SteeringWheel({ onMove, follow, className = "" }: {
         <path d="M -34 0 A 34 34 0 0 1 34 0 Z" fill={pedal < 0 ? "rgba(252,211,77,0.55)" : "transparent"} />
         <path d="M -34 0 A 34 34 0 0 0 34 0 Z" fill={pedal > 0 ? "rgba(252,211,77,0.55)" : "transparent"} />
         <line x1="-30" y1="0" x2="30" y2="0" stroke="rgba(255,255,255,0.25)" strokeWidth="1.5" />
-        <text y="-9" textAnchor="middle" fontSize="20" fill="rgba(255,255,255,0.85)">▲</text>
-        <text y="25" textAnchor="middle" fontSize="20" fill="rgba(255,255,255,0.85)">▼</text>
+        {onZoom ? (
+          <>
+            {/* ZOOM IN above, ZOOM OUT below: the arrow and a small word under/over it, inside the cap. */}
+            <text y="-13" textAnchor="middle" fontSize="15" fill="rgba(255,255,255,0.9)">▲</text>
+            <text y="-3" textAnchor="middle" fontSize="8.5" fontWeight="700" letterSpacing="0.6" fill="rgba(252,211,77,0.95)">ZOOM IN</text>
+            <text y="11" textAnchor="middle" fontSize="8.5" fontWeight="700" letterSpacing="0.6" fill="rgba(252,211,77,0.95)">ZOOM OUT</text>
+            <text y="26" textAnchor="middle" fontSize="15" fill="rgba(255,255,255,0.9)">▼</text>
+          </>
+        ) : (
+          <>
+            <text y="-9" textAnchor="middle" fontSize="20" fill="rgba(255,255,255,0.85)">▲</text>
+            <text y="25" textAnchor="middle" fontSize="20" fill="rgba(255,255,255,0.85)">▼</text>
+          </>
+        )}
       </svg>
     </div>
   );

@@ -453,6 +453,10 @@ quality and choice to break away and enter in a shop. (period)"*
   logarithmic, starting at 0.18 m/s (owner, 2026-11-06: *"25% slower"*, then *"another 20% slower"*; it was 0.3) and kept on the device (`vb.walk.speed.v3`, so the new default reaches everyone); the view opens 15% closer (67.4° instead of 75°, `START_FOV`; owner: *"15% closer to shelves"*); the bar is labelled «سرعت حرکت» and shows only fps (no m/s) and a recommended mark at the default (owner, 2026-11-06).
   Back walks at the bar's speed. It is a real speed on every walk (the walk's
   measured `pace`), never below 1/16× (slower froze); `lib/splats/pace.ts`.
+- **The wheel's middle zooms** (owner, 2026-11-06: *"make the two arrows inside the wheel for ZOOM IN & ZOOM OUT
+  the top for zoom in and bottom for zoom out … it could only be in english"*): hold ▲ ZOOM IN / ▼ ZOOM OUT
+  (`SteeringWheel` `onZoom`, `setZoom`, `ZOOM_RATE`), same limits as pinch (30–100°). It was the pedals (walk on /
+  back): walking is «▶ Walk» / «◀ Back» and the keys.
 - **Tags stand as still as the books** (owner, 2026-11-04: *"not a single
   shake or move or travel from price tags are accepted"*). Two causes, both
   fixed for every store, old and new, without re-tagging: (1) the follow's

@@ -500,7 +500,7 @@ export function ItemsEditor({ engine, walks, viewKey, change, setStatus, store, 
       {!draft && !armedProduct && (
         <div className="rounded-lg border border-[#00B8C8]/60 bg-[#00B8C8]/15 p-2.5 text-[13px] leading-snug">
           <b>Tap a product in the picture</b> to tag it{hasList ? <>, or <b>pick its photo on the left</b> first, then tap it</> : null}.
-          <div className="mt-0.5 text-[12px] text-white/65">Move the video (wheel ▲, or the time bar) until the product is in view, then tap it.</div>
+          <div className="mt-0.5 text-[12px] text-white/65">Move the video («▶ Walk», or the time bar) until the product is in view, then tap it.</div>
         </div>
       )}
 
@@ -889,12 +889,12 @@ function TagCard({ draft, setDraft, onDone, follow, catalogue }: {
           </p>
         ) : (
           <p className="text-[13px] leading-snug text-white/80">
-            ✓ The dot stays on it from <b>{span}</b>. Play the video (wheel ▲) to check. If it slips somewhere, <b>tap the product there</b> — it follows again from that point.
+            ✓ The dot stays on it from <b>{span}</b>. Play the video («▶ Walk») to check. If it slips somewhere, <b>tap the product there</b> — it follows again from that point.
           </p>
         )}
       </>) : (<>
         <p className="text-[13px] leading-snug text-white/75">
-          Move the video on a little (wheel ▲ or the time bar) and <b>tap the product again</b>. Do it two or three times while it is in
+          Move the video on a little («▶ Walk» or the time bar) and <b>tap the product again</b>. Do it two or three times while it is in
           view — the dot follows it. Or press Done if it hardly moves.
         </p>
         <p className="text-[13px] font-semibold text-[#00B8C8]">{draft.pins.length} {draft.pins.length === 1 ? "tap" : "taps"} so far</p>
