@@ -679,6 +679,10 @@ quality and choice to break away and enter in a shop. (period)"*
   a look far from both neighbours dropped as a passer-by (`dropStrays`), 18° margin (was 12). Then every 5 s,
   and the first operator found is cut out and shown to Claude at every later look ("find this same person"):
   the operator often stands 2–3 m from the camera, and the old "nearest person" prompt missed them.
+  **Cuts** (owner, 2026-11-06: *"photographer view leaked … starting 1:28 ending 1:33"*): a walk cut by the Route
+  optimizer jumps place, and the follow blended across the cut. `shotBreaks` (`trackZone.ts`) finds them (best
+  column match over ±25° below 0.7; 0.9 ordinary, 0.29–0.64 at Saraye Bamdad's cuts); each stretch is followed
+  from its own looks only, one extra look just after each cut, and `dropStrays` compares looks only within a stretch.
 - **Two ways round a store: «🛒 Shelf Tour | 👣 Free Tour»** (owner,
   2026-11-05: *"1) The Shelf Tour (that is perfectly choreographed for
   shopping result) & 2) The Free Tour (that gives shopper feeling of walking

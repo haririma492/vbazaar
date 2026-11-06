@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, presignGet, readMastersText, readWalks, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
 import { phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
-import { ZONE_H, ZONE_W, columnHistograms, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
+import { ZONE_H, ZONE_W, columnHistograms, shotBreaks, stretchesOf, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
 import { probe, run } from "./media";
 import { findPhotographer, type Purse } from "./ai";
 import { downForHead, dropStrays, isUnderCamera, seedTimes, type Seen } from "./lockRules";
@@ -157,11 +157,21 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
     const fps = Math.min(FPS, MAX_FRAMES / Math.max(1, seconds));
     const dt = 1 / fps;
 
+    // The frames to follow in, read first: the cuts in the walk decide where the agent must also look.
+    await say("Reading the walk…");
+    const raw = await run("ffmpeg", ["-v", "error", "-i", src, "-vf", `fps=${fps.toFixed(4)},scale=${ZONE_W}:${ZONE_H}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]);
+    const size = ZONE_W * ZONE_H * 3;
+    const frames: Float32Array[] = [];
+    for (let at = 0; at + size <= raw.length; at += size) frames.push(columnHistograms(raw.subarray(at, at + size), 3));
+    const breaks = shotBreaks(frames);
+
     await say(handLocks ? "Starting from the locks set by hand…" : "Looking for the person carrying the camera…");
     const locks: ZoneLock[] = handLocks ? [...handLocks] : [];
     let armsLat = -90;
     const seen: Seen[] = [];
-    const times = handLocks ? [] : seedTimes(seconds);
+    // One more look just after every cut (the operator is somewhere else on the other side of it).
+    const afterCuts = stretchesOf(frames.length, breaks).slice(1).filter(([a, b]) => (b - a) * dt >= 1.5).map(([a, b]) => (a + Math.min(2, (b - a) / 2)) * dt);
+    const times = handLocks ? [] : [...seedTimes(seconds), ...afterCuts].sort((x, y) => x - y);
     if (times.length) await say(`Looking for them at ${times.length} moments…`);
     let reference: Uint8Array | null = null;
     for (const t0 of times) {
@@ -214,15 +224,12 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
       await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...rest, tilt: { up: rad(45), down: rad(downDeg) } } } }, walks);
       return `The camera was held over the operator's head: shoppers look down to ${downDeg}° (the head stays out of view) and up to 45°; no directions blocked.`;
     }
-    if (!handLocks) dropStrays(locks);
+    const stretchOf = (t: number) => breaks.filter((b) => b <= Math.round(t / dt)).length;
+    if (!handLocks) dropStrays(locks, (a, b) => stretchOf(a) === stretchOf(b));
     if (!locks.length) return "Could not find the person carrying the camera: nothing locked.";
 
-    await say(`Following them through the walk (${Math.round(seconds * fps)} frames)…`);
-    const raw = await run("ffmpeg", ["-v", "error", "-i", src, "-vf", `fps=${fps.toFixed(4)},scale=${ZONE_W}:${ZONE_H}`, "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"]);
-    const size = ZONE_W * ZONE_H * 3;
-    const frames: Float32Array[] = [];
-    for (let at = 0; at + size <= raw.length; at += size) frames.push(columnHistograms(raw.subarray(at, at + size), 3));
-    const at = zoneThroughWalk(frames, dt, locks);
+    await say(`Following them through the walk (${frames.length} frames, ${breaks.length} cuts)…`);
+    const at = zoneThroughWalk(frames, dt, locks, breaks);
 
     // Down: the view's middle stays high enough that the screen's bottom edge
     // is above the operator's arms; up: no further than the ceiling's edge.

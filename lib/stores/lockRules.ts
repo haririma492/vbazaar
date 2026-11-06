@@ -59,10 +59,17 @@ export function seedTimes(seconds: number): number[] {
  */
 export const SEED_JUMP = 70;
 const angDeg = (a: number, b: number) => Math.abs(((((a - b) * 180) / Math.PI + 540) % 360) - 180);
-/** Drops, in place, each look (radians) that disagrees with both its neighbours by more than `SEED_JUMP`. */
-export function dropStrays<T extends { t: number; yaw: number }>(locks: T[]): void {
+/**
+ * Drops, in place, each look (radians) that disagrees with both its neighbours by more than `SEED_JUMP`. Only
+ * neighbours on the same side of a cut count (`together`): across a cut the operator really is elsewhere, and a
+ * look with no neighbour on its side of the cut is kept.
+ */
+export function dropStrays<T extends { t: number; yaw: number }>(locks: T[], together: (a: number, b: number) => boolean = () => true): void {
   locks.sort((a, b) => a.t - b.t);
   if (locks.length < 3) return;
-  const keep = locks.filter((l, i) => [locks[i - 1], locks[i + 1]].filter(Boolean).some((m) => angDeg(l.yaw, m.yaw) <= SEED_JUMP));
+  const keep = locks.filter((l, i) => {
+    const near = [locks[i - 1], locks[i + 1]].filter((m) => m && together(l.t, m.t));
+    return !near.length || near.some((m) => angDeg(l.yaw, m.yaw) <= SEED_JUMP);
+  });
   if (keep.length >= 2) locks.splice(0, locks.length, ...keep);
 }

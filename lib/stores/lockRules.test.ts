@@ -48,3 +48,12 @@ test("a look that boxed a passer-by is dropped, the operator's turn is kept", ()
   dropStrays(locks);
   assert.deepEqual(locks.map((l) => l.t), [4, 12, 28, 36, 44]);
 });
+
+test("a look just after a cut is not taken for a passer-by", () => {
+  const r = (d: number) => (d * Math.PI) / 180;
+  const locks = [{ t: 4, yaw: r(-170) }, { t: 9, yaw: r(-165) }, { t: 11, yaw: r(40) }, { t: 16, yaw: r(-160) }];
+  // A cut at 10 s, and another at 12 s: the look at 11 s is alone on its stretch.
+  const side = (t: number) => (t < 10 ? 0 : t < 12 ? 1 : 2);
+  dropStrays(locks, (a, b) => side(a) === side(b));
+  assert.deepEqual(locks.map((l) => l.t), [4, 9, 11, 16]);
+});

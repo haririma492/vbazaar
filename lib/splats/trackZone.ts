@@ -98,12 +98,73 @@ export function followZone(frames: Float32Array[], from: number, deg: number, wi
 export type ZoneLock = { t: number; yaw: number; width: number };
 
 /**
+ * WHERE THE WALK IS CUT (2026-11-06, Saraye Bamdad: the operator in view at 1:28–1:33). A walk cut by the Route
+ * optimizer jumps from one place to another: the operator jumps round the picture from one frame to the next,
+ * and a follow (±20° a frame) carried across the cut, or blended with a follow from the other side of it, puts
+ * the lock beside them. A cut is where a frame looks unlike the one before it, however the camera turned: the
+ * best match of the two frames' columns over a turn of ±25° below `CUT_LIKE` (measured on Saraye Bamdad: 0.9
+ * between ordinary frames, 0.29–0.64 at its cuts and their dips to black). Returns the frames that start a new
+ * stretch.
+ */
+export const CUT_LIKE = 0.7;
+export function shotBreaks(frames: Float32Array[]): number[] {
+  const norm = frames.map((ch) => {
+    const out = new Float32Array(ZONE_W * BINS);
+    for (let x = 0; x < ZONE_W; x++) {
+      let sum = 0;
+      for (let b = 0; b < BINS; b++) sum += ch[x * BINS + b];
+      if (sum > 0) for (let b = 0; b < BINS; b++) out[x * BINS + b] = Math.sqrt(ch[x * BINS + b] / sum);
+    }
+    return out;
+  });
+  const breaks: number[] = [];
+  for (let i = 1; i < norm.length; i++) {
+    const a = norm[i - 1], c = norm[i];
+    let best = 0;
+    for (let sh = -25; sh <= 25; sh++) {
+      let s = 0;
+      for (let x = 0; x < ZONE_W; x++) {
+        const y = (((x + sh) % ZONE_W) + ZONE_W) % ZONE_W;
+        for (let b = 0; b < BINS; b++) s += a[x * BINS + b] * c[y * BINS + b]; // square roots taken once, above
+      }
+      best = Math.max(best, s / ZONE_W);
+    }
+    if (best < CUT_LIKE) breaks.push(i);
+  }
+  return breaks;
+}
+
+/** The stretches between cuts, as [first, end) frame ranges. */
+export function stretchesOf(n: number, breaks: number[]): Array<[number, number]> {
+  const edges = [0, ...breaks.filter((b) => b > 0 && b < n), n];
+  const out: Array<[number, number]> = [];
+  for (let k = 0; k + 1 < edges.length; k++) if (edges[k + 1] > edges[k]) out.push([edges[k], edges[k + 1]]);
+  return out;
+}
+
+/**
  * The zone at every frame (`dt` seconds apart, frame 0 at 0 s) from the
  * operator's locks (radians): followed from the nearest lock before the first
  * and after the last, blended between two. Width goes straight from one lock's
  * to the next's.
  */
-export function zoneThroughWalk(frames: Float32Array[], dt: number, locks: ZoneLock[]): ZoneLock[] {
+export function zoneThroughWalk(frames: Float32Array[], dt: number, locks: ZoneLock[], breaks: number[] = []): ZoneLock[] {
+  const whole = followWalk(frames, dt, locks);
+  if (!breaks.length || whole.length !== frames.length) return whole;
+  // Each stretch between cuts is followed from its OWN locks only, never across a cut. A stretch with no lock
+  // keeps the whole-walk follow (the agent looks just after every cut, so that is rare).
+  const out = whole.slice();
+  for (const [a, b] of stretchesOf(frames.length, breaks)) {
+    const inside = locks.filter((l) => { const i = Math.round(l.t / dt); return i >= a && i < b; })
+      .map((l) => ({ ...l, t: l.t - a * dt }));
+    if (!inside.length) continue;
+    const part = followWalk(frames.slice(a, b), dt, inside);
+    for (let i = 0; i < part.length; i++) out[a + i] = { ...part[i], t: Math.round((a + i) * dt * 100) / 100 };
+  }
+  return out;
+}
+
+function followWalk(frames: Float32Array[], dt: number, locks: ZoneLock[]): ZoneLock[] {
   const n = frames.length;
   if (!n || !locks.length) return [];
   const ls = [...locks].sort((a, b) => a.t - b.t).map((l) => ({
