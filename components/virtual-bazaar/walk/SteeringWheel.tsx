@@ -124,7 +124,7 @@ export default function SteeringWheel({ onMove, onZoom, follow, className = "" }
     <div
       ref={root}
       role="group"
-      aria-label={onZoom ? "Steering wheel: turn the rim to steer; hold the middle — top to zoom in, bottom to zoom out" : "Steering wheel: turn the rim to steer; hold the middle — top to walk on, bottom to walk back"}
+      aria-label={onZoom ? "Steering wheel: turn the rim to turn the view; hold the middle — top to zoom in, bottom to zoom out" : "Steering wheel: turn the rim to steer; hold the middle — top to walk on, bottom to walk back"}
       className={`absolute h-40 w-40 touch-none select-none ${className}`}
       onPointerDown={down}
       onPointerMove={move}
@@ -144,6 +144,16 @@ export default function SteeringWheel({ onMove, onZoom, follow, className = "" }
           <path d="M -60 -59 A 84 84 0 0 0 -84 0" fill="none" stroke="rgba(60,60,64,0.95)" strokeWidth="18" strokeLinecap="round" />
           <path d="M 60 -59 A 84 84 0 0 1 84 0" fill="none" stroke="rgba(60,60,64,0.95)" strokeWidth="18" strokeLinecap="round" />
           <rect x="-5" y="-93" width="10" height="18" rx="2" fill="rgba(252,211,77,0.95)" />
+          {/* What the rim is for, written along it either side of the mark (owner, 2026-11-06: "on the wheel also
+              add a short label that is for turning the view"); in English, like ZOOM IN / ZOOM OUT. It turns with
+              the rim, as the badge on a car's wheel does. */}
+          <path id="rim-top" d="M -84 0 A 84 84 0 0 1 84 0" fill="none" />
+          <text fontSize="10" fontWeight="700" letterSpacing="1" fill="rgba(255,255,255,0.92)" dominantBaseline="central">
+            <textPath href="#rim-top" startOffset="31%" textAnchor="middle">↺ TURN</textPath>
+          </text>
+          <text fontSize="10" fontWeight="700" letterSpacing="1" fill="rgba(255,255,255,0.92)" dominantBaseline="central">
+            <textPath href="#rim-top" startOffset="69%" textAnchor="middle">VIEW ↻</textPath>
+          </text>
         </g>
         {/* The cap stays upright: the pedals. */}
         <circle r="34" fill="rgba(25,25,28,0.95)" stroke="rgba(252,211,77,0.7)" strokeWidth="2" />
