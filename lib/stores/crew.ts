@@ -32,7 +32,7 @@ import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
 import { areaDoorOf, areaScene, doorOf, joins, spotFor, startOf, takeSpot, type Bazaar } from "./bazaar";
-import { cropJpeg, encode, grayFrames, jpegOf, probe, productPhoto, views } from "./media";
+import { cropJpeg, encode, grayFrames, jpegOf, pngOf, probe, productPhoto, views } from "./media";
 import { sharpestPhoto, sightingPhoto, originalTime, type Seen } from "./photoSharp";
 import { cutParts } from "@/lib/splats/cut-job";
 import { originalKeyOf } from "@/lib/splats/cut";
@@ -830,8 +830,32 @@ export async function prepareDoorPhoto(s: StoreRecord, say: (note: string) => Pr
   return image;
 }
 
+/**
+ * THE STORE'S LOGO (owner, 2026-11-06: "on the new store registration canvas lets add store logo also and accept
+ * a paste from clipboard and place that on the top left of the virtual tour"). Made public as a PNG (its
+ * transparency kept, at most 512 px), and set on the store's walk (`Walk.logo`), which both tours read. Free.
+ */
+export async function prepareLogo(s: StoreRecord): Promise<string | undefined> {
+  let image = s.out.logoImage;
+  const stamp = s.files.logo?.key.split("/").pop()!.slice(0, 15);
+  if (s.files.logo && stamp && !image?.includes(stamp)) {
+    const key = `scenes/${sceneOf(s.slug)}/logo-${stamp}.png`;
+    await putSignImage(key, "image/png", await pngOf(await readUpload(s.files.logo.key), 512));
+    image = publicUrl(key);
+    await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, logoImage: image } }));
+  }
+  if (image && s.out.walk) {
+    const walks = await readWalks();
+    const w = walks.walks[s.out.walk];
+    if (w && w.logo !== image) await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: { ...w, logo: image } } }, walks);
+  }
+  return image;
+}
+
 async function stepPlace(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
   await prepareDoorPhoto(s, say);
+  // A logo given before the walk existed reaches the walk now.
+  await prepareLogo(s).catch((e) => console.error("[logo]", s.slug, e));
   s = (await readStore(s.slug)) ?? s;
   const b = await readBazaar();
   const spot = spotFor(b, s.slug);

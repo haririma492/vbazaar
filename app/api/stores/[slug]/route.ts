@@ -7,7 +7,7 @@
  *   POST { action: "upload", kind, name, … }    an upload in parts (`lib/stores/http.ts`):
  *        start { kind, name, size } → { key, uploadId, partSize, partCount }; then sign / parts /
  *        complete / abort with that key. Complete records it and the crew starts on it.
- *        kind: video (operator only) · sheet · photo · door
+ *        kind: video (operator only) · sheet · photo · door · logo
  *   POST { action: "music", type, size }        → { key, url, headers } (PUT the .mp3/.m4a there)
  *   POST { action: "musicDone", key, slot }     (music 1–3: slot 0–2; played in order, then from 1)
  *   POST { action: "musicClear", slot }         (that track taken out)
@@ -36,7 +36,7 @@ import {
 import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
-import { kick, prepareDoorPhoto, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
+import { kick, prepareDoorPhoto, prepareLogo, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
 import { planStoreRoute, readRoute } from "@/lib/stores/routeJob";
 import { buildTour, readTour } from "@/lib/stores/tourJob";
 import { buildShelfFilm } from "@/lib/stores/shelfFilm";
@@ -55,7 +55,7 @@ import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "raw", "shelf"];
+const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "logo", "raw", "shelf"];
 
 async function open(req: NextRequest, slug: string) {
   if (!SLUG_RE.test(slug)) return { error: fail(404, "No such store.") };
@@ -134,7 +134,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const turn = await uploadTurn(key, { ...body, action: String(body.ask ?? "") });
     if (turn) return turn;
     // Completed: recorded, and the crew starts on what it touches.
-    const next = await updateStore(s.slug, (x) => addUpload(x, kind, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }));
+    let next = await updateStore(s.slug, (x) => addUpload(x, kind, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }));
+    // The logo goes straight onto the store's walk (both tours show it at the top left).
+    if (kind === "logo" && next) { await prepareLogo(next).catch((e) => console.error("[logo]", s.slug, e)); next = (await readStore(s.slug)) ?? next; }
     kick();
     return ok({ store: next ? forPage(next) : null });
   }

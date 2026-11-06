@@ -47,7 +47,7 @@ export const MAX_TRIES = 3;
 export type Bi = { en: string; fa: string };
 
 /** `shelf`: phone photos of the shelves, for reading every spine (owner, 2026-11-06: "build that"; `shelfTitles.ts`). */
-export type UploadKind = "video" | "sheet" | "photo" | "door" | "raw" | "shelf";
+export type UploadKind = "video" | "sheet" | "photo" | "door" | "logo" | "raw" | "shelf";
 export type Uploaded = { key: string; name: string; size: number; at: string };
 
 export type StepName = "video" | "lock" | "catalogue" | "website" | "photos" | "tag" | "place" | "check";
@@ -86,6 +86,8 @@ export const REDO: Record<UploadKind, StepName[]> = {
   sheet: ["catalogue", "website", "photos", "tag", "check"],
   photo: ["photos", "tag", "check"],
   door: ["place", "check"],
+  // The logo needs no crew step: it is made public and put on the store's walk as it is recorded.
+  logo: [],
   // Shelf photos are read on the operator's «Read the spines» (it spends): no crew step goes back.
   shelf: [],
   raw: [],
@@ -126,7 +128,7 @@ export type StoreRecord = {
   createdAt: string;
   updatedAt: string;
   /** `raw`: the camera's own .insv file(s) of the walk, for the agents only (its gyro; the unexported picture). Shoppers never see it. */
-  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; raw?: Uploaded[]; shelf?: Uploaded[] };
+  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; logo?: Uploaded; raw?: Uploaded[]; shelf?: Uploaded[] };
   steps: Record<StepName, Step>;
   /** What the crew made. */
   out: {
@@ -136,6 +138,8 @@ export type StoreRecord = {
     found?: string;
     /** The door photo shoppers see on the hallway (public, web bucket). */
     doorImage?: string;
+    /** The store's logo, shown at the top left of both tours (public, web bucket). */
+    logoImage?: string;
     /** The hallway spot the door is in (`bazaar.ts`). */
     spot?: string;
     /** The Photo matcher's result: photos joined to a product, and the files it could not place. */
@@ -351,7 +355,7 @@ export function uploadKey(slug: string, kind: UploadKind, name: string, now: Dat
 }
 
 export const isUploadKeyOf = (slug: string, key: string) =>
-  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|raw|shelf)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
+  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|logo|raw|shelf)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
 
 /** The upload recorded: a video, sheet or door replaces the last one; photos add up. Then the steps it affects go back to do. */
 export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded): StoreRecord {

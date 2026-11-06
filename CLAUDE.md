@@ -105,6 +105,12 @@ plan and the Managed Agents decision are in
   counts once, then again after 30 min away; the operator is never counted). `stores/<slug>/owner-visits.json`
   (`lib/stores/ownerVisits.ts`, rule in `ownerVisitsRules.ts`); shown on `/stores`, a total at the top and a line
   per store. Counting started 2026-11-06; nothing before it was recorded.
+- **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
+  accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
+  `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,
+  or «Paste from clipboard»; `FilePick` `paste`). `prepareLogo` (`crew.ts`) makes it a public PNG (≤512 px,
+  transparency kept) and sets `Walk.logo`; both tours show it at the top left (`StoreLogo`), the bazaar's logo
+  on the right. A logo given before the walk exists reaches it at the Placer step.
 - **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,
   3840×1920 or larger, 25 fps, 8-bit, H.264 or H.265; owner's laptop could not
   export 8K, 2026-11-03). The crew makes its own web and phone copies, so the

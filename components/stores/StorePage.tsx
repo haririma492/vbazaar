@@ -247,7 +247,8 @@ export default function StorePage({ slug }: { slug: string }) {
           <FilePick
             key={c.kind}
             fa={c.fa} en={c.en} hint={c.hint} accept={c.accept} multiple={"multiple" in c && c.multiple}
-            current={c.kind === "photo" ? (s.files.photos.length ? `${s.files.photos.length} photos` : null) : s.files[c.kind as "video" | "sheet" | "door"]?.name ?? null}
+            paste={"paste" in c && c.paste}
+            current={c.kind === "photo" ? (s.files.photos.length ? `${s.files.photos.length} photos` : null) : s.files[c.kind as "video" | "sheet" | "door" | "logo"]?.name ?? null}
             send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: c.kind }, file, onProgress); await load(); }}
           />
         ))}

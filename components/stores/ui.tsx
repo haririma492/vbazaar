@@ -8,7 +8,7 @@
  * is in pipeline or the way we use the UI").
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Progress } from "./upload";
 
 export const FIELD = "sk-field w-full rounded-lg bg-black/30 px-3 py-2.5 text-[15px] text-[--sk-ink] placeholder:text-white/30 outline-none";
@@ -41,9 +41,11 @@ const mb = (n: number) => (n >= 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6
  * «✓ Uploaded» or what went wrong said on the card.
  */
 export function FilePick({
-  fa, en, hint, accept, multiple, current, send,
+  fa, en, hint, accept, multiple, current, send, paste,
 }: {
   fa: string; en: string; hint?: string; accept: string; multiple?: boolean;
+  /** Also take a picture pasted from the clipboard: Ctrl+V / ⌘V on the page, or the «Paste from clipboard» key. */
+  paste?: boolean;
   current?: string | null;
   send: (file: File, onProgress: (p: Progress) => void) => Promise<unknown>;
 }) {
@@ -67,6 +69,36 @@ export function FilePick({
     setBusy(null);
     setSaid({ ok: true, text: `✓ ${okCount === 1 ? "Uploaded" : `${okCount} files uploaded`} · بارگذاری شد` });
   };
+  // A pasted picture is a file like any other: named for its type, so the server's file rules apply.
+  const asFile = (b: Blob) => new File([b], `pasted-${Date.now()}.${b.type === "image/jpeg" ? "jpg" : b.type === "image/webp" ? "webp" : "png"}`, { type: b.type || "image/png" });
+  const goRef = useRef(go);
+  goRef.current = go;
+  useEffect(() => {
+    if (!paste) return;
+    const on = (e: ClipboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const item = [...(e.clipboardData?.items ?? [])].find((i) => i.type.startsWith("image/"));
+      const b = item?.getAsFile();
+      if (!b) return;
+      e.preventDefault();
+      void goRef.current([asFile(b)]);
+    };
+    window.addEventListener("paste", on);
+    return () => window.removeEventListener("paste", on);
+  }, [paste]);
+  const pasteNow = async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const it of items) {
+        const type = it.types.find((x) => x.startsWith("image/"));
+        if (type) { await go([asFile(await it.getType(type))]); return; }
+      }
+      setSaid({ ok: false, text: "No picture in the clipboard: copy the logo first (right-click → Copy image). · تصویری در کلیپ‌بورد نیست." });
+    } catch {
+      setSaid({ ok: false, text: "This browser did not let us read the clipboard: press Ctrl+V (⌘V on a Mac) on this page instead. · Ctrl+V را بزنید." });
+    }
+  };
   return (
     <div>
       <Bi fa={fa} en={en} className="text-[15px] font-bold text-amber-100" />
@@ -76,6 +108,11 @@ export function FilePick({
       <button type="button" disabled={Boolean(busy)} onClick={() => input.current?.click()} className={`${KEY} mt-3`}>
         {busy ? "…" : current ? "انتخاب فایل دیگر · Choose another" : "انتخاب فایل · Choose file"}
       </button>
+      {paste && (
+        <button type="button" disabled={Boolean(busy)} onClick={() => void pasteNow()} className={`${QUIET} ms-2 mt-3`}>
+          📋 چسباندن از کلیپ‌بورد · Paste from clipboard
+        </button>
+      )}
       {busy && (
         <div className="mt-3" dir="ltr">
           <div className="h-2 overflow-hidden rounded-full bg-white/10">

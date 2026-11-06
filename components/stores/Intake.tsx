@@ -30,6 +30,8 @@ export const UPLOAD_CARDS = [
     hint: "Name each file by its product number (112.jpg) if you can; the crew looks at the rest to find which product it is.", skip: true },
   { kind: "door", fa: "عکس درِ واقعی فروشگاه", en: "A photo of the store's real door", accept: "image/jpeg,image/png,image/webp",
     hint: "Straight on, the whole door and its sign. It is the door shoppers see on the hallway.", skip: true },
+  { kind: "logo", fa: "لوگوی فروشگاه", en: "The store's logo", accept: "image/png,image/jpeg,image/webp", paste: true,
+    hint: "A .png (best: with a clear background), .jpg or .webp — or copy the logo and paste it here (Ctrl+V / ⌘V, or «Paste from clipboard»). It sits at the top left of the store's tours.", skip: true },
 ] as const;
 
 export default function Intake() {
@@ -57,6 +59,7 @@ export default function Intake() {
         <FilePick
           key={card.kind}
           fa={card.fa} en={card.en} hint={card.hint} accept={card.accept} multiple={"multiple" in card && card.multiple}
+          paste={"paste" in card && card.paste}
           send={(file, onProgress) => uploadInParts(`/api/stores/${slug}`, { action: "upload", kind: card.kind }, file, onProgress)}
         />
         <div className="mt-4 flex flex-wrap gap-2">

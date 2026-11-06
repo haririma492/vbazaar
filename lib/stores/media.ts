@@ -153,6 +153,14 @@ export async function jpegOf(bytes: Uint8Array, max: number): Promise<Uint8Array
   ], { input: bytes }));
 }
 
+/** A picture as a PNG (its transparency kept), at most `max` px a side: a store's logo. */
+export async function pngOf(bytes: Uint8Array, max: number): Promise<Uint8Array> {
+  return new Uint8Array(await run("ffmpeg", [
+    "-v", "error", "-i", "pipe:0", "-frames:v", "1",
+    "-vf", `scale='min(${max},iw)':'min(${max},ih)':force_original_aspect_ratio=decrease,format=rgba`, "-f", "image2", "-c:v", "png", "pipe:1",
+  ], { input: bytes }));
+}
+
 /** The part of a JPEG inside `box` ([left, top, right, bottom], thousandths), with a little margin, as a JPEG. */
 export async function cropJpeg(bytes: Uint8Array, box: [number, number, number, number], margin = 0.08): Promise<Uint8Array> {
   const [l, t, r, b] = box.map((v) => Math.min(1000, Math.max(0, v)) / 1000);

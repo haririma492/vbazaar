@@ -278,12 +278,17 @@ export type Walk = {
    * the beginning of the walk"). Set by the Store Builder's Placer; https only.
    */
   doorPhoto?: string;
+  /** The store's logo, at the top left of both tours (owner, 2026-11-06). https:// only. */
+  logo?: string;
 };
 /**
  * The door photo shown as this walk begins: its own `doorPhoto`, else the
  * photo on any door that leads into it (a store placed before the field
  * existed). Undefined for a walk that is not a store's.
  */
+export function logoOf(walks: Walks, key: string | null): string | undefined {
+  return key ? walks.walks[key]?.logo : undefined;
+}
 export function doorPhotoOf(walks: Walks, key: string | null): string | undefined {
   if (!key) return undefined;
   const own = walks.walks[key]?.doorPhoto;
@@ -486,6 +491,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.pace !== undefined && r.pace !== null) {
       if (typeof r.pace === "number" && r.pace >= 0.1 && r.pace <= 5) walk.pace = r.pace;
       else problems.push(`${key}: «pace» must be the walking speed in m/s (0.1…5).`);
+    }
+    if (r.logo !== undefined && r.logo !== null && r.logo !== "") {
+      if (isSiteUrl(r.logo)) walk.logo = r.logo as string;
+      else problems.push(`${key}: «logo» must be an https:// address.`);
     }
     if (r.doorPhoto !== undefined && r.doorPhoto !== null && r.doorPhoto !== "") {
       if (isSiteUrl(r.doorPhoto)) walk.doorPhoto = r.doorPhoto as string;

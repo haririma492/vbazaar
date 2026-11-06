@@ -16,12 +16,13 @@
  * and forth; only «Next shelf ›» / «‹ Previous shelf» change shelf.
  */
 
+import StoreLogo from "@/components/brand/StoreLogo";
 import BrandBadge from "@/components/brand/BrandBadge";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
 import { checkCatalogue, type Catalogue } from "@/lib/splats/catalogue";
-import { DOOR_PHOTO_MS, doorPhotoOf, parseWalks, type Walk, type WalkItem, type WalkLabel } from "@/lib/splats/walks";
+import { DOOR_PHOTO_MS, doorPhotoOf, logoOf, parseWalks, type Walk, type WalkItem, type WalkLabel } from "@/lib/splats/walks";
 import { FADE } from "@/lib/stores/tour";
 
 type OnScreen = { n: number; t: number[]; x: number[]; y: number[] };
@@ -67,13 +68,17 @@ export default function ShelfTour() {
   const box = useRef<HTMLDivElement | null>(null);
   // The store's door photo opens the tour, as it opens the Free Tour (`DOOR_PHOTO_MS`, 7 s; owner, 2026-11-06).
   const [door, setDoor] = useState<{ url: string; out: boolean } | null>(null);
+  // The store's own logo, at the top left of the picture (owner, 2026-11-06).
+  const [logo, setLogo] = useState<string | null>(null);
   const doorDone = useRef(false);
   useEffect(() => {
     if (!tour || doorDone.current) return;
     doorDone.current = true;
     let fade = 0, done = 0;
     void fetch("/api/splats/walks", { cache: "no-store" }).then((r) => r.json()).then((j) => {
-      const url = j?.ok ? doorPhotoOf(parseWalks(j.walks), tour.walk) : undefined;
+      const parsed = j?.ok ? parseWalks(j.walks) : null;
+      setLogo((parsed && logoOf(parsed, tour.walk)) ?? null);
+      const url = parsed ? doorPhotoOf(parsed, tour.walk) : undefined;
       if (!url) return;
       video.current?.pause();
       setDoor({ url, out: false });
@@ -205,6 +210,7 @@ export default function ShelfTour() {
         </div>
       </div>
       <div ref={box} className="relative min-h-0 flex-1" onClick={tap}>
+        {logo && <StoreLogo src={logo} className="absolute left-3 top-3 z-30" />}
         {err && <p className="p-6 text-center text-amber-200">{err}</p>}
         {tour && (
           <video ref={video} src={tour.video} className="absolute inset-0 h-full w-full object-contain" playsInline preload="auto"

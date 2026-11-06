@@ -53,6 +53,7 @@
  *   …&edit=1                                place doors (operator token, like /vca/splat)
  */
 
+import StoreLogo from "@/components/brand/StoreLogo";
 import BrandBadge from "@/components/brand/BrandBadge";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -72,7 +73,7 @@ import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, scree
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
-  DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
+  DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
   entryOf, faceOf, itemHitAt, itemsAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
@@ -2392,6 +2393,8 @@ export default function Walk360() {
       {/* The bazaar's logo on the right, from the first screen (owner, 2026-11-06); the sound key and the
           website key sit below it. */}
       {phase !== "loading" && <BrandBadge width={52} overlay className="absolute right-3 top-3 z-20" />}
+      {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
+      {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (
         <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
