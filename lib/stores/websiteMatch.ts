@@ -13,7 +13,7 @@ import { OverBudget, sameProduct, type Purse } from "./ai";
 import { jpegOf } from "./media";
 import { MATCH_SURE, applyMatches, shortlist } from "./websiteMatchRules";
 
-type Verdict = { into: number | null; web: string | null; confidence: number; why: string; at: string };
+export type Verdict = { into: number | null; web: string | null; confidence: number; why: string; at: string };
 const memoKey = (slug: string) => `stores/${slug}/website-match.json`;
 
 async function bytesOf(url: string | undefined, px: number): Promise<Uint8Array | null> {
@@ -56,7 +56,7 @@ export async function matchVideoToWebsite(slug: string, say: (note: string) => P
       if (target) matches.set(v.n, target.n);
       continue;
     }
-    const cands = shortlist(v, site, 8);
+    const cands = shortlist(v, site, 12);
     if (!cands.length) { memo[String(v.n)] = { into: null, web: null, confidence: 0, why: "no website product shares a word with it", at: new Date().toISOString() }; continue; }
     if (i % 10 === 0) await say(`Matching the video's products to the website's: ${i + 1} of ${video.length}…`);
     const seen = await bytesOf(v.photo, 512);
@@ -85,4 +85,17 @@ export async function matchVideoToWebsite(slug: string, say: (note: string) => P
   await writeCatalogue({ ...now, products: r.products });
   const unseen = r.products.filter((p) => p.by === "website").length;
   return ` ${r.joined} products found in the video now carry the website's name, price, description and photos (${asked} compared this time); ${unseen} website products were not matched to the video.${stopped}`;
+}
+
+/** The verdicts, for the website page: each product found in the video, what it looked like, and what was decided. */
+export async function readVerdicts(slug: string): Promise<Record<string, Verdict>> {
+  try { const t = await readMastersText(memoKey(slug)); return t ? JSON.parse(t) : {}; } catch { return {}; }
+}
+
+/** «Compare the unmatched again»: the «none» verdicts forgotten (the matches stay), then the matcher runs. */
+export async function rematch(slug: string): Promise<string> {
+  const memo = await readVerdicts(slug);
+  const kept = Object.fromEntries(Object.entries(memo).filter(([, v]) => v.into !== null));
+  await writeMastersJson(memoKey(slug), kept);
+  return (await matchVideoToWebsite(slug)).trim();
 }

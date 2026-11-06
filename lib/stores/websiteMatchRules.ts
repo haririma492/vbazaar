@@ -10,14 +10,20 @@ import type { Product } from "@/lib/splats/catalogue";
 const STOP = new Set(["the", "a", "an", "and", "with", "of", "for", "in", "on", "set", "pcs", "piece", "pieces", "cm", "l", "ml", "everyday", "cooking", "design", "style", "product"]);
 export const words = (s: string | undefined) => String(s || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").split(" ").filter((w) => w.length > 1 && !STOP.has(w)).map((w) => w.replace(/(es|s)$/, ""));
 
-/** Up to `k` website products whose name or note shares the most words with what the finder saw, best first. */
-export function shortlist(video: Product, site: Product[], k = 10): Product[] {
-  const want = new Set(words(`${video.seen ?? ""} ${video.en ?? ""}`));
-  if (!want.size) return [];
-  const scored = site.map((p) => {
-    const have = new Set(words(`${p.en ?? ""} ${p.fa ?? ""} ${(p.note ?? "").slice(0, 200)}`));
+/**
+ * Up to `k` website products sharing the most with what the finder saw, best first. A word counts when one contains
+ * the other ("stock" and "pot" both meet "stockpot"); a word that most of the site's products carry ("stainless",
+ * "steel" in a kitchen shop) counts for less, so the rarer, telling words decide.
+ */
+export function shortlist(video: Product, site: Product[], k = 12): Product[] {
+  const want = [...new Set(words(`${video.seen ?? ""} ${video.en ?? ""}`))];
+  if (!want.length) return [];
+  const bags = site.map((p) => ({ p, have: [...new Set(words(`${p.en ?? ""} ${p.fa ?? ""} ${(p.note ?? "").slice(0, 160)}`))] }));
+  const meets = (w: string, h: string) => w === h || (w.length >= 3 && h.length >= 3 && (h.includes(w) || w.includes(h)));
+  const share = new Map(want.map((w) => [w, bags.filter((b) => b.have.some((h) => meets(w, h))).length]));
+  const scored = bags.map(({ p, have }) => {
     let score = 0;
-    for (const w of want) if (have.has(w)) score++;
+    for (const w of want) if (have.some((h) => meets(w, h))) score += 1 / Math.max(1, share.get(w) ?? 1);
     return { p, score };
   }).filter((x) => x.score > 0);
   scored.sort((a, b) => b.score - a.score || a.p.n - b.p.n);

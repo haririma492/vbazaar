@@ -17,7 +17,8 @@ import { getJson, postJson } from "./upload";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
 type Summary = { products: number; unlisted?: number; priced: number; onSale: number; photos: number; withoutPhoto: number; described: number; farsi: number; categories: string[] };
-type Page = { who: "owner" | "operator"; website: string | null; name: { en: string; fa: string }; run: WebsiteRun | null; summary: Summary };
+type Match = { n: number; seen: string; photo: string | null; matched: boolean; name: string; confidence: number; why: string };
+type Page = { who: "owner" | "operator"; website: string | null; name: { en: string; fa: string }; run: WebsiteRun | null; summary: Summary; matching?: Match[] | null };
 
 const money = (c: number | null, cur = "CAD") => (c === null ? "—" : `$${(c / 100).toFixed(2)}${cur && cur !== "CAD" ? ` ${cur}` : ""}`);
 const fold = (v: string) => v.toLowerCase().replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/‌/g, " ").replace(/\s+/g, " ").trim();
@@ -239,6 +240,37 @@ export default function WebsitePage({ slug }: { slug: string }) {
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {shown.map((p) => <ProductCard key={p.url} p={p} />)}
         </div>
+      )}
+
+      {op && page.matching && page.matching.length > 0 && (
+        <Card>
+          <Bi fa="محصولات ویدیو و همتای آنها در وبسایت" en="Products in the video, and their website product" className="text-[16px] font-bold" />
+          <p dir="ltr" className="mt-1 text-left text-[13px] text-white/60">
+            {page.matching.filter((m) => m.matched).length} of {page.matching.length} matched: those now carry the website&apos;s name, price, description and photos, and keep their lights in the walk.
+          </p>
+          <button type="button" className={`${QUIET} mt-2`} disabled={busy} onClick={async () => {
+            setBusy(true); setSaid(null);
+            try { const r = await postJson<{ note: string }>(api, { action: "rematch" }); setSaid({ ok: true, text: r.note }); await load(); }
+            catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
+            finally { setBusy(false); }
+          }}>Compare the unmatched again (a cent or two of the store&apos;s AI budget)</button>
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[13px]">Every verdict</summary>
+            <ul dir="ltr" className="mt-2 space-y-1.5 text-left text-[12px]">
+              {page.matching.map((m) => (
+                <li key={m.n} className="flex gap-2">
+                  {m.photo && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={m.photo} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded bg-white object-contain" />
+                  )}
+                  <span className={m.matched ? "text-emerald-200" : "text-white/60"}>
+                    #{m.n} {m.seen || "—"} → {m.matched ? m.name : "no match"} <span className="text-white/40">({Math.round(m.confidence * 100)}%: {m.why})</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        </Card>
       )}
 
       {run && run.failures.length > 0 && (

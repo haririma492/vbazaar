@@ -15,7 +15,12 @@ const site: Product[] = [
 ];
 
 test("the shortlist: website products sharing words with what the finder saw, best first", () => {
-  assert.deepEqual(shortlist(video[0], site).map((p) => p.n), [140]);
+  assert.equal(shortlist(video[0], site)[0].n, 140);
+  // "stock pots" meets "Stockpot": a word inside another counts.
+  assert.equal(shortlist({ n: 9, unit: "piece", priceCents: null, by: "video", seen: "Large stock pots" }, [site[2], { ...site[0], en: "Stockpot 24 cm", note: "" }])[0].n, 140);
+  // A word most products carry counts for less than a telling one.
+  const many = Array.from({ length: 6 }, (_, i) => ({ n: 200 + i, unit: "piece" as const, priceCents: 100, by: "website" as const, web: `w${i}`, en: `Stainless Steel Spoon ${i}` }));
+  assert.equal(shortlist({ n: 9, unit: "piece", priceCents: null, by: "video", seen: "Stainless steel wok" }, [...many, site[1]])[0].n, 141);
   assert.deepEqual(shortlist(video[1], site).map((p) => p.n), [141, 142]); // the teapot shares "glass": the picture decides
   assert.deepEqual(shortlist({ n: 9, unit: "piece", priceCents: null, by: "video", seen: "" }, site), []);
 });
