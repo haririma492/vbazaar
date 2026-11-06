@@ -10,6 +10,7 @@
 // exactly on the books. The result is the same tour the player already plays
 // (`scenes/store-<slug>/tour.json`): a clip a shelf, it stops at a shelf's end,
 // the shopper goes back and forth, «Next shelf ›» moves on.
+import { mediaPath } from "@/lib/splats/media";
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -115,7 +116,7 @@ export async function buildShelfFilm(slug: string): Promise<string> {
     const videoKey = `scenes/store-${slug}/tour-${Date.now()}.mp4`;
     await uploadFile(videoKey, video, "video/mp4");
     const manifest: TourManifest = {
-      store: slug, walk: s.out.walk, video: `${r2Config().publicBase}/${videoKey}`, made: new Date().toISOString(), w: OW, h: OH,
+      store: slug, walk: s.out.walk, video: mediaPath(videoKey), made: new Date().toISOString(), w: OW, h: OH,
       seconds: Math.round(at * 100) / 100, items: [...items.values()], clips,
     };
     const mf = join(dir, "tour.json");

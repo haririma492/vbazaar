@@ -10,6 +10,7 @@
 //           (the latest: its video, its clips and every product's place on
 //           screen through it), both public: `/vca/tour?s=<slug>` plays them.
 // One at a time; state in `jobs/tour.json` for the dashboard and the store page.
+import { mediaPath } from "@/lib/splats/media";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,7 +89,7 @@ export async function buildTour(slug: string): Promise<string> {
     await uploadFile(videoKey, video, "video/mp4");
     let at = 0;
     const manifest: TourManifest = {
-      store: slug, walk: walkKey, video: publicUrl(videoKey), made: new Date().toISOString(), w: TOUR_W, h: TOUR_H,
+      store: slug, walk: walkKey, video: mediaPath(videoKey), made: new Date().toISOString(), w: TOUR_W, h: TOUR_H,
       seconds: plan.seconds, items: plan.items,
       clips: plan.clips.map((c) => { const len = clipLen(c); const o = { shelf: c.shelf, at: Math.round(at * 100) / 100, len: Math.round(len * 100) / 100, products: c.products }; at += len; return o; }),
     };
