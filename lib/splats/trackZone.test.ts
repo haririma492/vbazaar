@@ -56,3 +56,16 @@ test("a cut in the walk: found, and the lock never follows or blends across it (
   const blind = zoneThroughWalk(frames, 0.5, locks);
   assert.ok(blind.some((z, i) => Math.abs(((((z.yaw * 180) / Math.PI) - path[i] + 540) % 360) - 180) > 10), "the old way was off");
 });
+
+test("a moment between two cuts with no look of its own: its lock covers the operator on both sides", () => {
+  // Stretch A (operator 100°), one frame of another place, stretch B (operator 160°): a look in A and in B only.
+  const path = [...Array.from({ length: 10 }, () => 100), 130, ...Array.from({ length: 10 }, () => 160)];
+  const frames = path.map((d, i) => frame(d, i === 10 ? 1 : 0));
+  const breaks = shotBreaks(frames);
+  assert.deepEqual(breaks, [10, 11]);
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const at = zoneThroughWalk(frames, 0.5, [{ t: 2, yaw: rad(100), width: rad(60) }, { t: 8, yaw: rad(160), width: rad(60) }], breaks);
+  const mid = at[10];
+  assert.ok(Math.abs((mid.yaw * 180) / Math.PI - 130) < 2, `centre ${(mid.yaw * 180) / Math.PI}`);
+  assert.ok((mid.width * 180) / Math.PI >= 60 + 60 - 1, "wide enough for both sides");
+});

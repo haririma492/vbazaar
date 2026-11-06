@@ -170,7 +170,7 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
     let armsLat = -90;
     const seen: Seen[] = [];
     // One more look just after every cut (the operator is somewhere else on the other side of it).
-    const afterCuts = stretchesOf(frames.length, breaks).slice(1).filter(([a, b]) => (b - a) * dt >= 1.5).map(([a, b]) => (a + Math.min(2, (b - a) / 2)) * dt);
+    const afterCuts = stretchesOf(frames.length, breaks).slice(1).filter(([a, b]) => (b - a) * dt >= 0.5).map(([a, b]) => (a + Math.min(2, (b - a) / 2)) * dt);
     const times = handLocks ? [] : [...seedTimes(seconds), ...afterCuts].sort((x, y) => x - y);
     if (times.length) await say(`Looking for them at ${times.length} moments…`);
     let reference: Uint8Array | null = null;

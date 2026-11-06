@@ -682,7 +682,7 @@ quality and choice to break away and enter in a shop. (period)"*
   **Cuts** (owner, 2026-11-06: *"photographer view leaked … starting 1:28 ending 1:33"*): a walk cut by the Route
   optimizer jumps place, and the follow blended across the cut. `shotBreaks` (`trackZone.ts`) finds them (best
   column match over ±25° below 0.7; 0.9 ordinary, 0.29–0.64 at Saraye Bamdad's cuts); each stretch is followed
-  from its own looks only, one extra look just after each cut, and `dropStrays` compares looks only within a stretch.
+  from its own looks only, one extra look in every piece of 0.5 s or more, a shorter piece (a dip to black) locked wide enough to cover both sides, and `dropStrays` compares looks only within a stretch.
 - **Two ways round a store: «🛒 Shelf Tour | 👣 Free Tour»** (owner,
   2026-11-05: *"1) The Shelf Tour (that is perfectly choreographed for
   shopping result) & 2) The Free Tour (that gives shopper feeling of walking

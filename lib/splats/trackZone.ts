@@ -154,13 +154,31 @@ export function zoneThroughWalk(frames: Float32Array[], dt: number, locks: ZoneL
   // Each stretch between cuts is followed from its OWN locks only, never across a cut. A stretch with no lock
   // keeps the whole-walk follow (the agent looks just after every cut, so that is rare).
   const out = whole.slice();
-  for (const [a, b] of stretchesOf(frames.length, breaks)) {
+  const stretches = stretchesOf(frames.length, breaks);
+  const has: boolean[] = [];
+  for (const [a, b] of stretches) {
     const inside = locks.filter((l) => { const i = Math.round(l.t / dt); return i >= a && i < b; })
       .map((l) => ({ ...l, t: l.t - a * dt }));
+    has.push(inside.length > 0);
     if (!inside.length) continue;
     const part = followWalk(frames.slice(a, b), dt, inside);
     for (let i = 0; i < part.length; i++) out[a + i] = { ...part[i], t: Math.round((a + i) * dt * 100) / 100 };
   }
+  // A stretch with no look of its own (a dip to black, a moment between two cuts): never the follow from across
+  // a cut. Its lock spans from where the operator is at the end of the stretch before it to where they are at the
+  // start of the stretch after it, so they stay hidden on both sides (2026-11-06, Saraye Bamdad 1:30–1:32).
+  stretches.forEach(([a, b], k) => {
+    if (has[k]) return;
+    const prev = k > 0 && has[k - 1] ? out[a - 1] : null, next = k + 1 < stretches.length && has[k + 1] ? out[b] : null;
+    if (!prev && !next) return;
+    let yaw: number, width: number;
+    if (prev && next) {
+      const d = wrapDeg(((next.yaw - prev.yaw) * 180) / Math.PI) * (Math.PI / 180);
+      yaw = prev.yaw + d / 2;
+      width = Math.min((330 * Math.PI) / 180, Math.abs(d) + Math.max(prev.width, next.width));
+    } else { const z = (prev ?? next)!; yaw = z.yaw; width = z.width; }
+    for (let i = a; i < b; i++) out[i] = { t: Math.round(i * dt * 100) / 100, yaw: (wrapDeg((yaw * 180) / Math.PI) * Math.PI) / 180, width };
+  });
   return out;
 }
 
