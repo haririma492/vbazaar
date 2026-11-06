@@ -41,6 +41,7 @@ import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
+import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -221,6 +222,14 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     });
     kick();
     return ok({ store: next ? forPage(next) : null });
+  }
+  if (body.action === "refreshAll") {
+    // Operator: every agent in order (`refreshAll.ts`), in the background. Spends a little, asked on the card.
+    if (who !== "operator") return fail(403, "The operator only.");
+    return ok({ note: startRefreshAll(s.slug) });
+  }
+  if (body.action === "refreshState") {
+    return ok({ run: await readRefresh(s.slug) });
   }
   if (body.action === "shelfTitlesRead") {
     // Operator: read every spine in the shelf photos not read yet (spends from the store's budget). Background.

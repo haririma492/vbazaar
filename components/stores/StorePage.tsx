@@ -32,6 +32,7 @@ import PhotosCard from "./PhotosCard";
 import TourCard from "./TourCard";
 import MapCard from "./MapCard";
 import TitlesCard from "./TitlesCard";
+import RefreshAllCard from "./RefreshAllCard";
 import WalkFrame from "./WalkFrame";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
@@ -195,6 +196,8 @@ export default function StorePage({ slug }: { slug: string }) {
         </div>
         <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of ${(BUDGET_CENTS / 100).toFixed(2)}</p>
       </Card>}
+
+      {op && page.walkUrl && <RefreshAllCard api={api} spentCents={s.spentCents} budgetCents={BUDGET_CENTS} />}
 
       {op && <Card>
         <Bi fa="کار تیم ساخت" en="What the crew is doing" className="mb-3 text-[15px] font-bold text-amber-100" />

@@ -56,7 +56,7 @@ export function cutTime(parts: Array<{ from: number; to: number }>, t: number): 
  * where the walk saw products that no shelf picture holds yet (`gapShots`), at most `max` pictures, and ADDS to
  * the sightings kept (owner, 2026-11-05: "lets extend to all shelves, there are only 12 now").
  */
-export async function findShelves(slug: string, opts: { mode?: "tour" | "gaps"; max?: number } = {}): Promise<string> {
+export async function findShelves(slug: string, opts: { mode?: "tour" | "gaps"; max?: number; rebuild?: boolean } = {}): Promise<string> {
   const mode = opts.mode ?? "tour";
   if (busy) return "The Shelf finder is busy.";
   busy = true;
@@ -177,7 +177,8 @@ export async function findShelves(slug: string, opts: { mode?: "tour" | "gaps"; 
       }
     } catch (e) { console.error("[shelf-find] lights", slug, e); }
     void queuePhotos([slug]).catch(() => {});
-    void buildTour(slug).then((note) => console.log("[tour]", slug, note)).catch((e) => console.error("[tour]", slug, e));
+    // «Refresh all agents» rebuilds the map and the tour itself, in order (`rebuild: false`).
+    if (opts.rebuild !== false) void buildTour(slug).then((note) => console.log("[tour]", slug, note)).catch((e) => console.error("[tour]", slug, e));
     return `Shelf finder${mode === "gaps" ? " (new shelves)" : ""}: looked at ${looked} ${mode === "gaps" ? "pictures" : "shelves"} ($${((purse.spent() - before) / 100).toFixed(2)}); ${fresh.length} new products added, ${again} sightings of products already listed; ${lit} new products lit in the Free Tour. The photos and the Shelf Tour are being made again.${stopped}`;
   } finally {
     busy = false;
