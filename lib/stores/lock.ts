@@ -20,7 +20,7 @@ import { downloadToFile, presignGet, readMastersText, readWalks, webObjectExists
 import { phoneKeyOf, type WalkHide } from "@/lib/splats/walks";
 import { ZONE_H, ZONE_W, columnHistograms, shotBreaks, stretchesOf, zoneThroughWalk, type ZoneLock } from "@/lib/splats/trackZone";
 import { probe, run } from "./media";
-import { findPhotographer, type Purse } from "./ai";
+import { OverBudget, findPhotographer, type Purse } from "./ai";
 import { downForHead, dropStrays, isUnderCamera, seedTimes, type Seen } from "./lockRules";
 import { PACE_FPS, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, frameShift, groundMove, paceOf } from "@/lib/splats/pace";
 
@@ -30,7 +30,9 @@ const MAX_FRAMES = 900;
 /** When Claude looks for the operator: `seedTimes` in `lockRules.ts` (every ~8 s). The frame it is shown. */
 const SEED_W = 1024, SEED_H = 512;
 /** Degrees added round the person Claude boxed (a little of them always spills). */
-const MARGIN = 18; // 12 left an arm or a shoulder showing at the edge
+// 12 left an arm or a shoulder showing at the edge; 18 still showed the operator's shoulder when they stood close
+// (owner, 2026-11-06: "the angle should be closed on me").
+const MARGIN = 25;
 /** Half the view's height on a phone held upright or a computer (the camera's 75°). */
 const HALF_VFOV = 37.5;
 const rad = (d: number) => (d * Math.PI) / 180;
@@ -174,6 +176,7 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
     const times = handLocks ? [] : [...seedTimes(seconds), ...afterCuts].sort((x, y) => x - y);
     if (times.length) await say(`Looking for them at ${times.length} moments…`);
     let reference: Uint8Array | null = null;
+    let outOfMoney = false;
     for (const t0 of times) {
       const t = Math.min(seconds - 0.1, Math.max(0, t0));
       // The operator is usually BEHIND the camera, i.e. split across the panorama's left and right edges, which
@@ -187,9 +190,16 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
         const jpeg = new Uint8Array(await run("ffmpeg", [
           "-v", "error", "-ss", t.toFixed(2), "-i", src, "-frames:v", "1", "-vf", vf, "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
         ]));
-        const q = await findPhotographer(purse, jpeg, SEED_W, SEED_H, reference ?? undefined);
+        let q: Awaited<ReturnType<typeof findPhotographer>>;
+        try { q = await findPhotographer(purse, jpeg, SEED_W, SEED_H, reference ?? undefined); }
+        catch (e) {
+          // Out of money mid-run: the lock is made from the looks already paid for, never thrown away.
+          if (e instanceof OverBudget) { outOfMoney = true; break; }
+          throw e;
+        }
         if (q.found) { p = q; turn = yaw; break; }
       }
+      if (outOfMoney) break;
       if (!p) continue;
       const d1 = (p.x1 / SEED_W) * 360 - 180 + turn, d2 = (p.x2 / SEED_W) * 360 - 180 + turn;
       const n1 = ((d1 + 540) % 360) - 180, n2 = ((d2 + 540) % 360) - 180;
@@ -245,7 +255,7 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
     if (handLocks && JSON.stringify(w.hide?.locks ?? null) !== JSON.stringify(before.hide?.locks ?? null)) return "The locks were changed by hand meanwhile: run again.";
     await writeWalks({ ...walks, walks: { ...walks.walks, [walkKey]: { ...w, hide, tilt: !w.tilt || w.hide?.auto ? tilt : w.tilt } } }, walks);
     const from = handLocks ? `from your ${locks.length} locks` : `found by eye at ${locks.length} moments`;
-    return `Locked the camera operator in all ${at.length} frames (${from}); shoppers look down to ${Math.round(w.tilt && !w.hide?.auto && handLocks ? (w.tilt.down ?? rad(down)) * 180 / Math.PI : down)}° and up to 45°.`;
+    return `${outOfMoney ? "(The AI budget ran out part way: locked from the looks made.) " : ""}Locked the camera operator in all ${at.length} frames (${from}); shoppers look down to ${Math.round(w.tilt && !w.hide?.auto && handLocks ? (w.tilt.down ?? rad(down)) * 180 / Math.PI : down)}° and up to 45°.`;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

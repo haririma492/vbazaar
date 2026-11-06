@@ -112,7 +112,8 @@ export async function POST(req: NextRequest) {
       const key = String(body.key ?? "");
       if (!(await readWalks()).walks[key]) return fail(404, "No such walk.");
       let spent = 0;
-      const purse = { spent: () => spent, limit: 100, add: async (c: number) => { spent += c; } };
+      // $3: a look every 5 s plus one after each cut (2026-11-06; $1 stopped the run part way and saved nothing).
+      const purse = { spent: () => spent, limit: 300, add: async (c: number) => { spent += c; } };
       void autoLock(key, purse, async () => {})
         .then((note) => console.log("[lockWalk]", key, note))
         .catch((e) => console.error("[lockWalk]", key, e));
