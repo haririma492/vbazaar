@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addHit, emptyStats, ownerSeesWidget, planWidget, siteOf, snippet } from "./widgetRules";
+import { PREVIEW_FOV, addHit, emptyStats, ownerSeesWidget, planWidget, previewAim, siteOf, snippet } from "./widgetRules";
 
 const facts = { live: true, walk: "scenes/store-shirazgalery/walk-1.mp4", tourVideo: "/api/media/scenes/store-shirazgalery/tour.mp4", photos: ["https://media.x/a.jpg", "https://media.x/b.jpg"], door: "https://media.x/door.jpg" };
 
@@ -50,4 +50,21 @@ test("counts by day and by site; the owner sees the card only when switched on",
 test("the Free Tour's preview with its music comes first, when it is made", () => {
   const p = planWidget("x", { ...facts, freeTour: { src: "/api/media/scenes/store-x/widget-preview-1.mp4", sound: true } });
   assert.deepEqual(p.preview, { kind: "video", src: "/api/media/scenes/store-x/widget-preview-1.mp4", sound: true });
+});
+
+const D = Math.PI / 180;
+test("the preview looks away from the camera operator, and the operator never enters it", () => {
+  // The operator straight ahead (yaw 0): the preview turns round to face behind them.
+  const a = previewAim(() => ({ yaw: 0, width: 60 * D }));
+  assert.ok(Math.abs(Math.abs(a.yaw) - Math.PI) < 1e-6);
+  assert.equal(a.hfov, PREVIEW_FOV);
+  assert.equal(a.seconds, 20);
+  // The operator drifting 40° over the clip: aimed at the middle of the opposite, still clear.
+  const b = previewAim((t) => ({ yaw: (t / 20) * 40 * D, width: 50 * D }));
+  assert.ok(Math.abs(Math.abs(b.yaw) - 160 * D) < 0.01);
+  // A walk that turns all the way round in 20 s: narrowed, then cut where the operator would come in.
+  const c = previewAim((t) => ({ yaw: (t / 20) * 360 * D, width: 50 * D }));
+  assert.ok(c.seconds < 20);
+  // No lock: straight ahead, as before.
+  assert.deepEqual(previewAim(null), { yaw: 0, hfov: PREVIEW_FOV, seconds: 20 });
 });

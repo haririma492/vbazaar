@@ -93,3 +93,35 @@ export function parseStats(raw: unknown): WidgetStats {
 
 /** May the store's owner see the widget card on their page? Only when the operator has switched it on. */
 export const ownerSeesWidget = (s: { widgetForOwner?: boolean }) => s.widgetForOwner === true;
+
+// ── Where the sneak preview looks: away from the camera operator (owner, 2026-11-06: "this sneak preview is pre lock
+// agent so it shows me when recording … fix it"). The Lock agent does not change the video; it records where the
+// operator is (`Walk.hide`, a zone that moves through the walk). The preview is a FIXED forward view, so it is aimed
+// opposite that zone and checked every half second: the zone must stay out of the frame, with a margin. If it would
+// come in, the view narrows (down to 70°), then the clip is cut short where it would (never under 8 s).
+
+export type Zone = { yaw: number; width: number };
+const TAU = Math.PI * 2;
+const wrap = (a: number) => ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+export const PREVIEW_FOV = 100 * (Math.PI / 180);
+const MIN_FOV = 70 * (Math.PI / 180);
+const MARGIN = 8 * (Math.PI / 180);
+export const MIN_PREVIEW_SECONDS = 8;
+
+/** The direction (radians, the video's frame), view width and length of a preview that never shows the operator. */
+export function previewAim(zoneAt: ((t: number) => Zone) | null, seconds = PREVIEW_SECONDS): { yaw: number; hfov: number; seconds: number } {
+  if (!zoneAt) return { yaw: 0, hfov: PREVIEW_FOV, seconds };
+  const ts: number[] = [];
+  for (let t = 0; t <= seconds + 1e-9; t += 0.5) ts.push(Math.round(t * 10) / 10);
+  // Opposite the operator, averaged round the circle over the clip.
+  let x = 0, y = 0;
+  for (const t of ts) { const z = zoneAt(t); x += Math.cos(z.yaw + Math.PI); y += Math.sin(z.yaw + Math.PI); }
+  const yaw = wrap(Math.atan2(y, x));
+  const clear = (t: number, hfov: number) => { const z = zoneAt(t); return Math.abs(wrap(z.yaw - yaw)) >= hfov / 2 + z.width / 2 + MARGIN; };
+  for (let hfov = PREVIEW_FOV; hfov >= MIN_FOV - 1e-9; hfov -= 5 * (Math.PI / 180)) {
+    const bad = ts.find((t) => !clear(t, hfov));
+    if (bad === undefined) return { yaw, hfov, seconds };
+    if (hfov - 5 * (Math.PI / 180) < MIN_FOV - 1e-9 && bad >= MIN_PREVIEW_SECONDS + 0.5) return { yaw, hfov, seconds: bad - 0.5 };
+  }
+  return { yaw, hfov: MIN_FOV, seconds: 0 }; // no clear view: no preview (the widget falls back)
+}
