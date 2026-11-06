@@ -654,7 +654,9 @@ quality and choice to break away and enter in a shop. (period)"*
   when shopper turns 60 degree"*). Six fixed looks found the operator only twice on Saraye Bamdad, so the colour
   follow drifted to the front of the walk. Now `seedTimes` (`lockRules.ts`): one look every 8 s (6–30), each
   first on the frame turned half round (the operator is behind the camera, split across the panorama's edges),
-  a look far from both neighbours dropped as a passer-by (`dropStrays`), 18° margin (was 12).
+  a look far from both neighbours dropped as a passer-by (`dropStrays`), 18° margin (was 12). Then every 5 s,
+  and the first operator found is cut out and shown to Claude at every later look ("find this same person"):
+  the operator often stands 2–3 m from the camera, and the old "nearest person" prompt missed them.
 - **Two ways round a store: «🛒 Shelf Tour | 👣 Free Tour»** (owner,
   2026-11-05: *"1) The Shelf Tour (that is perfectly choreographed for
   shopping result) & 2) The Free Tour (that gives shopper feeling of walking

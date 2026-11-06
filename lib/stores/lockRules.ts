@@ -45,7 +45,8 @@ export function downForHead(seen: Seen[], halfVfov: number, margin = 5): number 
  * walk by ~100 s. Now one look every `SEED_EVERY` seconds (at least `SEED_MIN`, at most `SEED_MAX`), in the
  * middle of each stretch. A look is about half a cent; a 150 s walk is ~19 looks.
  */
-export const SEED_EVERY = 8, SEED_MIN = 6, SEED_MAX = 30;
+// 5 s (was 8): between two looks 8 s apart the colour follow still slid 40–70° off on Saraye Bamdad.
+export const SEED_EVERY = 5, SEED_MIN = 6, SEED_MAX = 40;
 export function seedTimes(seconds: number): number[] {
   if (!(seconds > 0)) return [];
   const n = Math.min(SEED_MAX, Math.max(SEED_MIN, Math.round(seconds / SEED_EVERY)));

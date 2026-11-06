@@ -163,6 +163,7 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
     const seen: Seen[] = [];
     const times = handLocks ? [] : seedTimes(seconds);
     if (times.length) await say(`Looking for them at ${times.length} moments…`);
+    let reference: Uint8Array | null = null;
     for (const t0 of times) {
       const t = Math.min(seconds - 0.1, Math.max(0, t0));
       // The operator is usually BEHIND the camera, i.e. split across the panorama's left and right edges, which
@@ -176,7 +177,7 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
         const jpeg = new Uint8Array(await run("ffmpeg", [
           "-v", "error", "-ss", t.toFixed(2), "-i", src, "-frames:v", "1", "-vf", vf, "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
         ]));
-        const q = await findPhotographer(purse, jpeg, SEED_W, SEED_H);
+        const q = await findPhotographer(purse, jpeg, SEED_W, SEED_H, reference ?? undefined);
         if (q.found) { p = q; turn = yaw; break; }
       }
       if (!p) continue;
@@ -186,6 +187,16 @@ async function lockOperator(walkKey: string, purse: Purse, say: (note: string) =
       seen.push({ span, headLat: 90 - (Math.min(SEED_H, Math.max(0, p.headY)) / SEED_H) * 180 });
       if (span < 5 || span > 300) continue;
       const mid = n1 + span / 2;
+      // The first person found becomes the reference: later looks are shown them and asked for the same person.
+      if (!reference && span >= 3 && span <= 120) {
+        const cw = Math.min(SEED_W, Math.max(48, Math.round(((span * 1.3) / 360) * SEED_W) & ~1));
+        const top = Math.max(0, Math.min(SEED_H - 64, Math.round(p.headY) - 16)) & ~1;
+        reference = new Uint8Array(await run("ffmpeg", [
+          "-v", "error", "-ss", t.toFixed(2), "-i", src, "-frames:v", "1",
+          "-vf", `v360=e:e:yaw=${mid.toFixed(1)},scale=${SEED_W}:${SEED_H},crop=${cw}:${SEED_H - top}:${(SEED_W - cw) / 2}:${top}`,
+          "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1",
+        ])).slice();
+      }
       const width = Math.min(330, span + 2 * MARGIN);
       locks.push({ t: Math.round(t * 100) / 100, yaw: rad(((mid + 540) % 360) - 180), width: rad(width) });
       if (p.armsY < SEED_H) armsLat = Math.max(armsLat, 90 - (p.armsY / SEED_H) * 180);

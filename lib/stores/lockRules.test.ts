@@ -33,10 +33,10 @@ test("the limit stays between −40° and −3°", () => {
   assert.equal(downForHead([{ span: 150, headLat: -89 }], 37.5), -40);
 });
 
-test("the agent looks every ~8 s, at least 6 and at most 30 times", () => {
-  assert.equal(seedTimes(152).length, 19);
+test("the agent looks every ~5 s, at least 6 and at most 40 times", () => {
+  assert.equal(seedTimes(125).length, 25);
   assert.equal(seedTimes(20).length, 6);
-  assert.equal(seedTimes(1000).length, 30);
+  assert.equal(seedTimes(1000).length, 40);
   assert.deepEqual(seedTimes(0), []);
   const t = seedTimes(152);
   assert.ok(t[0] > 0 && t[t.length - 1] < 152);
