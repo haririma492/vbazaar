@@ -89,7 +89,7 @@ plan and the Managed Agents decision are in
 - **The store widget** (owner, 2026-11-06: *"a preview / widget is the verdict … place the widget code on the store
   page … only for operator with a flag/key … if we need the owner also to see it"*; *"this will apply to all
   stores, existing and new"*). Two lines on the store's own site (`snippet`): `/widget.js` frames `/w/<slug>`, a
-  TEASER only (the Shelf Tour's silent loop or the product photos, the store's name, our mark, one key to
+  TEASER only (the Free Tour's first 20 s as a flat clip with its music, made by `widgetPreview.ts`; else the Shelf Tour's loop or the product photos; the store's name, our mark, one key to
   `/w/<slug>/go`, counted, then the visit on vbazaar.app). The moat: the walk, the tours and the basket are never
   on the store's site; a full embed would be a separate paid white-label product. Unpublished: «Coming soon».
   Card on `/stores/<slug>` for the operator; `widgetForOwner` on the record shows it to the owner.

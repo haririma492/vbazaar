@@ -337,7 +337,10 @@ export function genericTitle(title: string, siteName = ""): boolean {
   const parts = String(title || "").split(/\s*[|·•—–-]\s*/).map((x) => x.trim().toLowerCase()).filter(Boolean);
   const site = siteName.trim().toLowerCase();
   const generic = new Set(["product", "products", "shop", "store", "home", "untitled", "محصول", "محصولات", "فروشگاه", "خانه"]);
-  return !parts.length || parts.every((x) => generic.has(x) || (site && x === site));
+  if (!parts.length) return true;
+  // The last part of a page title is usually the site's own name («… | Shiraz Gallery Canada»), tag or not.
+  const named = parts.length > 1 ? parts.slice(0, -1) : parts;
+  return named.every((x) => generic.has(x) || (site && x === site));
 }
 
 /** A product with its photos widened by the ones the sitemap lists for its page, main photo first. */

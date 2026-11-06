@@ -46,3 +46,8 @@ test("counts by day and by site; the owner sees the card only when switched on",
   assert.equal(ownerSeesWidget({}), false);
   assert.equal(ownerSeesWidget({ widgetForOwner: true }), true);
 });
+
+test("the Free Tour's preview with its music comes first, when it is made", () => {
+  const p = planWidget("x", { ...facts, freeTour: { src: "/api/media/scenes/store-x/widget-preview-1.mp4", sound: true } });
+  assert.deepEqual(p.preview, { kind: "video", src: "/api/media/scenes/store-x/widget-preview-1.mp4", sound: true });
+});

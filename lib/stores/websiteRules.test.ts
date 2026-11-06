@@ -119,6 +119,9 @@ test("a page's structured data, else its share tags", () => {
   assert.equal(draft.unlisted, true);
   assert.deepEqual(draft.name, { en: "", fa: "" });
   assert.equal(draft.images.length, 1);
+  // …and without the site-name tag (the drafts' own pages carry none).
+  assert.equal(productFromHtml(`<meta property="og:title" content="Product | محصول | Shiraz Gallery Canada"/><meta property="og:image" content="https://x.ca/a.png"/>`, "https://s.ca/product/untitled")!.unlisted, true);
+  assert.equal(productFromHtml(`<meta property="og:title" content="Copper Samovar | Shiraz Gallery Canada"/>`, "https://s.ca/product/samovar")!.name.en, "Copper Samovar | Shiraz Gallery Canada");
 });
 
 test("prices, languages and photos", () => {

@@ -24,13 +24,15 @@ export type WidgetFacts = {
   live: boolean;
   walk: string | null;
   tourVideo: string | null;
+  /** The Free Tour's sneak preview (`widgetPreview.ts`): the walk's first seconds as a forward view, with its music. */
+  freeTour?: { src: string; sound: boolean } | null;
   photos: string[];
   door: string | null;
 };
 
 export type WidgetPlan = {
   /** What plays: the Shelf Tour's silent loop, else the product photos in turn, else the store's name on a card. */
-  preview: { kind: "video"; src: string } | { kind: "photos"; srcs: string[] } | { kind: "card" };
+  preview: { kind: "video"; src: string; sound?: boolean } | { kind: "photos"; srcs: string[] } | { kind: "card" };
   /** Where the key goes (on vbazaar.app), and what it says. */
   go: string;
   say: { en: string; fa: string };
@@ -41,13 +43,16 @@ export const PREVIEW_SECONDS = 20;
 export const MAX_PREVIEW_PHOTOS = 12;
 
 /**
- * What the widget shows. A store not published yet shows the preview with «Coming soon», and its key opens the
+ * What the widget shows: the Free Tour's sneak preview (with its music) when it is made, else the Shelf Tour's
+ * silent loop, else the door and product photos. A store not published yet shows the preview with «Coming soon», and its key opens the
  * bazaar's front door, never a half-made store. A published one opens its Free Tour (the walk), or its Shelf Tour
  * when that is all it has.
  */
 export function planWidget(slug: string, f: WidgetFacts): WidgetPlan {
   const photos = [...new Set([...(f.door ? [f.door] : []), ...f.photos.filter((u) => /^https:\/\//.test(u) || u.startsWith("/"))])].slice(0, MAX_PREVIEW_PHOTOS);
-  const preview: WidgetPlan["preview"] = f.tourVideo ? { kind: "video", src: f.tourVideo } : photos.length ? { kind: "photos", srcs: photos } : { kind: "card" };
+  // The Free Tour's preview first (owner, 2026-11-06), then the Shelf Tour's silent loop, then the photos.
+  const preview: WidgetPlan["preview"] = f.freeTour ? { kind: "video", src: f.freeTour.src, sound: f.freeTour.sound }
+    : f.tourVideo ? { kind: "video", src: f.tourVideo } : photos.length ? { kind: "photos", srcs: photos } : { kind: "card" };
   if (!f.live || (!f.walk && !f.tourVideo)) return { preview, go: "/", soon: true, say: { en: "Coming soon to the Virtual Bazaar", fa: "به‌زودی در بازار مجازی" } };
   const go = f.walk ? `/vca/walk?v=${encodeURIComponent(f.walk)}` : `/vca/tour?s=${encodeURIComponent(slug)}`;
   return { preview, go, soon: false, say: { en: "Walk into our store", fa: "وارد فروشگاه ما شوید" } };

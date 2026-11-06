@@ -13,6 +13,7 @@ export default function WidgetFrame({ slug, plan }: { slug: string; plan: Widget
   const [lang, setLang] = useState<"fa" | "en">("fa");
   const [from, setFrom] = useState("");
   const [i, setI] = useState(0);
+  const [muted, setMuted] = useState(true);
   const video = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -36,10 +37,10 @@ export default function WidgetFrame({ slug, plan }: { slug: string; plan: Widget
   const p = plan.preview;
 
   return (
-    <a href={href} target="_blank" rel="noopener" dir={lang === "fa" ? "rtl" : "ltr"}
-      className="relative block h-screen w-screen overflow-hidden bg-[#0f2a1f] text-white" style={{ textDecoration: "none" }}>
+    <div dir={lang === "fa" ? "rtl" : "ltr"} className="relative h-screen w-screen overflow-hidden bg-[#0f2a1f] text-white">
+      <a href={href} target="_blank" rel="noopener" aria-label={lang === "fa" ? plan.say.fa : plan.say.en} className="absolute inset-0 z-10" />
       {p.kind === "video" && (
-        <video ref={video} src={p.src} muted autoPlay playsInline loop preload="metadata" className="absolute inset-0 h-full w-full object-cover"
+        <video key={p.src} ref={video} src={p.src} muted={muted} autoPlay playsInline loop preload="metadata" className="absolute inset-0 h-full w-full object-cover"
           onTimeUpdate={(e) => { if (e.currentTarget.currentTime > PREVIEW_SECONDS) e.currentTarget.currentTime = 0; }} />
       )}
       {p.kind === "photos" && p.srcs.map((src, k) => (
@@ -48,18 +49,25 @@ export default function WidgetFrame({ slug, plan }: { slug: string; plan: Widget
           style={{ opacity: k === i ? 1 : 0 }} loading={k < 2 ? "eager" : "lazy"} />
       ))}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/40" />
-      <div dir="ltr" className="absolute left-2 top-2 flex flex-col items-center rounded-lg bg-black/55 p-1">
+      <div dir="ltr" className="pointer-events-none absolute left-2 top-2 z-20 flex flex-col items-center rounded-lg bg-black/55 p-1">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/media/brand/vbazaar-logo-v2-1000.webp" alt="Virtual Bazaar" width={52} className="rounded" style={{ height: "auto" }} />
         <span className="mt-0.5 text-[9px] font-bold tracking-wide text-[#e8f5ec]">VBAZAAR.APP</span>
       </div>
-      <div className="absolute inset-x-0 bottom-0 p-4">
+      {p.kind === "video" && p.sound && (
+        // Browsers start a frame's video silent; the music plays once the visitor taps here.
+        <button type="button" onClick={() => { setMuted(!muted); if (video.current) { video.current.muted = !muted; void video.current.play().catch(() => undefined); } }}
+          aria-label={muted ? "Sound on" : "Sound off"} className="absolute right-2 top-2 z-20 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-[18px]">
+          {muted ? "🔇" : "🔊"}
+        </button>
+      )}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 p-4">
         <p className="sk-font text-[13px] text-white/80">{lang === "fa" ? "در بازار مجازی" : "In the Virtual Bazaar"}</p>
         <p className="sk-font text-[20px] font-bold leading-tight">{name}</p>
         <span className="mt-2 inline-flex min-h-[40px] items-center rounded-full bg-amber-300 px-5 text-[15px] font-bold text-black">
           {lang === "fa" ? plan.say.fa : plan.say.en} {lang === "fa" ? "←" : "→"}
         </span>
       </div>
-    </a>
+    </div>
   );
 }

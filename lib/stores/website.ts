@@ -307,17 +307,23 @@ async function discoverEndpoint(origin: string, pageUrl: string): Promise<string
 }
 
 async function readProduct(origin: string, page: SitemapEntry, endpoint: string, mayRead: (u: string) => boolean): Promise<SiteProduct | { why: string }> {
+  let draft = false;
   if (endpoint) {
     const url = `${origin}${fillEndpoint(endpoint, handleOf(page.loc))}`;
     if (mayRead(url)) {
       const g = await get(url, "application/json");
-      const p = productFromJson(json(g), page.loc);
+      const d = json(g) as { success?: boolean; message?: string } | null;
+      const p = productFromJson(d, page.loc);
       if (p) return withSitemapImages(p, page.images);
+      // The site's own data says it has no such product (a draft still in its sitemap).
+      draft = g.status === 404 || d?.success === false || /not found/i.test(String(d?.message ?? ""));
     }
   }
   if (!mayRead(page.loc)) return { why: "robots.txt asks robots not to read this page" };
   const g = await get(page.loc, "text/html");
   if (g.status !== 200) return { why: "error" in g ? g.error : `the site answered ${g.status}` };
   const p = productFromHtml(g.text, page.loc);
-  return p ? withSitemapImages(p, page.images) : { why: "no product on the page" };
+  if (!p) return { why: "no product on the page" };
+  const out = withSitemapImages(p, page.images);
+  return draft ? { ...out, unlisted: true, name: { en: "", fa: "" }, priceCents: null } : out;
 }

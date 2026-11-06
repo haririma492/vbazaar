@@ -6,6 +6,7 @@ import { doorPhotoOf } from "@/lib/splats/walks";
 import { readStore } from "./bucket";
 import { sceneOf } from "./store";
 import { readTour } from "./tourJob";
+import { previewFor } from "./widgetPreview";
 import { addHit, emptyStats, parseStats, planWidget, type WidgetPlan, type WidgetStats } from "./widgetRules";
 
 export const statsKey = (slug: string) => `stores/${slug}/widget-stats.json`;
@@ -21,7 +22,8 @@ export async function widgetPlan(slug: string): Promise<(WidgetPlan & { name: { 
   const walk = s.out.walk ?? null;
   const door = s.out.doorImage ?? (walks ? doorPhotoOf(walks, walk) : undefined) ?? null;
   const photos = (cat?.products ?? []).map((p) => p.photo).filter((u): u is string => Boolean(u));
-  const plan = planWidget(slug, { live: s.live, walk, tourVideo: tour?.video ?? null, photos, door });
+  const freeTour = await previewFor(slug, walk).catch(() => null);
+  const plan = planWidget(slug, { live: s.live, walk, tourVideo: tour?.video ?? null, freeTour, photos, door });
   return { ...plan, name: s.name };
 }
 
