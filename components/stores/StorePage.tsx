@@ -46,6 +46,7 @@ type Page = {
   products: Product[];
   walkUrl: string | null;
   music?: Track[];
+  radio?: 3 | 4 | null;
 };
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };
@@ -261,7 +262,7 @@ export default function StorePage({ slug }: { slug: string }) {
           send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: "raw" }, file, onProgress); await load(); }}
         />
         {page.walkUrl && (
-          <MusicCard api={api} tracks={page.music ?? []} reload={load} />
+          <MusicCard api={api} tracks={page.music ?? []} radio={page.radio ?? null} reload={load} />
         )}
       </Card>}
 

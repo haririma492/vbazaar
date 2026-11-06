@@ -11,6 +11,7 @@
  *   POST { action: "music", type, size }        → { key, url, headers } (PUT the .mp3/.m4a there)
  *   POST { action: "musicDone", key, slot }     (music 1–3: slot 0–2; played in order, then from 1)
  *   POST { action: "musicClear", slot }         (that track taken out)
+ *   POST { action: "musicRadio", channel }      (tune in to Nikoo.tv channel 3 or 4; null = the uploaded tracks)
  *   POST { action: "message", text }            (to the crew; answered on the page)
  *   POST { action: "password", password }       (a new password for the store)
  *   POST { action: "publish" | "unpublish" }    (operator: shoppers see the store, or not)
@@ -32,7 +33,7 @@ import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
 import { presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
-import { MAX_TRACKS, musicOf, setTrack } from "@/lib/splats/walks";
+import { MAX_TRACKS, musicOf, setRadio, setTrack } from "@/lib/splats/walks";
 import { soundOnly } from "@/lib/stores/music";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
@@ -85,6 +86,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   const base = r2Config().publicBase;
   return ok({
     music: musicOf(walk).map((key) => ({ key, url: base ? `${base}/${key}` : null })),
+    radio: walk?.radio ?? null,
     who: o.who,
     store: forPage(o.s),
     status: statusOf(o.s),
@@ -185,6 +187,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     clean.forEach((k, i) => { w2 = setTrack(w2, s.out.walk!, i, k); });
     await writeWalks(w2, walks);
     return ok({ before: tracks, after: clean });
+  }
+  if (body.action === "musicRadio") {
+    const ch = body.channel === null ? null : body.channel === 3 || body.channel === 4 ? body.channel : undefined;
+    if (!s.out.walk || ch === undefined) return fail(400, "Nikoo.tv channel 3 or 4, or null for the store's own tracks.");
+    const walks = await readWalks();
+    await writeWalks(setRadio(walks, s.out.walk, ch), walks);
+    return ok();
   }
   if (body.action === "musicClear") {
     const slot = Number(body.slot);

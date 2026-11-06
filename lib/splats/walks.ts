@@ -206,6 +206,13 @@ export type Walk = {
    */
   playlist?: string[];
   /**
+   * Tune in to a live Nikoo.tv music channel instead of the uploaded tracks (owner, 2026-11-06: "on the store
+   * page in addition to uploading 3 audio file lets have the choice of tuning into a music channel from
+   * nikoo.tv"): 3 = موسیقی جهان, 4 = نغمه‌های نوستالژیک فرانسه و ایتالیا (`lib/radio.ts`). The walk joins what
+   * the channel airs this minute. The uploaded tracks are kept, and play again when this is taken off.
+   */
+  radio?: 3 | 4;
+  /**
    * Bumped by each cut of the video (`cut.ts`): the file keeps its name but
    * changes, and files are cached "forever" by name, so the player asks for
    * `<file>?r=<rev>`.
@@ -557,6 +564,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       if (Array.isArray(r.playlist) && r.playlist.length <= MAX_TRACKS && r.playlist.every((k) => isAudioKey(k))) {
         if (r.playlist.length) walk.playlist = r.playlist as string[];
       } else problems.push(`${key}: «playlist» is up to ${MAX_TRACKS} sounds uploaded for a walk.`);
+    }
+    if (r.radio !== undefined && r.radio !== null) {
+      if (r.radio === 3 || r.radio === 4) walk.radio = r.radio;
+      else problems.push(`${key}: «radio» is Nikoo.tv channel 3 or 4.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -1254,6 +1265,13 @@ export function setTrack(w: Walks, key: string, slot: number, audio: string | nu
 }
 
 /** A walk's background sound (a `walkAudioKey`); null: none. */
+/** The walk tuned in to Nikoo.tv channel 3 or 4, or back to its own tracks (null). */
+export function setRadio(w: Walks, key: string, radio: 3 | 4 | null): Walks {
+  const walk = w.walks[key] ?? { doors: [] };
+  const { radio: _r, ...rest } = walk;
+  return { ...w, walks: { ...w.walks, [key]: radio ? { ...rest, radio } : rest } };
+}
+
 export function setAudio(w: Walks, key: string, audio: string | null): Walks {
   return withWalk(w, key, (walk) => {
     const { audio: _drop, ...rest } = walk;

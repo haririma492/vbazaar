@@ -725,6 +725,17 @@ quality and choice to break away and enter in a shop. (period)"*
   rewritten SOUND ONLY under a new key (`lib/stores/music.ts`, `soundOnly`; «musicClean» redoes a walk's
   tracks): the owner's two MP3s carried embedded cover pictures, and with one element per track loading at
   once Chrome and Edge crashed ("Out of Memory") on the walk.
+- **A store walk can tune in to a live Nikoo.tv music channel** (owner, 2026-11-06: *"music will not be from a fixed
+  audio, rather from two live music channels of nikoo.tv"*, then *"in addition to uploading 3 audio file lets have the
+  choice of tuning into a music channel"*). The store page's music card picks: the store's own tracks, channel 3
+  (موسیقی جهان) or channel 4 (نغمه‌های نوستالژیک فرانسه و ایتالیا) — `Walk.radio`, action `musicRadio`. The walk joins
+  what the channel airs this minute, at the second it has reached, and asks again when the programme ends.
+  `/api/radio?ch=3|4` reads nikoo.tv's own state routes server-side (no CORS there; 10 s cache, one read for every
+  shopper; `NIKOO_BASE_URL` overrides the host); `lib/radio.ts` (pure, `radio.test.ts`) reads both shapes. A file
+  programme (channel 3's library mp4s on assets.mokran.tv, byte ranges checked) plays in an `<audio>`; a YouTube
+  programme (channel 4, often) plays in YouTube's own player in a **visible 200×200 card**, since YouTube's terms
+  forbid a hidden player, and 🔇 removes the card. A live HLS stream cannot play here and is said. The uploaded tracks
+  are kept; «stop the music» clears the channel too. Not in the Shelf Tour (no music there) nor the widget teaser.
 - **Both tours open on the store's door photo for 7 s** (owner, 2026-11-06: *"start both free tour and shelf tour
   with the photo of the front of the door for 7 sec"*; it was 4 s, Free Tour only): `DOOR_PHOTO_MS` in
   `lib/splats/walks.ts`, `doorPhotoOf` for both.

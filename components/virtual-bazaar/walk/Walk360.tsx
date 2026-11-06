@@ -2436,7 +2436,7 @@ export default function Walk360() {
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (
-        <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc}
+        <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={walkOf(walks, view.key)?.radio ?? null}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
