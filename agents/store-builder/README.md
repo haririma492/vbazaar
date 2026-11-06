@@ -32,6 +32,9 @@ own server as each file arrives. A new store waits for the operator's
             Tagger ──► Placer (next free spot on the hallway; door up on «Publish»)
                ▼
             Checker ──► report on /stores/<slug>
+
+ store's website ──► Website Explorer ──► /stores/<slug>/website (+ CSV)
+                          └─► product list (merged) ──► Tagger again ──► Free Tour + Shelf Tour cards
                │   ▲
   owner/operator   │ new round: only the steps a change touches (`REDO`)
   message box  ▼   │
@@ -53,6 +56,7 @@ own server as each file arrives. A new store waits for the operator's
 | Map builder | A 2D map of the store: where each shelf stands, persistent shelf ids, and the Shelf Tour's order by the layout (not by the filming) | the motion (the Route optimizer's reader, kept in `stores/<slug>/motion.json`), every sighting and light step, the Shelf finder's shelves → `stores/<slug>/map.json` (shelves `S1…`, products placed, the camera's path, the entrance, the order, what to review) | `storeMap.ts` (tested) + `mapJob.ts`: dead reckoning, repeated visits found by panorama matching and the drift spread back, each product triangulated from the rays of a moving camera (or estimated, and said so), partial views of one bookcase merged; `orderShelvesByMap` in the Shelf Tour builders. «Store map» card. Research and next steps: `docs/research/cv-spatial.md` | none |
 | Title reader | Each found book's title (and author) as printed, a list beside the products | 12 moments of each book measured for sharpness, the 5 sharpest close-ups (1024 px) from the recording → `stores/<slug>/titles.json`; «Book titles» card, CSV | `titles.ts`; one request a book; «Re-read the partial titles» sends only the partly read ones to Opus | **Haiku 5.5** (re-read: Opus 5.5) |
 | Spine reader | Every spine in the owner's phone photos of the shelves | «shelf» uploads → each photo at full size (up to 6000 px) in overlapping 1568 px tiles; a tile with a partly read title is read again as four enlarged quarters → `stores/<slug>/shelf-titles.json`, merged with the title reader's in the list | `shelfTitles.ts`, `shelfTitlesRules.ts` (tested); never guesses a title | **Haiku 5.5** |
+| **Website Explorer** | Everything the store's own website says about its products, put on the store's page so both tours use it | the store's website (its details) → `stores/<slug>/website.json` (names EN/FA, price and sale price, sizes, every photo at the largest size the site serves, the site's shelf, the description split into English and Persian), shown at `/stores/<slug>/website` with a CSV; then **merged into the store's product list** (`websiteMerge.ts`: added `by: "website"`, or refreshed only where the owner has not changed a field; nothing removed), each main photo copied into our bucket (1600 px, on white), and the Tagger run again so the products get their lights in the Free Tour and the Shelf Tour. The Photo improver keeps a website product's photo | `websiteRules.ts` (tested), `website.ts`, `websiteMerge.ts` (tested): robots.txt first; Shopify `/products.json` or WooCommerce's Store API when the site is one; else the sitemap's product pages, each read through the JSON the page's own scripts ask for (found in its scripts), else JSON-LD, else share tags. One request at a time, 0.4 s apart, resumable. A path robots.txt disallows is read only after the operator answers that this is the store's own site and the store agreed | none |
 | Placer | The store's door goes on the hallway | door photo, spot → a door on the hallway walk, with `image` and `size` | none | none |
 | Checker | Writes the report and finds what is missing | everything → `report` on the record | none | none |
 | Messages | Does what the owner or operator writes, then answers | the thread → catalogue, tag, detail and walk changes | Claude with tools (`messages.ts`; cutting the video is for the operator only) | Opus 5.5, effort medium |
@@ -101,6 +105,8 @@ prompt or model change.
 | `ANTHROPIC_API_KEY` missing | The AI steps are `needs-you` and name the variable | Operator: Railway |
 | The budget ($15) used | Photos stop being matched (the rest are listed); the Tagger stops looking and keeps what it found | Operator decides |
 | The server restarts mid-step | The step that was `working` runs again (`nextStep`). Outputs have new names and are only recorded at the end, so a half-made run leaves nothing behind. | none |
+| The website explorer meets a path robots.txt disallows that holds the prices | It stops and asks on `/stores/<slug>/website`: «Is this the store's own website, and has the store agreed?» Yes reads it (the answer is kept with the result); No reads only the allowed pages (no prices) | Operator |
+| A product page or photo will not load | Listed under «pages not read»; the rest go on. «Carry on» retries what is left | Operator |
 | A Claude request is refused | Server-side fallback (`fallbacks: "default"`). Then that photo or moment is skipped. | none |
 
 **How to stop it:** remove `ANTHROPIC_API_KEY` (the AI steps stop) or stop the

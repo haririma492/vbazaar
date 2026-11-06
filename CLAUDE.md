@@ -75,6 +75,17 @@ plan and the Managed Agents decision are in
   - `/stores/areas` covers outside, the lobby and the hallway in walking
     order (each walk carries on into the next, `Walk.next`), plus the
     hallway's door spots, marked on its walk with `?spots=1`.
+- **The Website Explorer** (owner, 2026-11-06: *"create an agent … extracting all information needed for virtual
+  store from a store's website such as product photos with good quality, product names, product prices, product
+  descriptions"*; then *"the same agent is responsible to integrate the result … so … 1) free tour 2) shelf tour
+  benefit from all that is on the web site"*). `/stores/<slug>/website` (operator starts it from the store's page).
+  Free, no AI. It reads robots.txt, then a shop platform's list or the sitemap's product pages through the JSON
+  the page's own scripts fetch; a path robots.txt disallows is read only after the operator says the store agreed
+  (shirazgallery.ca keeps prices at `/api/products/…`, which its robots.txt disallows). At the end it merges the
+  products into the store's product list (`lib/stores/websiteMerge.ts`, `by: "website"`, `web`, `more` photos):
+  never over a field the owner changed, never removing one; copies each main photo to our bucket; runs the Tagger
+  again. Both tours' product card shows the extra photos. A later merchant sheet replaces the list (as before);
+  run «Put on the store's page again» to add the site's products back. `lib/stores/website*.ts`.
 - **Owners' visits are counted** (owner, 2026-11-06: *"we need to count store owners using their password and
   visiting their page"*, *"lets add that statistics to vbazaar.app/stores"*): each sign-in with the store's
   password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit

@@ -199,6 +199,13 @@ export default function StorePage({ slug }: { slug: string }) {
         <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of ${(BUDGET_CENTS / 100).toFixed(2)}</p>
       </Card>}
 
+      {op && (
+        <Card>
+          <Bi fa="کاوشگر وبسایت" en="Website Explorer" className="text-[16px] font-bold" />
+          <p className="mt-1 text-[13px] text-white/60">Products, prices, descriptions and photos read from the store&apos;s own website.</p>
+          <a href={`/stores/${slug}/website`} className={`${QUIET} mt-3 inline-flex items-center`}>Open · باز کردن</a>
+        </Card>
+      )}
       {op && page.walkUrl && <RefreshAllCard api={api} spentCents={s.spentCents} budgetCents={BUDGET_CENTS} />}
 
       {op && <Card>

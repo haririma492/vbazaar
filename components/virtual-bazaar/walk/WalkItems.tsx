@@ -111,7 +111,10 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   const [amount, setAmount] = useState(() => (choices.includes(1) ? 1 : choices[Math.floor(choices.length / 2)]));
   const name = product ? productName(product, lang) : lang === "fa" && item.label.fa ? item.label.fa : item.label.en;
   const other = product ? productName(product, lang === "fa" ? "en" : "fa") : item.label.fa ? (lang === "fa" ? item.label.en : item.label.fa) : "";
-  const photo = product ? product.photo : item.image;
+  // The store's website's other photos too (`Product.more`, the Website Explorer): tap one to see it larger.
+  const photos = product ? [product.photo, ...(product.more ?? [])].filter((u): u is string => Boolean(u)) : item.image ? [item.image] : [];
+  const [shown, setShown] = useState(0);
+  const photo = photos[Math.min(shown, photos.length - 1)];
   const read = useReadTitle(slugFrom(walkKey), item.n);
   const specialCents = item.special ? readPrice(item.special.now) : null;
   const total = product ? (specialCents !== null ? Math.round(specialCents * (weighed ? amount : 1)) : priceOf(product, weighed ? amount : 1)) : null;
@@ -124,7 +127,20 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
       >
         <div className="flex items-start gap-3">
           {photo ? (
-            <PhotoZoom src={photo} className="h-24 w-24 rounded-xl bg-white object-contain" />
+            <div className="shrink-0">
+              <PhotoZoom src={photo} className="h-24 w-24 rounded-xl bg-white object-contain" />
+              {photos.length > 1 && (
+                <div className="mt-1 flex w-24 flex-wrap gap-1">
+                  {photos.slice(0, 6).map((u, i) => (
+                    <button key={u} type="button" aria-label={`Photo ${i + 1}`} onClick={() => setShown(i)}
+                      className={`h-[22px] w-[22px] overflow-hidden rounded bg-white ${i === Math.min(shown, photos.length - 1) ? "ring-2 ring-amber-300" : "opacity-70"}`}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u} alt="" loading="lazy" className="h-full w-full object-contain" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           ) : (
             <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-xl bg-white/10 text-[34px] text-white/60">🛒</div>
           )}

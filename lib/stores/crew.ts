@@ -667,6 +667,8 @@ export async function recutPhotos(slug: string): Promise<string> {
   for (const p of c.products) {
     const n = p.n;
     if (done.includes(n)) continue;
+    // A product from the store's own website keeps the store's photo: a studio shot beats a crop of the video.
+    if (p.by === "website" && p.photo) { done.push(n); continue; }
     const seen = closest.get(n), it = lights.get(n);
     try {
       if (seen && seenInput) photos.set(n, await publishPhoto(slug, n, (await sightingPhoto(seenInput, seen)).jpeg));
