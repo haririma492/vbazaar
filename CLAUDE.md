@@ -733,11 +733,12 @@ quality and choice to break away and enter in a shop. (period)"*
   فرانسه و ایتالیا) — `Walk.radio` (a stored 3 reads as 4), action `musicRadio`. The walk joins what the channel airs
   this minute, at the second it has reached, and asks again when the programme ends. `/api/radio?ch=4` reads
   nikoo.tv's state server-side (no CORS there; 10 s cache; `NIKOO_BASE_URL` overrides the host); `lib/radio.ts`
-  (pure, `radio.test.ts`). Only the 🔊 key shows: no label, no player. A file programme (625 of channel 4's 1,060,
-  on assets/video.mokran.tv) plays in an `<audio>`. A YouTube programme (the other 435) cannot be heard without
-  YouTube's own player, which YouTube does not allow hidden, and nikoo.tv keeps no copy of them: while one is on
-  air the walk plays the store's uploaded tracks, or nothing. The fix for that is on nikoo.tv (rehost those
-  programmes' audio to R2), not here. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
+  (pure, `radio.test.ts`). The 🔊 key and the label «nikoo.tv live music» show; no window (owner: *"put this label
+  back: nikoo.tv live music"*, *"just remove the youtube window"*). A file programme (625 of channel 4's 1,060, on
+  assets/video.mokran.tv) plays in an `<audio>`. A YouTube programme (the other 435; nikoo.tv keeps no copy) plays in
+  YouTube's player kept out of sight (1×1, transparent), from the shopper's first tap. ⚠️ YouTube's terms do not allow
+  a hidden player: the owner's choice, told so. iOS Safari will not autoplay it, so there it is silent. Nothing
+  playable (a live HLS stream): the store's own tracks. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the

@@ -175,11 +175,14 @@ function TrackSound({ audioKeys, srcOf, specials }: { audioKeys: string[]; srcOf
 const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14px] py-[7px] text-[18px] text-white";
 /**
  * NIKOO.TV CHANNEL 4 LIVE IN THE WALK (owner, 2026-11-06): the walk tuned in joins what the channel is airing THIS
- * minute, at the second it has reached, like a radio, and asks again when the programme ends. Only the 🔊 key is
- * shown: no label, no player (owner: "remove all the label on the music … remove the youtube iframe too").
- * - A file on our bucket (most of channel 4: 625 of its 1,060 programmes, measured 2026-11-06) plays in an <audio>.
- * - A YouTube programme cannot be heard without YouTube's own player, which YouTube does not allow hidden, and
- *   nikoo.tv keeps no copy of it: while one is on air the walk plays the store's own tracks instead (or nothing).
+ * minute, at the second it has reached, like a radio, and asks again when the programme ends. The 🔊 key and one
+ * label, «nikoo.tv live music» (owner, 2026-11-06: "put this label back"); no window (owner: "just remove the
+ * youtube window").
+ * - A file on our bucket (625 of channel 4's 1,060 programmes, measured 2026-11-06) plays in an <audio>.
+ * - A YouTube programme plays in YouTube's player kept OUT OF SIGHT (1×1, transparent). ⚠️ YouTube's terms do not
+ *   allow a hidden player; the owner chose this knowing it. It starts on the shopper's first tap (a browser only
+ *   plays sound after one) and 🔇 takes it away. iOS Safari will not autoplay it at all: there it stays silent.
+ * - Nothing playable on air (a live HLS stream, nikoo.tv unreachable): the store's own tracks, or nothing.
  */
 function RadioSound({ ch, audioKeys, srcOf, specials }: {
   ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean;
@@ -261,8 +264,19 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
     });
   }
 
-  // Not a file this minute (a YouTube programme, nothing on air, nikoo.tv unreachable): the store's own tracks.
-  if (now && now.kind !== "file") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
+  // The shopper's first tap anywhere: a YouTube player made after it may play with sound.
+  const [tapped, setTapped] = useState(false);
+  useEffect(() => {
+    if (tapped) return;
+    const go = () => setTapped(true);
+    window.addEventListener("pointerdown", go, true);
+    window.addEventListener("keydown", go, true);
+    return () => { window.removeEventListener("pointerdown", go, true); window.removeEventListener("keydown", go, true); };
+  }, [tapped]);
+
+  // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
+  if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
+  const yt = now?.kind === "youtube" && now.youtubeId ? now : null;
 
   const toggle = () => {
     const next = !on;
@@ -275,10 +289,31 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
     else el.pause();
   };
   return (
-    <button type="button" dir="ltr" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"}
-      className={`absolute bottom-14 left-3 z-20 ${SOUND_KEY_CLASS}`}>
-      {on ? (waiting ? "🔊 tap to hear" : "🔊") : "🔇"}
-    </button>
+    <>
+      {yt && on && tapped && (
+        <iframe
+          key={yt.youtubeId}
+          title="nikoo.tv live music"
+          aria-hidden="true"
+          tabIndex={-1}
+          width={1}
+          height={1}
+          className="pointer-events-none absolute bottom-0 left-0 opacity-0"
+          // The start second is taken when the player is made; a later reading of the same video does not remake it.
+          src={`https://www.youtube.com/embed/${yt.youtubeId}?autoplay=1&playsinline=1&controls=0&rel=0&enablejsapi=1&start=${Math.floor(positionAt(yt, Date.now()))}`}
+          allow="autoplay; encrypted-media"
+          onLoad={(e) => {
+            e.currentTarget.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(WALK_MUSIC_VOLUME * 100)] }), "*");
+          }}
+        />
+      )}
+      <div dir="ltr" className="absolute bottom-14 left-3 z-20 flex items-center gap-2">
+        <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
+          {on ? ((waiting && !yt) || (yt && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
+        </button>
+        <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv live music</span>
+      </div>
+    </>
   );
 }
 
