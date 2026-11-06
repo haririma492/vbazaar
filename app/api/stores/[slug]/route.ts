@@ -24,7 +24,7 @@
  *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
  *   POST { action: "tidy" }                     the Tidy agent (operator; spends from the store's budget, at most $2): clutter hidden behind products
  *   POST { action: "tidyState" }                → { run, covers, ceiling }: the run, and every object hidden (its photo, what stands there)
- *   POST { action: "tidyDrop", id }             «Bring it back» (operator): that cover off, and the spot left alone by later runs
+ *   POST { action: "tidyDrop", id }             «Bring it back» (operator): that cover off, and the spot left alone by later runs; id "all": every cover off
  *   POST { action: "tidyProduct", id, n }       product #n stands in that cover's place instead (operator)
  *   PUT ?key&uploadId&partNumber                (a part through this server, when the browser may not PUT to R2)
  */

@@ -219,13 +219,16 @@ export async function dropCover(slug: string, id: string): Promise<string> {
   if (!s?.out.walk) return "No walk.";
   const walks = await readWalks();
   const w = walks.walks[s.out.walk];
-  const c = w?.covers?.find((x) => x.id === id);
-  if (!w || !c) return "No such cover.";
-  await writeMastersJson(keptKey(slug), [...(await readKept(slug)), { pins: c.pins, size: c.size }]);
-  const covers = (w.covers ?? []).filter((x) => x.id !== id);
+  // `id` "all": no tidying on this store at all (owner, 2026-11-06: "an option on each object replaced if we do not
+  // want any tidy ness"): every cover off, every spot remembered.
+  const gone = id === "all" ? (w?.covers ?? []) : (w?.covers ?? []).filter((x) => x.id === id);
+  const c = gone[0];
+  if (!w || !c) return id === "all" ? "Nothing is hidden on this walk." : "No such cover.";
+  await writeMastersJson(keptKey(slug), [...(await readKept(slug)), ...gone.map((x) => ({ pins: x.pins, size: x.size }))]);
+  const covers = (w.covers ?? []).filter((x) => !gone.includes(x));
   const { covers: _, ...rest } = w;
   await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: covers.length ? { ...rest, covers } : rest } }, walks);
-  return `«${c.what}» is back in the walk as it was filmed.`;
+  return id === "all" ? `All ${gone.length} objects are back in the walk as it was filmed; no tidying on this store.` : `«${c.what}» is back in the walk as it was filmed.`;
 }
 
 /** Another product in a cover's place: the cover's picture made again with it. */

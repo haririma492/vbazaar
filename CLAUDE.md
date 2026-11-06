@@ -162,7 +162,7 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
   in 6 views a moment and says what it stands on; each is followed like a light and gets a store product on a stand
   composed by ffmpeg (riser on a table, plinth on the floor, card on a wall), its bottom on the junk's bottom
   (`Walk.covers`, `lib/stores/tidy.ts`, `tidyRules.ts`). The 360° player draws covers under the lights; a tap opens
-  the product. The video is not changed: «Bring it back» (remembered, `tidy-kept.json`) and «Another product» are on
+  the product. The video is not changed: «Bring it back», «No tidying at all» (every object back; remembered, `tidy-kept.json`) and «Another product» are on
   the list at the end of `/stores/<slug>`, for the operator only; the owner sees the card and the list, read only
   (owner, 2026-11-06: *"let the owner see the result of this feature but not able to run it"*). A cut moves covers with the picture (`cut.ts`). Not yet in the Shelf Tour.
 - **The bazaar has its own basket** (owner, 2026-11-03: *"when adding to

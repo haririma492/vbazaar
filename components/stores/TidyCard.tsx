@@ -25,7 +25,7 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
 }) {
   const [st, setSt] = useState<State | null>(null);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
-  const [ask, setAsk] = useState<{ id: string; kind: "back" | "product"; n: string } | null>(null);
+  const [ask, setAsk] = useState<{ id: string; kind: "back" | "all" | "product"; n: string } | null>(null);
   const load = useCallback(async () => {
     try { setSt(await postJson<State>(api, { action: "tidyState" })); } catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
   }, [api]);
@@ -44,8 +44,8 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
   async function answer() {
     if (!ask) return;
     try {
-      const j = ask.kind === "back"
-        ? await postJson<{ note: string }>(api, { action: "tidyDrop", id: ask.id })
+      const j = ask.kind !== "product"
+        ? await postJson<{ note: string }>(api, { action: "tidyDrop", id: ask.kind === "all" ? "all" : ask.id })
         : await postJson<{ note: string }>(api, { action: "tidyProduct", id: ask.id, n: Number(ask.n) });
       setSaid({ ok: true, text: `✓ ${j.note}` });
       setAsk(null);
@@ -83,7 +83,9 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
                 <div className="text-[12px] text-white/60">Now: #{c.n} {nameOf(c.n)}, {BASE[c.base]}</div>
                 {!operator ? null : ask?.id === c.id ? (
                   <div className="mt-2 space-y-2">
-                    {ask.kind === "back" ? (
+                    {ask.kind === "all" ? (
+                      <p className="text-[13px]">No tidying at all: bring all {st.covers.length} objects back into the walk, as it was filmed? Later runs will leave them. · همه برگردانده شوند؟</p>
+                    ) : ask.kind === "back" ? (
                       <p className="text-[13px]">Bring «{c.what}» back into the walk, as it was filmed? Later runs will leave it.</p>
                     ) : (
                       <label className="block text-[13px]">Which product stands there instead? Its number:
@@ -92,7 +94,7 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
                       </label>
                     )}
                     <div className="flex gap-2">
-                      <button type="button" className={KEY} disabled={ask.kind === "product" && !products.some((p) => p.n === Number(ask.n) && p.photo)} onClick={() => void answer()}>{ask.kind === "back" ? "Yes, bring it back" : "Save"}</button>
+                      <button type="button" className={KEY} disabled={ask.kind === "product" && !products.some((p) => p.n === Number(ask.n) && p.photo)} onClick={() => void answer()}>{ask.kind === "all" ? "Yes, bring them all back" : ask.kind === "back" ? "Yes, bring it back" : "Save"}</button>
                       <button type="button" className={QUIET} onClick={() => setAsk(null)}>← Back</button>
                     </div>
                   </div>
@@ -100,6 +102,7 @@ export default function TidyCard({ api, operator, products, spentCents, budgetCe
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button type="button" className={QUIET} onClick={() => setAsk({ id: c.id, kind: "back", n: "" })}>Bring it back · برگرداندن</button>
                     <button type="button" className={QUIET} onClick={() => setAsk({ id: c.id, kind: "product", n: String(c.n) })}>Another product · محصول دیگر</button>
+                    <button type="button" className={QUIET} onClick={() => setAsk({ id: c.id, kind: "all", n: "" })}>No tidying at all · بدون مرتب‌سازی</button>
                   </div>
                 )}
               </li>
