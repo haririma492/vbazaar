@@ -570,7 +570,22 @@ export default function Walk360() {
     setSpotMode(params.get("spots") === "1" && Boolean(readAdminToken()));
     let disposed = false;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    // ⚠️ A browser that has turned off 3D graphics (Chrome does after its graphics process crashed a few times,
+    // until it is restarted; or hardware acceleration is off) refuses the WebGL context. Said on the screen, never
+    // a crash of the whole page (2026-11-06, the owner's Chrome: "Error creating WebGL context").
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: false });
+    } catch {
+      setError("This browser has turned off 3D graphics, so the walk cannot be shown. Close the browser completely (every window) and open it again; if it still says this, turn on «Use graphics acceleration when available» in the browser's settings (System). · مرورگر گرافیک سه‌بعدی را خاموش کرده است: مرورگر را کامل ببندید و دوباره باز کنید.");
+      setPhase("error");
+      return;
+    }
+    // The graphics memory ran out mid-walk: the browser may give the picture back by itself; say what happened.
+    renderer.domElement.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      setNotice("The browser ran out of graphics memory and paused the picture. Close other tabs or videos; if it stays black, reload the page.");
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(el.clientWidth, el.clientHeight);
     el.appendChild(renderer.domElement);
