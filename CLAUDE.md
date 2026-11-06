@@ -708,6 +708,13 @@ quality and choice to break away and enter in a shop. (period)"*
   pass on partly read titles, 5 close-ups a book. Opus 5.5 re-reads only the
   partial titles, on the operator's press. Finding and boxing products stays on
   Opus (a wrong box is a light on the wrong book).
+- **Every store gets what Saraye Bamdad got, automatically** (owner, 2026-11-06: *"what ever we built for
+  saraye-bamdad need to apply and work automatically for all stores"*). When a store's «tag» step finishes, the
+  crew queues «Refresh all agents» (`lib/stores/refreshAll.ts`: door photo → Shelf finder (gaps, ≤30 pictures,
+  ~$2) → store map → Shelf Tour → title reader → spine reader; the Photo improver follows on its own). At server
+  start, any store tagged but never refreshed and with no Shelf Tour is queued too. The queue lives in R2
+  (`stores/refresh-pending.json`), one store at a time, after any run the operator started by hand. The AI comes
+  out of the store's own $15 budget, which stops it. The «Refresh all agents» key still runs it by hand.
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

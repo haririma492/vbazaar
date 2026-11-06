@@ -10,6 +10,13 @@
 //   5  Spine reader              the shelf photos not read yet, if any (Haiku, a few cents a photo)
 //   …  Photo improver            queued by step 1 when it found new books; it runs on its own
 //
+// ⚠️ AUTOMATIC FOR EVERY STORE (owner, 2026-11-06: "what ever we built for saraye-bamdad need to apply and work
+// automatically for all stores"). The run is queued by the crew the moment a store's «tag» step finishes (its
+// products are found and their lights pinned), and at server start for any store whose products are tagged but
+// that has never been refreshed and has no Shelf Tour. The queue is kept in R2 (`stores/refresh-pending.json`),
+// so a restart carries on; stores run one after another, never side by side. The AI it spends (the Shelf finder,
+// the readers) comes out of the store's own budget (`BUDGET_CENTS`), which stops it.
+//
 // In the background; one run at a time per server. Each step's sentence is kept in
 // `stores/<slug>/refresh.json` (the card shows it), so a step that stops (the budget, an error) is said, and the
 // next steps still run: each one stands on what is there. A restart mid-run leaves the record as it was (the
@@ -23,6 +30,8 @@ import { buildShelfFilm } from "./shelfFilm";
 import { buildTour } from "./tourJob";
 import { readTitles } from "./titles";
 import { readShelfPhotos, readShelfTitles } from "./shelfTitles";
+import { readIndex } from "./bucket";
+import { readTour } from "./tourJob";
 
 export type RefreshStep = { name: string; note: string; at: string };
 export type RefreshRun = { store: string; started: string; finished: string | null; steps: RefreshStep[]; running: boolean };
@@ -32,6 +41,47 @@ let busy: string | null = null;
 
 export async function readRefresh(slug: string): Promise<RefreshRun | null> {
   try { const t = await readMastersText(refreshKey(slug)); return t ? (JSON.parse(t) as RefreshRun) : null; } catch { return null; }
+}
+
+const REFRESH_PENDING = "stores/refresh-pending.json";
+let draining = false;
+async function readQueue(): Promise<string[]> {
+  try { const t = await readMastersText(REFRESH_PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
+}
+/** Queue stores for an automatic run (each once); drained in the background, one store at a time. */
+export async function queueRefresh(slugs: string[]): Promise<void> {
+  if (!slugs.length) return;
+  await writeMastersJson(REFRESH_PENDING, [...new Set([...(await readQueue()), ...slugs])]);
+  void drainRefresh();
+}
+export async function drainRefresh(): Promise<void> {
+  if (draining) return;
+  draining = true;
+  try {
+    for (;;) {
+      const [slug] = await readQueue();
+      if (!slug) return;
+      // A run the operator started by hand finishes first.
+      while (busy) await new Promise((r) => setTimeout(r, 30_000));
+      busy = slug;
+      try { await refreshAll(slug); } catch (e) { console.error("[refresh]", slug, e); } finally { busy = null; }
+      await writeMastersJson(REFRESH_PENDING, (await readQueue()).filter((k) => k !== slug));
+    }
+  } finally {
+    draining = false;
+  }
+}
+/** At start-up: stores whose products are tagged but that were never refreshed and have no Shelf Tour. */
+export async function storesToRefresh(): Promise<string[]> {
+  const out: string[] = [];
+  for (const { slug } of await readIndex()) {
+    const s = await readStore(slug).catch(() => null);
+    if (!s?.out.walk || s.steps.tag.state !== "done") continue;
+    if (await readRefresh(slug)) continue;
+    if (await readTour(slug)) continue;
+    out.push(slug);
+  }
+  return out;
 }
 
 /** Start the run in the background; a sentence back (started, or why not). */

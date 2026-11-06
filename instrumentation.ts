@@ -23,6 +23,10 @@ export async function register() {
     // Walks whose motion is not measured (the Route optimizer's smoothness, `lib/stores/routeJob.ts`).
     const { queueSmooth, walksToSmooth } = await import("./lib/stores/routeJob");
     setTimeout(() => void walksToSmooth().then(queueSmooth).catch((e) => console.error("[smooth] resume", e)), 45_000);
+    // Every store's agents run on their own (`lib/stores/refreshAll.ts`): the queue a restart cut off, and stores
+    // tagged but never refreshed (no Shelf Tour yet).
+    const { queueRefresh, storesToRefresh, drainRefresh } = await import("./lib/stores/refreshAll");
+    setTimeout(() => void storesToRefresh().then(async (s) => { if (s.length) await queueRefresh(s); else await drainRefresh(); }).catch((e) => console.error("[refresh] resume", e)), 60_000);
     // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
     const { drainReverse } = await import("./lib/stores/reverse");
     setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);

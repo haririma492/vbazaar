@@ -127,6 +127,10 @@ async function runStep(slug: string, step: StepName) {
       }
       return next;
     });
+    // Everything built for Saraye Bamdad, for every store (owner, 2026-11-06): once the products are tagged, the
+    // agents' run (`refreshAll.ts`: Shelf finder, store map, Shelf Tour, readers) is queued. A dynamic import:
+    // refreshAll imports this file.
+    if (step === "tag") void import("./refreshAll").then((m) => m.queueRefresh([slug])).catch((e) => console.error("[refresh] queue", slug, e));
   } catch (e) {
     const err = e as Error;
     console.error(`[crew] ${slug} ${step}`, err);
