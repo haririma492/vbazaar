@@ -171,7 +171,12 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
   (`publicBase` + key): use `mediaPath(key)`. The 48 videos were moved and their public copies deleted on
   2026-11-06 (operator action `videosPrivate`, `deletePublic`). A played video can still be screen-recorded,
   and DRM would break the walk (a protected video cannot be drawn into WebGL). `R2_MASTERS_BUCKET` must stay
-  set, or videos fall back into the public bucket.
+  set, or videos fall back into the public bucket. **⚠️ A video drawn into WebGL (the 360° sphere, its
+  `-reverse` copy) gets the SIGNED LINK itself, never the `/api/media` redirect** (2026-11-07, owner: *"In
+  mobile … Virtual free tour does not work"*): iOS Safari drops CORS across a cross-origin media redirect, the
+  video is tainted and the sphere stays black on every iPhone. `directMediaUrl` (`lib/splats/directMedia.ts`)
+  asks `/api/media/<key>?link=1` and sets that as the src. A plain `<video>` (Shelf Tour, flat shop video) is
+  fine through the redirect.
 - **The Tidy agent** (owner, 2026-11-06: *"identify ugly unfitted junk or object and replace them with some products
   that are on a software made place or th original table where the stuff was so they are not hanging in the air at
   the end of store page there has to be a list of photos of those removed objects"*). Operator starts it on the
