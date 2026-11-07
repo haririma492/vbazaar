@@ -754,8 +754,11 @@ quality and choice to break away and enter in a shop. (period)"*
   back: nikoo.tv live music"*, *"just remove the youtube window"*). A file programme (625 of channel 4's 1,060, on
   assets/video.mokran.tv) plays in an `<audio>`. A YouTube programme (the other 435; nikoo.tv keeps no copy) plays in
   YouTube's player kept out of sight (1×1, transparent), from the shopper's first tap. ⚠️ YouTube's terms do not allow
-  a hidden player: the owner's choice, told so. iOS Safari will not autoplay it, so there it is silent. Nothing
-  playable (a live HLS stream): the store's own tracks. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
+  a hidden player: the owner's choice, told so. **On a phone** (owner, 2026-11-07: *"live channel Nikoo music does not
+  play on mobile"*) no browser starts sound in a hidden YouTube player, so while one airs a phone plays the channel's own
+  file programmes in channel order (`nextFileProgramme`, `/api/radio?file=1&after=<itemIndex>`). The file player is ONE
+  `<audio>` for the visit, its address changed per programme, told to play at once (an iPhone loads nothing until
+  asked to play; a new element would need a new tap). Nothing playable (a live HLS stream): the store's own tracks. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the

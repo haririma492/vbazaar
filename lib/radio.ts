@@ -128,3 +128,30 @@ export function readChannelState(ch: 3 | 4, json: unknown, at: number): RadioNow
 export function positionAt(r: Pick<RadioNow, "offsetSec" | "at">, now: number): number {
   return Math.max(0, r.offsetSec + Math.max(0, now - r.at) / 1000);
 }
+
+/**
+ * A FILE PROGRAMME OF THE SAME CHANNEL, FOR A PHONE (owner, 2026-11-07: "live channel Nikoo music does not play on
+ * mobile"). A phone will not start sound in a hidden YouTube player (the shopper's tap is on our page, not on it), so
+ * while the channel airs a YouTube programme a phone plays the channel's own file programmes instead, in the channel's
+ * order: the first file after `after` (an item index; the programme on air when none), round the playlist. Only the
+ * main broadcast's state carries its playlist (`playlistItems`); null when it has no file programme.
+ */
+export type RadioFile = { url: string; itemIndex: number; durationSec: number | null; now: { fa: string | null; en: string | null } | null };
+
+export function nextFileProgramme(json: unknown, after: number | null): RadioFile | null {
+  const s = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
+  const items = (Array.isArray(s.playlistItems) ? s.playlistItems : []) as Array<Record<string, unknown>>;
+  const files = items
+    .map((it) => ({ it, i: num(it.itemIndex) }))
+    .filter((x): x is { it: Record<string, unknown>; i: number } => x.i !== null && isPlayableFile(x.it.url, x.it.mediaType === "audio" ? "audio" : "video") && !youTubeIdOf(x.it.url))
+    .sort((a, b) => a.i - b.i);
+  if (!files.length) return null;
+  const from = after ?? num(s.currentItemIndex) ?? -1;
+  const pick = files.find((x) => x.i > from) ?? files[0];
+  return {
+    url: pick.it.url as string,
+    itemIndex: pick.i,
+    durationSec: num(pick.it.durationSec),
+    now: pair(pick.it.titleFa, pick.it.titleEn ?? pick.it.title),
+  };
+}

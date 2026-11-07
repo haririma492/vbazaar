@@ -54,3 +54,19 @@ test("titles, channels, position", () => {
   assert.equal(radioChannelOf(5), null);
   assert.equal(positionAt({ offsetSec: 100, at: AT }, AT + 2500), 102.5);
 });
+
+test("a phone gets the channel's next file programme, in channel order, round the list", async () => {
+  const { nextFileProgramme } = await import("./radio.ts");
+  const state = {
+    currentItemIndex: 10,
+    playlistItems: [
+      { itemIndex: 9, url: "https://assets.mokran.tv/a.mp4", mediaType: "video", titleEn: "A" },
+      { itemIndex: 10, url: "https://www.youtube.com/watch?v=4y3Qul4Uo1Q", mediaType: "video" },
+      { itemIndex: 11, url: "https://www.youtube.com/watch?v=Nn3V7D3zmhk", mediaType: "video" },
+      { itemIndex: 12, url: "https://video.mokran.tv/b.mp4", mediaType: "video", titleEn: "B", durationSec: 186 },
+    ],
+  };
+  assert.equal(nextFileProgramme(state, null)?.url, "https://video.mokran.tv/b.mp4", "the first file after the one on air");
+  assert.equal(nextFileProgramme(state, 12)?.url, "https://assets.mokran.tv/a.mp4", "round to the start");
+  assert.equal(nextFileProgramme({ playlistItems: [{ itemIndex: 1, url: "https://youtu.be/4y3Qul4Uo1Q" }] }, null), null);
+});

@@ -13,11 +13,11 @@
  *   file. It uploads, saves by itself (the editor's autosave) and says so.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_WALK_AUDIO_BYTES, audioTypeOf } from "@/lib/splats/keys";
 import { setAudio, walkOf, type Walks } from "@/lib/splats/walks";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
-import { positionAt, type RadioChannel, type RadioNow } from "@/lib/radio";
+import { positionAt, type RadioChannel, type RadioFile, type RadioNow } from "@/lib/radio";
 
 const MUTE_KEY = "walk-sound";
 
@@ -179,9 +179,9 @@ const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14p
  * label, «nikoo.tv live music» (owner, 2026-11-06: "put this label back"); no window (owner: "just remove the
  * youtube window").
  * - A file on our bucket (625 of channel 4's 1,060 programmes, measured 2026-11-06) plays in an <audio>.
- * - A YouTube programme plays in YouTube's player kept OUT OF SIGHT (1×1, transparent). ⚠️ YouTube's terms do not
- *   allow a hidden player; the owner chose this knowing it. It starts on the shopper's first tap (a browser only
- *   plays sound after one) and 🔇 takes it away. iOS Safari will not autoplay it at all: there it stays silent.
+ * - A YouTube programme plays in YouTube's player kept OUT OF SIGHT (1×1, transparent) on a computer. ⚠️ YouTube's
+ *   terms do not allow a hidden player; the owner chose this knowing it. It starts on the shopper's first tap and 🔇
+ *   takes it away. A PHONE will not start it at all, so there the channel's own file programmes play in its place.
  * - Nothing playable on air (a live HLS stream, nikoo.tv unreachable): the store's own tracks, or nothing.
  */
 function RadioSound({ ch, audioKeys, srcOf, specials }: {
@@ -215,39 +215,69 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
     return () => { gone = true; if (timer) clearTimeout(timer); };
   }, [ch, tick]);
 
-  const fileUrl = now?.kind === "file" ? now.url : null;
+  // A PHONE (owner, 2026-11-07: "live channel Nikoo music does not play on mobile"): a phone will not start sound in a
+  // hidden YouTube player, so while the channel airs a YouTube programme a phone plays the channel's own FILE
+  // programmes, in the channel's order (`nextFileProgramme`, `/api/radio?file=1`), one after another.
+  const [phone, setPhone] = useState(false);
+  useEffect(() => { setPhone(window.matchMedia?.("(pointer: coarse)").matches ?? false); }, []);
+  const [fb, setFb] = useState<RadioFile | null>(null);
+  const liveYoutube = now?.kind === "youtube";
   useEffect(() => {
-    if (!fileUrl || !now) return;
-    const el = new Audio();
-    el.preload = "auto";
-    el.volume = WALK_MUSIC_VOLUME;
-    audio.current = el;
-    const reading = now;
-    const onMeta = () => {
-      try { el.currentTime = positionAt(reading, Date.now()); } catch { /* not seekable yet */ }
-      if (readOn()) start(el);
-    };
-    const onEnded = () => setTick((t) => t + 1);
-    const onError = () => { if (++failures.current <= 3) setTimeout(() => setTick((t) => t + 1), 5000); };
-    const onPlaying = () => { failures.current = 0; };
-    el.addEventListener("loadedmetadata", onMeta);
-    el.addEventListener("ended", onEnded);
-    el.addEventListener("error", onError);
-    el.addEventListener("playing", onPlaying);
-    el.src = fileUrl;
-    return () => {
-      el.removeEventListener("loadedmetadata", onMeta);
-      el.removeEventListener("ended", onEnded);
-      el.removeEventListener("error", onError);
-      el.removeEventListener("playing", onPlaying);
-      el.pause();
-      el.removeAttribute("src");
-      el.load();
-      if (audio.current === el) audio.current = null;
-    };
-    // A new reading of the SAME file (the 5-minute check) must not restart it: keyed on the address only.
+    if (!phone || !liveYoutube) { setFb(null); return; }
+    if (fb) return;
+    let gone = false;
+    void fetch(`/api/radio?ch=${ch}&file=1`, { cache: "no-store" }).then((r) => r.json()).then((j: { file?: RadioFile | null }) => { if (!gone) setFb(j.file ?? null); }).catch(() => undefined);
+    return () => { gone = true; };
+  }, [phone, liveYoutube, fb, ch]);
+  const nextFb = useCallback(() => {
+    const after = fb?.itemIndex;
+    void fetch(`/api/radio?ch=${ch}&file=1${after !== undefined ? `&after=${after}` : ""}`, { cache: "no-store" })
+      .then((r) => r.json()).then((j: { file?: RadioFile | null }) => setFb(j.file ?? null)).catch(() => undefined);
+  }, [fb, ch]);
+
+  // What plays in the <audio>: the live file programme (joined at the channel's second), or on a phone the
+  // channel's file programme standing in for a YouTube one (from its start).
+  const play = now?.kind === "file" && now.url ? { key: now.url, url: now.url, live: true }
+    : phone && liveYoutube && fb ? { key: `fb:${fb.itemIndex}:${fb.url}`, url: fb.url, live: false } : null;
+  const playRef = useRef(play);
+  playRef.current = play;
+  const nowRef = useRef(now);
+  nowRef.current = now;
+  const nextFbRef = useRef(nextFb);
+  nextFbRef.current = nextFb;
+
+  // ONE audio element for the whole visit, its address changed per programme: an iPhone lets an element the shopper
+  // has unlocked with a tap play on, a new element would need another tap. And it is told to PLAY at once, not after
+  // it has loaded: an iPhone does not load media until asked to play (it waited for a load that never came).
+  const audioEl = (): HTMLAudioElement => {
+    if (!audio.current) {
+      const el = new Audio();
+      el.preload = "auto";
+      el.volume = WALK_MUSIC_VOLUME;
+      el.addEventListener("loadedmetadata", () => {
+        const p = playRef.current, r = nowRef.current;
+        if (p?.live && r) { try { el.currentTime = positionAt(r, Date.now()); } catch { /* not seekable yet */ } }
+      });
+      el.addEventListener("ended", () => { if (playRef.current?.live) setTick((t) => t + 1); else nextFbRef.current(); });
+      el.addEventListener("error", () => {
+        if (!el.getAttribute("src")) return;
+        if (++failures.current > 3) return;
+        setTimeout(() => { if (playRef.current?.live) setTick((t) => t + 1); else nextFbRef.current(); }, 3000);
+      });
+      el.addEventListener("playing", () => { failures.current = 0; setWaiting(false); });
+      audio.current = el;
+    }
+    return audio.current;
+  };
+  const playKey = play?.key ?? null;
+  useEffect(() => {
+    const el = audioEl();
+    if (!playKey || !playRef.current) { el.pause(); return; }
+    el.src = playRef.current.url;
+    if (readOn()) start(el);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fileUrl]);
+  }, [playKey]);
+  useEffect(() => () => { const el = audio.current; if (el) { el.pause(); el.removeAttribute("src"); el.load(); } }, []);
 
   function start(el: HTMLAudioElement) {
     el.play().then(() => setWaiting(false), () => {
@@ -255,8 +285,9 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
       const go = () => {
         window.removeEventListener("pointerdown", go, true);
         window.removeEventListener("keydown", go, true);
-        if (audio.current !== el || !readOn()) return;
-        if (now) { try { el.currentTime = positionAt(now, Date.now()); } catch { /* keep where it is */ } }
+        if (audio.current !== el || !readOn() || !el.getAttribute("src")) return;
+        const p = playRef.current, r = nowRef.current;
+        if (p?.live && r) { try { el.currentTime = positionAt(r, Date.now()); } catch { /* keep where it is */ } }
         el.play().then(() => setWaiting(false), () => {});
       };
       window.addEventListener("pointerdown", go, true);
@@ -285,7 +316,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
 
   // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
   if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
-  const yt = now?.kind === "youtube" && now.youtubeId ? now : null;
+  const yt = !phone && now?.kind === "youtube" && now.youtubeId ? now : null;
 
   const toggle = () => {
     const next = !on;
@@ -294,7 +325,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
     if (!next && "speechSynthesis" in window) window.speechSynthesis.cancel();
     const el = audio.current;
     if (!el) return;
-    if (next) { if (now) { try { el.currentTime = positionAt(now, Date.now()); } catch { /* */ } } start(el); }
+    if (next) { if (play?.live && now) { try { el.currentTime = positionAt(now, Date.now()); } catch { /* */ } } if (play) start(el); }
     else el.pause();
   };
   return (
