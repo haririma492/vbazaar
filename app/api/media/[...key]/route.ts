@@ -4,6 +4,13 @@
  * address (`lib/splats/media.ts`). Answers with a redirect to a signed link
  * that expires, so a link copied out of the page stops working within hours.
  *
+ * `?link=1` answers the signed link as JSON instead of redirecting to it:
+ * ⚠️ iOS SAFARI DROPS CORS ACROSS A CROSS-ORIGIN MEDIA REDIRECT, so a walk
+ * video reached through the 302 is "tainted" and WebGL will not draw it into
+ * the 360° sphere: the Free Tour showed nothing on iPhones from the day the
+ * videos went private (2026-11-06) until 2026-11-07. The player asks for the
+ * link first and sets it as the video's address (`directMedia.ts`).
+ *
  * HEAD answers here, without a redirect: the player asks whether a video
  * (its `-phone.mp4`, its `-reverse.mp4`) exists, and a link signed for GET
  * refuses a HEAD.
@@ -51,6 +58,9 @@ export async function GET(req: NextRequest, { params }: { params: { key?: string
   if (no) return no;
   try {
     if (!(await webObjectExists(key))) return NextResponse.json({ ok: false, error: "No such video." }, { status: 404, headers: NO_STORE });
+    if (req.nextUrl.searchParams.get("link") === "1") {
+      return NextResponse.json({ ok: true, url: await linkFor(key) }, { headers: { "cache-control": "private, max-age=600" } });
+    }
     // `private`: a shared cache must never hand one visitor's link to another for longer than it lasts.
     return NextResponse.redirect(new URL(await linkFor(key), req.url), { status: 302, headers: { "cache-control": "private, max-age=600" } });
   } catch (e) {

@@ -68,6 +68,7 @@ import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { isPrivateVideoKey, mediaPath, toMediaUrl } from "@/lib/splats/media";
+import { directMediaUrl } from "@/lib/splats/directMedia";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { DEFAULT_FPS, SPEED_DEFAULT, driveRate, placeOf, speedAt, speedForFps } from "@/lib/splats/pace";
@@ -756,7 +757,9 @@ export default function Walk360() {
       });
       layer.ready.catch(() => {}); // a preload nobody used fails quietly
       void (async () => {
-        const src = opts.src !== undefined ? (opts.src && toMediaUrl(opts.src)) : opts.key ? await srcFor(opts.key, walkOf(walksNow, opts.key)?.rev) : null;
+        const via = opts.src !== undefined ? (opts.src && toMediaUrl(opts.src)) : opts.key ? await srcFor(opts.key, walkOf(walksNow, opts.key)?.rev) : null;
+        // ⚠️ A SPHERE'S VIDEO MUST NOT ARRIVE BY A CROSS-ORIGIN REDIRECT (iOS Safari taints it): the signed link itself.
+        const src = via && !phoneVideo ? await directMediaUrl(via) : via;
         if (layer.released) return;
         if (!src) return layer.fail("No address for the video: is NEXT_PUBLIC_SPLAT_BASE_URL set?");
         video.src = src;
@@ -834,7 +837,9 @@ export default function Walk360() {
       v.playsInline = true;
       v.setAttribute("playsinline", "");
       v.preload = "auto";
-      v.src = url;
+      const direct = await directMediaUrl(url);
+      if (l.released) return;
+      v.src = direct;
       l.rev = { video: v, texture: null, phase: "idle", since: 0 };
     }
 
