@@ -34,7 +34,7 @@ import { mediaPath } from "@/lib/splats/media";
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
 import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
-import { UNITS, readPrice, type Unit } from "@/lib/splats/catalogue";
+import { UNITS, formatCents, readPrice, type Unit } from "@/lib/splats/catalogue";
 import { MAX_TRACKS, musicOf, setRadio, setTrack } from "@/lib/splats/walks";
 import { soundOnly } from "@/lib/stores/music";
 import {
@@ -62,6 +62,7 @@ import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, walkLink } from "@/lib/stores/productLink";
 import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
+import { demoClear, demoCount, demoFill } from "@/lib/stores/demoFill";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
 export const runtime = "nodejs";
@@ -251,6 +252,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
         else delete next[f];
       }
       if (!next.en && !next.fa && next.by !== "video") return fail(400, "A product needs a name.");
+      // What its owner (or the operator) saved by hand is no longer a demo name and price.
+      delete next.demo;
       // A product found in the video keeps what the crew saw, to find it again in a new video (never shown).
       if (next.by === "video" && !next.seen && (p.en || p.fa)) next.seen = p.en || p.fa;
       const saved = await writeCatalogue({ ...c, products: c.products.map((x) => (x.n === n ? next : x)) });
@@ -324,6 +327,24 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     // Operator: the unnamed products take their titles read in full (free; owners' names untouched).
     if (who !== "operator") return fail(403, "The operator only.");
     return ok({ named: await nameFromTitles(s.slug) });
+  }
+  // DEMO NAMES AND PRICES (owner, 2026-11-10; `lib/stores/demoFill.ts`): every lit product with neither a name nor a
+  // price takes a made-up one that fits the store's kind. Without `apply` it only counts. Free; the operator's.
+  if (body.action === "demoFill" || body.action === "demoClear") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const c = await readCatalogue(sceneOf(s.slug));
+    if (!c) return ok({ filled: 0, skipped: 0, lit: 0, demo: 0, kind: "", say: "" });
+    if (body.action === "demoClear") {
+      const r = demoClear(c.products);
+      if (r.cleared) { await writeCatalogue({ ...c, products: r.products }); await updateStore(s.slug, (x) => redo(x, ["check"])); kick(); }
+      return ok({ cleared: r.cleared });
+    }
+    const items = s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.items ?? [] : [];
+    const lit = new Set<number>(items.filter((it) => it.n && it.pins.length).map((it) => it.n as number));
+    const r = demoFill(c.products, lit, { slug: s.slug, category: s.category, nameEn: s.name.en, nameFa: s.name.fa });
+    if (body.apply === true && r.filled) { await writeCatalogue({ ...c, products: r.products }); await updateStore(s.slug, (x) => redo(x, ["check"])); kick(); }
+    const sample = r.products.filter((p, i) => p.demo && !c.products[i].demo).slice(0, 4).map((p) => `${p.en} · ${formatCents(p.priceCents ?? 0)}`);
+    return ok({ filled: r.filled, skipped: r.skipped, lit: lit.size, demo: demoCount(body.apply === true ? r.products : c.products), kind: r.kind, say: r.say, sample, applied: body.apply === true });
   }
   if (body.action === "refreshAll") {
     // Operator: every agent in order (`refreshAll.ts`), in the background. Spends a little, asked on the card.

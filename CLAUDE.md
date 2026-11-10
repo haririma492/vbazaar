@@ -122,6 +122,16 @@ plan and the Managed Agents decision are in
   (owner, 2026-11-06: *"create one record per visit and indicate the stay on the site on each instance"*):
   `sessions` (start, end, signed in with the password or not; newest first, 200 kept), the end moved on as the page
   polls and stored once a minute; under each store on `/stores`, «Visits by the owner» lists them (`stayOf`).
+- **Demo names and prices** (owner, 2026-11-10: *"for the sake of demo, add a key on each store page to add
+  arbitrary title & prices on all items that have green light … make sense based on rough estimate of the market
+  for that category of store … if either exists do not add demo title and prices"*). «Demo names and prices» card
+  on `/stores/<slug>` (operator; `DemoCard.tsx`, actions `demoFill {apply}` / `demoClear`). A lit product with
+  NEITHER a name NOR a price takes a made-up name (EN + FA) and a CAD price fitting the store's kind
+  (`lib/stores/demoFill.ts`, pure, tested: books, nuts, sweets, clothing, jewellery, rugs, beauty, electronics,
+  home, crafts, grocery, else general; the kind from the category, then the store's name). A product with a name
+  or a price is left alone. Each filled one is marked `demo` on the product list: «Remove them» takes only those
+  away; a product saved by hand stops being a demo one. Free, no AI; the same store gets the same names each time.
+  ⚠️ A demo name blocks `nameFromTitles` for that product until removed.
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,

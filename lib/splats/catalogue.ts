@@ -61,6 +61,8 @@ export type Product = {
    * that"). A product found in the video has no name until its owner gives one.
    */
   seen?: string;
+  /** Its name and price are made up for a demo (`lib/stores/demoFill.ts`): «Remove» takes them away; an owner's edit makes them real. */
+  demo?: true;
 };
 
 export type Catalogue = { store: string; products: Product[]; updated?: string };
@@ -261,7 +263,7 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
     seen.add(n);
     products.push({
       n, unit, priceCents: price as number | null, ...(sku ? { sku } : {}), ...(en ? { en } : {}), ...(fa ? { fa } : {}), ...(photo ? { photo } : {}),
-      ...(by ? { by } : {}), ...(note ? { note } : {}), ...(sawAs ? { seen: sawAs } : {}), ...(web ? { web } : {}), ...(more.length ? { more } : {}),
+      ...(by ? { by } : {}), ...(note ? { note } : {}), ...(sawAs ? { seen: sawAs } : {}), ...(web ? { web } : {}), ...(more.length ? { more } : {}), ...(x.demo === true ? { demo: true as const } : {}),
     });
   }
   products.sort((a, b) => a.n - b.n);
