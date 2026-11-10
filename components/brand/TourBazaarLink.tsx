@@ -14,19 +14,20 @@
  * keyboard focus light it up. It opens vbazaar.app in a NEW TAB with the
  * full address, so the shopper keeps their place in the tour, and an offline or olgoo.com copy still points at
  * vbazaar.app rather than its own host.
+ *
+ * `here` (owner, 2026-11-10: the same sign "to the main page on top left of the header") is for vbazaar.app's own
+ * home page: the badge leads to that page in the same tab, since a new tab onto the page one is on helps nobody.
+ * The browser tab's icon is this arch on its tile (`app/icon.svg`).
  */
 /** The green of the sign «بازار مجازی تورنتو» on the old logo, read off its pixels. */
 const SIGN_GREEN = "#214E3F";
 
-export default function TourBazaarLink({ overlay = false, className = "" }: { overlay?: boolean; className?: string }) {
+export default function TourBazaarLink({ overlay = false, here, className = "" }: { overlay?: boolean; here?: string; className?: string }) {
   return (
     <a
-      href="https://vbazaar.app"
-      target="_blank"
-      rel="noopener"
+      {...(here ? { href: here } : { href: "https://vbazaar.app", target: "_blank", rel: "noopener", title: "Open vbazaar.app in a new tab" })}
       dir="ltr"
-      title="Open vbazaar.app in a new tab"
-      aria-label="Virtual Bazaar, open vbazaar.app in a new tab"
+      aria-label={here ? "Virtual Bazaar, vbazaar.app" : "Virtual Bazaar, open vbazaar.app in a new tab"}
       className={`group flex shrink-0 cursor-pointer flex-col items-center gap-1 rounded-lg border border-[#FFF9EE]/70 px-2 py-1 text-[#FFF9EE] transition-colors hover:border-[#FFF9EE] hover:bg-[#FFF9EE]/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${overlay ? "bg-black/60 shadow-lg" : "bg-white/5"} ${className}`}
     >
       <span className="rounded bg-[#FFF9EE] px-[3px] py-px">

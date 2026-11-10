@@ -51,6 +51,12 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
   documents stay on olgoo.com (titles shown, access requested there). The
   pilot form posts to `/api/lead`, which hands it to olgoo.com's `/api/lead`
   (leads and their email stay olgoo.com's).
+- **The bazaar's sign** (owner, 2026-11-10: the sign at the top right of the tours *"to the main page on top left
+  of the header and with only one border as browser tab icon"*): the green pointed arch on its warm-white tile
+  (`components/brand/TourBazaarLink.tsx`). On the home page it is at the LEFT end of the header in both languages
+  (`here`, same tab; `.vb-sign` in `home.css`; on a phone the arch alone). The tab icon is the arch on its tile with
+  no second line round it: `app/icon.svg`, with `app/favicon.ico` (16/32/48) and `app/apple-icon.png` (180) made
+  from it. Change the arch in all of them together.
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
 

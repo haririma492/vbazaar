@@ -1,3 +1,4 @@
+import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Metadata } from "next";
@@ -57,6 +58,9 @@ export default async function VcaHome({ lang }: { lang: Lang }) {
       {lang === "fa" && <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" />}
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(homeJsonLd(lang, FAQ[lang])) }} />
       <header className="vb-nav">
+        {/* The bazaar's sign, the one at the top right of the tours, at the top LEFT of the header in both
+            languages (owner, 2026-11-10). `order` keeps it on the left whichever way the page reads. */}
+        <TourBazaarLink here={page.path} className="vb-sign" />
         <a href={page.path} className="vb-brand">{lang === "fa" ? `${SITE_NAME.fa} تورنتو` : `${SITE_NAME.en} Toronto`}</a>
         <nav className="vb-links" aria-label={lang === "fa" ? "منو" : "Menu"}>
           <a href="/vca/walk">{t.walk}</a>

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The bazaar's sign as the browser tab's icon: the pointed Persian arch of components/brand/TourBazaarLink.tsx
+       on its warm-white tile, with one border only (the arch's own green frame; no second line round the tile). -->
+  <rect width="64" height="64" rx="12" fill="#FFF9EE"/>
+  <path fill="#214E3F" fill-rule="evenodd" d="M11 8 H53 V52 H11 Z M20 52 V31 Q20 21.5 32 14.5 Q44 21.5 44 31 V52 Z"/>
+  <path d="M6 54 H58" stroke="#214E3F" stroke-width="4" stroke-linecap="round"/>
+</svg>

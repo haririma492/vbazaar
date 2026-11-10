@@ -8,7 +8,11 @@
 }
 .vb-brand { font-family: "Cormorant Garamond", serif; font-size: 22px; font-weight: 700; color: #fff; white-space: nowrap; }
 .ovca[lang=fa] .vb-brand { font-size: 19px; font-weight: 700; }
-.vb-links { display: flex; gap: 22px; align-items: center; }
+.vb-links { display: flex; gap: 22px; align-items: center; margin-inline-start: auto; }
+/* The bazaar's sign (components/brand/TourBazaarLink.tsx): at the left end of the header in both languages. */
+.ovca[dir=rtl] .vb-nav .vb-sign { order: 3; }
+/* The page's own reset takes the badge's padding away, so it is said again here. */
+.ovca .vb-nav .vb-sign { padding: 4px 8px; }
 .vb-links a { color: rgba(255, 255, 255, 0.72); font-size: 13px; letter-spacing: 0.3px; white-space: nowrap; }
 .vb-links a:hover { color: #fff; }
 .vb-links .vb-lang { border: 1px solid rgba(212, 168, 67, 0.45); border-radius: 4px; padding: 5px 10px; color: var(--gold-light); }
@@ -17,9 +21,17 @@
 .vb-foot { padding: 36px 5% 44px; text-align: center; font-size: 13px; color: rgba(255, 255, 255, 0.55); border-top: 1px solid rgba(212, 168, 67, 0.18); display: grid; gap: 8px; }
 .vb-foot a { color: var(--gold-light); }
 @media (max-width: 560px) {
-  .vb-nav { padding: 0 16px; }
-  .vb-links { gap: 12px; }
-  .vb-links a { font-size: 12px; }
+  .vb-nav { padding: 0 16px; gap: 8px; }
+  /* A phone's header has no room for the address under the sign: the arch alone, and a smaller name. */
+  .ovca .vb-nav .vb-sign { padding: 4px; }
+  .ovca .vb-nav .vb-sign > span:last-child { display: none; }
+  /* The English header ran off a phone's edge (the language key was cut) before the sign too: it now fits 375 px,
+     and on a narrower phone the name gives way, never the keys. */
+  .ovca .vb-brand { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .ovca[lang=fa] .vb-brand { font-size: 16px; }
+  .vb-links { gap: 9px; flex-shrink: 0; }
+  .vb-links a { font-size: 11.5px; }
+  .vb-links .vb-lang { padding: 5px 8px; }
   .vb-links a[href="/vca"] { display: none; }
 }
 .vs-docs-note { text-align: center; margin-top: 18px; font-size: 14px; }
