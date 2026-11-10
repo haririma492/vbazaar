@@ -49,6 +49,13 @@ test("the same store gets the same names and prices each time; what was seen pic
   assert.match(a.products[1].en!, /pickle/i);
 });
 
+test("a word every product was seen with does not pile them onto one name", () => {
+  const products = Array.from({ length: 150 }, (_, i) => found(i + 1, { seen: `book with a ${i % 2 ? "blue" : "red"} spine` }));
+  const r = demoFill(products, new Set(products.map((p) => p.n)), { slug: "saraye-bamdad", category: "Bookstore" });
+  const names = r.products.map((p) => p.en);
+  assert.equal(new Set(names).size, names.length);
+});
+
 test("filled products pass the catalogue's check, and removing puts them back", () => {
   const products = [found(1, { seen: "blue spine" }), found(2, { en: "Kept", priceCents: 500 })];
   const r = demoFill(products, new Set([1, 2]), { slug: "shop", category: "Bookstore" });

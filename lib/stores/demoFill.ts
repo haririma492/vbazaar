@@ -268,18 +268,22 @@ export function demoFill(products: Product[], lit: Set<number>, store: DemoStore
   const rowWords = kind.rows.map((r) => words(r[0]));
   const used = kind.rows.map(() => 0);
   let filled = 0, skipped = 0, next = 0;
+  // A word most of the store's products were seen with ("book" in a bookshop) tells one product from another not at all.
+  const waiting = products.filter((p) => waits(p, lit));
+  const often = new Map<string, number>();
+  for (const p of waiting) for (const w of p.seen ? words(p.seen) : []) often.set(w, (often.get(w) ?? 0) + 1);
+  const telling = (w: string) => (often.get(w) ?? 0) <= Math.max(2, waiting.length * 0.15);
   const out = products.map((p) => {
     if (!waits(p, lit)) { if (lit.has(p.n)) skipped++; return p; }
-    const saw = p.seen ? words(p.seen) : new Set<string>();
+    const saw = new Set([...(p.seen ? words(p.seen) : [])].filter(telling));
+    const least = Math.min(...used);
     let i = -1;
     if (saw.size) {
-      // The names that share a word with what was seen; of those, the one dealt least so far.
-      const fits = order.filter((r) => [...rowWords[r]].some((w) => saw.has(w)));
-      if (fits.length) i = fits.reduce((a, b) => (used[b] < used[a] ? b : a));
+      // A name that shares a word with what was seen, if it is among those dealt least (it never gets ahead of the rest).
+      i = order.find((r) => used[r] === least && [...rowWords[r]].some((w) => saw.has(w))) ?? -1;
     }
     if (i < 0) {
       // The next name in the store's order that has been dealt least.
-      const least = Math.min(...used);
       for (let k = 0; k < order.length; k++) { const r = order[(next + k) % order.length]; if (used[r] === least) { i = r; next = (next + k + 1) % order.length; break; } }
     }
     const [en, fa, lo, hi] = kind.rows[i];
