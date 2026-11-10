@@ -572,6 +572,18 @@ export default function Walk360() {
    */
   const [owner, setOwner] = useState<{ api: string; products: Product[]; book?: boolean } | null>(null);
   const [ownerCard, setOwnerCard] = useState<number | null>(null);
+  /**
+   * THE OWNER SEES IT AS A SHOPPER (owner, 2026-11-10, showing the walk in a browser signed in as operator: "when
+   * we click on a green label item it asks to enter the price and other info rather than Add to basket"). A switch
+   * on the walk, only for the store's owner or the operator, kept on the device: a tap then opens the shopper's
+   * card. `?shopper=1` on the link does the same for that visit.
+   */
+  const [asShopper, setAsShopper] = useState(false);
+  useEffect(() => {
+    try { setAsShopper(new URLSearchParams(window.location.search).get("shopper") === "1" || window.localStorage.getItem("vb.walk.asShopper") === "1"); } catch { /* private window: the owner's view */ }
+  }, []);
+  const asShopperRef = useRef(asShopper);
+  asShopperRef.current = asShopper;
   /** The store's aisles (its shelf videos, in order), for Next / Previous. */
   const [aisles, setAisles] = useState<Aisle[]>([]);
   /** The store whose Shelf Tour exists (its slug), for the «Shelf Tour | Free Tour» switch. */
@@ -2140,7 +2152,7 @@ export default function Walk360() {
       // The owner fills in the product; a shopper gets its card (add to basket).
       const o = ownerRef.current;
       setLit(item.id);
-      if (o && item.n && o.products.some((p) => p.n === item.n)) setOwnerCard(item.n);
+      if (o && !asShopperRef.current && item.n && o.products.some((p) => p.n === item.n)) setOwnerCard(item.n);
       else setCard(item);
     });
     return () => engine.current?.setOnItem(null);
@@ -2509,6 +2521,18 @@ export default function Walk360() {
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
+      {/* Only the store's owner or the operator sees this: which card a tap on a product opens for them. */}
+      {owner && phase === "walking" && !editing && !spotMode && (
+        <button type="button" dir="ltr"
+          className="absolute left-3 top-[5.5rem] z-20 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] font-bold text-white/90 backdrop-blur"
+          onClick={() => {
+            const next = !asShopper;
+            setAsShopper(next); setOwnerCard(null); setCard(null); setLit(null);
+            try { window.localStorage.setItem("vb.walk.asShopper", next ? "1" : "0"); } catch { /* not kept: it lasts this visit */ }
+          }}>
+          {asShopper ? "👁 Shopper's view · نمای خریدار — tap to edit products" : "✎ Owner's view · نمای صاحب فروشگاه — tap to see as a shopper"}
+        </button>
+      )}
       {ownerCard !== null && owner && (() => {
         const product = owner.products.find((p) => p.n === ownerCard);
         if (!product) return null;

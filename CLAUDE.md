@@ -138,6 +138,11 @@ plan and the Managed Agents decision are in
   or a price is left alone. Each filled one is marked `demo` on the product list: «Remove them» takes only those
   away; a product saved by hand stops being a demo one. Free, no AI; the same store gets the same names each time.
   ⚠️ A demo name blocks `nameFromTitles` for that product until removed.
+- **The owner can see the walk as a shopper** (owner, 2026-11-10, in a browser signed in as operator: *"when we
+  click on a green label item it asks to enter the price and other info rather than Add to basket"*). The walk's
+  link is the same for everyone; a browser signed in on `/stores/<slug>` (owner or operator) gets the naming card.
+  Those two now see a switch at the top left of the walk («✎ Owner's view» / «👁 Shopper's view», kept on the
+  device, `vb.walk.asShopper`); `?shopper=1` on the link does it for one visit. Shoppers never see the switch.
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,
