@@ -578,9 +578,16 @@ export default function Walk360() {
    * on the walk, only for the store's owner or the operator, kept on the device: a tap then opens the shopper's
    * card. `?shopper=1` on the link does the same for that visit.
    */
+  // The operator starts in the shopper's view (owner, 2026-11-10: "we need Shoppers's view not owner's view"); a store's
+  // owner, signed in with the store's password, starts in the owner's view. Either one's own choice is kept.
   const [asShopper, setAsShopper] = useState(false);
+  const viewChosen = useRef(false);
   useEffect(() => {
-    try { setAsShopper(new URLSearchParams(window.location.search).get("shopper") === "1" || window.localStorage.getItem("vb.walk.asShopper") === "1"); } catch { /* private window: the owner's view */ }
+    try {
+      const kept = window.localStorage.getItem("vb.walk.asShopper");
+      if (new URLSearchParams(window.location.search).get("shopper") === "1") { viewChosen.current = true; setAsShopper(true); }
+      else if (kept === "1" || kept === "0") { viewChosen.current = true; setAsShopper(kept === "1"); }
+    } catch { /* private window: the start for who is signed in */ }
   }, []);
   const asShopperRef = useRef(asShopper);
   asShopperRef.current = asShopper;
@@ -2108,6 +2115,7 @@ export default function Walk360() {
       const token = readAdminToken();
       const res = await fetch(`/api/stores/${encodeURIComponent(slug)}`, { cache: "no-store", credentials: "same-origin", headers: token ? { "x-admin-token": token } : {} });
       const j = await res.json().catch(() => null);
+      if (res.ok && j?.ok && !viewChosen.current) setAsShopper(j.who === "operator");
       setOwner(res.ok && j?.ok ? { api: `/api/stores/${encodeURIComponent(slug)}`, products: Array.isArray(j.products) ? j.products : [], book: isBookStore(j.store?.category) } : null);
     } catch {
       setOwner(null); // a shopper: the basket card
@@ -2523,15 +2531,17 @@ export default function Walk360() {
 
       {/* Only the store's owner or the operator sees this: which card a tap on a product opens for them. */}
       {owner && phase === "walking" && !editing && !spotMode && (
-        <button type="button" dir="ltr"
-          className="absolute left-3 top-[5.5rem] z-20 rounded-full border border-white/25 bg-black/60 px-3 py-1.5 text-[12px] font-bold text-white/90 backdrop-blur"
-          onClick={() => {
-            const next = !asShopper;
-            setAsShopper(next); setOwnerCard(null); setCard(null); setLit(null);
-            try { window.localStorage.setItem("vb.walk.asShopper", next ? "1" : "0"); } catch { /* not kept: it lasts this visit */ }
-          }}>
-          {asShopper ? "👁 Shopper's view · نمای خریدار — tap to edit products" : "✎ Owner's view · نمای صاحب فروشگاه — tap to see as a shopper"}
-        </button>
+        <div dir="ltr" className="absolute left-3 top-[5.5rem] z-20 flex overflow-hidden rounded-full border border-white/25 bg-black/60 text-[12px] font-bold backdrop-blur">
+          {([[true, "👁 Shopper's view · نمای خریدار"], [false, "✎ Owner's view · نمای صاحب فروشگاه"]] as const).map(([shopper, say]) => (
+            <button key={String(shopper)} type="button" aria-pressed={asShopper === shopper}
+              className={`px-3 py-1.5 ${asShopper === shopper ? "bg-emerald-400 text-black" : "text-white/75"}`}
+              onClick={() => {
+                viewChosen.current = true;
+                setAsShopper(shopper); setOwnerCard(null); setCard(null); setLit(null);
+                try { window.localStorage.setItem("vb.walk.asShopper", shopper ? "1" : "0"); } catch { /* not kept: it lasts this visit */ }
+              }}>{say}</button>
+          ))}
+        </div>
       )}
       {ownerCard !== null && owner && (() => {
         const product = owner.products.find((p) => p.n === ownerCard);

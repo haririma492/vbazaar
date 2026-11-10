@@ -141,8 +141,10 @@ plan and the Managed Agents decision are in
 - **The owner can see the walk as a shopper** (owner, 2026-11-10, in a browser signed in as operator: *"when we
   click on a green label item it asks to enter the price and other info rather than Add to basket"*). The walk's
   link is the same for everyone; a browser signed in on `/stores/<slug>` (owner or operator) gets the naming card.
-  Those two now see a switch at the top left of the walk («✎ Owner's view» / «👁 Shopper's view», kept on the
-  device, `vb.walk.asShopper`); `?shopper=1` on the link does it for one visit. Shoppers never see the switch.
+  Those two see a two-part switch at the top left of the walk («👁 Shopper's view | ✎ Owner's view», the one in use
+  lit green; the choice kept on the device, `vb.walk.asShopper`); `?shopper=1` on the link does it for one visit.
+  The operator STARTS in the shopper's view (owner: *"we need Shoppers's view not owner's view"*); a store's owner,
+  signed in with the store's password, starts in the owner's view. Shoppers never see the switch.
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,
