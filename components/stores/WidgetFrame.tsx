@@ -49,11 +49,14 @@ export default function WidgetFrame({ slug, plan }: { slug: string; plan: Widget
           style={{ opacity: k === i ? 1 : 0 }} loading={k < 2 ? "eager" : "lazy"} />
       ))}
       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/10 to-black/40" />
-      <div dir="ltr" className="pointer-events-none absolute left-2 top-2 z-20 flex flex-col items-center rounded-lg bg-black/55 p-1">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/media/brand/vbazaar-logo-v2-1000.webp" alt="Virtual Bazaar" width={52} className="rounded" style={{ height: "auto" }} />
-        <span className="mt-0.5 text-[9px] font-bold tracking-wide text-[#e8f5ec]">VBAZAAR.APP</span>
-      </div>
+      {/* The bazaar's sign, small: the arch alone on its warm-white tile (owner, 2026-11-11: "replace the big logo on
+          the widget with small (just arch)"). The same arch as `components/brand/TourBazaarLink.tsx`. */}
+      <span className="pointer-events-none absolute left-2 top-2 z-20 rounded bg-[#FFF9EE] px-[3px] py-px shadow">
+        <svg width="32" height="22" viewBox="0 0 44 30" role="img" aria-label="Virtual Bazaar" className="block">
+          <path fill="#214E3F" fillRule="evenodd" d="M8 2 H36 V28 H8 Z M13.5 28 V15 Q13.5 9.4 22 5.6 Q30.5 9.4 30.5 15 V28 Z" />
+          <path d="M4 28 H40" stroke="#214E3F" strokeWidth="1.8" strokeLinecap="round" />
+        </svg>
+      </span>
       {p.kind === "video" && p.sound && (
         // Browsers start a frame's video silent; the music plays once the visitor taps here.
         <button type="button" onClick={() => { setMuted(!muted); if (video.current) { video.current.muted = !muted; void video.current.play().catch(() => undefined); } }}

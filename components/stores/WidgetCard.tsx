@@ -6,7 +6,7 @@
  * switch that lets the store's owner see this card too. Every store has one, existing and new.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetPlan, WidgetStats } from "@/lib/stores/widgetRules";
 import { postJson } from "./upload";
 import { Bi, Card, QUIET, Said } from "./ui";
@@ -18,15 +18,26 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
   const [got, setGot] = useState<Got | null>(null);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState<"yes" | "no" | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
   const load = useCallback(async () => {
     try { setGot(await postJson<Got>(api, { action: "widget" })); } catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
 
+  // The browser's clipboard first; where it is missing or refused (an older browser, a page not in focus), the code
+  // in the box is selected and copied the old way. The answer is said ON the key: the line at the card's end was out
+  // of sight, so the key "did nothing" (owner, 2026-11-11).
   const copy = async () => {
     if (!got) return;
-    try { await navigator.clipboard.writeText(got.snippet); setSaid({ ok: true, text: "✓ Copied. Paste it into the store's website where the widget should appear. · کپی شد" }); }
-    catch { setSaid({ ok: false, text: "Could not copy: select the code and copy it by hand." }); }
+    let done = false;
+    try { await navigator.clipboard.writeText(got.snippet); done = true; } catch { /* the old way, below */ }
+    if (!done && box.current) {
+      box.current.focus(); box.current.select();
+      try { done = document.execCommand("copy"); } catch { done = false; }
+    }
+    setCopied(done ? "yes" : "no");
+    setTimeout(() => setCopied(null), 4000);
   };
   const owner = async (on: boolean) => {
     setBusy(true); setSaid(null);
@@ -48,10 +59,17 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
         <div className="relative aspect-[4/3] w-full max-w-[320px] overflow-hidden rounded-xl border border-white/10">
           <iframe src={`/w/${slug}?preview=1`} title="Widget preview" className="absolute inset-0 h-full w-full border-0" />
         </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <textarea readOnly dir="ltr" value={got?.snippet ?? "…"} rows={5} className="w-full rounded-lg bg-black/40 p-2 text-left font-mono text-[11px] text-white/85" onFocus={(e) => e.currentTarget.select()} />
-          <button type="button" className={QUIET} disabled={!got} onClick={copy}>Copy the code · کپی کد</button>
-          <p dir="ltr" className="text-left text-[12px] text-white/45">Options on the &lt;div&gt;: data-lang=&quot;en&quot; (English), data-width=&quot;360&quot; (its widest, in pixels).</p>
+        {/* At least 240 px, or it drops under the preview: with no least width it was squeezed to a sliver beside the
+            320 px preview on a screen 400–520 px wide, and there was no code to copy (owner, 2026-11-11). */}
+        <div className="min-w-[240px] flex-1 space-y-2">
+          <textarea ref={box} readOnly dir="ltr" value={got?.snippet ?? "Loading the code…"} rows={5} className="w-full rounded-lg bg-black/40 p-2 text-left font-mono text-[11px] text-white/85" onFocus={(e) => e.currentTarget.select()} />
+          <button type="button" className={QUIET} disabled={!got} onClick={copy}>
+            {copied === "yes" ? "✓ Copied · کپی شد" : copied === "no" ? "Not copied: the code is selected, press Ctrl+C / ⌘C" : "Copy the code · کپی کد"}
+          </button>
+          <p dir="ltr" className="text-left text-[12px] text-white/45">
+            Where: the widget appears where the &lt;div&gt; is pasted in the page. Size: data-width=&quot;360&quot; on the &lt;div&gt; is its widest, in pixels (480 if left out; always 4:3, narrower on a small screen).
+            To centre it or pin it to a corner, style the &lt;div&gt;, e.g. style=&quot;max-width:360px;margin:0 auto&quot;. English: data-lang=&quot;en&quot;.
+          </p>
         </div>
       </div>
       {got && (

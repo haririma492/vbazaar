@@ -105,6 +105,11 @@ plan and the Managed Agents decision are in
   `/w/<slug>/go`, counted, then the visit on vbazaar.app). The moat: the walk, the tours and the basket are never
   on the store's site; a full embed would be a separate paid white-label product. Unpublished: «Coming soon».
   Card on `/stores/<slug>` for the operator; `widgetForOwner` on the record shows it to the owner.
+  Our mark on the widget is the arch alone on its tile, small (owner, 2026-11-11: *"replace the big logo on the
+  widget with small (just arch)"*). Where and how big it is on the store's site: where the `<div>` is pasted;
+  `data-width` (its widest, 480 if left out, always 4:3); the site's own style on the `<div>` to centre or pin it.
+  «Copy the code» answers on the key itself, and falls back to selecting the code (it "did nothing": the answer
+  was at the card's end).
   `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
 - **Instagram: three pathways into the walk** (owner, 2026-11-06: *"come up with some modern, trendy, cutting-edge
   technology that Instagram friendly and can link the two sides"*, then *"Let's do that for saraye-bamdad"*). Instagram
