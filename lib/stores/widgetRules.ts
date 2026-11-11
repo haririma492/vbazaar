@@ -122,8 +122,10 @@ export type WidgetSettings = {
   /** Its widest, in pixels (always 4:3; narrower on a small screen). */
   width: number;
   lang: "fa" | "en";
+  /** The visitor may drag the window about the page and pull its size (owner, 2026-11-11); kept on their device. */
+  movable: boolean;
 };
-export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "top", side: "right", corner: "br", width: 480, lang: "fa" };
+export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "top", side: "right", corner: "br", width: 480, lang: "fa", movable: true };
 export const WIDGET_WIDTHS = { min: 240, max: 1200 };
 
 /** Whatever was stored or sent, made safe: unknown values fall back to the defaults, the width is kept in range. */
@@ -137,6 +139,7 @@ export function widgetSettings(raw: unknown): WidgetSettings {
     corner: o.corner === "bl" || o.corner === "tr" || o.corner === "tl" ? o.corner : "br",
     width: Number.isFinite(w) && w > 0 ? Math.min(WIDGET_WIDTHS.max, Math.max(WIDGET_WIDTHS.min, w)) : WIDGET_DEFAULTS.width,
     lang: o.lang === "en" ? "en" : "fa",
+    movable: o.movable !== false,
   };
 }
 

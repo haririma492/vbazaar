@@ -142,6 +142,12 @@ plan and the Managed Agents decision are in
   is covered; on a phone it is as wide as the screen. ⚠️ Seen on dioncollege.com: the site's row beside the window
   is squeezed narrower. `place: "float"` (the hovering window, `corner`, × for the visit) stays as a choice on the
   card only; never the default.
+  **The visitor moves and resizes the window** (owner, 2026-11-11: *"users on each website should be able to
+  resize the window and also move the location of the window around"*): all in `/widget.js`, nothing in the
+  store's code. A bar on top to drag by, a corner at the bottom right to pull its size (4:3, 220 px to the page's
+  width). The first drag lifts the window out of the page's rows (absolute on the page: it still scrolls with it;
+  the site's row gets its room back). Kept on the visitor's device per site (`localStorage`
+  `vbazaar-widget-pos-<slug>`); a double click on the bar puts it back. `movable` in the settings turns it off.
   **The code is ONE line** (owner, 2026-11-11: *"why the code is so long and look complicated?"*):
   `<script async src="https://vbazaar.app/widget.js" data-vbazaar-store="<slug>"></script>`. The two lines given
   out before (a `<div data-vbazaar-store>` with a link, then the script) keep working; "here" with the one line is

@@ -107,6 +107,10 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
             <input type="checkbox" checked={got.settings.on} disabled={busy} onChange={(e) => set({ on: e.target.checked })} />
             <span>Show the widget</span>
           </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={got.settings.movable} disabled={busy} onChange={(e) => set({ movable: e.target.checked })} />
+            <span>Visitors can move and resize the window (kept on their own device)</span>
+          </label>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-white/60">Where:</span>
             {([["top", "In the page, under its header"], ["here", "In the page, where the code was pasted"], ["float", "Hovering over a corner (with a × to close)"]] as const).map(([v, say]) => (
