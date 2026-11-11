@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PREVIEW_FOV, addHit, emptyStats, ownerSeesWidget, planWidget, previewAim, siteOf, snippet } from "./widgetRules";
+import { PREVIEW_FOV, addHit, emptyStats, ownerSeesWidget, planWidget, previewAim, siteOf, snippet, widgetSettings } from "./widgetRules";
 
 const facts = { live: true, walk: "scenes/store-shirazgallery/walk-1.mp4", tourVideo: "/api/media/scenes/store-shirazgallery/tour.mp4", photos: ["https://media.x/a.jpg", "https://media.x/b.jpg"], door: "https://media.x/door.jpg" };
 
@@ -67,4 +67,12 @@ test("the preview looks away from the camera operator, and the operator never en
   assert.ok(c.seconds < 20);
   // No lock: straight ahead, as before.
   assert.deepEqual(previewAim(null), { yaw: 0, hfov: PREVIEW_FOV, seconds: 20 });
+});
+
+test("the widget's settings are ours: defaults for a store that set none, anything odd made safe", () => {
+  assert.deepEqual(widgetSettings(undefined), { on: true, place: "top", width: 480, lang: "fa" });
+  assert.deepEqual(widgetSettings({ on: false, place: "here", width: 360, lang: "en" }), { on: false, place: "here", width: 360, lang: "en" });
+  assert.deepEqual(widgetSettings({ place: "moon", width: "abc", lang: "de" }), { on: true, place: "top", width: 480, lang: "fa" });
+  assert.equal(widgetSettings({ width: 50 }).width, 240);
+  assert.equal(widgetSettings({ width: 99999 }).width, 1200);
 });

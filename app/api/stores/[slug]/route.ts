@@ -19,6 +19,7 @@
  *   POST { action: "product", n, unit?, price?, sku?, note?, en?, fa? }  a product's details, from the store's page
  *   POST { action: "productDrop", n }           not a product: off the list and off the walk
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
+ *   POST { action: "widgetSet", settings }      the widget on the store's site: { on, place, width, lang } (operator)
  *   POST { action: "widget" }                   the store's widget: { snippet, stats, plan, forOwner } (operator; the owner when switched on)
  *   POST { action: "instagram" }              (the Reel, the walk link, one link per lit product)
  *   POST { action: "reelMake" }               (the vertical Instagram Reel made again, in the background)
@@ -62,7 +63,7 @@ import { readStats, widgetPlan } from "@/lib/stores/widget";
 import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
-import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
+import { ownerSeesWidget, snippet, widgetSettings } from "@/lib/stores/widgetRules";
 import { demoClear, demoCount, demoFill } from "@/lib/stores/demoFill";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
@@ -128,7 +129,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "widget") {
     if (who !== "operator" && !ownerSeesWidget(s)) return fail(403, "The operator only.");
     const [stats, plan, preview] = await Promise.all([readStats(s.slug), widgetPlan(s.slug), readPreview(s.slug)]);
-    return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s), preview: who === "operator" ? preview : undefined });
+    return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s), settings: widgetSettings(s.widget), preview: who === "operator" ? preview : undefined });
   }
   // INSTAGRAM (owner, 2026-11-06: the Instagram pathway): the store's vertical Reel, the walk's link for the bio, and
   // one link per lit product (opens the walk facing it, its card open). The owner's too: it is their marketing.
@@ -157,6 +158,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (body.on === true && !s.out.walk) return fail(400, "This store has no walk yet.");
     const next = await updateStore(s.slug, (x) => ({ ...x, onTours: body.on === true }));
     return ok({ onTours: next?.onTours === true, store: next ? forPage(next) : null });
+  }
+  // The widget's settings, changed here and never in the store's code (owner, 2026-11-11): shown or not, where, how
+  // wide, which language. `/widget.js` reads them on the store's site within a minute.
+  if (body.action === "widgetSet") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const next = await updateStore(s.slug, (x) => ({ ...x, widget: widgetSettings({ ...widgetSettings(x.widget), ...((body.settings ?? {}) as object) }) }));
+    return ok({ settings: widgetSettings(next?.widget) });
   }
   if (body.action === "widgetOwner") {
     if (who !== "operator") return fail(403, "The operator only.");

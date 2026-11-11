@@ -7,12 +7,12 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { WidgetPlan, WidgetStats } from "@/lib/stores/widgetRules";
+import type { WidgetPlan, WidgetSettings, WidgetStats } from "@/lib/stores/widgetRules";
 import { postJson } from "./upload";
 import { Bi, Card, QUIET, Said } from "./ui";
 
 type Preview = { made: string; error?: string; aim?: { yawDeg: number; hfovDeg: number; seconds: number; zones: number } } | null;
-type Got = { snippet: string; stats: WidgetStats; plan: WidgetPlan | null; forOwner: boolean; preview?: Preview };
+type Got = { snippet: string; stats: WidgetStats; plan: WidgetPlan | null; forOwner: boolean; settings: WidgetSettings; preview?: Preview };
 
 export default function WidgetCard({ api, slug, operator }: { api: string; slug: string; operator: boolean }) {
   const [got, setGot] = useState<Got | null>(null);
@@ -38,6 +38,17 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
     }
     setCopied(done ? "yes" : "no");
     setTimeout(() => setCopied(null), 4000);
+  };
+  // The widget on the store's site is changed HERE, never in the store's code: each change saves itself and says so.
+  const [setSaid2, setSetSaid] = useState<{ ok: boolean; text: string } | null>(null);
+  const set = async (change: Partial<WidgetSettings>) => {
+    setBusy(true); setSetSaid(null);
+    try {
+      const r = await postJson<{ settings: WidgetSettings }>(api, { action: "widgetSet", settings: change });
+      setGot((g) => (g ? { ...g, settings: r.settings } : g));
+      setSetSaid({ ok: true, text: "✓ Saved. The store's site shows it within a minute; nothing to change in its code. · ذخیره شد" });
+    } catch (e) { setSetSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
+    finally { setBusy(false); }
   };
   const owner = async (on: boolean) => {
     setBusy(true); setSaid(null);
@@ -66,10 +77,7 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
           <button type="button" className={QUIET} disabled={!got} onClick={copy}>
             {copied === "yes" ? "✓ Copied · کپی شد" : copied === "no" ? "Not copied: the code is selected, press Ctrl+C / ⌘C" : "Copy the code · کپی کد"}
           </button>
-          <p dir="ltr" className="text-left text-[12px] text-white/45">
-            Where: at the top of the page, under the site&apos;s header, wherever the code is pasted. To keep it where the &lt;div&gt; is pasted, add data-place=&quot;here&quot; to the &lt;div&gt;.
-            Size: data-width=&quot;360&quot; on the &lt;div&gt; is its widest, in pixels (480 if left out; always 4:3, narrower on a small screen). English: data-lang=&quot;en&quot;.
-          </p>
+          <p dir="ltr" className="text-left text-[12px] text-white/45">The store pastes this once, anywhere in its page, and never changes it: everything about the widget is set below, on our side.</p>
         </div>
       </div>
       {got && (
@@ -90,6 +98,37 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
             catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
             finally { setBusy(false); }
           }}>Make the preview again</button>
+        </div>
+      )}
+      {operator && got && (
+        <div dir="ltr" className="mt-3 space-y-2 rounded-xl border border-white/10 p-3 text-left text-[13px] text-white/80">
+          <p className="font-bold text-white">On the store&apos;s website · روی وبسایت فروشگاه</p>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={got.settings.on} disabled={busy} onChange={(e) => set({ on: e.target.checked })} />
+            <span>Show the widget</span>
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-white/60">Where:</span>
+            {([["top", "Top of the page, under its header"], ["here", "Where the code was pasted"]] as const).map(([v, say]) => (
+              <button key={v} type="button" disabled={busy} aria-pressed={got.settings.place === v} onClick={() => set({ place: v })}
+                className={`rounded-full border px-3 py-1 ${got.settings.place === v ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{say}</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-white/60">Widest (4:3):</span>
+            {[320, 400, 480, 640, 800].map((w) => (
+              <button key={w} type="button" disabled={busy} aria-pressed={got.settings.width === w} onClick={() => set({ width: w })}
+                className={`rounded-full border px-3 py-1 ${got.settings.width === w ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{w} px</button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-white/60">Language:</span>
+            {([["fa", "فارسی"], ["en", "English"]] as const).map(([v, say]) => (
+              <button key={v} type="button" disabled={busy} aria-pressed={got.settings.lang === v} onClick={() => set({ lang: v })}
+                className={`rounded-full border px-3 py-1 ${got.settings.lang === v ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{say}</button>
+            ))}
+          </div>
+          <Said ok={setSaid2?.ok} text={setSaid2?.text ?? null} />
         </div>
       )}
       {operator && got && (

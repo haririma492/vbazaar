@@ -97,6 +97,35 @@ export function parseStats(raw: unknown): WidgetStats {
   return { views: Number(o.views) || 0, clicks: Number(o.clicks) || 0, days: o.days && typeof o.days === "object" ? o.days : {}, sites: o.sites && typeof o.sites === "object" ? o.sites : {}, firstAt: typeof o.firstAt === "string" ? o.firstAt : null };
 }
 
+// ── The widget's settings, kept on OUR side (owner, 2026-11-11: "make sure that we can change everything from our
+// side (vbazaar) and not having to change anything on the widget code, the customer only place the code once").
+// The two lines on the store's site never change: `/widget.js` (served fresh every time) asks `/api/w/<slug>` for
+// these before it draws anything. An attribute on the store's own <div> is only what is used if that answer fails.
+
+export type WidgetSettings = {
+  /** Shown at all (off: nothing is drawn on the store's site). */
+  on: boolean;
+  /** "top": under the site's header, wherever the code was pasted. "here": inside the store's own <div>. */
+  place: "top" | "here";
+  /** Its widest, in pixels (always 4:3; narrower on a small screen). */
+  width: number;
+  lang: "fa" | "en";
+};
+export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "top", width: 480, lang: "fa" };
+export const WIDGET_WIDTHS = { min: 240, max: 1200 };
+
+/** Whatever was stored or sent, made safe: unknown values fall back to the defaults, the width is kept in range. */
+export function widgetSettings(raw: unknown): WidgetSettings {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const w = Math.round(Number(o.width));
+  return {
+    on: o.on !== false,
+    place: o.place === "here" ? "here" : "top",
+    width: Number.isFinite(w) && w > 0 ? Math.min(WIDGET_WIDTHS.max, Math.max(WIDGET_WIDTHS.min, w)) : WIDGET_DEFAULTS.width,
+    lang: o.lang === "en" ? "en" : "fa",
+  };
+}
+
 /** May the store's owner see the widget card on their page? Only when the operator has switched it on. */
 export const ownerSeesWidget = (s: { widgetForOwner?: boolean }) => s.widgetForOwner === true;
 

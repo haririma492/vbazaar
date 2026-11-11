@@ -127,6 +127,13 @@ plan and the Managed Agents decision are in
   wherever the two lines were pasted; `data-place="here"` on the `<div>` keeps it in the `<div>`. The store's own
   `<div>` is hidden, never moved (a React site owns it); the script looks again every 1.5 s for a `<div>` drawn
   later and puts its frame back if the site dropped it.
+  **Everything about the widget is changed on OUR side; the store pastes its two lines once** (owner, 2026-11-11:
+  *"make sure that we can change everything from our side (vbazaar) and not having to change anything on the widget
+  code, the customer only place the code once"*). `StoreRecord.widget` (`widgetSettings` in `widgetRules.ts`,
+  tested): shown or not, place (top | here), width, language; set on the card («On the store's website», operator,
+  action `widgetSet`, saves by itself). `/widget.js` (served `max-age=0`, so always ours) asks `GET /api/w/<slug>`
+  (open to any site, cached 60 s) before it draws; the `<div>`'s `data-*` attributes are used only if that answer
+  fails. Never ask a store to edit its code: add a setting here instead.
   `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
 - **Instagram: three pathways into the walk** (owner, 2026-11-06: *"come up with some modern, trendy, cutting-edge
   technology that Instagram friendly and can link the two sides"*, then *"Let's do that for saraye-bamdad"*). Instagram

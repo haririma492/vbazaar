@@ -1,22 +1,33 @@
 /*
  * The Virtual Bazaar's store widget — https://vbazaar.app
- * Place on the store's site:  <div data-vbazaar-store="<store>"></div><script src="https://vbazaar.app/widget.js" async></script>
+ * On the store's site, ONCE, anywhere in the page, never changed again:
+ *   <div data-vbazaar-store="<store>"></div><script src="https://vbazaar.app/widget.js" async></script>
  * It shows the store's Free Tour in the Virtual Bazaar; the arch at its top left opens the store on vbazaar.app.
- * Where: at the TOP of the page (under the site's header), wherever the two lines were pasted. data-place="here" on
- * the <div> keeps it where the <div> is. Optional: data-width="420" (pixels, the widget's widest), data-lang="fa" or "en".
+ * Everything about it (shown or not, where on the page, how wide, the language) is set on vbazaar.app, on the
+ * store's page there, and asked for here each time (/api/w/<store>). Attributes on the <div> (data-place="here",
+ * data-width, data-lang) are used only if that answer cannot be had.
  */
 (function () {
+  if (window.__vbazaarWidget) return; // the two lines pasted twice: one script works for the page
+  window.__vbazaarWidget = true;
   var ORIGIN = "https://vbazaar.app";
   try { var me = document.currentScript && document.currentScript.src; if (me) ORIGIN = new URL(me).origin; } catch (e) {}
-  var made = []; // { box, wrap, top }
-  function frame(box, slug) {
-    var max = parseInt(box.getAttribute("data-width") || "480", 10) || 480;
-    var lang = box.getAttribute("data-lang") === "en" ? "en" : "fa";
+  var made = [];   // { slug, wrap, top }
+  var asked = {};  // slug -> settings, or "wait" while they are asked for
+  function fromDiv(box) {
+    return {
+      on: true,
+      place: box.getAttribute("data-place") === "here" ? "here" : "top",
+      width: parseInt(box.getAttribute("data-width") || "480", 10) || 480,
+      lang: box.getAttribute("data-lang") === "en" ? "en" : "fa"
+    };
+  }
+  function frame(slug, set) {
     var wrap = document.createElement("div");
     wrap.setAttribute("data-vbazaar-widget", slug);
-    wrap.style.cssText = "position:relative;width:100%;max-width:" + max + "px;aspect-ratio:4/3;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.18)";
+    wrap.style.cssText = "position:relative;width:100%;max-width:" + set.width + "px;aspect-ratio:4/3;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.18)";
     var f = document.createElement("iframe");
-    f.src = ORIGIN + "/w/" + slug + "?lang=" + lang + "&from=" + encodeURIComponent(location.hostname);
+    f.src = ORIGIN + "/w/" + slug + "?lang=" + set.lang + "&from=" + encodeURIComponent(location.hostname);
     f.title = "Virtual Bazaar · بازار مجازی";
     f.setAttribute("allow", "autoplay");
     f.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
@@ -34,23 +45,40 @@
     if (under && under.parentNode) under.parentNode.insertBefore(wrap, under.nextSibling);
     else document.body.insertBefore(wrap, document.body.firstChild);
   }
+  function draw(box, slug, set) {
+    box.setAttribute("data-vbazaar-ready", "1");
+    if (!set.on) { box.style.display = "none"; return; }
+    if (set.place !== "here") {
+      box.style.display = "none";
+      // One widget a store at the top, even when the site draws the <div> again (a new page of a one-page site).
+      for (var i = 0; i < made.length; i++) if (made[i].top && made[i].slug === slug) return;
+      var wrap = frame(slug, set);
+      putOnTop(wrap);
+      made.push({ slug: slug, wrap: wrap, top: true });
+    } else {
+      var w = frame(slug, set);
+      box.innerHTML = "";
+      box.appendChild(w);
+      made.push({ slug: slug, wrap: w, top: false });
+    }
+  }
   function mount(box) {
     if (box.getAttribute("data-vbazaar-ready")) return;
     var slug = (box.getAttribute("data-vbazaar-store") || "").replace(/[^a-z0-9-]/g, "");
     if (!slug) return;
-    box.setAttribute("data-vbazaar-ready", "1");
-    var wrap = frame(box, slug);
-    var top = box.getAttribute("data-place") !== "here";
-    if (top) {
-      // One widget a store at the top, even when the site draws the <div> again (a new page of a one-page site).
-      for (var i = 0; i < made.length; i++) if (made[i].top && made[i].slug === slug) { box.style.display = "none"; return; }
-      box.style.display = "none";
-      putOnTop(wrap);
-    } else {
-      box.innerHTML = "";
-      box.appendChild(wrap);
-    }
-    made.push({ slug: slug, wrap: wrap, top: top });
+    var set = asked[slug];
+    if (set === "wait") return;                 // asked for: drawn at the next look
+    if (set) { draw(box, slug, set); return; }
+    asked[slug] = "wait";
+    var done = function (s) { asked[slug] = s || fromDiv(box); all(); };
+    try {
+      var x = new XMLHttpRequest();
+      x.open("GET", ORIGIN + "/api/w/" + slug);
+      x.timeout = 6000;
+      x.onload = function () { var j = null; try { j = JSON.parse(x.responseText); } catch (e) {} done(j && j.ok ? { on: j.on !== false, place: j.place === "here" ? "here" : "top", width: +j.width || 480, lang: j.lang === "en" ? "en" : "fa" } : null); };
+      x.onerror = x.ontimeout = function () { done(null); };
+      x.send();
+    } catch (e) { done(null); }
   }
   function all() {
     if (!document.body) return;
