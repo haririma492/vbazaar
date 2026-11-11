@@ -63,6 +63,7 @@ import { ProductCard } from "@/components/stores/Products";
 import { isBookStore } from "@/lib/stores/store";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import ShareToStory from "./ShareToStory";
+import WalkStats from "./WalkStats";
 import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
@@ -584,6 +585,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   // owner, signed in with the store's password, starts in the owner's view. Either one's own choice is kept.
   const [asShopper, setAsShopper] = useState(false);
   const viewChosen = useRef(false);
+  const [statsAsked, setStatsAsked] = useState(false);
+  useEffect(() => { setStatsAsked(new URLSearchParams(window.location.search).get("stats") === "1"); }, []);
+  const statsVideo = useCallback(() => engine.current?.video() ?? null, []);
   useEffect(() => {
     try {
       const kept = window.localStorage.getItem("vb.walk.asShopper");
@@ -2535,6 +2539,12 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
+      {/* The walk's own PPD and FPS (owner, 2026-11-11), under the logo and the view switch: for the store's owner
+          and the operator, or anyone with ?stats=1; not for shoppers. */}
+      {(owner || statsAsked) && phase === "walking" && !editing && (
+        <WalkStats video={statsVideo} projection={view.flat ? "flat" : walkOf(walks, view.key)?.projection ?? null}
+          lens={view.flat ? walkOf(walks, view.key)?.lens ?? null : null} className="absolute left-3 top-[7.75rem] z-20" />
+      )}
       {/* Only the store's owner or the operator sees this: which card a tap on a product opens for them. */}
       {owner && phase === "walking" && !editing && !spotMode && (
         <div dir="ltr" className="absolute left-3 top-[5.5rem] z-20 flex overflow-hidden rounded-full border border-white/25 bg-black/60 text-[12px] font-bold backdrop-blur">

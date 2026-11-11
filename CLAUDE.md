@@ -209,6 +209,12 @@ plan and the Managed Agents decision are in
   improver, title reader, basket. 360° only for now, each saying so (`flatNotYet`): Lock (skipped), Shelf finder,
   store map, Shelf Tour, Route optimizer, Tidy, Reel, widget clip, Shadow. Areas (outside, lobby, hallway) stay
   360°. Table in `agents/store-builder/README.md`.
+- **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
+  PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
+  rules in `lib/splats/walkStats.ts` (tested). PPD = the playing copy's width ÷ the angle it spans (360° walk:
+  360; a flat walk: `Walk.lens.hfov`, the assumed 70° until a store's real lens is set; EAC: 270). FPS = the
+  video's own frame rate, from the times of the frames shown (`requestVideoFrameCallback`), not the screen's.
+  Shown to the store's owner and the operator (signed in), or anyone with `?stats=1`; shoppers do not see it.
 - **The Shadow agent** (owner, 2026-11-03: *"recognize the shadow of the
   walking photographer everywhere mostly on glasses … and sometimes on
   stainless steel fridges"*; *"activate when during the ?edit=1 the operator
