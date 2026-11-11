@@ -3,10 +3,12 @@
  * title & prices on all items that have green light … make sense based on rough estimate of the market for that
  * category of store … if either exists do not add demo title and prices").
  *
- * A product that has a light on the walk, and has NEITHER a name NOR a price, takes a made-up name (English and
- * Farsi) and a price that fit the store's kind: a bookshop gets books at book prices, a dry-nuts shop gets nuts.
- * A product with a name or a price is left exactly as it is. Each one filled is marked `demo`, so «Remove» takes
- * the made-up ones away again and nothing else; a product its owner then edits stops being a demo one.
+ * A product shown to shoppers (a light on the walk, or a place in the Shelf Tour) takes a made-up name (English and
+ * Farsi) if it has none, and a made-up price if it has none, both fitting the store's kind: a bookshop gets books
+ * at book prices, a dry-nuts shop gets nuts. (First, 2026-11-10, only a product with NEITHER was filled; the owner,
+ * 2026-11-11, of named products saying «Price in store»: "add prices on all item".) A name or a price that is there
+ * is never changed. Each product filled is marked `demo` with what was made up, so «Remove» takes exactly that away
+ * again; a product its owner then edits stops being a demo one.
  *
  * Free, no AI. Prices are rough Canadian shop prices (CAD). The same store always gets the same names and prices.
  *
@@ -161,7 +163,7 @@ export const KINDS: Kind[] = [
     ],
   },
   {
-    id: "home", say: "a homeware shop", match: /home|kitchen|decor|houseware|furnitur|خانه|آشپزخانه|دکور|لوازم|ظروف|مبل/i, variants: SIZES,
+    id: "home", say: "a homeware shop", match: /home|kitchen|decor|houseware|furnitur|glass|crystal|china|porcelain|cookware|dish|tableware|خانه|آشپزخانه|دکور|لوازم|ظروف|مبل|بلور|کریستال|چینی|شیشه/i, variants: SIZES,
     rows: [
       ["Tea glasses, set of 6", "استکان چای، ۶ عددی", 18, 34], ["Teapot", "قوری", 24, 48], ["Samovar", "سماور", 120, 280],
       ["Persian rice cooker", "پلوپز", 65, 130], ["Copper pot", "قابلمه مسی", 70, 150], ["Serving tray", "سینی پذیرایی", 22, 48],
@@ -171,6 +173,13 @@ export const KINDS: Kind[] = [
       ["Wall clock", "ساعت دیواری", 30, 70], ["Picture frame", "قاب عکس", 15, 34], ["Bath towel set", "ست حوله", 35, 70],
       ["Bed sheet set", "ست ملحفه", 60, 130], ["Kettle", "کتری", 35, 75], ["Spice jars, set of 6", "جا ادویه، ۶ عددی", 20, 38],
       ["Mortar and pestle", "هاون", 22, 44],
+      ["Granite cookware set, 10 pieces", "سرویس قابلمه گرانیتی، ۱۰ پارچه", 160, 320], ["Granite casserole set", "ست قابلمه گرانیتی", 90, 180], ["Ceramic soup pot set of 3", "ست ۳ تایی سوپ‌خوری سرامیکی", 55, 110],
+      ["Coffee set, 17 pieces", "سرویس قهوه‌خوری، ۱۷ پارچه", 60, 130], ["Tea set, 12 pieces", "سرویس چای‌خوری، ۱۲ پارچه", 45, 95], ["Dinner set, 24 pieces", "سرویس غذاخوری، ۲۴ پارچه", 120, 260],
+      ["Salad bowl", "کاسه سالاد", 22, 48], ["Double kettle and teapot", "کتری و قوری", 70, 140], ["Frying pan", "ماهیتابه", 30, 65],
+      ["Pressure cooker", "زودپز", 85, 170], ["Glass storage jars, set of 3", "بانکه شیشه‌ای، ۳ عددی", 20, 40], ["Crystal glasses, set of 6", "لیوان کریستال، ۶ عددی", 30, 65],
+      ["Water jug and glasses set", "پارچ و لیوان", 28, 58], ["Fruit bowl on a stand", "میوه‌خوری پایه‌دار", 35, 80], ["Cake stand with dome", "ظرف کیک درب‌دار", 30, 62],
+      ["Porcelain serving platter", "دیس چینی", 25, 55], ["Thermos flask", "فلاسک", 28, 55], ["Kitchen knife set", "ست چاقوی آشپزخانه", 40, 90],
+      ["Baking dish set", "ست ظرف فر", 30, 60], ["Bowl set, 6 pieces", "کاسه، ۶ عددی", 24, 50], ["Candy dish with lid", "شکلات‌خوری درب‌دار", 24, 55],
     ],
   },
   {
@@ -249,32 +258,51 @@ export function shopPrice(dollars: number): number {
   return Math.round(dollars / 50) * 5000;
 }
 
-/** Waits for a demo name and price: it has a light, and neither a name nor a price. */
-const waits = (p: Product, lit: Set<number>) => lit.has(p.n) && !p.en?.trim() && !p.fa?.trim() && p.priceCents === null;
+const named = (p: Product) => Boolean(p.en?.trim() || p.fa?.trim());
+/** Waits for a demo name, a demo price, or both: it is shown to shoppers and lacks one. */
+const waits = (p: Product, shown: Set<number>) => shown.has(p.n) && (!named(p) || p.priceCents === null);
 
 const words = (text: string) => new Set(text.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 4));
+const median = (a: number[]) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
 
 export type DemoResult = { products: Product[]; filled: number; skipped: number; kind: string; say: string };
 
 /**
- * The products with a demo name and price on every lit one that has neither. `skipped` is the lit products left
- * alone because they have a name or a price. What the crew saw of a product (`seen`) picks its name when a name
- * in the store's kind fits it ("jar of pickles" → the pickles); otherwise the names are dealt out in an order
- * that is the store's own. A name dealt a second time comes as another edition or size, at that one's price.
+ * The products with a demo name where there is none and a demo price where there is none, on every product shown
+ * to shoppers (owner, 2026-11-11, of products that had a name but said «Price in store»: "I asked for the purpose
+ * of demo to add prices on all item arbitrarily but sensible"). A name or a price that is there is never changed.
+ * `skipped` is the shown products that have both already.
+ *
+ * A NAME: what the crew saw of the product (`seen`) picks it when a name in the store's kind fits ("jar of
+ * pickles" → the pickles); otherwise names are dealt out in an order that is the store's own. A name dealt a
+ * second time comes as another edition or size, at that one's price.
+ * A PRICE for a product that has its own name: the range of the kind's row most like that name ("GRANITE COOKWARE
+ * SET" → the cookware set's range), else the kind's middle range; the same name always gets the same price.
  */
-export function demoFill(products: Product[], lit: Set<number>, store: DemoStore): DemoResult {
+export function demoFill(products: Product[], shown: Set<number>, store: DemoStore): DemoResult {
   const kind = kindOf(store);
   const order = kind.rows.map((_, i) => i).sort((a, b) => hash(`${store.slug}|${kind.rows[a][0]}`) - hash(`${store.slug}|${kind.rows[b][0]}`));
   const rowWords = kind.rows.map((r) => words(r[0]));
   const used = kind.rows.map(() => 0);
+  const middle: [number, number] = [median(kind.rows.map((r) => r[2])), median(kind.rows.map((r) => r[3]))];
   let filled = 0, skipped = 0, next = 0;
   // A word most of the store's products were seen with ("book" in a bookshop) tells one product from another not at all.
-  const waiting = products.filter((p) => waits(p, lit));
+  const waiting = products.filter((p) => waits(p, shown));
   const often = new Map<string, number>();
-  for (const p of waiting) for (const w of p.seen ? words(p.seen) : []) often.set(w, (often.get(w) ?? 0) + 1);
+  for (const p of waiting) for (const w of words(`${p.seen ?? ""} ${p.en ?? ""}`)) often.set(w, (often.get(w) ?? 0) + 1);
   const telling = (w: string) => (often.get(w) ?? 0) <= Math.max(2, waiting.length * 0.15);
+  const between = (lo: number, hi: number, key: string) => lo + (hi - lo) * ((hash(`${store.slug}|price|${key}`) % 1000) / 999);
   const out = products.map((p) => {
-    if (!waits(p, lit)) { if (lit.has(p.n)) skipped++; return p; }
+    if (!waits(p, shown)) { if (shown.has(p.n)) skipped++; return p; }
+    filled++;
+    if (named(p)) {
+      // Its own name stays; only the price is made up, from the row most like the name.
+      const mine = new Set([...words(`${p.en ?? ""} ${p.seen ?? ""}`)].filter(telling));
+      let best = -1, most = 0;
+      rowWords.forEach((ws, r) => { const n = [...ws].filter((w) => mine.has(w)).length; if (n > most) { most = n; best = r; } });
+      const [lo, hi] = best >= 0 ? [kind.rows[best][2], kind.rows[best][3]] : middle;
+      return { ...p, priceCents: shopPrice(between(lo, hi, (p.en || p.fa || "").trim().toLowerCase())), demo: "price" as const };
+    }
     const saw = new Set([...(p.seen ? words(p.seen) : [])].filter(telling));
     const least = Math.min(...used);
     let i = -1;
@@ -289,30 +317,27 @@ export function demoFill(products: Product[], lit: Set<number>, store: DemoStore
     const [en, fa, lo, hi] = kind.rows[i];
     const turn = used[i]++;
     const v = turn === 0 ? null : kind.variants[(turn - 1) % kind.variants.length];
-    const base = lo + (hi - lo) * ((hash(`${store.slug}|price|${en}`) % 1000) / 999);
-    filled++;
-    return {
-      ...p,
-      en: (v ? `${en} (${v[0]})` : en).slice(0, 120),
-      fa: (v ? `${fa} (${v[1]})` : fa).slice(0, 120),
-      priceCents: shopPrice(base * (v ? v[2] : 1)),
-      demo: true as const,
-    };
+    const name = { en: (v ? `${en} (${v[0]})` : en).slice(0, 120), fa: (v ? `${fa} (${v[1]})` : fa).slice(0, 120) };
+    // A price that is there stays: only the name is made up.
+    if (p.priceCents !== null) return { ...p, ...name, demo: "name" as const };
+    return { ...p, ...name, priceCents: shopPrice(between(lo, hi, en) * (v ? v[2] : 1)), demo: true as const };
   });
   return { products: out, filled, skipped, kind: kind.id, say: kind.say };
 }
 
-/** The demo names and prices taken away again: each demo product is as the crew found it, with no name and no price. */
+/** The demo names and prices taken away again: only what was made up goes (`demo`: true both, "name", "price"). */
 export function demoClear(products: Product[]): { products: Product[]; cleared: number } {
   let cleared = 0;
   const out = products.map((p) => {
     if (!p.demo) return p;
     cleared++;
-    const { en: _en, fa: _fa, demo: _demo, ...rest } = p;
-    return { ...rest, priceCents: null };
+    const { demo, ...rest } = p;
+    if (demo === "price") return { ...rest, priceCents: null };
+    const { en: _en, fa: _fa, ...bare } = rest;
+    return demo === "name" ? bare : { ...bare, priceCents: null };
   });
   return { products: out, cleared };
 }
 
-/** How many products carry a demo name and price now. */
+/** How many products carry a demo name or price now. */
 export const demoCount = (products: Product[]) => products.filter((p) => p.demo).length;

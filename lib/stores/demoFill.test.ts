@@ -15,17 +15,30 @@ test("the store's kind comes from its category, then its name", () => {
   assert.equal(kindOf({ slug: "a", category: "Something else" }).id, "general");
 });
 
-test("only a lit product with neither a name nor a price is filled", () => {
-  const products = [found(1), found(2, { en: "Real title" }), found(3, { priceCents: 1299 }), found(4), found(5)];
+test("a shown product takes a name where it has none and a price where it has none; what is there stays", () => {
+  const products = [found(1), found(2, { en: "Real title" }), found(3, { priceCents: 1299 }), found(4, { en: "Both", priceCents: 500 }), found(5)];
   const r = demoFill(products, new Set([1, 2, 3, 4]), { slug: "shop", category: "Bookstore" });
-  assert.equal(r.filled, 2);
-  assert.equal(r.skipped, 2);
-  assert.deepEqual(r.products[1], products[1]);
-  assert.deepEqual(r.products[2], products[2]);
+  assert.equal(r.filled, 3);
+  assert.equal(r.skipped, 1);
+  assert.ok(r.products[0].en && r.products[0].fa && r.products[0].priceCents! > 0 && r.products[0].demo === true);
+  assert.equal(r.products[1].en, "Real title");
+  assert.ok(r.products[1].priceCents! > 0 && r.products[1].demo === "price");
+  assert.equal(r.products[2].priceCents, 1299);
+  assert.ok(r.products[2].en && r.products[2].demo === "name");
+  assert.deepEqual(r.products[3], products[3]);
   assert.deepEqual(r.products[4], products[4]);
-  for (const p of [r.products[0], r.products[3]]) {
-    assert.ok(p.en && p.fa && p.demo && typeof p.priceCents === "number" && p.priceCents > 0);
-  }
+  // Removing takes away exactly what was made up.
+  assert.deepEqual(demoClear(r.products).products, products);
+});
+
+test("a named product's price comes from the row most like its name", () => {
+  const store = { slug: "shirazgallery", category: "Glassware", nameEn: "ShirazGallery" };
+  assert.equal(kindOf(store).id, "home");
+  const products = [found(1, { en: "GRANITE COOKWARE SET" }), found(2, { en: "Salad Bowl" }), found(3, { en: "GRANITE COOKWARE SET" })];
+  const r = demoFill(products, new Set([1, 2, 3]), store);
+  assert.ok(r.products[0].priceCents! >= 16000 && r.products[0].priceCents! <= 32000, String(r.products[0].priceCents));
+  assert.ok(r.products[1].priceCents! >= 2100 && r.products[1].priceCents! <= 4900, String(r.products[1].priceCents));
+  assert.equal(r.products[0].priceCents, r.products[2].priceCents);
 });
 
 test("names are not repeated while the kind has more, and prices stay in the kind's range", () => {

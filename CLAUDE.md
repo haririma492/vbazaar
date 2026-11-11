@@ -131,12 +131,16 @@ plan and the Managed Agents decision are in
 - **Demo names and prices** (owner, 2026-11-10: *"for the sake of demo, add a key on each store page to add
   arbitrary title & prices on all items that have green light … make sense based on rough estimate of the market
   for that category of store … if either exists do not add demo title and prices"*). «Demo names and prices» card
-  on `/stores/<slug>` (operator; `DemoCard.tsx`, actions `demoFill {apply}` / `demoClear`). A lit product with
-  NEITHER a name NOR a price takes a made-up name (EN + FA) and a CAD price fitting the store's kind
-  (`lib/stores/demoFill.ts`, pure, tested: books, nuts, sweets, clothing, jewellery, rugs, beauty, electronics,
-  home, crafts, grocery, else general; the kind from the category, then the store's name). A product with a name
-  or a price is left alone. Each filled one is marked `demo` on the product list: «Remove them» takes only those
-  away; a product saved by hand stops being a demo one. Free, no AI; the same store gets the same names each time.
+  on `/stores/<slug>` (operator; `DemoCard.tsx`, actions `demoFill {apply}` / `demoClear`). A product shown to
+  shoppers (a light on the walk, or a place in the Shelf Tour) takes a made-up name (EN + FA) if it has none and a
+  made-up CAD price if it has none, fitting the store's kind (`lib/stores/demoFill.ts`, pure, tested: books, nuts,
+  sweets, clothing, jewellery, rugs, beauty, electronics, home (glassware, kitchenware), crafts, grocery, else
+  general; the kind from the category, then the store's name). First only a product with NEITHER was filled; the
+  owner, 2026-11-11, of named products saying «Price in store»: *"I asked … to add prices on all item arbitrarily
+  but sensible"*. A name or a price that is there is never changed; a named product's price comes from the kind's
+  row most like its name. Each filled one is marked `demo` (true both, "name", "price"): «Remove them» takes only
+  what was made up; a product saved by hand stops being a demo one. Free, no AI; the same store gets the same
+  names and prices each time. Applied 2026-11-11 to saraye-bamdad, shirazgallery and helogolab.
   ⚠️ A demo name blocks `nameFromTitles` for that product until removed.
 - **The owner can see the walk as a shopper** (owner, 2026-11-10, in a browser signed in as operator: *"when we
   click on a green label item it asks to enter the price and other info rather than Add to basket"*). The walk's

@@ -350,10 +350,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       return ok({ cleared: r.cleared });
     }
     const items = s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.items ?? [] : [];
+    // Shown to shoppers: a light on the walk, or a place in the Shelf Tour.
     const lit = new Set<number>(items.filter((it) => it.n && it.pins.length).map((it) => it.n as number));
+    for (const clip of (await readTour(s.slug).catch(() => null))?.clips ?? []) for (const n of clip.products) lit.add(n);
     const r = demoFill(c.products, lit, { slug: s.slug, category: s.category, nameEn: s.name.en, nameFa: s.name.fa });
     if (body.apply === true && r.filled) { await writeCatalogue({ ...c, products: r.products }); await updateStore(s.slug, (x) => redo(x, ["check"])); kick(); }
-    const sample = r.products.filter((p, i) => p.demo && !c.products[i].demo).slice(0, 4).map((p) => `${p.en} · ${formatCents(p.priceCents ?? 0)}`);
+    const sample = r.products.filter((p, i) => p.demo && !c.products[i].demo).slice(0, 4).map((p) => `${p.en || p.fa} · ${formatCents(p.priceCents ?? 0)}`);
     return ok({ filled: r.filled, skipped: r.skipped, lit: lit.size, demo: demoCount(body.apply === true ? r.products : c.products), kind: r.kind, say: r.say, sample, applied: body.apply === true });
   }
   if (body.action === "refreshAll") {
