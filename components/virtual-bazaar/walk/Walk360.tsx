@@ -527,9 +527,18 @@ function signTexture(en: string, fa?: string, site = false): THREE.CanvasTexture
   return t;
 }
 
-/** `walkKey`: the walk to open when the address names none (`/walk/<store>`, a published store's short address). */
-export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
+/**
+ * `walkKey`: the walk to open when the address names none (`/walk/<store>`, a published store's short address).
+ * `embed`: the walk inside the store's widget on its own website (`/w/<slug>`; owner, 2026-11-11: "add the wheel so
+ * viewers can adjust the speed and look around and listen to the music the widget has to perform exactly like the
+ * free tour … the active link should only be on the top left logo (the arch)"). The same player, its controls made
+ * small enough for a 4:3 frame a phone wide; the arch at the top left is the only link (`embed.go`, a new tab).
+ * No product card there: the basket is kept on the device for vbazaar.app, and a frame on another site cannot
+ * reach it. No owner's view, no Share to Story, no Shelf Tour switch.
+ */
+export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: { go: string } } = {}) {
   const keyProp = useRef(walkKey);
+  const embedded = Boolean(embed);
   const host = useRef<HTMLDivElement>(null);
   const flatHost = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
@@ -2119,7 +2128,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   // Is the person walking this store its owner (or the operator)? Their store's page says so.
   const slug = store.startsWith("store-") ? store.slice(6) : "";
   const loadOwner = useCallback(async () => {
-    if (!slug) { setOwner(null); return; }
+    if (!slug || embedded) { setOwner(null); return; }
     try {
       const token = readAdminToken();
       const res = await fetch(`/api/stores/${encodeURIComponent(slug)}`, { cache: "no-store", credentials: "same-origin", headers: token ? { "x-admin-token": token } : {} });
@@ -2129,7 +2138,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     } catch {
       setOwner(null); // a shopper: the basket card
     }
-  }, [slug]);
+  }, [slug, embedded]);
   useEffect(() => { void loadOwner(); }, [loadOwner]);
   /** After the owner saves: their list again, and the walk's copy of it (what shoppers see). */
   async function reloadOwner() {
@@ -2165,6 +2174,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   // A tap on an item's dot opens its card, and the walk stands while it is open.
   useEffect(() => {
     engine.current?.setOnItem((item) => {
+      if (embedded) return; // the widget: the lights show, the card and the basket are on vbazaar.app
       setDrive(null);
       // The owner fills in the product; a shopper gets its card (add to basket).
       const o = ownerRef.current;
@@ -2310,13 +2320,13 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {phase === "walking" && (
         <>
           <SteeringWheel
-            className="bottom-[9.25rem] right-5"
+            className={embedded ? "bottom-[7.75rem] right-3 !h-24 !w-24" : "bottom-[9.25rem] right-5"}
             onMove={(x) => engine.current?.setMove(x, 0)}
             onZoom={(z) => engine.current?.setZoom(z)}
             follow={() => engine.current?.turn() ?? 0}
           />
           {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}
-          <div dir="ltr" className="absolute bottom-[3.75rem] right-5 flex w-72 max-w-[calc(100vw-2.5rem)] flex-col gap-1.5">
+          <div dir="ltr" className={`absolute flex flex-col gap-1.5 ${embedded ? "bottom-10 right-3 w-56 max-w-[calc(100vw-4.5rem)]" : "bottom-[3.75rem] right-5 w-72 max-w-[calc(100vw-2.5rem)]"}`}>
             <div className="flex gap-1.5">
               {([["back", "◀ عقب · Back"], ["on", "▶ برو · Walk"]] as const).map(([k, label]) => (
                 <button
@@ -2421,7 +2431,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               ← Back to the street · بازگشت به خیابان
             </button>
           )}
-          {tourOf && !view.busy && !editing && (
+          {tourOf && !view.busy && !editing && !embedded && (
             <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-white/25 bg-black/70 p-1 text-[14px] font-semibold text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
               <a href={`/vca/tour?s=${tourOf}`} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
               <span className="rounded-full bg-[#00B8C8] px-4 py-1.5 text-[#06131c]">👣 Free Tour</span>
@@ -2475,7 +2485,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           )}
 
           {/* Where along the walk: drag to jump. */}
-          <div dir="ltr" className="absolute inset-x-4 bottom-5 flex items-center gap-3 sm:right-56">
+          <div dir="ltr" className={`absolute flex items-center gap-3 ${embedded ? "inset-x-3 bottom-1" : "inset-x-4 bottom-5 sm:right-56"}`}>
             <span className="w-10 text-right font-mono text-[12px] text-white/70">{mmss(time.now)}</span>
             <input
               type="range"
@@ -2521,9 +2531,19 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
 
       {/* The link to vbazaar.app (a bazaar sign) on the right, from the first screen (owner, 2026-11-06); the sound key and the
           website key sit below it. z-40: above the «Start walking» screen (z-30), so it works before the walk starts too. */}
-      {phase !== "loading" && <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />}
+      {phase !== "loading" && !embed && <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />}
+      {/* In the store's widget: the arch alone at the top left, the frame's ONLY link (the visit on vbazaar.app, a new tab). */}
+      {embed && (
+        <a href={embed.go} target="_blank" rel="noopener" aria-label="Virtual Bazaar, open the store on vbazaar.app in a new tab" title="vbazaar.app"
+          className="absolute left-2 top-2 z-50 rounded bg-[#FFF9EE] px-[3px] py-px shadow ring-[#FFF9EE]/60 hover:ring-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white">
+          <svg width="32" height="22" viewBox="0 0 44 30" aria-hidden="true" className="block">
+            <path fill="#214E3F" fillRule="evenodd" d="M8 2 H36 V28 H8 Z M13.5 28 V15 Q13.5 9.4 22 5.6 Q30.5 9.4 30.5 15 V28 Z" />
+            <path d="M4 28 H40" stroke="#214E3F" strokeWidth="1.8" strokeLinecap="round" />
+          </svg>
+        </a>
+      )}
       {/* «Share to Story» (the Instagram pathway): inside a store's walk, for shoppers; not while editing. */}
-      {phase === "walking" && !editing && !spotMode && view.key && /^scenes\/store-/.test(view.key) && (
+      {phase === "walking" && !editing && !spotMode && !embedded && view.key && /^scenes\/store-/.test(view.key) && (
         <ShareToStory
           className="absolute right-4 top-[12rem] z-20"
           snapshot={() => engine.current?.snapshot() ?? Promise.resolve(null)}
@@ -2534,10 +2554,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         />
       )}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
-      {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
+      {phase !== "loading" && !editing && !embedded && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (
         <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={walkOf(walks, view.key)?.radio ?? null}
-          specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
+          specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} place={embedded ? "left-14 top-1" : undefined} />
       )}
 
       {/* The walk's own PPD and FPS (owner, 2026-11-11), under the logo and the view switch: only in admin mode

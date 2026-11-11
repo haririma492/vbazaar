@@ -106,10 +106,27 @@ plan and the Managed Agents decision are in
   on the store's site; a full embed would be a separate paid white-label product. Unpublished: «Coming soon».
   Card on `/stores/<slug>` for the operator; `widgetForOwner` on the record shows it to the owner.
   Our mark on the widget is the arch alone on its tile, small (owner, 2026-11-11: *"replace the big logo on the
-  widget with small (just arch)"*). Where and how big it is on the store's site: where the `<div>` is pasted;
-  `data-width` (its widest, 480 if left out, always 4:3); the site's own style on the `<div>` to centre or pin it.
+  widget with small (just arch)"*). How big it is on the store's site: `data-width` (its widest, 480 if left out,
+  always 4:3); where: below.
   «Copy the code» answers on the key itself, and falls back to selecting the code (it "did nothing": the answer
   was at the card's end).
+  **⚠️ The widget now plays the Free Tour itself, for every store with a walk, published or not** (owner,
+  2026-11-11: *"instead of the texts and the yellow key … add the wheel so viewers can adjust the speed and look
+  around and listen to the music the widget has to perform exactly like the free tour"*; *"the active link should
+  only be on the top left logo (the arch)"*; *"for all stores the widget should work the same"*). This replaces the
+  teaser and the "never on the store's site" rule above for the walk. `/w/<slug>` renders `WidgetWalk` → `Walk360`
+  with `embed`: the door photo, «Start walking», the wheel (smaller), Back / Walk, the speed bar, the time bar, the
+  lights, the music key beside the arch. The arch (top left) is the frame's ONLY link (`/w/<slug>/go`, counted; the
+  store's `/walk/<slug>` when it has its short address, else the home page). Still only on vbazaar.app: the product
+  card and the basket (a frame on another site cannot reach the basket kept on the device), the Shelf Tour switch,
+  Share to Story, the owner's view. A store with no walk yet: its photos, its name, «Coming soon» (`WidgetFrame`),
+  the arch its only link. The 20 s preview clip (`widgetPreview.ts`) is no longer shown where there is a walk.
+  **The widget sits at the TOP of the store's page by default** (owner, 2026-11-11: *"let by default the location
+  of the widget be somewhere on top of page rather than all the way down"*): `/widget.js` puts its frame under the
+  site's header (the last `<header>` outside main/article/section/footer; else the start of the page), centred,
+  wherever the two lines were pasted; `data-place="here"` on the `<div>` keeps it in the `<div>`. The store's own
+  `<div>` is hidden, never moved (a React site owns it); the script looks again every 1.5 s for a `<div>` drawn
+  later and puts its frame back if the site dropped it.
   `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
 - **Instagram: three pathways into the walk** (owner, 2026-11-06: *"come up with some modern, trendy, cutting-edge
   technology that Instagram friendly and can link the two sides"*, then *"Let's do that for saraye-bamdad"*). Instagram

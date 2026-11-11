@@ -4,14 +4,19 @@
 import { readCatalogue, readMastersText, readWalks, writeMastersJson } from "@/lib/splats/r2";
 import { doorPhotoOf } from "@/lib/splats/walks";
 import { readStore } from "./bucket";
-import { sceneOf } from "./store";
+import { hasShortAddress, sceneOf } from "./store";
 import { readTour } from "./tourJob";
 import { previewFor } from "./widgetPreview";
 import { addHit, emptyStats, parseStats, planWidget, type WidgetPlan, type WidgetStats } from "./widgetRules";
 
 export const statsKey = (slug: string) => `stores/${slug}/widget-stats.json`;
 
-export async function widgetPlan(slug: string): Promise<(WidgetPlan & { name: { en: string; fa: string } }) | null> {
+/**
+ * `walkKey`: the store's walk, which the widget plays itself, as the Free Tour does (owner, 2026-11-11: "the widget has
+ * to perform exactly like the free tour"; "for all stores the widget should work the same"): every store with a walk,
+ * published or not. The arch's link goes to the store's own address when it has one (`hasShortAddress`), else home.
+ */
+export async function widgetPlan(slug: string): Promise<(WidgetPlan & { name: { en: string; fa: string }; walkKey: string | null }) | null> {
   const s = await readStore(slug);
   if (!s) return null;
   const [cat, walks, tour] = await Promise.all([
@@ -23,8 +28,8 @@ export async function widgetPlan(slug: string): Promise<(WidgetPlan & { name: { 
   const door = s.out.doorImage ?? (walks ? doorPhotoOf(walks, walk) : undefined) ?? null;
   const photos = (cat?.products ?? []).map((p) => p.photo).filter((u): u is string => Boolean(u));
   const freeTour = await previewFor(slug, walk).catch(() => null);
-  const plan = planWidget(slug, { live: s.live, walk, tourVideo: tour?.video ?? null, freeTour, photos, door });
-  return { ...plan, name: s.name };
+  const plan = planWidget(slug, { live: hasShortAddress(s) || s.live, walk, tourVideo: tour?.video ?? null, freeTour, photos, door });
+  return { ...plan, name: s.name, walkKey: walk };
 }
 
 export async function readStats(slug: string): Promise<WidgetStats> {

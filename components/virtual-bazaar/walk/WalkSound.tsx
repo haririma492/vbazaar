@@ -67,7 +67,7 @@ function writeOn(on: boolean) {
   }
 }
 
-export function WalkSound({ audioKeys, srcOf, specials = false, radio = null }: {
+export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, place = "bottom-14 left-3" }: {
   /** What the walk plays, in order (`musicOf`): one looped, or up to 3 one after another, then from the first. */
   audioKeys: string[];
   srcOf: (key: string) => Promise<string | null>;
@@ -75,12 +75,14 @@ export function WalkSound({ audioKeys, srcOf, specials = false, radio = null }: 
   specials?: boolean;
   /** Tuned in to Nikoo.tv channel 4 (`Walk.radio`): that plays live instead of `audioKeys`. */
   radio?: RadioChannel | null;
+  /** Where the key sits (the store's widget puts it at the top right: its frame is small and the wheel fills the bottom). */
+  place?: string;
 }) {
-  if (radio) return <RadioSound ch={radio} audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
-  return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
+  if (radio) return <RadioSound ch={radio} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
+  return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
 }
 
-function TrackSound({ audioKeys, srcOf, specials }: { audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean }) {
+function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string }) {
   const [on, setOn] = useState(true);
   const [waiting, setWaiting] = useState(false); // the browser wants a tap first
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -165,7 +167,7 @@ function TrackSound({ audioKeys, srcOf, specials }: { audioKeys: string[]; srcOf
       onClick={toggle}
       aria-label={on ? "Sound off" : "Sound on"}
       // Bottom left, above the time bar, 20% larger (owner, 2026-11-06: "move the audio sign to bottom left make it 20% larger").
-      className={`absolute bottom-14 left-3 z-20 ${SOUND_KEY_CLASS}`}
+      className={`absolute ${place} z-20 ${SOUND_KEY_CLASS}`}
     >
       {on ? (waiting && audioKey ? "🔊 tap to hear" : "🔊") : "🔇"}
     </button>
@@ -184,8 +186,8 @@ const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14p
  *   takes it away. A PHONE will not start it at all, so there the channel's own file programmes play in its place.
  * - Nothing playable on air (a live HLS stream, nikoo.tv unreachable): the store's own tracks, or nothing.
  */
-function RadioSound({ ch, audioKeys, srcOf, specials }: {
-  ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean;
+function RadioSound({ ch, audioKeys, srcOf, specials, place }: {
+  ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string;
 }) {
   const [on, setOn] = useState(true);
   const [now, setNow] = useState<RadioNow | null>(null);
@@ -315,7 +317,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
   else if (ytStart.current?.key !== startKey && now) ytStart.current = { key: startKey, sec: Math.floor(positionAt(now, Date.now())) };
 
   // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
-  if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} />;
+  if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
   const yt = !phone && now?.kind === "youtube" && now.youtubeId ? now : null;
 
   const toggle = () => {
@@ -346,7 +348,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials }: {
           }}
         />
       )}
-      <div dir="ltr" className="absolute bottom-14 left-3 z-20 flex items-center gap-2">
+      <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {on ? ((waiting && !yt) || (yt && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
         </button>

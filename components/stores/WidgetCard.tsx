@@ -52,9 +52,9 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
     <Card>
       <Bi fa="ابزارک فروشگاه برای وبسایت خودش" en="The store's widget, for its own website" className="text-[16px] font-bold" />
       <p className="mt-1 text-[13px] text-white/60">
-        A short silent preview of the store in the Virtual Bazaar, with one key that opens the visit on vbazaar.app. The tours and the basket stay on vbazaar.app.
+        The store&apos;s Free Tour on its own website: the wheel, the speed bar, looking around and the music. The arch at the top left is the only link; it opens the store on vbazaar.app. The product cards, the Shelf Tour and the basket stay on vbazaar.app.
       </p>
-      {got?.plan?.soon && <p className="mt-2 text-[13px] text-amber-200">Until the store is published, the widget says «Coming soon» and its key opens the bazaar&apos;s home page.</p>}
+      {got?.plan?.soon && <p className="mt-2 text-[13px] text-amber-200">Until the store is published (or shown on the stores&apos; list), the arch opens the bazaar&apos;s home page.</p>}
       <div className="mt-3 flex flex-wrap items-start gap-4">
         <div className="relative aspect-[4/3] w-full max-w-[320px] overflow-hidden rounded-xl border border-white/10">
           <iframe src={`/w/${slug}?preview=1`} title="Widget preview" className="absolute inset-0 h-full w-full border-0" />
@@ -67,8 +67,8 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
             {copied === "yes" ? "✓ Copied · کپی شد" : copied === "no" ? "Not copied: the code is selected, press Ctrl+C / ⌘C" : "Copy the code · کپی کد"}
           </button>
           <p dir="ltr" className="text-left text-[12px] text-white/45">
-            Where: the widget appears where the &lt;div&gt; is pasted in the page. Size: data-width=&quot;360&quot; on the &lt;div&gt; is its widest, in pixels (480 if left out; always 4:3, narrower on a small screen).
-            To centre it or pin it to a corner, style the &lt;div&gt;, e.g. style=&quot;max-width:360px;margin:0 auto&quot;. English: data-lang=&quot;en&quot;.
+            Where: at the top of the page, under the site&apos;s header, wherever the code is pasted. To keep it where the &lt;div&gt; is pasted, add data-place=&quot;here&quot; to the &lt;div&gt;.
+            Size: data-width=&quot;360&quot; on the &lt;div&gt; is its widest, in pixels (480 if left out; always 4:3, narrower on a small screen). English: data-lang=&quot;en&quot;.
           </p>
         </div>
       </div>

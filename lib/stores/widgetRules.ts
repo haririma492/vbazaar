@@ -8,7 +8,13 @@
 // both tours and the basket are only ever on vbazaar.app (owner: "our moat and our business is the virtual store and
 // that need to be protected with our brand by all means and we do not give it away for free").
 //
-// Pure: imports nothing, so `node --test` runs it.
+// ⚠️ CHANGED BY THE OWNER, 2026-11-11: "instead of the texts and the yellow key … add the wheel so viewers can adjust
+// the speed and look around and listen to the music the widget has to perform exactly like the free tour"; "there
+// should not be an active link everywhere on the window, the active link should only be on the top left logo (the
+// arch)"; "for all stores the widget should work the same". A store with a walk now plays the Free Tour itself in
+// the frame (`components/stores/WidgetWalk.tsx`, `Walk360` `embed`). What stays on vbazaar.app: the product cards,
+// the basket and the Shelf Tour. The plan below is what a store with NO walk yet shows, and where the arch leads.
+//
 
 export const WIDGET_ORIGIN = "https://vbazaar.app";
 
