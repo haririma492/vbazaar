@@ -147,14 +147,17 @@ plan and the Managed Agents decision are in
   signed in with the store's password, starts in the owner's view. Shoppers never see the switch.
 - **A store's short address, and the tours page** (owner, 2026-11-10: *"change these URLs to one that is sensible
   … e.g. vbazaar.app/walk/saraye-bamdad.mp4"*; *"add all existing published stores to vbazaar.app/tours just for the
-  demo"*). `/walk/<slug>` (`app/walk/[slug]/page.tsx`) opens a PUBLISHED store's walk as it is today (`Walk360
-  walkKey`), `?p=<n>` at a product; `/walk/<slug>.mp4` is sent on to it; an unpublished store's slug is a 404 (its
+  demo"*). `/walk/<slug>` (`app/walk/[slug]/page.tsx`) opens a store's walk as it is today (`Walk360
+  walkKey`), `?p=<n>` at a product; `/walk/<slug>.mp4` is sent on to it; any other store's slug is a 404 (its
   walk still opens by its key). The long `/vca/walk?v=<key>` works for every walk as before, and the operator's
-  editor always uses it (`editUrl`). Links made for a published store are short: the store page's «Walk the store»,
+  editor always uses it (`editUrl`). Links made for such a store are short: the store page's «Walk the store»,
   the Instagram bio and product links (`walkLink` / `productLink` with `slug`), Share to Story, the widget's key,
   `/s/<slug>`, the Shelf Tour's «Free Tour». Walking on from a store into another walk turns the address long again.
-  `/tours` (`app/tours/page.tsx`): every published store with its door photo and a key per tour; noindex, not
-  linked from the home page.
+  `/tours` (`app/tours/page.tsx`): each store's door photo and a key per tour; noindex, not linked from the home
+  page. **No store was published on 2026-11-11**, so a store is on `/tours` and has its short address when it is
+  published OR the operator ticks «Show on the tours page» on its page (`onTours` on the record, action
+  `toursShow`, `hasShortAddress`, `readTourStores`). The bazaar's own directory (home page, `/s/<slug>`) stays
+  published stores only. Switched on that day: saraye-bamdad, shirazgallery, helogolab (the test stores left off).
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,

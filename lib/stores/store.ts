@@ -155,6 +155,9 @@ export type StoreRecord = {
   /** The store's owner sees the widget card (its code, preview and counts) on their page: the operator's switch
    *  (owner, 2026-11-06: "only for operator with a flag/key … if we need the owner also to see it or not"). */
   widgetForOwner?: boolean;
+  /** Shown on vbazaar.app/tours, with its short address /walk/<slug>, without being published into the bazaar: the
+   *  operator's switch (owner, 2026-11-10: "I am going to demo these ready stores to new prospects"). */
+  onTours?: boolean;
   thread: ThreadEntry[];
   report?: Report;
 };
@@ -378,6 +381,9 @@ export function addToThread(s: StoreRecord, e: ThreadEntry): StoreRecord {
 }
 
 /** What the page shows a signed-in visitor: everything but the password's hash. */
+/** The store can be opened at /walk/<slug> and is listed on /tours: published, or switched onto the tours page. */
+export const hasShortAddress = (s: Pick<StoreRecord, "live" | "onTours" | "out">) => Boolean(s.out.walk && (s.live || s.onTours === true));
+
 export function forPage(s: StoreRecord): Omit<StoreRecord, "passwordHash"> {
   const { passwordHash: _, ...rest } = s;
   return rest;
