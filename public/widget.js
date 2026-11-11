@@ -1,7 +1,8 @@
 /*
  * The Virtual Bazaar's store widget — https://vbazaar.app
  * On the store's site, ONCE, anywhere in the page, never changed again:
- *   <div data-vbazaar-store="<store>"></div><script src="https://vbazaar.app/widget.js" async></script>
+ *   <script async src="https://vbazaar.app/widget.js" data-vbazaar-store="<store>"></script>
+ * (The older two lines, a <div data-vbazaar-store="<store>"> and then this script, work the same.)
  * It shows the store's Free Tour in the Virtual Bazaar; the arch at its top left opens the store on vbazaar.app.
  * Everything about it (shown or not, where on the page, how wide, the language) is set on vbazaar.app, on the
  * store's page there, and asked for here each time (/api/w/<store>). Attributes on the <div> (data-place="here",
@@ -47,9 +48,9 @@
   }
   function draw(box, slug, set) {
     box.setAttribute("data-vbazaar-ready", "1");
-    if (!set.on) { box.style.display = "none"; return; }
+    if (!set.on) { if (box.tagName !== "SCRIPT") box.style.display = "none"; return; }
     if (set.place !== "here") {
-      box.style.display = "none";
+      if (box.tagName !== "SCRIPT") box.style.display = "none";
       // One widget a store at the top, even when the site draws the <div> again (a new page of a one-page site).
       for (var i = 0; i < made.length; i++) if (made[i].top && made[i].slug === slug) return;
       var wrap = frame(slug, set);
@@ -57,8 +58,9 @@
       made.push({ slug: slug, wrap: wrap, top: true });
     } else {
       var w = frame(slug, set);
-      box.innerHTML = "";
-      box.appendChild(w);
+      // "Here": inside the store's <div>, or right after the one line of script when that is all there is.
+      if (box.tagName === "SCRIPT") box.parentNode.insertBefore(w, box.nextSibling);
+      else { box.innerHTML = ""; box.appendChild(w); }
       made.push({ slug: slug, wrap: w, top: false });
     }
   }

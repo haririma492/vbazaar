@@ -134,6 +134,10 @@ plan and the Managed Agents decision are in
   action `widgetSet`, saves by itself). `/widget.js` (served `max-age=0`, so always ours) asks `GET /api/w/<slug>`
   (open to any site, cached 60 s) before it draws; the `<div>`'s `data-*` attributes are used only if that answer
   fails. Never ask a store to edit its code: add a setting here instead.
+  **The code is ONE line** (owner, 2026-11-11: *"why the code is so long and look complicated?"*):
+  `<script async src="https://vbazaar.app/widget.js" data-vbazaar-store="<slug>"></script>`. The two lines given
+  out before (a `<div data-vbazaar-store>` with a link, then the script) keep working; "here" with the one line is
+  right after the script.
   `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
 - **Instagram: three pathways into the walk** (owner, 2026-11-06: *"come up with some modern, trendy, cutting-edge
   technology that Instagram friendly and can link the two sides"*, then *"Let's do that for saraye-bamdad"*). Instagram

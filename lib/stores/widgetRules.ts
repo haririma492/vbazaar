@@ -18,12 +18,14 @@
 
 export const WIDGET_ORIGIN = "https://vbazaar.app";
 
-/** The two lines the store puts on its site: our script makes the frame; the link is there without scripts. */
+/**
+ * The ONE line the store puts on its site, once (owner, 2026-11-11: "why the code is so long and look complicated?
+ * can most of the widget complexities be moved to the server and widget just call it?"). It only names the store and
+ * calls our script; what is shown, where and how big is all decided on vbazaar.app. The two lines given out before
+ * (a <div data-vbazaar-store> with a link, then the script) keep working.
+ */
 export function snippet(slug: string, origin = WIDGET_ORIGIN): string {
-  return [
-    `<div data-vbazaar-store="${slug}"><a href="${origin}/w/${slug}/go" target="_blank" rel="noopener">Walk into our store in the Virtual Bazaar · vbazaar.app</a></div>`,
-    `<script src="${origin}/widget.js" async></script>`,
-  ].join("\n");
+  return `<script async src="${origin}/widget.js" data-vbazaar-store="${slug}"></script>`;
 }
 
 export type WidgetFacts = {

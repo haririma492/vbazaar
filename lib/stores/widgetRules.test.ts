@@ -4,11 +4,8 @@ import { PREVIEW_FOV, addHit, emptyStats, ownerSeesWidget, planWidget, previewAi
 
 const facts = { live: true, walk: "scenes/store-shirazgallery/walk-1.mp4", tourVideo: "/api/media/scenes/store-shirazgallery/tour.mp4", photos: ["https://media.x/a.jpg", "https://media.x/b.jpg"], door: "https://media.x/door.jpg" };
 
-test("the snippet: our frame, and a plain counted link for a site without scripts", () => {
-  const s = snippet("shirazgallery");
-  assert.ok(s.includes('data-vbazaar-store="shirazgallery"'));
-  assert.ok(s.includes('href="https://vbazaar.app/w/shirazgallery/go"'));
-  assert.ok(s.includes('src="https://vbazaar.app/widget.js"'));
+test("the snippet: one line that names the store and calls our script", () => {
+  assert.equal(snippet("shirazgallery"), '<script async src="https://vbazaar.app/widget.js" data-vbazaar-store="shirazgallery"></script>');
 });
 
 test("a published store: the Shelf Tour's loop, and the key opens its Free Tour on vbazaar.app", () => {

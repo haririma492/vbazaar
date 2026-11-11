@@ -73,11 +73,11 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
         {/* At least 240 px, or it drops under the preview: with no least width it was squeezed to a sliver beside the
             320 px preview on a screen 400–520 px wide, and there was no code to copy (owner, 2026-11-11). */}
         <div className="min-w-[240px] flex-1 space-y-2">
-          <textarea ref={box} readOnly dir="ltr" value={got?.snippet ?? "Loading the code…"} rows={5} className="w-full rounded-lg bg-black/40 p-2 text-left font-mono text-[11px] text-white/85" onFocus={(e) => e.currentTarget.select()} />
+          <textarea ref={box} readOnly dir="ltr" value={got?.snippet ?? "Loading the code…"} rows={3} className="w-full rounded-lg bg-black/40 p-2 text-left font-mono text-[11px] text-white/85" onFocus={(e) => e.currentTarget.select()} />
           <button type="button" className={QUIET} disabled={!got} onClick={copy}>
             {copied === "yes" ? "✓ Copied · کپی شد" : copied === "no" ? "Not copied: the code is selected, press Ctrl+C / ⌘C" : "Copy the code · کپی کد"}
           </button>
-          <p dir="ltr" className="text-left text-[12px] text-white/45">The store pastes this once, anywhere in its page, and never changes it: everything about the widget is set below, on our side.</p>
+          <p dir="ltr" className="text-left text-[12px] text-white/45">One line. The store pastes it once, anywhere in its page, and never changes it: everything about the widget is set below, on our side. The longer code given before works the same.</p>
         </div>
       </div>
       {got && (
