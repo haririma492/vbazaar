@@ -109,11 +109,20 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-white/60">Where:</span>
-            {([["float", "A floating window (takes no room in the page)"], ["top", "In the page, under its header"], ["here", "In the page, where the code was pasted"]] as const).map(([v, say]) => (
+            {([["top", "In the page, under its header"], ["here", "In the page, where the code was pasted"], ["float", "Hovering over a corner (with a × to close)"]] as const).map(([v, say]) => (
               <button key={v} type="button" disabled={busy} aria-pressed={got.settings.place === v} onClick={() => set({ place: v })}
                 className={`rounded-full border px-3 py-1 ${got.settings.place === v ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{say}</button>
             ))}
           </div>
+          {got.settings.place !== "float" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-white/60">Side:</span>
+              {([["right", "Right, the page's content beside it"], ["left", "Left, the page's content beside it"], ["center", "Middle, alone on its row"]] as const).map(([v, say]) => (
+                <button key={v} type="button" disabled={busy} aria-pressed={got.settings.side === v} onClick={() => set({ side: v })}
+                  className={`rounded-full border px-3 py-1 ${got.settings.side === v ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{say}</button>
+              ))}
+            </div>
+          )}
           {got.settings.place === "float" && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-white/60">Corner:</span>

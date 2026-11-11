@@ -108,19 +108,22 @@ export type WidgetSettings = {
   /** Shown at all (off: nothing is drawn on the store's site). */
   on: boolean;
   /**
-   * "float": a window of its own over a corner of the page, taking no room in the page (owner, 2026-11-11: "why the
-   * widget window goes left to right taking a whole horizontal lane … it should only be a window taking as much
-   * space as needed for the video"); it stays in view as the page scrolls and has a × to close it.
-   * "top": in the page, under the site's header. "here": in the page, where the code was pasted.
+   * "top": in the page, under the site's header. "here": in the page, where the code was pasted. Either way it is a
+   * WINDOW at one side (`side`) with the page's own content beside it, not a stripe across the page (owner,
+   * 2026-11-11: "why the widget window goes left to right taking a whole horizontal lane … it should only be a
+   * window"; then of a window hovering over a corner: "not floating, but it should be window not a whole
+   * horizontal stripe"). "float" (that hovering window, with a × to close) stays only as a choice.
    */
-  place: "float" | "top" | "here";
+  place: "top" | "here" | "float";
+  /** In the page: at the right or the left with the content beside it, or alone in the middle of its own row. */
+  side: "right" | "left" | "center";
   /** Which corner a floating window sits in: bottom/top, right/left. */
   corner: "br" | "bl" | "tr" | "tl";
   /** Its widest, in pixels (always 4:3; narrower on a small screen). */
   width: number;
   lang: "fa" | "en";
 };
-export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "float", corner: "br", width: 480, lang: "fa" };
+export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "top", side: "right", corner: "br", width: 480, lang: "fa" };
 export const WIDGET_WIDTHS = { min: 240, max: 1200 };
 
 /** Whatever was stored or sent, made safe: unknown values fall back to the defaults, the width is kept in range. */
@@ -129,7 +132,8 @@ export function widgetSettings(raw: unknown): WidgetSettings {
   const w = Math.round(Number(o.width));
   return {
     on: o.on !== false,
-    place: o.place === "here" ? "here" : o.place === "top" ? "top" : "float",
+    place: o.place === "here" ? "here" : o.place === "float" ? "float" : "top",
+    side: o.side === "left" || o.side === "center" ? o.side : "right",
     corner: o.corner === "bl" || o.corner === "tr" || o.corner === "tl" ? o.corner : "br",
     width: Number.isFinite(w) && w > 0 ? Math.min(WIDGET_WIDTHS.max, Math.max(WIDGET_WIDTHS.min, w)) : WIDGET_DEFAULTS.width,
     lang: o.lang === "en" ? "en" : "fa",

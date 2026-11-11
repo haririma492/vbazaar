@@ -134,12 +134,14 @@ plan and the Managed Agents decision are in
   action `widgetSet`, saves by itself). `/widget.js` (served `max-age=0`, so always ours) asks `GET /api/w/<slug>`
   (open to any site, cached 60 s) before it draws; the `<div>`'s `data-*` attributes are used only if that answer
   fails. Never ask a store to edit its code: add a setting here instead.
-  **By default the widget is a FLOATING WINDOW** (owner, 2026-11-11, of the widget in the page on dioncollege.com:
+  **In the page it is a WINDOW at one side, not a stripe** (owner, 2026-11-11, of the widget on dioncollege.com:
   *"why the widget window goes left to right taking a whole horizontal lane, with a bit white space on left and
-  right, it should only be a window taking as much space as needed for the video"*): `place: "float"`, fixed over a
-  corner (`corner`: br default, bl, tr, tl), never wider than the screen, a × that closes it for the visit
-  (`sessionStorage`). «In the page, under its header» (`top`) and «where the code was pasted» (`here`) stay as
-  choices; both take a row of the page.
+  right, it should only be a window"*; then, of a window fixed over a corner with a ×: *"should not be floating"*,
+  *"not floating, but it should be window not a whole horizontal stripe"*). `side` (right default, left, center):
+  the frame is CSS-floated to that side, so the page's own content runs beside it and nothing of the store's page
+  is covered; on a phone it is as wide as the screen. ⚠️ Seen on dioncollege.com: the site's row beside the window
+  is squeezed narrower. `place: "float"` (the hovering window, `corner`, × for the visit) stays as a choice on the
+  card only; never the default.
   **The code is ONE line** (owner, 2026-11-11: *"why the code is so long and look complicated?"*):
   `<script async src="https://vbazaar.app/widget.js" data-vbazaar-store="<slug>"></script>`. The two lines given
   out before (a `<div data-vbazaar-store>` with a link, then the script) keep working; "here" with the one line is
