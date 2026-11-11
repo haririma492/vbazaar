@@ -16,7 +16,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { presignGet, r2Config, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson } from "@/lib/splats/r2";
 import { cutParts } from "@/lib/splats/cut-job";
-import { entryOf, hideAt } from "@/lib/splats/walks";
+import { entryOf, hideAt, lensOf } from "@/lib/splats/walks";
+import { flatNotYet } from "@/lib/splats/lens";
 
 /** Original time → the cut walk's time, or null when that moment was cut out. */
 export function cutTimeOf(parts: Array<{ from: number; to: number }>, t: number): number | null {
@@ -119,6 +120,9 @@ export async function tourInputs(slug: string): Promise<string | { s: NonNullabl
     const s = await readStore(slug);
     const walkKey = s?.out.walk;
     if (!s || !walkKey) return "No walk.";
+    // ⚠️ 360° ONLY, FOR NOW (2026-11-11): the Shelf finder, the store map and the Shelf Tour place shelves round
+    // the camera. A store filmed flat (`lens.ts`) is told so, plainly, by each of them.
+    if (lensOf((await readWalks()).walks[walkKey])) return flatNotYet("the Shelf Tour (with its Shelf finder and store map)");
     const t = await readMastersText(`stores/${slug}/sightings.json`).catch(() => null);
     let seen = (t ? (JSON.parse(t) as Seen[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size);
     // The lights, in the original's times.

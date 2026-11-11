@@ -21,6 +21,7 @@
 
 import { followStep, matchPatch, patchAt, subPixel } from "../splats/track";
 import { renderView, viewDir } from "../splats/projection";
+import { flatLooks, inFlat, pinsFromFlat, pinsToFlat, sizeFromFlat, sizeToFlat, type FlatLens } from "../splats/lens";
 import type { ItemPin, WalkItem } from "../splats/walks";
 import type { Product } from "../splats/catalogue";
 
@@ -105,13 +106,26 @@ export const SHELF_FOV = (50 * Math.PI) / 180;
 export const SHELF_HEADINGS = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => (i * Math.PI) / 4);
 export const SHELF_PITCHES = [(-28 * Math.PI) / 180, (8 * Math.PI) / 180];
 
-/** The moments and views the crew looks at, for a walk `seconds` long. */
-export function lookPlan(seconds: number, from = 0): Array<{ t: number; looks: Look[] }> {
+/**
+ * ⚠️ A FLAT VIDEO'S LOOKS (owner, 2026-11-11: "flat videos with twice or 3 times PPD"). Its views are a grid
+ * over the frame itself (`flatLooks`), each `FLAT_FOV` wide: about half a shelf look's width, so the picture
+ * Claude gets keeps the sharpness the video was filmed flat for (a 4K frame 70° wide has 55 pixels a degree;
+ * a 768 px view 26° wide shows 30 of them, twice a 360° shelf look).
+ */
+export const FLAT_FOV = (26 * Math.PI) / 180;
+
+/** The moments and views the crew looks at, for a walk `seconds` long (`lens`: a flat video's, else a 360° walk). */
+export function lookPlan(seconds: number, from = 0, lens?: FlatLens | null): Array<{ t: number; looks: Look[] }> {
   const out: Array<{ t: number; looks: Look[] }> = [];
   const start = from > 0 && from < seconds - 0.5 ? from + 0.5 : Math.min(1, seconds / 2);
   for (let t = start; t < seconds - 0.2; t += LOOK_EVERY) {
     const tt = Math.round(t * 100) / 100;
     const looks: Look[] = [];
+    if (lens) {
+      for (const l of flatLooks(lens, FLAT_FOV)) looks.push({ t: tt, heading: l.heading, pitch: l.pitch, fov: FLAT_FOV, id: `${tt}s-${l.id}` });
+      out.push({ t: tt, looks });
+      continue;
+    }
     for (const pitch of SHELF_PITCHES) {
       for (const [i, heading] of SHELF_HEADINGS.entries()) looks.push({ t: tt, heading, pitch, fov: SHELF_FOV, id: `${tt}s-${i * 45}°${pitch < 0 ? "low" : "high"}` });
     }
@@ -146,10 +160,12 @@ export function boxSize(look: Look, box: [number, number, number, number]): { w:
 /**
  * A product followed from a sighting at frame `i0` (direction `at0`) through
  * `frames` (grey W×H panoramas, `FOLLOW_FPS` apart, the first at `t0` s),
- * both ways, until it is lost. Its pins, in time order.
+ * both ways, until it is lost. Its pins, in time order. With a `lens` the
+ * frames are a flat video's: the follow also stops where the product leaves
+ * the picture. The pins are directions either way (`flatItem` for the walk).
  */
-export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, at0: { lon: number; lat: number }, size?: { w: number; h: number }): ItemPin[] {
-  const view = (i: number, at: { lon: number; lat: number }) => renderView(frames[i], W, H, "equirect", at.lon, at.lat, VIEW_FOV, VIEW_N);
+export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, at0: { lon: number; lat: number }, size?: { w: number; h: number }, lens?: FlatLens | null): ItemPin[] {
+  const view = (i: number, at: { lon: number; lat: number }) => renderView(frames[i], W, H, lens ?? "equirect", at.lon, at.lat, VIEW_FOV, VIEW_N);
   const c = VIEW_N / 2;
   const r3 = (v: number) => Math.round(v * 1000) / 1000;
   const tOf = (i: number) => Math.round((t0 + i / FOLLOW_FPS) * 100) / 100;
@@ -170,6 +186,7 @@ export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: nu
       const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, fine.x, fine.y);
       const step = { lon: Math.atan2(Math.sin(next.lon - at.lon), Math.cos(next.lon - at.lon)), lat: next.lat - at.lat };
       if (Math.abs(next.lat) > MAX_LAT || Math.hypot(step.lon * Math.cos(at.lat), step.lat) > MAX_RATE / FOLLOW_FPS) break;
+      if (lens && !inFlat(next.lon, next.lat, lens, FLAT_EDGE)) break;
       move = step;
       at = next;
       template = r.template;
@@ -177,8 +194,10 @@ export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: nu
     }
   }
   const sorted = pins.sort((a, b) => a.t - b.t);
-  return size ? stillTheSame(frames, W, H, t0, i0, sorted, size) : sorted;
+  return size ? stillTheSame(frames, W, H, t0, i0, sorted, size, lens) : sorted;
 }
+/** A light on a flat video ends this near the frame's edge (a fraction of it): half its product is out of the picture. */
+export const FLAT_EDGE = 0.01;
 
 /**
  * ⚠️ THE LIGHT KEEPER'S CHECK (owner, 2026-11-04: "making green tags
@@ -194,12 +213,12 @@ export function follow(frames: ArrayLike<number>[], W: number, H: number, t0: nu
  * sighting outwards.
  */
 export const SAME_LOOK = 0.3;
-function stillTheSame(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, pins: ItemPin[], size: { w: number; h: number }): ItemPin[] {
+function stillTheSame(frames: ArrayLike<number>[], W: number, H: number, t0: number, i0: number, pins: ItemPin[], size: { w: number; h: number }, lens?: FlatLens | null): ItemPin[] {
   const fov = Math.min(0.8, Math.max(0.04, Math.max(size.w, size.h) * 1.1));
   const n = 40;
   const look = (p: ItemPin) => {
     const i = Math.round((p.t - t0) * FOLLOW_FPS);
-    return i >= 0 && i < frames.length ? renderView(frames[i], W, H, "equirect", p.x, p.y, fov, n) : null;
+    return i >= 0 && i < frames.length ? renderView(frames[i], W, H, lens ?? "equirect", p.x, p.y, fov, n) : null;
   };
   const ncc = (a: Float32Array, b: Float32Array) => {
     let ma = 0, mb = 0;
@@ -331,4 +350,25 @@ export function itemOf(track: Track, product: Product, index: number): Omit<Walk
     pins: track.pins,
     ...(track.size ? { size: track.size } : {}),
   };
+}
+
+/**
+ * A crew light as a FLAT walk keeps it (`lens.ts`): its pins and outline in fractions of the frame, where the
+ * walk page draws them. The outline is measured where the product was seen biggest in the frame's middle: the
+ * track's middle pin.
+ */
+export function flatItem<T extends { pins: ItemPin[]; size?: { w: number; h: number } }>(item: T, lens: FlatLens): T {
+  const mid = item.pins[Math.floor(item.pins.length / 2)];
+  return {
+    ...item,
+    pins: pinsToFlat(item.pins, lens),
+    ...(item.size && mid ? { size: sizeToFlat(item.size, { lon: mid.x, lat: mid.y }, lens) } : {}),
+  };
+}
+
+/** The other way, for the crew: a flat walk's light with its pins and outline as directions (a 360° walk's: as it is). */
+export function itemDirs<T extends { pins: ItemPin[]; size?: { w: number; h: number } }>(item: T, lens: FlatLens | null): T {
+  if (!lens) return item;
+  const mid = item.pins[Math.floor(item.pins.length / 2)];
+  return { ...item, pins: pinsFromFlat(item.pins, lens), ...(item.size && mid ? { size: sizeFromFlat(item.size, mid, lens) } : {}) };
 }

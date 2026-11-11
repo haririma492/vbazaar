@@ -16,6 +16,7 @@
 //      averaged, sharpened or invented.
 import { run, v360Yaw, photoFrame, sharpnessAt } from "./media";
 import type { ItemPin } from "@/lib/splats/walks";
+import { v360In, type FlatLens } from "../splats/lens";
 
 export const CANDIDATES = 12, MIN_PX = 480, MAX_PX = 1280, MAX_GROW = 1.25;
 /** A photo's side (px) when cut at the finder's own sighting: enlarged in ONE step, as the player does on screen. */
@@ -36,22 +37,22 @@ export function nativeSize(fov: number, srcW: number): number {
  * the sharpest moment, cut from `input` at `timeOf(t)`. `srcW` is the source's
  * width. Returns the JPEG and the moment used.
  */
-export async function sharpestPhoto(input: string, srcW: number, pins: ItemPin[], size: { w: number; h: number }, timeOf: (t: number) => number = (t) => t): Promise<{ jpeg: Uint8Array; t: number }> {
+export async function sharpestPhoto(input: string, srcW: number, pins: ItemPin[], size: { w: number; h: number }, timeOf: (t: number) => number = (t) => t, lens?: FlatLens | null): Promise<{ jpeg: Uint8Array; t: number }> {
   const step = Math.max(1, Math.floor(pins.length / CANDIDATES));
   let best: { q: ItemPin; score: number } | null = null;
   for (const q of pins.filter((_, i) => i % step === 0).slice(0, CANDIDATES)) {
     try {
-      const score = await sharpnessAt(input, timeOf(q.t), q.x, q.y, size);
+      const score = await sharpnessAt(input, timeOf(q.t), q.x, q.y, size, 160, lens);
       if (!best || score > best.score) best = { q, score };
     } catch { /* that moment is skipped */ }
   }
   if (!best) throw new Error("No frame of the product could be cut.");
   const fov0 = photoFrame(size, 100).fov;
-  const n = nativeSize(fov0, srcW);
+  const n = nativeSize(fov0, lens ? (srcW * 2 * Math.PI) / lens.hfov : srcW);
   const { fov, box } = photoFrame(size, n);
   const q = best.q;
   const jpeg = new Uint8Array(await run("ffmpeg", ["-v", "error", "-ss", timeOf(q.t).toFixed(3), "-i", input, "-frames:v", "1", "-vf",
-    `v360=input=e:output=flat:yaw=${v360Yaw(q.x).toFixed(3)}:pitch=${deg(q.y)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}:interp=lanczos,` +
+    `v360=${v360In(lens)}:output=flat:yaw=${v360Yaw(q.x).toFixed(3)}:pitch=${deg(q.y)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}:interp=lanczos,` +
     `drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}:color=yellow@0.9:t=${Math.max(2, Math.round(n / 300))}`,
     "-threads", "1", "-q:v", "2", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
   return { jpeg, t: q.t };
@@ -68,19 +69,19 @@ export async function sharpestPhoto(input: string, srcW: number, pins: ItemPin[]
  * with a light unsharp, and the yellow box. Nothing averaged or invented.
  */
 export type Seen = { t: number; lon: number; lat: number; size: { w: number; h: number } };
-export async function sightingPhoto(input: string, seen: Seen, end = Infinity): Promise<{ jpeg: Uint8Array; t: number }> {
+export async function sightingPhoto(input: string, seen: Seen, end = Infinity, lens?: FlatLens | null): Promise<{ jpeg: Uint8Array; t: number }> {
   let best: { t: number; score: number } | null = null;
   for (const dt of AROUND) {
     const t = Math.max(0, Math.min(end - 0.05, seen.t + dt));
     try {
-      const score = await sharpnessAt(input, t, seen.lon, seen.lat, seen.size);
+      const score = await sharpnessAt(input, t, seen.lon, seen.lat, seen.size, 160, lens);
       if (!best || score > best.score) best = { t, score };
     } catch { /* that moment is skipped */ }
   }
   const t = best?.t ?? seen.t, n = SIGHTING_PX;
   const { fov, box } = photoFrame(seen.size, n);
   const jpeg = new Uint8Array(await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(3), "-i", input, "-frames:v", "1", "-vf",
-    `v360=input=e:output=flat:yaw=${v360Yaw(seen.lon).toFixed(3)}:pitch=${deg(seen.lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}:interp=lanczos,` +
+    `v360=${v360In(lens)}:output=flat:yaw=${v360Yaw(seen.lon).toFixed(3)}:pitch=${deg(seen.lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}:interp=lanczos,` +
     `unsharp=5:5:0.4:5:5:0,drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}:color=yellow@0.9:t=4`,
     "-threads", "1", "-q:v", "2", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
   return { jpeg, t };

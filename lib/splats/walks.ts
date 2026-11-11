@@ -37,6 +37,7 @@
  */
 
 import { parseMotion, type WalkMotion } from "./motion";
+import { flatLens, parseLens, type FlatLens } from "./lens";
 
 export const WALKS_KEY = "scenes/walks.json";
 export const MAX_DOORS = 60;
@@ -192,6 +193,12 @@ export type Walk = {
    * operator's «Is this a 360° video?» on the walk's edit page.
    */
   projection?: "equirect" | "eac" | "flat";
+  /**
+   * A FLAT walk's lens (`lib/splats/lens.ts`; owner, 2026-11-11: stores filmed flat, not 360°): how wide and
+   * tall the camera sees, in radians. Set by the Store Builder's Video agent with «flat»; the crew finds and
+   * follows products through it. Shoppers' lights on a flat walk are fractions of the frame, as ever.
+   */
+  lens?: FlatLens;
   /**
    * The walk's background sound (founder, 2026-10-18): a key `walkAudioKey`
    * made, `scenes/<scene>/audio/sound-<stamp>.mp3|m4a`, looped while the
@@ -480,6 +487,11 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.projection !== undefined && r.projection !== null) {
       if (r.projection === "equirect" || r.projection === "eac" || r.projection === "flat") walk.projection = r.projection;
       else problems.push(`${key}: «projection» must be equirect, eac or flat.`);
+    }
+    if (r.lens !== undefined && r.lens !== null) {
+      const lens = parseLens(r.lens);
+      if (lens) walk.lens = lens;
+      else problems.push(`${key}: «lens» needs hfov and vfov in radians.`);
     }
     if (r.rev !== undefined && r.rev !== null) {
       if (Number.isSafeInteger(r.rev) && (r.rev as number) > 0) walk.rev = r.rev as number;
@@ -810,6 +822,8 @@ export const isSiteOnlyDoor = (door: WalkDoor) => !door.to && Boolean(door.url);
 
 /** A video that is not about 2:1 is not an equirectangular 360° picture. */
 export const looksFlat = (width: number, height: number) => !(width > 0 && height > 0) || Math.abs(width / height - 2) > 0.05;
+/** The lens the crew works through on a flat walk (its own, else a 16:9 frame's); null on a 360° walk. */
+export const lensOf = (walk: Walk | null | undefined): FlatLens | null => (walk?.projection === "flat" ? walk.lens ?? flatLens(16, 9) : null);
 
 /** Where «Back to the street» lands: at the door, facing away from it (toward the street), unless overridden. */
 /**

@@ -17,7 +17,8 @@
 // Spends from the store's own budget, at most `TIDY_CENTS` a run. Its progress is in the masters bucket after every
 // look, so a restart (every push to main) carries on without paying twice. Server only.
 import { putSignImage, presignGet, r2Config, readCatalogue, readMastersText, readWalks, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
-import { coverSize, phoneKeyOf, type WalkCover } from "@/lib/splats/walks";
+import { coverSize, lensOf, phoneKeyOf, type WalkCover } from "@/lib/splats/walks";
+import { flatNotYet } from "@/lib/splats/lens";
 import { readStore } from "./bucket";
 import { sceneOf } from "./store";
 import { purseOf } from "./crew";
@@ -56,6 +57,7 @@ export async function startTidy(slug: string, resume: TidyState | null = null): 
   const s = await readStore(slug);
   if (!s) return "No such store.";
   if (!s.out.walk) return "The store has no walk yet.";
+  if (lensOf((await readWalks()).walks[s.out.walk])) return flatNotYet("the Tidy agent");
   void tidyStore(slug, resume).then((note) => console.log("[tidy]", slug, note)).catch((e) => console.error("[tidy]", slug, e));
   return null;
 }

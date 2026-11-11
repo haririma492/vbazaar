@@ -107,7 +107,8 @@ prompt or model change.
 |---|---|---|
 | ffmpeg or the bucket fails | The step is `failed` and is tried again, up to 3 times. Then the page says «needs you» with the error. | Operator: «Run again» |
 | The upload is an `.insv` | It is refused at upload, with the Insta360 Studio export steps | Operator |
-| The video is not 2:1 | The Video step is `needs-you`: "not a 360° walk" | Operator re-exports |
+| A store's video is not 2:1 | It is taken as a FLAT video (below); the Video step's note says so, with its size, in case a 360° export was meant | Operator re-exports only if 360° was meant |
+| An area's video (outside, lobby, hallway) is not 2:1 | The area's Video step is `needs-you`: "not a 360° walk" | Operator re-exports |
 | No product sheet found | The Catalogue step is `needs-you` and names the header it needs | Operator or owner |
 | `ANTHROPIC_API_KEY` missing | The AI steps are `needs-you` and name the variable | Operator: Railway |
 | The budget ($15) used | Photos stop being matched (the rest are listed); the Tagger stops looking and keeps what it found | Operator decides |
@@ -170,3 +171,27 @@ Git and sync it with `ant apply`, with one session per store and its
   server-side fallback on a refusal: that one picture is skipped.
 - **Rule 19:** there is no test bucket. Everything writes to the production
   buckets. Try new versions on a store that has not been published.
+
+## A store filmed flat (owner, 2026-11-11)
+
+*"lets accept non-360 flat .mp4 s as well I am experiencing with flat videos with twice or 3 times PPD to
+replace the 360 videos."* A store's video (new store or a new video on an existing one) may be an ordinary
+camera's `.mp4`; the Video agent tells by the picture's shape (2:1 is 360°, anything else is flat) and marks
+the walk `projection: "flat"` with its lens (`Walk.lens`, `lib/splats/lens.ts`: 70° along the long side,
+assumed). The walk page shows it full screen, walked forward and back, lights on the products.
+
+The crew keeps thinking in directions: every pixel of a flat frame is one, inside the lens.
+
+| Step | On a flat video |
+|---|---|
+| Video | Web and phone copies as ever; no reversed copy (a flat video is walked back as it is) |
+| Lock | Skipped: nothing is behind the camera |
+| Catalogue (finder), Tagger | The looks are a grid over the frame (6 views 26° wide on a 16:9 video, 30 px a degree from a 4K frame: twice a 360° shelf look), cut by ffmpeg `v360=input=flat`; the follow runs on the flat frames and stops at the picture's edge; lights are saved as fractions of the frame (`flatItem`) |
+| Photos, Photo improver, Title reader | The same, through the lens (`itemDirs` turns a light back into directions) |
+| Website, Placer, Check | Unchanged |
+| Shelf finder, store map, Shelf Tour, Route optimizer, Tidy, Reel, widget clip, Shadow | 360° only for now: each says so (`flatNotYet`) and does nothing. A Shelf Tour left from the store's earlier 360° video is no longer offered |
+
+Checked on a synthetic flat video (a picture sliding past at a known speed): a mark aimed at through the lens
+lands in the middle of ffmpeg's view to 0.1 px; a follow keeps a product for the whole 5 s within 1% of the
+frame's width. Not yet run on a real flat store: the first one is the test (finder cost: 6 views a moment
+instead of 16).

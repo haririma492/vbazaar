@@ -16,7 +16,11 @@
  * kept here, in plain code, so it can be tested.
  */
 
+import { flatFrac, type FlatLens } from "./lens";
+
 export type Projection = "equirect" | "eac" | "flat";
+/** What a view is cut out of: a 360° frame, or a flat frame with its lens (`lens.ts`). */
+export type ViewSource = Projection | FlatLens;
 export const PROJECTIONS: Projection[] = ["equirect", "eac", "flat"];
 
 /**
@@ -79,7 +83,12 @@ vec2 eacUv(vec2 suv) {
  */
 
 /** Where a direction is in a W×H frame, in pixels. */
-export function panoPixel(lon: number, lat: number, projection: Projection, W: number, H: number): { x: number; y: number } {
+export function panoPixel(lon: number, lat: number, projection: ViewSource, W: number, H: number): { x: number; y: number } {
+  if (typeof projection === "object") {
+    // A flat frame: the direction's own pixel (outside the frame: its nearest edge, read by `renderView` clamped).
+    const f = flatFrac(lon, lat, projection);
+    return { x: Math.min(1, Math.max(0, f.x)) * W, y: Math.min(1, Math.max(0, f.y)) * H };
+  }
   if (projection === "eac") {
     const { u, v } = eacUv(lon, lat);
     return { x: u * W, y: v * H };
@@ -103,7 +112,7 @@ export function viewDir(lon0: number, lat0: number, fov: number, N: number, px: 
 
 /** The N×N grey view centred on (lon0, lat0), read from a grey W×H 360° frame (bilinear). */
 export function renderView(
-  frame: ArrayLike<number>, W: number, H: number, projection: Projection, lon0: number, lat0: number, fov: number, N: number,
+  frame: ArrayLike<number>, W: number, H: number, projection: ViewSource, lon0: number, lat0: number, fov: number, N: number,
 ): Float32Array {
   const out = new Float32Array(N * N);
   for (let py = 0; py < N; py++) {
@@ -114,7 +123,7 @@ export function renderView(
       const y0 = Math.floor(fy), ty = fy - y0;
       let x0 = Math.floor(fx);
       const tx = fx - x0;
-      const wrap = (x: number) => (projection === "eac" ? Math.min(W - 1, Math.max(0, x)) : ((x % W) + W) % W);
+      const wrap = (x: number) => (projection === "eac" || typeof projection === "object" ? Math.min(W - 1, Math.max(0, x)) : ((x % W) + W) % W);
       const xa = wrap(x0), xb = wrap(x0 + 1);
       x0 = xa;
       const r0 = y0 * W, r1 = (y0 + 1) * W;

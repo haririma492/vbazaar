@@ -27,7 +27,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readMastersText, readWalks, uploadFile, webObjectExists, writeCatalogue, writeMastersJson, writeWalks } from "@/lib/splats/r2";
-import { phoneKeyOf, looksFlat, MAX_ITEMS, type WalkItem, type Walks } from "@/lib/splats/walks";
+import { phoneKeyOf, looksFlat, lensOf, MAX_ITEMS, type WalkItem, type Walks } from "@/lib/splats/walks";
+import { flatLens, type FlatLens } from "@/lib/splats/lens";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
 import { readBazaar, readIndex, readStore, updateBazaar, updateStore } from "./bucket";
@@ -38,7 +39,7 @@ import { cutParts } from "@/lib/splats/cut-job";
 import { originalKeyOf } from "@/lib/splats/cut";
 import { discoverInViews, findInViews, matchPhoto, NoKey, OverBudget, type Purse } from "./ai";
 import { matchFileName, photoList, picturesByProduct, productSheet, readBook } from "./workbook";
-import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, SHELF_FOV, SHELF_HEADINGS, SHELF_PITCHES, aim, boxSize, capTracks, follow, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
+import { FOLLOW_FPS, FOLLOW_SPAN, FOLLOW_W, LOOK_N, PIN_VERSION, aim, boxSize, capTracks, flatItem, follow, itemDirs, itemOf, keepTracks, lookPlan, type Look, type Track } from "./tagging";
 import { answerAreaMessages, answerMessages } from "./messages";
 import { autoLock } from "./lock";
 import { seedOf } from "./repin";
@@ -161,8 +162,14 @@ export function purseOf(s: StoreRecord): Purse {
  * The upload → two copies a browser can walk: the web copy (up to 5.7K,
  * sharp on a computer) and the 4K phone copy (no phone plays 8K). Both
  * H.264 with a keyframe every 10 frames so walking back is smooth.
+ *
+ * ⚠️ A STORE'S VIDEO MAY BE FLAT (owner, 2026-11-11: "lets accept non-360 flat .mp4 s as well I am
+ * experiencing with flat videos with twice or 3 times PPD to replace the 360 videos"). A video that is not
+ * 2:1 was refused ("not a 360° walk"); with `allowFlat` (a store's own walk) it is taken as an ordinary
+ * camera's video, and its lens comes back (`lens.ts`) for the walk to keep. The areas (outside, lobby,
+ * hallway) stay 360°: doors are placed round the camera there.
  */
-async function makeWalk(masterKey: string, scene: string, say: (note: string) => Promise<void>): Promise<{ key: string; seconds: number }> {
+async function makeWalk(masterKey: string, scene: string, say: (note: string) => Promise<void>, allowFlat = false): Promise<{ key: string; seconds: number; lens: FlatLens | null; width: number; height: number }> {
   const dir = mkdtempSync(join(tmpdir(), "walk-"));
   try {
     const src = join(dir, "src.mp4");
@@ -170,7 +177,8 @@ async function makeWalk(masterKey: string, scene: string, say: (note: string) =>
     await downloadToFile(masterKey, src, "master");
     const info = await probe(src);
     if (!info.width || !info.seconds) throw new NeedsYou("The video could not be read. Export it again from Insta360 Studio as 360 Video (.mp4) and upload it.");
-    if (looksFlat(info.width, info.height)) {
+    const flat = looksFlat(info.width, info.height);
+    if (flat && !allowFlat) {
       throw new NeedsYou(`This video is ${info.width}×${info.height}, not a 360° walk (2:1). In Insta360 Studio choose Export → 360 Video, not Reframe. · این ویدیو ۳۶۰ نیست.`);
     }
     const key = `scenes/${scene}/walk-${stamp()}.mp4`;
@@ -181,20 +189,21 @@ async function makeWalk(masterKey: string, scene: string, say: (note: string) =>
     await say("Saving the copies…");
     await uploadFile(key, web, "video/mp4");
     await uploadFile(phoneKeyOf(key), phone, "video/mp4");
-    // «Back» plays the walk's reversed copy, made behind (`reverse.ts`).
-    void queueReverse([key]).catch((e) => console.error("[crew] reverse", e));
-    return { key, seconds: info.seconds };
+    // «Back» plays the walk's reversed copy, made behind (`reverse.ts`); a flat video is walked back as it is.
+    if (!flat) void queueReverse([key]).catch((e) => console.error("[crew] reverse", e));
+    return { key, seconds: info.seconds, lens: flat ? flatLens(info.width, info.height) : null, width: info.width, height: info.height };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
 async function stepVideo(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
-  const { key, seconds } = await makeWalk(s.files.video!.key, sceneOf(s.slug), say);
+  const { key, seconds, lens, width, height } = await makeWalk(s.files.video!.key, sceneOf(s.slug), say, true);
   const walks = await readWalks();
-  const next: Walks = { ...walks, walks: { ...walks.walks, [key]: { title: { en: s.name.en, fa: s.name.fa }, doors: [] } } };
+  const next: Walks = { ...walks, walks: { ...walks.walks, [key]: { title: { en: s.name.en, fa: s.name.fa }, doors: [], ...(lens ? { projection: "flat" as const, lens } : {}) } } };
   await writeWalks(next, walks);
   await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, walk: key } }));
+  if (lens) return `The walk is ready: ${Math.round(seconds)} s, a flat video (${width}×${height}, not 360°), web and phone copies. If this was meant to be a 360° walk, export it from Insta360 Studio as 360 Video (2:1) and upload it again.`;
   return `The walk is ready: ${Math.round(seconds)} s, web and phone copies.`;
 }
 
@@ -202,6 +211,7 @@ async function stepVideo(s: StoreRecord, say: (note: string) => Promise<void>): 
 
 async function stepLock(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
   if (!s.out.walk) throw new Error("The walk is not made yet.");
+  if (lensOf((await readWalks()).walks[s.out.walk])) return "A flat video: nothing behind the camera to lock out of view.";
   return autoLock(s.out.walk, purseOf(s), say);
 }
 
@@ -389,15 +399,19 @@ async function saveSightings(slug: string, list: Array<{ look: Look; n: number; 
 const NEARBY_S = 15;
 
 /**
- * A moment's shelf looks as JPEGs, in the order of `moment.looks` (each
- * height, then each direction), cut from the full-size walk (`sharp`, read
- * from the bucket: only that moment), or from the phone copy when it cannot.
+ * A moment's looks as JPEGs, in the order of `looks` (a 360° walk: each height, then each direction; a flat
+ * video: the grid over its frame), cut from the full-size walk (`sharp`, read from the bucket: only that
+ * moment), or from the phone copy when it cannot.
  */
-async function momentViews(sharp: string | null, local: string, t: number): Promise<Uint8Array[]> {
+async function momentViews(sharp: string | null, local: string, looks: Look[], lens: FlatLens | null): Promise<Uint8Array[]> {
   // One height after the other: two ffmpegs at once on the full-size walk ran the server out of threads (2026-11-04).
   const cut = async (src: string) => {
-    const out: Uint8Array[] = [];
-    for (const pitch of SHELF_PITCHES) out.push(...(await views(src, t, SHELF_HEADINGS, pitch, SHELF_FOV, LOOK_N)));
+    const out: Uint8Array[] = new Array(looks.length);
+    for (const pitch of [...new Set(looks.map((l) => l.pitch))]) {
+      const idx = looks.map((l, i) => (l.pitch === pitch ? i : -1)).filter((i) => i >= 0);
+      const jpegs = await views(src, looks[0].t, idx.map((i) => looks[i].heading), pitch, looks[idx[0]].fov, LOOK_N, lens);
+      idx.forEach((i, k) => { out[i] = jpegs[k]; });
+    }
     return out;
   };
   if (sharp) {
@@ -443,7 +457,9 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     await say("Downloading the walk…");
     await downloadToFile(phoneKeyOf(walkKey), src, "web");
     const { seconds } = await probe(src);
-    const plan = lookPlan(seconds, (await readWalks()).walks[walkKey]?.tagsFrom ?? 0);
+    const walk0 = (await readWalks()).walks[walkKey];
+    const lens = lensOf(walk0);
+    const plan = lookPlan(seconds, walk0?.tagsFrom ?? 0, lens);
     const purse = purseOf(s);
     const sharp = await sharpSource(walkKey);
     const sightings: Array<{ look: Look; n: number; box: [number, number, number, number]; confidence: number }> = [];
@@ -453,7 +469,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     for (let i = 0; i < plan.length; ) {
       const moment = plan[i];
       await say(`Looking for products: moment ${i + 1} of ${plan.length}, ${sightings.length} seen so far…`);
-      const jpegs = await momentViews(sharp, src, moment.t);
+      const jpegs = await momentViews(sharp, src, moment.looks, lens);
       try {
         const found = await findInViews(purse, c.products, moment.looks.map((l, k) => ({ id: l.id, jpeg: jpegs[k] })));
         for (const f of found) sightings.push({ look: moment.looks.find((l) => l.id === f.view)!, n: f.n, box: f.box, confidence: f.confidence });
@@ -474,12 +490,12 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     for (const [i, t] of moments.entries()) {
       await say(`Pinning tags to the products: ${i + 1} of ${moments.length}…`);
       const start = Math.max(0, t - FOLLOW_SPAN);
-      const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2);
+      const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2, lens);
       if (!frames.length) continue;
       const grey = frames;
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
       for (const x of sightings.filter((y) => y.look.t === t && y.confidence >= 0.6)) {
-        tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box), boxSize(x.look, x.box)), size: boxSize(x.look, x.box) });
+        tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box), boxSize(x.look, x.box), lens), size: boxSize(x.look, x.box) });
       }
     }
     const kept = capTracks(keepTracks(tracks), MAX_ITEMS);
@@ -488,7 +504,7 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     const fromVideo = new Set(c.products.filter((p) => p.by === "video").map((p) => p.n));
     for (const x of sightings) if (fromVideo.has(x.n) && x.confidence >= 0.6) keepBest(best, x.n, x.look, x.box, x.confidence);
     if (best.size) {
-      const photos = await cutPhotos(s, src, best, say);
+      const photos = await cutPhotos(s, src, best, say, lens);
       const now = await readCatalogue(sceneOf(s.slug));
       if (now) await writeCatalogue({ ...now, products: now.products.map((p) => (photos.has(p.n) ? { ...p, photo: photos.get(p.n)! } : p)) });
     }
@@ -497,7 +513,9 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
     const items = kept.map((t) => {
       const k = count.get(t.n) ?? 0;
       count.set(t.n, k + 1);
-      return itemOf(t, byN.get(t.n)!, k);
+      // A flat walk keeps its lights as fractions of the frame (`lens.ts`).
+      const it = itemOf(t, byN.get(t.n)!, k);
+      return lens ? flatItem(it, lens) : it;
     });
     const walks = await readWalks();
     const walk = walks.walks[walkKey] ?? { doors: [] };
@@ -533,7 +551,7 @@ const keepBest = (best: Map<number, Best>, n: number, look: Look, box: [number, 
  * little wider than it, and renders 640 px square from the upload itself (8K)
  * when it is still there, else the walk's own copy.
  */
-async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Best>, say: (note: string) => Promise<void>): Promise<Map<number, string>> {
+async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Best>, say: (note: string) => Promise<void>, lens: FlatLens | null = null): Promise<Map<number, string>> {
   let input = localCopy;
   try { if (s.files.video) input = await presignGet(s.files.video.key, "master", 3600); } catch { /* the walk's copy will do */ }
   const out = new Map<number, string>();
@@ -545,8 +563,8 @@ async function cutPhotos(s: StoreRecord, localCopy: string, best: Map<number, Be
     const size = boxSize(b.look, b.box);
     try {
       let jpeg: Uint8Array;
-      try { jpeg = await productPhoto(input, b.look.t, dir.lon, dir.lat, size); }
-      catch { jpeg = await productPhoto(localCopy, b.look.t, dir.lon, dir.lat, size); }
+      try { jpeg = await productPhoto(input, b.look.t, dir.lon, dir.lat, size, 640, lens); }
+      catch { jpeg = await productPhoto(localCopy, b.look.t, dir.lon, dir.lat, size, 640, lens); }
       out.set(n, await publishPhoto(s.slug, n, jpeg));
     } catch (e) {
       console.error("[crew] photo", s.slug, n, e);
@@ -643,9 +661,11 @@ export async function recutPhotos(slug: string): Promise<string> {
     if (parts.length) timeOf = (t) => originalTime(parts, t);
   } else input = (await sharpSource(walkKey)) ?? (await presignGet(phoneKeyOf(walkKey), "web", 6 * 3600));
   const srcW = (await probe(input)).width || 3840;
+  // A flat walk (`lens.ts`): its lights are fractions of the frame; here they are directions again.
+  const lens = lensOf(walk);
   const lights = new Map<number, WalkItem>();
   // Each product's longest light: the most moments to choose its sharpest from.
-  for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length && it.pins.length > (lights.get(it.n)?.pins.length ?? 0)) lights.set(it.n, it);
+  for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length && it.pins.length > (lights.get(it.n)?.pins.length ?? 0)) lights.set(it.n, itemDirs(it, lens));
   // ⚠️ RESUMABLE (2026-11-04): a whole store takes hours (about 30 s a product); what is done is kept
   // (`stores/<slug>/photos-done.json`, by walk and version), so a restart carries on, not over.
   const doneKey = `stores/${slug}/photos-done.json`;
@@ -667,7 +687,8 @@ export async function recutPhotos(slug: string): Promise<string> {
   // without one (a sheet store's) fall back to the sharpest moment along their light.
   const closest = new Map<number, Seen>();
   // The finder's sightings, and the Shelf finder's (`shelfFinder.ts`, a steady shelf picture: often the closest).
-  const shelfSeen = await readMastersText(`stores/${slug}/shelf-sightings.json`).then((t) => (t ? (JSON.parse(t) as Sighting[]) : [])).catch(() => [] as Sighting[]);
+  // (Not on a flat walk: the Shelf finder does not run there, and any shelf sightings are an earlier 360° video's.)
+  const shelfSeen = lens ? [] : await readMastersText(`stores/${slug}/shelf-sightings.json`).then((t) => (t ? (JSON.parse(t) as Sighting[]) : [])).catch(() => [] as Sighting[]);
   for (const x of [...((await readSightingsOf(slug)) ?? []), ...shelfSeen]) {
     const had = closest.get(x.n);
     if (!had || x.size.w * x.size.h > had.size.w * had.size.h) closest.set(x.n, { t: x.t, lon: x.lon, lat: x.lat, size: x.size });
@@ -685,8 +706,8 @@ export async function recutPhotos(slug: string): Promise<string> {
     if ((p.by === "website" || p.web) && p.photo) { done.push(n); continue; }
     const seen = closest.get(n), it = lights.get(n);
     try {
-      if (seen && seenInput) photos.set(n, await publishPhoto(slug, n, (await sightingPhoto(seenInput, seen)).jpeg));
-      else if (it) photos.set(n, await publishPhoto(slug, n, (await sharpestPhoto(input, srcW, it.pins, it.size!, timeOf)).jpeg));
+      if (seen && seenInput) photos.set(n, await publishPhoto(slug, n, (await sightingPhoto(seenInput, seen, Infinity, lens)).jpeg));
+      else if (it) photos.set(n, await publishPhoto(slug, n, (await sharpestPhoto(input, srcW, it.pins, it.size!, timeOf, lens)).jpeg));
       else { done.push(n); continue; } // nothing to aim at: its photo stays as it is
       made++;
     } catch (e) { console.error("[crew] recut", slug, n, e); }
@@ -724,7 +745,9 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     await say("Downloading the walk…");
     await downloadToFile(phoneKeyOf(walkKey), src, "web");
     const { seconds } = await probe(src);
-    const plan = lookPlan(seconds, (await readWalks()).walks[walkKey]?.tagsFrom ?? 0);
+    const walk0 = (await readWalks()).walks[walkKey];
+    const lens = lensOf(walk0);
+    const plan = lookPlan(seconds, walk0?.tagsFrom ?? 0, lens);
     const purse = purseOf(s);
     const sharp = await sharpSource(walkKey);
     const products: Array<{ n: number; en: string; fa: string; last: number }> = [];
@@ -736,7 +759,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     for (let i = 0; i < plan.length; ) {
       const moment = plan[i];
       await say(`Finding products: moment ${i + 1} of ${plan.length}, ${products.length} found so far…`);
-      const jpegs = await momentViews(sharp, src, moment.t);
+      const jpegs = await momentViews(sharp, src, moment.looks, lens);
       let seen;
       try {
         // Only those seen in the last stretch of the walk can be in view again (and the list stays short).
@@ -770,7 +793,7 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     }
     if (!products.length) throw new NeedsYou(`No products were found in the video.${stopped} Film the shelves closer and slower, or upload the product sheet. · محصولی در ویدیو پیدا نشد.`);
     await saveSightings(s.slug, sightings);
-    const photos = await cutPhotos(s, src, best, say);
+    const photos = await cutPhotos(s, src, best, say, lens);
     // No name: the owner names each product (2026-11-01); what the crew saw is kept only to find it again.
     const listed: Product[] = products.map((p) => ({ n: p.n, seen: p.en, unit: "piece" as const, priceCents: null, by: "video" as const, ...(photos.has(p.n) ? { photo: photos.get(p.n)! } : {}) }));
     await writeCatalogue({ store: sceneOf(s.slug), products: listed });
@@ -780,18 +803,20 @@ async function productsFromVideo(s: StoreRecord, say: (note: string) => Promise<
     for (const [i, t] of moments.entries()) {
       await say(`Pinning tags to the products: ${i + 1} of ${moments.length}…`);
       const start = Math.max(0, t - FOLLOW_SPAN);
-      const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2);
+      const { frames, W, H } = await grayFrames(src, FOLLOW_FPS, FOLLOW_W, start, FOLLOW_SPAN * 2 + 0.2, lens);
       if (!frames.length) continue;
       const grey = frames;
       const i0 = Math.min(grey.length - 1, Math.round((t - start) * FOLLOW_FPS));
-      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box), boxSize(x.look, x.box)), size: boxSize(x.look, x.box) });
+      for (const x of sightings.filter((y) => y.look.t === t)) tracks.push({ n: x.n, confidence: x.confidence, pins: follow(grey, W, H, start, i0, aim(x.look, x.box), boxSize(x.look, x.box), lens), size: boxSize(x.look, x.box) });
     }
     const byN = new Map(listed.map((p) => [p.n, p]));
     const count = new Map<number, number>();
     const items = capTracks(keepTracks(tracks), MAX_ITEMS).map((t) => {
       const k = count.get(t.n) ?? 0;
       count.set(t.n, k + 1);
-      return itemOf(t, byN.get(t.n)!, k);
+      // A flat walk keeps its lights as fractions of the frame (`lens.ts`).
+      const it = itemOf(t, byN.get(t.n)!, k);
+      return lens ? flatItem(it, lens) : it;
     });
     const walks = await readWalks();
     const walk = walks.walks[walkKey] ?? { doors: [] };

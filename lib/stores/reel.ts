@@ -43,7 +43,7 @@ async function make(slug: string, walkKey: string): Promise<void> {
   try {
     const walk = (await readWalks()).walks[walkKey];
     if (!walk) throw new Error("The store's walk is not in walks.json.");
-    if (walk.projection && walk.projection !== "equirect") throw new Error("Only a 360° walk makes a Reel.");
+    if (walk.projection && walk.projection !== "equirect") throw new Error("Only a 360° walk makes a Reel, for now: this store's video is flat.");
     const src = await presignGet(walkKey, "web", 3600);
     const { seconds: duration } = await probe(src);
     const hide = walk.hide;

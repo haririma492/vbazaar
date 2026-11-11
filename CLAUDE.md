@@ -198,6 +198,17 @@ plan and the Managed Agents decision are in
   upload need not play on the merchant's computer. An `.insv` is refused and
   told to pick the exported `.mp4`. A store's walk starts outside its real door. The
   hallway shows the store's door photo (`WalkDoor.image`).
+- **A store's video may be flat** (owner, 2026-11-11: *"lets accept non-360 flat .mp4 s as well I am experiencing
+  with flat videos with twice or 3 times PPD to replace the 360 videos"*). New store or a new video on an existing
+  one: the same upload card; the Video agent tells by shape (2:1 is 360°, else flat) and sets `projection: "flat"`
+  and `Walk.lens` (`lib/splats/lens.ts`, 70° along the long side, assumed; kept on the walk). The crew still works
+  in directions (every pixel of a flat frame is one): looks are a grid over the frame (`flatLooks`, 6 views 26°
+  wide on 16:9), ffmpeg cuts them with `v360=input=flat` (`v360In`), the follow reads the flat frames
+  (`renderView` with the lens). ⚠️ A flat walk's lights are stored as FRACTIONS of the frame (what the walk page
+  draws): `flatItem` on saving, `itemDirs` when the crew reads them. Works: walk, lights, product photos, Photo
+  improver, title reader, basket. 360° only for now, each saying so (`flatNotYet`): Lock (skipped), Shelf finder,
+  store map, Shelf Tour, Route optimizer, Tidy, Reel, widget clip, Shadow. Areas (outside, lobby, hallway) stay
+  360°. Table in `agents/store-builder/README.md`.
 - **The Shadow agent** (owner, 2026-11-03: *"recognize the shadow of the
   walking photographer everywhere mostly on glasses … and sometimes on
   stainless steel fridges"*; *"activate when during the ?edit=1 the operator

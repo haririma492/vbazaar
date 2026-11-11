@@ -18,6 +18,7 @@ import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { lensAspect, v360In, type FlatLens } from "../splats/lens";
 
 export function run(bin: string, args: string[], opts: { input?: Uint8Array; onLine?: (line: string) => void } = {}): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -72,12 +73,12 @@ export function encode(input: string, output: string, width: number, crf: number
 export const v360Yaw = (r: number) => ((((r * 180) / Math.PI) % 360) + 540) % 360 - 180;
 
 /** Normal camera views (`n`×`n`, JPEG) of the walk at `t` s, one per heading, all at `pitch` with `fov` (radians). */
-export async function views(input: string, t: number, yaws: number[], pitch: number, fov: number, n: number): Promise<Uint8Array[]> {
+export async function views(input: string, t: number, yaws: number[], pitch: number, fov: number, n: number, lens?: FlatLens | null): Promise<Uint8Array[]> {
   const dir = mkdtempSync(join(tmpdir(), "views-"));
   try {
     const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
     const split = `[0:v]split=${yaws.length}${yaws.map((_, i) => `[s${i}]`).join("")}`;
-    const each = yaws.map((y, i) => `[s${i}]v360=input=e:output=flat:yaw=${v360Yaw(y).toFixed(3)}:pitch=${deg(pitch)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}[o${i}]`);
+    const each = yaws.map((y, i) => `[s${i}]v360=${v360In(lens)}:output=flat:yaw=${v360Yaw(y).toFixed(3)}:pitch=${deg(pitch)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n}[o${i}]`);
     await run("ffmpeg", [
       "-v", "error", "-y", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-filter_complex", [split, ...each].join(";"),
       // ⚠️ ONE THREAD PER PICTURE (2026-11-04): 8 outputs, each JPEG encoder starting a thread per core,
@@ -105,10 +106,10 @@ export function photoFrame(size: { w: number; h: number }, n: number): { fov: nu
   const hw = half(size.w), hh = half(size.h);
   return { fov, box: { x: Math.round(n / 2 - hw), y: Math.round(n / 2 - hh), w: Math.round(2 * hw), h: Math.round(2 * hh) } };
 }
-export async function productPhoto(input: string, t: number, lon: number, lat: number, size: { w: number; h: number }, n = 640): Promise<Uint8Array> {
+export async function productPhoto(input: string, t: number, lon: number, lat: number, size: { w: number; h: number }, n = 640, lens?: FlatLens | null): Promise<Uint8Array> {
   const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
   const { fov, box } = photoFrame(size, n);
-  const vf = `v360=input=e:output=flat:yaw=${v360Yaw(lon).toFixed(3)}:pitch=${deg(lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n},` +
+  const vf = `v360=${v360In(lens)}:output=flat:yaw=${v360Yaw(lon).toFixed(3)}:pitch=${deg(lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n},` +
     `drawbox=x=${box.x}:y=${box.y}:w=${box.w}:h=${box.h}:color=yellow@0.9:t=3`;
   return new Uint8Array(await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-vf", vf, "-threads", "1", "-q:v", "3", "-f", "image2", "-c:v", "mjpeg", "pipe:1"]));
 }
@@ -119,11 +120,11 @@ export async function productPhoto(input: string, t: number, lon: number, lat: n
  * motion smear make it small). Used to pick the clearest moments to read a
  * title from (`lib/stores/titles.ts`).
  */
-export async function sharpnessAt(input: string, t: number, lon: number, lat: number, size: { w: number; h: number }, n = 160): Promise<number> {
+export async function sharpnessAt(input: string, t: number, lon: number, lat: number, size: { w: number; h: number }, n = 160, lens?: FlatLens | null): Promise<number> {
   const deg = (r: number) => ((r * 180) / Math.PI).toFixed(3);
   const fov = Math.min(0.8, Math.max(0.03, Math.max(size.w, size.h)));
   const raw = await run("ffmpeg", ["-v", "error", "-ss", t.toFixed(2), "-i", input, "-frames:v", "1", "-vf",
-    `v360=input=e:output=flat:yaw=${v360Yaw(lon).toFixed(3)}:pitch=${deg(lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n},format=gray`,
+    `v360=${v360In(lens)}:output=flat:yaw=${v360Yaw(lon).toFixed(3)}:pitch=${deg(lat)}:h_fov=${deg(fov)}:v_fov=${deg(fov)}:w=${n}:h=${n},format=gray`,
     "-threads", "1", "-f", "rawvideo", "pipe:1"]);
   if (raw.length < n * n) return 0;
   let sum = 0;
@@ -136,9 +137,17 @@ export async function sharpnessAt(input: string, t: number, lon: number, lat: nu
   return sum / ((n - 1) * (n - 1));
 }
 
-/** The walk as grey W×W/2 panoramas, `fps` a second (one byte a pixel), from `start` s for `seconds`. */
-export async function grayFrames(input: string, fps: number, W: number, start: number, seconds: number): Promise<{ frames: Uint8Array[]; W: number; H: number }> {
-  const H = W / 2;
+/**
+ * The walk as grey frames, `fps` a second (one byte a pixel), from `start` s for `seconds`: W×W/2 panoramas, or
+ * with a `lens` (a flat video) frames of its own shape holding about as many pixels.
+ */
+export async function grayFrames(input: string, fps: number, W: number, start: number, seconds: number, lens?: FlatLens | null): Promise<{ frames: Uint8Array[]; W: number; H: number }> {
+  let H = W / 2;
+  if (lens) {
+    const a = lensAspect(lens), even = (v: number) => Math.max(2, Math.round(v / 2) * 2);
+    W = even(Math.sqrt(W * H * a));
+    H = even(W / a);
+  }
   const raw = await run("ffmpeg", ["-v", "error", "-ss", start.toFixed(2), "-t", seconds.toFixed(2), "-i", input, "-vf", `fps=${fps},scale=${W}:${H},format=gray`, "-f", "rawvideo", "pipe:1"]);
   const frames: Uint8Array[] = [];
   for (let at = 0; at + W * H <= raw.length; at += W * H) frames.push(new Uint8Array(raw.buffer, raw.byteOffset + at, W * H));

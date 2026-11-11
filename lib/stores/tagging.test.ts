@@ -154,3 +154,27 @@ test("the light cap is shared fairly: every product gets a light before any gets
   assert.ok(kept.some((k) => k.pins[0].t >= 150), "the end of the walk keeps its lights");
   assert.ok(kept.every((k, i) => i === 0 || kept[i - 1].pins[0].t <= k.pins[0].t), "in time order");
 });
+
+test("a flat video is looked at through a grid over its frame, and its lights are kept as fractions", async () => {
+  const { flatLens, inFlat } = await import("../splats/lens.ts");
+  const { flatItem, itemDirs, FLAT_FOV } = await import("./tagging.ts");
+  const lens = flatLens(3840, 2160);
+  const plan = lookPlan(10, 0, lens);
+  assert.equal(plan.length, lookPlan(10).length, "the same moments as a 360° walk");
+  assert.equal(plan[0].looks.length, 6);
+  for (const l of plan[0].looks) { assert.equal(l.fov, FLAT_FOV); assert.ok(inFlat(l.heading, l.pitch, lens)); }
+  assert.equal(new Set(plan.flatMap((m) => m.looks.map((l) => l.id))).size, plan.length * 6);
+  // A box in the middle of a look is aimed where the look looks.
+  const look = plan[0].looks[0];
+  const at = aim(look, [400, 400, 600, 600]);
+  assert.ok(Math.abs(at.lon - look.heading) < 1e-6 && Math.abs(at.lat - look.pitch) < 1e-6);
+  const item = { id: "auto-1-0", pins: [{ t: 1, x: -0.2, y: 0.1 }, { t: 1.1, x: -0.19, y: 0.1 }, { t: 1.2, x: -0.18, y: 0.1 }], size: { w: 0.08, h: 0.05 } };
+  const flat = flatItem(item, lens);
+  assert.equal(flat.id, item.id);
+  for (const p of flat.pins) assert.ok(p.x > 0 && p.x < 0.5 && p.y > 0 && p.y < 0.5);
+  assert.ok(flat.size!.w > 0.04 && flat.size!.w < 0.09 && flat.size!.h > 0.04 && flat.size!.h < 0.09);
+  const back = itemDirs(flat, lens);
+  back.pins.forEach((p, i) => assert.ok(Math.abs(p.x - item.pins[i].x) < 2e-3 && Math.abs(p.y - item.pins[i].y) < 2e-3));
+  assert.ok(Math.abs(back.size!.w - 0.08) < 5e-3 && Math.abs(back.size!.h - 0.05) < 5e-3);
+  assert.equal(itemDirs(item, null), item, "a 360° walk's light is left as it is");
+});

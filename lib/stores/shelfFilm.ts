@@ -65,6 +65,7 @@ export async function buildShelfFilm(slug: string): Promise<string> {
     const s = await readStore(slug);
     if (!s?.files.video || !s.out.walk) return "No upload or walk.";
     const inp = await tourInputs(slug);
+    if (typeof inp === "string" && /^This store's video is flat/.test(inp)) return inp;
     const entry = typeof inp === "string" ? 0 : inp.entry;
     const t = await readMastersText(shelfSightingsKey(slug)).catch(() => null);
     const boxed = (t ? (JSON.parse(t) as Boxed[]) : []).filter((x) => x && Number.isFinite(x.t) && x.size && x.t >= entry - 0.5);

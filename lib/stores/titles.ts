@@ -18,7 +18,8 @@
 // (a pilot), and products already read are not read again.
 
 import { presignGet, readCatalogue, readMastersText, readWalks, writeCatalogue, writeMastersJson } from "@/lib/splats/r2";
-import { phoneKeyOf, type WalkItem } from "@/lib/splats/walks";
+import { lensOf, phoneKeyOf, type WalkItem } from "@/lib/splats/walks";
+import { itemDirs } from "./tagging";
 import { readStore } from "./bucket";
 import { cutInfo } from "@/lib/splats/cut-job";
 import { sceneOf } from "./store";
@@ -59,8 +60,10 @@ export async function readTitles(slug: string, limit?: number, opts: { escalate?
     const c = await readCatalogue(sceneOf(slug));
     if (!c?.products.length) return "No products.";
     const walk = (await readWalks()).walks[walkKey];
+    // A store filmed flat (`lens.ts`): its lights are fractions of the frame; read here as directions.
+    const lens = lensOf(walk);
     const firstLight = new Map<number, WalkItem>();
-    for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length >= 3 && !firstLight.has(it.n)) firstLight.set(it.n, it);
+    for (const it of walk?.items ?? []) if (it.n && it.size && it.pins.length >= 3 && !firstLight.has(it.n)) firstLight.set(it.n, itemDirs(it, lens));
     // The sharpest source: the upload itself, else the full-size walk, else the phone copy.
     let src: string;
     // After a cut the lights are in the cut walk's times: the cut walk then, not the upload (in the original's).
@@ -78,9 +81,17 @@ export async function readTitles(slug: string, limit?: number, opts: { escalate?
     const fromSeen = new Map<number, { pins: Array<{ t: number; x: number; y: number }>; size: { w: number; h: number } }>();
     let srcSeen: string | null = null;
     const inp = await tourInputs(slug).catch(() => "no inputs");
-    if (typeof inp !== "string") {
-      srcSeen = inp.src;
-      for (const x of inp.seen) {
+    // A flat walk has no tour inputs: the finder's own sightings then, from the upload (only while the walk is uncut).
+    let seenList: Array<{ n: number; t: number; lon: number; lat: number; size: { w: number; h: number } }> = [];
+    if (typeof inp !== "string") { srcSeen = inp.src; seenList = inp.seen; }
+    else if (lens && !cut) {
+      try {
+        const v = JSON.parse((await readMastersText(`stores/${slug}/sightings.json`)) ?? "[]");
+        if (Array.isArray(v)) { seenList = v.filter((x) => x && Number.isFinite(x.t) && x.size); srcSeen = src; }
+      } catch { /* none kept */ }
+    }
+    {
+      for (const x of seenList) {
         if (firstLight.has(x.n)) continue;
         const f = fromSeen.get(x.n) ?? { pins: [], size: x.size };
         f.pins.push({ t: x.t, x: x.lon, y: x.lat });
@@ -103,13 +114,13 @@ export async function readTitles(slug: string, limit?: number, opts: { escalate?
       const candidates = it.pins.filter((_, i) => i % step === 0).slice(0, CANDIDATES);
       const scored: Array<{ q: (typeof it.pins)[number]; score: number }> = [];
       for (const q of candidates) {
-        try { scored.push({ q, score: await sharpnessAt(from, q.t, q.x, q.y, it.size!) }); } catch { /* that moment is skipped */ }
+        try { scored.push({ q, score: await sharpnessAt(from, q.t, q.x, q.y, it.size!, 160, lens) }); } catch { /* that moment is skipped */ }
       }
       const pick = scored.sort((a, b) => b.score - a.score).slice(0, READ_CROPS).map((x) => x.q).sort((a, b) => a.t - b.t);
       if (!pick.length) continue;
       const crops: Uint8Array[] = [];
       for (const q of pick) {
-        try { crops.push(await productPhoto(from, q.t, q.x, q.y, it.size!, CROP_PX)); } catch (e) { console.error("[titles] crop", slug, p.n, e); }
+        try { crops.push(await productPhoto(from, q.t, q.x, q.y, it.size!, CROP_PX, lens)); } catch (e) { console.error("[titles] crop", slug, p.n, e); }
       }
       if (!crops.length) continue;
       try {

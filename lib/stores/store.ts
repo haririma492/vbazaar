@@ -7,7 +7,8 @@
  *   intake       the operator answers one question per card (`/stores/new`):
  *                names, category, contact, phone, email, address, hours,
  *                website, the store's password, then the uploads
- *   uploads      the Insta360 360° walk (.mp4 exported from Insta360 Studio;
+ *   uploads      the store's video: the Insta360 360° walk, or since 2026-11-11 a flat
+ *                (ordinary camera) video, told apart by its shape (.mp4 exported from Insta360 Studio;
  *                an .insv is refused with what to do), the product workbook,
  *                product photos, and a photo of the store's real door
  *   the crew     video → catalogue → photos → tag → place → check
@@ -338,7 +339,8 @@ export function checkUploadName(kind: UploadKind, name: string): string | null {
     if (ext === "insv") {
       return "This is the camera's raw file (.insv). Choose the .mp4 you exported from it instead (in the folder you exported to). Not exported yet? In Insta360 Studio: Export → 360 Video, 3840×1920 (4K) or larger, 25 fps, Rec.709 8-bit, H.264 or H.265. · این فایل خام دوربین است؛ فایل ‎.mp4 خروجی را انتخاب کنید.";
     }
-    return ext === "mp4" ? null : "The 360° walk is an .mp4 exported from Insta360 Studio. · ویدیوی ۳۶۰ باید ‎.mp4 باشد.";
+    // A 360° walk or a flat (ordinary camera) video: the Video agent tells them apart by the picture's shape (2:1 is 360°).
+    return ext === "mp4" ? null : "The store's video is an .mp4: a 360° walk exported from Insta360 Studio, or an ordinary (flat) video. · ویدیوی فروشگاه باید ‎.mp4 باشد (۳۶۰ درجه یا معمولی).";
   }
   // ⚠️ THE RAW .insv, FOR THE AGENTS (owner, 2026-11-05: "sounds good lets do" — the test of reading the
   // camera's gyro and its unexported picture). Kept beside the walk; the walk itself is still the .mp4.

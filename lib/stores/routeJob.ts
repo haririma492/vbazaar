@@ -23,7 +23,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { presignGet, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson, writeWalks } from "@/lib/splats/r2";
-import { entryOf, phoneKeyOf } from "@/lib/splats/walks";
+import { entryOf, lensOf, phoneKeyOf } from "@/lib/splats/walks";
+import { flatNotYet } from "@/lib/splats/lens";
 import { CAMERA_HEIGHT, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, frameShift } from "@/lib/splats/pace";
 import { bandProfile, ringShift } from "@/lib/splats/walkTurn";
 import { cutInfo } from "@/lib/splats/cut-job";
@@ -119,6 +120,7 @@ export async function planStoreRoute(slug: string): Promise<string> {
   const s = await readStore(slug);
   if (!s?.out.walk) return "No walk.";
   const walkKey = s.out.walk;
+  if (lensOf((await readWalks()).walks[walkKey])) return flatNotYet("the Route optimizer");
   await setJob("route", { busy: true, key: walkKey, note: "reading how the camera moved" });
   const dir = mkdtempSync(join(tmpdir(), "route-"));
   try {
