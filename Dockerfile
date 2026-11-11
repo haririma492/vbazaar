@@ -1,7 +1,12 @@
 FROM node:20-slim
 # ffmpeg: the Store Builder crew makes each 360° walk's web and phone copies and
 # cuts views for the Tagger (`lib/stores/media.ts`); the walk page's «Cut» uses it too.
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+# python3 + OpenCV: a shelf's zoom photo is stitched from its three phone photos and cut into Deep Zoom tiles by
+# `scripts/stitch/stack.py` (`lib/stores/gigapan.ts`). The headless wheel: no display libraries. The version is the
+# one the stitcher was tested on.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg python3 python3-pip \
+    && pip3 install --no-cache-dir --break-system-packages "numpy<3" "opencv-python-headless==4.10.0.84" \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci

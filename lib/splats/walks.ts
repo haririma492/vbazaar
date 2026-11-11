@@ -296,7 +296,43 @@ export type Walk = {
   logo?: string;
   /** Junk hidden by the Tidy agent: a made-up stand with a store product on it, drawn over it (`lib/stores/tidy.ts`). */
   covers?: WalkCover[];
+  /** Shelves with a zoom photo: a 🔍 on the shelf opens the stitched photo, zoomed as far as its labels (`WalkZoom`). */
+  zooms?: WalkZoom[];
 };
+
+/**
+ * A SHELF'S ZOOM PHOTO, ON THE WALK (owner, 2026-11-11: "take 3 Gigapan style photo of a shelf and … stitch them
+ * together so user (once switch its focus on this shelf) to be able to zoom in and out and read labels"). The walk's
+ * video is too coarse to read a label; three phone photos of the shelf, stitched (`lib/stores/gigapan.ts`), are not.
+ * The hotspot is a 🔍 that follows the shelf like a product's light (`pins`: a direction on a 360° walk, fractions
+ * of the frame on a flat one); a tap opens `manifest` (the photo's Deep Zoom tiles) over the walk, which stops
+ * meanwhile. `id` is the zoom photo's (the store's `gigapans.json`), so a photo stitched again keeps its place.
+ */
+export type WalkZoom = { id: string; label: WalkLabel; manifest: string; thumb?: string; pins: ItemPin[] };
+/** How big the 🔍 is to a tap (radians on a 360° walk). */
+export const ZOOM_HIT = { w: 0.14, h: 0.14 };
+/** The zoom hotspots on screen at `t`, each as an item the walk already knows how to place and tap. */
+export function zoomsAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem & { zoom: WalkZoom }; x: number; y: number }> {
+  const out: Array<{ item: WalkItem & { zoom: WalkZoom }; x: number; y: number }> = [];
+  for (const z of walk?.zooms ?? []) {
+    const item = { id: `zoom-${z.id}`, label: z.label, pins: z.pins, size: ZOOM_HIT, zoom: z };
+    const at = itemAt(item, t, round);
+    if (at) out.push({ item, x: at.x, y: at.y });
+  }
+  return out;
+}
+/** The walk with zoom photo `z` pinned on it (replacing its earlier place), or with `id` taken off. */
+export function setZoom(walks: Walks, key: string, z: WalkZoom): Walks {
+  const w = walks.walks[key] ?? { doors: [] };
+  return { ...walks, walks: { ...walks.walks, [key]: { ...w, zooms: [...(w.zooms ?? []).filter((x) => x.id !== z.id), z] } } };
+}
+export function dropZoom(walks: Walks, key: string, id: string): Walks {
+  const w = walks.walks[key];
+  if (!w?.zooms?.some((x) => x.id === id)) return walks;
+  const { zooms, ...rest } = w;
+  const left = zooms!.filter((x) => x.id !== id);
+  return { ...walks, walks: { ...walks.walks, [key]: left.length ? { ...rest, zooms: left } : rest } };
+}
 
 /**
  * THE TIDY AGENT'S COVERS (owner, 2026-11-06: "objects on the scene that need to be removed or replaced with some
@@ -718,6 +754,25 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         }
         if (covers.length) walk.covers = covers;
       }
+    }
+    if (Array.isArray(r.zooms)) {
+      const zooms: WalkZoom[] = [];
+      for (const c of r.zooms.slice(0, 200)) {
+        const x = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
+        const id = typeof x.id === "string" ? x.id : "";
+        const lbl = (x.label ?? {}) as Record<string, unknown>;
+        const en = str(lbl.en, 80), fa = str(lbl.fa, 80);
+        const pins = Array.isArray(x.pins) ? (x.pins as Array<Record<string, unknown>>).filter((q) => q && finite(q.t) && q.t >= 0 && finite(q.x) && finite(q.y) && Math.abs(q.x) <= 3.2 && Math.abs(q.y) <= 1.6) : [];
+        if (!DOOR_ID_RE.test(id) || zooms.some((z) => z.id === id) || !pins.length || pins.length > MAX_ITEM_PINS || !isSiteUrl(x.manifest)) {
+          problems.push(`${key}, zoom photo «${id || "?"}»: it needs an id, its pins and its https manifest.`);
+          continue;
+        }
+        zooms.push({
+          id, label: fa ? { en: en || "Shelf", fa } : { en: en || "Shelf" }, manifest: x.manifest as string, ...(isSiteUrl(x.thumb) ? { thumb: x.thumb as string } : {}),
+          pins: sortItemPins(pins.map((q) => ({ t: q.t as number, x: q.x as number, y: q.y as number }))),
+        });
+      }
+      if (zooms.length) walk.zooms = zooms;
     }
     walks[key] = walk;
   }

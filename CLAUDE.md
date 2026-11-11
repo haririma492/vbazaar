@@ -258,6 +258,32 @@ plan and the Managed Agents decision are in
   improver, title reader, basket. 360° only for now, each saying so (`flatNotYet`): Lock (skipped), Shelf finder,
   store map, Shelf Tour, Route optimizer, Tidy, Reel, widget clip, Shadow. Areas (outside, lobby, hallway) stay
   360°. Table in `agents/store-builder/README.md`.
+- **A shelf's zoom photo** (owner, 2026-11-11: *"we are struggling with free tour quality and low pixels of shelf,
+  to resolve this we are going to take 3 Gigapan style photo of a shelf and you need to stich them together so user
+  (once switch its focus on this shelf) to be able to zoom in and out and read labels"*; the owner's brief: a
+  vertical stack top / middle / bottom, ~30% shared, planar stitch, Deep Zoom tiles, a hotspot on the walk, a modal
+  viewer with a mini-map). «Shelf zoom photos» card on `/stores/<slug>` (`ZoomCard.tsx`, upload kind `gigapan`):
+  «Add a shelf's photos» takes the three together, any order (`set` keeps a shelf's photos together; at most 5), and
+  the stitcher starts by itself; it is also the last step of «Refresh all agents» («Zoom photos»). Free, no AI.
+  - **The stitcher** is `scripts/stitch/stack.py` (python3 + OpenCV, installed by the `Dockerfile`), run by
+    `lib/stores/gigapan.ts`: finds which photo is above which; SIFT points matched ONLY in the bands that can
+    overlap (a shelf is rows of the same packaging); MAGSAC homographies onto the MIDDLE photo's plane (straight
+    edges stay straight); each photo's colour channels scaled to its neighbour's; a seam where the two differ
+    least, blended multi-band round the seam only; cropped to the largest clean rectangle; at most 100 megapixels
+    (`ZOOM_MAX_MP`). Measured on three synthetic 48 MP photos: 18 s, 1.2 GB of memory, 0.2 px median error.
+    Photos that share too little: the card says which two and what to retake; the same photos are not tried again.
+  - **The tiles** are Deep Zoom (DZI), 512 px progressive JPEG at 85: `scenes/store-<slug>/zoom/<set>-<stamp>/`
+    (`manifest.json`, `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`, `thumb.jpg`; public). The master is
+    private (`stores/<slug>/gigapan/<set>/master.jpg`), kept for reading labels later. State:
+    `stores/<slug>/gigapans.json`. Never serve the master to a shopper.
+  - **On the walk** it is a 🔍 on the shelf (`Walk.zooms`, `WalkZoom`: the photo's id, its manifest's address,
+    pins that follow the shelf like a light). The operator pins it: «Zoom» on the walk's `?edit=1`
+    (`walk/WalkZoom.tsx`), walk to the shelf, one tap on its middle. A tap by a shopper opens
+    `components/zoom/DeepZoom.tsx` over the walk, which stops drawing and steering meanwhile (`setPaused`): only
+    the tiles on screen are fetched (`lib/zoom/pyramid.ts`, tested), wheel / pinch / drag / double tap, never past
+    the photo's edges, a mini-map, «Back». A cut moves the 🔍 with the picture; a photo stitched again keeps its
+    place. Works on 360° and flat walks and in the widget. Not yet: the 🔍 in the Shelf Tour; the products'
+    lights on the zoom photo; placing the 🔍 automatically.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
   rules in `lib/splats/walkStats.ts` (tested). PPD = the playing copy's width ÷ the angle it spans (360° walk:

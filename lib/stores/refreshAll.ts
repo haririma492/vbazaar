@@ -8,6 +8,9 @@
 //                                 there are no shelf pictures at all)
 //   4  Title reader              every found book not read yet (Haiku, a fraction of a cent a book)
 //   5  Spine reader              the shelf photos not read yet, if any (Haiku, a few cents a photo)
+//   6  Zoom photos               each shelf's three phone photos stitched into its zoom photo and cut into tiles
+//                                 (free; `gigapan.ts`; owner, 2026-11-11: "add the integration as part of
+//                                 Refresh all agents"); only the shelves not stitched yet, or whose photos changed
 //   …  Photo improver            queued by step 1 when it found new books; it runs on its own
 //
 // ⚠️ AUTOMATIC FOR EVERY STORE (owner, 2026-11-06: "what ever we built for saraye-bamdad need to apply and work
@@ -32,6 +35,7 @@ import { readTitles } from "./titles";
 import { readShelfPhotos, readShelfTitles } from "./shelfTitles";
 import { readIndex } from "./bucket";
 import { readTour } from "./tourJob";
+import { stitchZooms } from "./gigapan";
 
 export type RefreshStep = { name: string; note: string; at: string };
 export type RefreshRun = { store: string; started: string; finished: string | null; steps: RefreshStep[]; running: boolean; version?: number };
@@ -39,7 +43,7 @@ export type RefreshRun = { store: string; started: string; finished: string | nu
  *  no box size count, so stores tagged before 2026-11-04 get a tour). One retry per version, never every restart. */
 export const REFRESH_VERSION = 2;
 export const refreshKey = (slug: string) => `stores/${slug}/refresh.json`;
-export const REFRESH_STEPS = ["Door photo", "Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader"] as const;
+export const REFRESH_STEPS = ["Door photo", "Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader", "Zoom photos"] as const;
 let busy: string | null = null;
 
 export async function readRefresh(slug: string): Promise<RefreshRun | null> {
@@ -125,6 +129,8 @@ async function refreshAll(slug: string): Promise<void> {
   const s = await readStore(slug);
   const unread = (s?.files.shelf ?? []).length - ((await readShelfTitles(slug))?.done.length ?? 0);
   await step(REFRESH_STEPS[5], async () => (unread > 0 ? readShelfPhotos(slug) : "No shelf photos waiting to be read."));
+  // Last: it is free and stands on nothing above, and a long stitch never holds the tour back.
+  await step(REFRESH_STEPS[6], () => stitchZooms(slug));
   run.running = false;
   run.finished = new Date().toISOString();
   await save();

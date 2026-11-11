@@ -48,8 +48,14 @@ export const MAX_TRIES = 3;
 export type Bi = { en: string; fa: string };
 
 /** `shelf`: phone photos of the shelves, for reading every spine (owner, 2026-11-06: "build that"; `shelfTitles.ts`). */
-export type UploadKind = "video" | "sheet" | "photo" | "door" | "logo" | "raw" | "shelf";
+/** `gigapan`: the photos of ONE shelf bay (top, middle, bottom), stitched into its zoom photo (owner, 2026-11-11; `gigapan.ts`). */
+export type UploadKind = "video" | "sheet" | "photo" | "door" | "logo" | "raw" | "shelf" | "gigapan";
 export type Uploaded = { key: string; name: string; size: number; at: string };
+/** A zoom photo's part: `set` says which shelf's photos it belongs with (`gigapanRules.ts`). */
+export type ZoomUpload = Uploaded & { set: string };
+export const ZOOM_SET_RE = /^[a-z0-9]{4,16}$/;
+/** At most this many photos a shelf (three is what is asked for: top, middle, bottom). */
+export const MAX_ZOOM_PHOTOS = 5;
 
 export type StepName = "video" | "lock" | "catalogue" | "website" | "photos" | "tag" | "place" | "check";
 export const STEPS: StepName[] = ["video", "lock", "catalogue", "website", "photos", "tag", "place", "check"];
@@ -91,6 +97,8 @@ export const REDO: Record<UploadKind, StepName[]> = {
   logo: [],
   // Shelf photos are read on the operator's «Read the spines» (it spends): no crew step goes back.
   shelf: [],
+  // A shelf's zoom photos are stitched by «Refresh all agents» (or «Stitch now» on their card): no crew step goes back.
+  gigapan: [],
   raw: [],
 };
 
@@ -129,7 +137,7 @@ export type StoreRecord = {
   createdAt: string;
   updatedAt: string;
   /** `raw`: the camera's own .insv file(s) of the walk, for the agents only (its gyro; the unexported picture). Shoppers never see it. */
-  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; logo?: Uploaded; raw?: Uploaded[]; shelf?: Uploaded[] };
+  files: { video?: Uploaded; sheet?: Uploaded; photos: Uploaded[]; door?: Uploaded; logo?: Uploaded; raw?: Uploaded[]; shelf?: Uploaded[]; gigapan?: ZoomUpload[] };
   steps: Record<StepName, Step>;
   /** What the crew made. */
   out: {
@@ -351,6 +359,7 @@ export function checkUploadName(kind: UploadKind, name: string): string | null {
   // chosen frames, AI-stitched and denoised, as PNG/JPG: the agents compare them with the .mp4 and use them).
   if (kind === "raw") return ["insv", "png", "jpg", "jpeg"].includes(ext) ? null : "Here, the camera's own .insv of this walk, or the SDK's stills of it (.png / .jpg). · فایل ‎.insv یا عکس‌های SDK.";
   if (kind === "shelf") return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A shelf photo is .jpg, .png or .webp (an iPhone sends its photos as .jpg when uploaded from a browser). · عکس قفسه باید jpg یا png باشد.";
+  if (kind === "gigapan") return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A shelf's zoom photo is .jpg, .png or .webp, at the phone's full size (an iPhone sends .jpg when uploaded from a browser). · عکس قفسه باید jpg یا png باشد.";
   if (kind === "sheet") return ext === "xlsx" ? null : "The product list is an Excel workbook (.xlsx). · فهرست محصولات باید ‎.xlsx باشد.";
   return ["jpg", "jpeg", "png", "webp"].includes(ext) ? null : "A photo is .jpg, .png or .webp. · عکس باید jpg یا png یا webp باشد.";
 }
@@ -363,12 +372,16 @@ export function uploadKey(slug: string, kind: UploadKind, name: string, now: Dat
 }
 
 export const isUploadKeyOf = (slug: string, key: string) =>
-  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|logo|raw|shelf)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
+  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|logo|raw|shelf|gigapan)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
 
 /** The upload recorded: a video, sheet or door replaces the last one; photos add up. Then the steps it affects go back to do. */
-export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded): StoreRecord {
+export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded, set?: string): StoreRecord {
   const files = { ...s.files, photos: [...s.files.photos] };
-  if (kind === "photo") {
+  if (kind === "gigapan") {
+    // One shelf's photos go together (`set`); the same file name again replaces that photo.
+    if (!set || !ZOOM_SET_RE.test(set)) return s;
+    files.gigapan = [...(files.gigapan ?? []).filter((p) => !(p.set === set && p.name === file.name)), { ...file, set }];
+  } else if (kind === "photo") {
     const i = files.photos.findIndex((p) => p.name === file.name);
     if (i >= 0) files.photos[i] = file;
     else files.photos.push(file);

@@ -318,6 +318,12 @@ export async function uploadFile(key: string, path: string, contentType = "appli
   wrote(key);
 }
 
+/** A local file put into the PRIVATE masters bucket at `key` (a shelf's stitched master photo). */
+export async function uploadMastersFile(key: string, path: string, contentType = "application/octet-stream"): Promise<void> {
+  const { createReadStream, statSync } = await import("node:fs");
+  await s3().send(new PutObjectCommand({ Bucket: r2Config().mastersBucket, Key: key, Body: createReadStream(path), ContentLength: statSync(path).size, ContentType: contentType }));
+}
+
 /**
  * One web-bucket object copied to another key, inside R2 (nothing passes
  * through this server; up to 5 GB) — a cut walk's original kept, and put back.

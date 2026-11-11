@@ -141,7 +141,16 @@ export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: 
     const pins = c.pins.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
     return pins.length ? [{ ...c, pins }] : [];
   });
-  return { walk: { ...now, doors, ...(items.length ? { items } : {}), ...(covers.length ? { covers } : {}) }, lost };
+  // A shelf's zoom hotspot, the same way.
+  const keptZooms = new Map((record.walk.zooms ?? []).map((z) => [z.id, z]));
+  const zooms = (now.zooms ?? []).flatMap((z) => {
+    const old = keptZooms.get(z.id);
+    if (old) return [{ ...z, pins: old.pins }];
+    const pins = z.pins.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
+    return pins.length ? [{ ...z, pins }] : [];
+  });
+  const { zooms: _z, ...nowRest } = now;
+  return { walk: { ...nowRest, doors, ...(items.length ? { items } : {}), ...(covers.length ? { covers } : {}), ...(zooms.length ? { zooms } : {}) }, lost };
 }
 
 /** The walk's doors and dots moved to the new video's times (see the head of this file). */
@@ -165,7 +174,14 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
     const pins = c.pins.flatMap((p) => { const pt = mapTime(p.t, parts); return pt === null ? [] : [{ ...p, t: pt }]; });
     return pins.length ? [{ ...c, pins }] : [];
   });
-  return { walk: { ...walk, doors, ...(items ? { items } : {}), ...(covers ? { covers } : {}) }, dropped };
+  // A shelf's zoom hotspot moves with the picture; one whose shelf was cut out is said (its photo stays on the store's page).
+  const zooms = walk.zooms?.flatMap((z) => {
+    const pins = z.pins.flatMap((p) => { const pt = mapTime(p.t, parts); return pt === null ? [] : [{ ...p, t: pt }]; });
+    if (!pins.length) dropped.push(`the zoom photo «${z.label.en}» (pin it on its shelf again)`);
+    return pins.length ? [{ ...z, pins }] : [];
+  });
+  const { zooms: _z, ...walkRest } = walk;
+  return { walk: { ...walkRest, doors, ...(items ? { items } : {}), ...(covers ? { covers } : {}), ...(zooms?.length ? { zooms } : {}) }, dropped };
 }
 
 /** Where the original is kept by the first cut. */

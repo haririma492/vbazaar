@@ -41,7 +41,7 @@ import { soundOnly } from "@/lib/stores/music";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
   type StepName, type UploadKind,
-  hasShortAddress,
+  hasShortAddress, MAX_ZOOM_PHOTOS, ZOOM_SET_RE,
 } from "@/lib/stores/store";
 import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
@@ -58,6 +58,8 @@ import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
+import { removeZoom, stitchZooms, zoomsForPage } from "@/lib/stores/gigapan";
+import { setsOf } from "@/lib/stores/gigapanRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readStats, widgetPlan } from "@/lib/stores/widget";
 import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
@@ -70,7 +72,7 @@ import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/ti
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "logo", "raw", "shelf"];
+const KINDS: UploadKind[] = ["video", "sheet", "photo", "door", "logo", "raw", "shelf", "gigapan"];
 
 async function open(req: NextRequest, slug: string) {
   if (!SLUG_RE.test(slug)) return { error: fail(404, "No such store.") };
@@ -179,6 +181,13 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (kind === "video" && who !== "operator") return fail(403, "Only the bazaar's operator uploads the store's video. · ویدیو را اپراتور بارگذاری می‌کند.");
     const name = String(body.name ?? "");
     let key = String(body.key ?? "");
+    // A shelf's zoom photos say which shelf they are of (`set`, made by the card): at most 5 a shelf.
+    const set = kind === "gigapan" ? String(body.set ?? "") : undefined;
+    if (kind === "gigapan") {
+      if (!ZOOM_SET_RE.test(set!)) return fail(400, "Which shelf is this photo of? Start from «Add a shelf's photos».");
+      const had = setsOf(s.files.gigapan ?? []).find((x) => x.id === set)?.photos ?? [];
+      if (body.ask === "start" && had.length >= MAX_ZOOM_PHOTOS && !had.some((p) => p.name === name)) return fail(400, `A shelf takes at most ${MAX_ZOOM_PHOTOS} photos (three is right: top, middle, bottom).`);
+    }
     if (body.ask === "start" || !key) {
       const refused = checkUploadName(kind, name);
       if (refused) return fail(400, refused);
@@ -187,7 +196,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const turn = await uploadTurn(key, { ...body, action: String(body.ask ?? "") });
     if (turn) return turn;
     // Completed: recorded, and the crew starts on what it touches.
-    let next = await updateStore(s.slug, (x) => addUpload(x, kind, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }));
+    let next = await updateStore(s.slug, (x) => addUpload(x, kind, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }, set));
     // The logo goes straight onto the store's walk (both tours show it at the top left).
     if (kind === "logo" && next) { await prepareLogo(next).catch((e) => console.error("[logo]", s.slug, e)); next = (await readStore(s.slug)) ?? next; }
     kick();
@@ -370,6 +379,20 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     // Operator: every agent in order (`refreshAll.ts`), in the background. Spends a little, asked on the card.
     if (who !== "operator") return fail(403, "The operator only.");
     return ok({ note: startRefreshAll(s.slug) });
+  }
+  // A SHELF'S ZOOM PHOTOS (owner, 2026-11-11; `lib/stores/gigapan.ts`): where each shelf stands; «Stitch now» (free,
+  // no AI: the owner's too); a shelf taken away.
+  if (body.action === "zooms") return ok(await zoomsForPage(s));
+  if (body.action === "zoomStitch") {
+    if (!(s.files.gigapan ?? []).length) return fail(400, "No shelf zoom photos uploaded yet.");
+    void stitchZooms(s.slug, { force: body.force === true }).then((note) => console.log("[zoom]", s.slug, note)).catch((e) => console.error("[zoom]", s.slug, e));
+    return ok({ started: true });
+  }
+  if (body.action === "zoomRemove") {
+    const id = String(body.set ?? "");
+    if (!ZOOM_SET_RE.test(id)) return fail(400, "No such shelf.");
+    const next = await removeZoom(s.slug, id);
+    return ok({ store: next ? forPage(next) : null });
   }
   if (body.action === "refreshState") {
     return ok({ run: await readRefresh(s.slug) });

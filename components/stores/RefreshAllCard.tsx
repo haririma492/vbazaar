@@ -20,7 +20,7 @@ export default function RefreshAllCard({ api, spentCents, budgetCents }: { api: 
   useEffect(() => { void load(); const id = setInterval(load, 10000); return () => clearInterval(id); }, [load]);
   const room = Math.max(0, budgetCents - spentCents) / 100;
   async function go() {
-    if (!confirm(`Refresh all agents, in order: find the shelves not pictured yet (up to ~$2) → rebuild the store map → film the Shelf Tour → read the titles not read yet (Haiku, cents) → read any new shelf photos (Haiku, a few cents each). About $2–3 in all, from the store's AI budget ($${room.toFixed(2)} left); each step stops by itself at the budget. It takes 20–40 minutes.`)) return;
+    if (!confirm(`Refresh all agents, in order: find the shelves not pictured yet (up to ~$2) → rebuild the store map → film the Shelf Tour → read the titles not read yet (Haiku, cents) → read any new shelf photos (Haiku, a few cents each) → stitch any shelf zoom photos waiting (free). About $2–3 in all, from the store's AI budget ($${room.toFixed(2)} left); each step stops by itself at the budget. It takes 20–40 minutes.`)) return;
     try { const j = await postJson<{ note: string }>(api, { action: "refreshAll" }); setSaid({ ok: true, text: `${j.note} This card follows each step. · شروع شد` }); void load(); }
     catch (e) { setSaid({ ok: false, text: `Not started: ${(e as Error).message}` }); }
   }
@@ -28,7 +28,7 @@ export default function RefreshAllCard({ api, spentCents, budgetCents }: { api: 
     <Card>
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" className={KEY} disabled={Boolean(run?.running)} onClick={() => void go()}>🔄 به‌روزرسانی همهٔ عامل‌ها · Refresh all agents</button>
-        <Bi fa="همه به ترتیب" en="Every agent, in the right order: new shelves → map → Shelf Tour → titles → shelf photos" className="text-[12px] text-white/55" />
+        <Bi fa="همه به ترتیب" en="Every agent, in the right order: new shelves → map → Shelf Tour → titles → shelf photos → zoom photos" className="text-[12px] text-white/55" />
       </div>
       {run && (
         <ol dir="ltr" className="mt-3 space-y-1 text-left text-[13px]">

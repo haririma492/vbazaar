@@ -68,6 +68,9 @@ import { useAdminMode } from "@/lib/admin/useAdminMode";
 import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
+import { ZoomEditor } from "./WalkZoom";
+import DeepZoom from "@/components/zoom/DeepZoom";
+import { track } from "@/lib/visitors/track";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { isPrivateVideoKey, mediaPath, toMediaUrl } from "@/lib/splats/media";
 import { directMediaUrl } from "@/lib/splats/directMedia";
@@ -79,7 +82,7 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  entryOf, faceOf, itemHitAt, itemsAt, coversAt, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -319,6 +322,48 @@ function lightTexture(kind: Light): THREE.CanvasTexture {
 const LIGHT_W = 0.47;
 
 /**
+ * A SHELF'S ZOOM PHOTO (owner, 2026-11-11: "once switch its focus on this shelf … zoom in and out and read labels";
+ * `WalkZoom` in `lib/splats/walks.ts`): a white disc with a magnifying glass, pinned on the shelf like a light but
+ * four times as wide, so it reads as a key and not as a product. A tap opens the shelf's stitched photo.
+ */
+const ZOOM_W = 1.9;
+let zoomTex: THREE.CanvasTexture | null = null;
+function drawZoomMark(g: CanvasRenderingContext2D, n: number) {
+  g.beginPath();
+  g.arc(n / 2, n / 2, n * 0.45, 0, Math.PI * 2);
+  g.fillStyle = "rgba(255,255,255,0.94)";
+  g.fill();
+  g.lineWidth = n * 0.035;
+  g.strokeStyle = "#0b7a43";
+  g.stroke();
+  // The glass: a ring, its handle, and a plus inside it.
+  g.lineCap = "round";
+  g.strokeStyle = "#0b3d2a";
+  g.lineWidth = n * 0.07;
+  g.beginPath();
+  g.arc(n * 0.45, n * 0.45, n * 0.17, 0, Math.PI * 2);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(n * 0.58, n * 0.58);
+  g.lineTo(n * 0.72, n * 0.72);
+  g.stroke();
+  g.lineWidth = n * 0.045;
+  g.beginPath();
+  g.moveTo(n * 0.37, n * 0.45); g.lineTo(n * 0.53, n * 0.45);
+  g.moveTo(n * 0.45, n * 0.37); g.lineTo(n * 0.45, n * 0.53);
+  g.stroke();
+}
+function zoomTexture(): THREE.CanvasTexture {
+  if (zoomTex) return zoomTex;
+  const n = 192, c = document.createElement("canvas");
+  c.width = c.height = n;
+  drawZoomMark(c.getContext("2d")!, n);
+  zoomTex = new THREE.CanvasTexture(c);
+  zoomTex.colorSpace = THREE.SRGBColorSpace;
+  return zoomTex;
+}
+
+/**
  * THE TIDY AGENT'S COVERS (owner, 2026-11-06): a store product on a made-up stand, drawn over clutter in the video
  * (`lib/stores/tidy.ts`). One texture per picture, shared by every walk that shows it, so it is loaded once.
  */
@@ -454,6 +499,8 @@ type Engine = {
   setItemPick: (f: ((pin: ItemPin) => void) | null) => void;
   /** Edit mode: the item being placed, its dot shown as it is pinned. */
   setItemPreview: (item: WalkItem | null) => void;
+  /** A shelf's zoom photo is open over the walk: the video stops and nothing is drawn or steered until it closes. */
+  setPaused: (on: boolean) => void;
   /** A tap on an item's dot. */
   setOnItem: (f: ((item: WalkItem) => void) | null) => void;
   /** What an item's tag says as its price: the store's list where it has one (`productOf`), else its own. */
@@ -571,6 +618,9 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
   }, []);
   /** The item whose card is open (a tap on its dot). */
   const [card, setCard] = useState<WalkItem | null>(null);
+  // A shelf's zoom photo, open over the walk: the walk stops drawing and steering until it is closed.
+  const [zoomOpen, setZoomOpen] = useState<WalkZoom | null>(null);
+  useEffect(() => { engine.current?.setPaused(Boolean(zoomOpen)); }, [zoomOpen]);
   /** The product whose card is open, outlined on the walk (`setHighlight`). */
   const [lit, setLit] = useState<string | null>(null);
   /** The product list of the store this video belongs to (`lib/splats/catalogue.ts`), or null. */
@@ -1335,6 +1385,55 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
         const cp = Math.cos(y);
         m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
       }
+      // A shelf's zoom photo: its 🔍 on the shelf (a sprite on a 360° walk, a key over a flat video). A tap opens it.
+      for (const { item, x, y } of ready ? zoomsAt(walk, t, !flat) : []) {
+        const id = `${current!.key}#zoom#${item.zoom.id}`;
+        if (flat) {
+          wantButtons.add(id);
+          let b = itemButtons.get(id);
+          if (!b) {
+            const el = document.createElement("button");
+            el.type = "button";
+            el.style.zIndex = "3";
+            el.className = "pointer-events-auto absolute h-14 w-14 rounded-full shadow-lg";
+            el.style.transform = "translate(-50%, -50%)";
+            el.setAttribute("aria-label", `Zoom in on ${item.label.en}`);
+            const c = document.createElement("canvas");
+            c.width = c.height = 112;
+            c.className = "h-full w-full";
+            drawZoomMark(c.getContext("2d")!, 112);
+            el.appendChild(c);
+            el.addEventListener("click", () => { const m = itemButtons.get(id); if (m && !itemPick) onItem?.(m.item); });
+            b = { el, item };
+            itemButtons.set(id, b);
+            flatEl.appendChild(el);
+          }
+          b.item = item;
+          const r = flatRect(v!);
+          b.el.style.left = `${r.x + x * r.w}px`;
+          b.el.style.top = `${r.y + y * r.h}px`;
+          b.el.style.pointerEvents = itemPick ? "none" : "auto";
+          continue;
+        }
+        wantSprites.add(id);
+        let m = itemSprites.get(id);
+        if (!m) {
+          const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: zoomTexture(), depthTest: false, depthWrite: false, transparent: true }));
+          sprite.scale.set(ZOOM_W, ZOOM_W, 1);
+          sprite.userData.shared = true;
+          sprite.renderOrder = 12;
+          m = { sprite, item, x, y };
+          itemSprites.set(id, m);
+          scene.add(sprite);
+        }
+        m.item = item;
+        m.x = x;
+        m.y = y;
+        m.size = item.size;
+        const h = x - current!.spin;
+        const cp = Math.cos(y);
+        m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
+      }
       // The open card's product, outlined (360°: lines on the picture; flat: the button's border).
       const lit = highlightId ? [...itemSprites.values()].find((m) => m.item.id === highlightId) : undefined;
       if (lit) drawOutline(lit.x, lit.y, lit.size ?? { w: 0.05, h: 0.05 });
@@ -1465,6 +1564,11 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       },
       setOnItem(f) {
         onItem = f;
+      },
+      setPaused(on) {
+        paused = on;
+        if (on && current && !current.video.paused) current.video.pause();
+        if (!on) clock.getDelta(); // the time spent in the photo is not walked
       },
       setPriceText(f) {
         priceText = f;
@@ -1604,7 +1708,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
     let playRefused: HTMLVideoElement | null = null;
     function kick() {
       const v = current?.video;
-      if (!v || !v.paused || v.currentTime >= v.duration - 0.05) return;
+      if (paused || !v || !v.paused || v.currentTime >= v.duration - 0.05) return;
       v.play().then(() => {
         if (playRefused === v) playRefused = null;
       }, () => {});
@@ -1641,6 +1745,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
     let velTurn = 0;
     let rate = 0; // eased walk rate: + forward, − back, in "times as filmed"
     let holdUntil = 0; // the door photo is up: the walk waits
+    let paused = false; // a shelf's zoom photo is open over the walk: nothing is drawn or steered
     let stepDebt = 0; // seconds of stepping owed while a seek was in flight
 
     // ── Looking: finger, wheel/pinch, phone ───────────────────────────────
@@ -1825,6 +1930,9 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
     const clock = new THREE.Clock();
     const look = new THREE.Euler(0, 0, 0, "YXZ");
     renderer.setAnimationLoop(() => {
+      // ⚠️ THE ZOOM PHOTO IS OPEN (owner's brief, 2026-11-11: "pause rendering/input controls on the underlying 360°
+      // spherical canvas to conserve client GPU/CPU resources"): the video is stopped and this loop does nothing.
+      if (paused) return;
       const dt = Math.min(clock.getDelta(), 0.1);
       const ease = 1 - Math.exp(-dt / EASE_S);
       // The wheel's middle held: zoom in or out, smoothly, as long as it is held (same limits as pinch).
@@ -2174,6 +2282,13 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
   // A tap on an item's dot opens its card, and the walk stands while it is open.
   useEffect(() => {
     engine.current?.setOnItem((item) => {
+      // A shelf's 🔍: its zoom photo over the walk (the widget too: it is a picture, no basket in it).
+      if ("zoom" in item) {
+        setDrive(null);
+        setZoomOpen((item as WalkItem & { zoom: WalkZoom }).zoom);
+        track("zoom-open");
+        return;
+      }
       if (embedded) return; // the widget: the lights show, the card and the basket are on vbazaar.app
       setDrive(null);
       // The owner fills in the product; a shopper gets its card (add to basket).
@@ -2589,6 +2704,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
           </div>
         );
       })()}
+      {zoomOpen && <DeepZoom manifest={zoomOpen.manifest} title={zoomOpen.label} onClose={() => setZoomOpen(null)} />}
       {card && view.key && (
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => { setCard(null); setLit(null); }} />
       )}
@@ -2644,7 +2760,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
   const [listError, setListError] = useState<string | null>(null);
   type Draft = { id?: string; t: number; yaw: number; en: string; fa: string; to: string; url: string; flat: boolean; pins: SignPin[]; pinning: boolean };
   const [draft, setDraft] = useState<null | Draft>(null);
-  const [tab, setTab] = useState<"doors" | "items" | "sound" | "cut" | "hide" | "shadow">("doors");
+  const [tab, setTab] = useState<"doors" | "items" | "zoom" | "sound" | "cut" | "hide" | "shadow">("doors");
   const [status, setStatus] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
 
@@ -2780,9 +2896,9 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
     <div dir="ltr" data-walk-editor className={`absolute left-3 top-3 z-30 w-[min(22rem,calc(100%-1.5rem))] rounded-xl border border-white/20 bg-black/80 p-3 text-[13px] text-white/90 shadow-xl ${tab === "items" && catalogue?.products.length ? PRODUCTS_PANEL_SHIFT : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap gap-1">
-          {(["doors", "items", "sound", "cut", "hide", "shadow"] as const).map((k) => (
+          {(["doors", "items", "zoom", "sound", "cut", "hide", "shadow"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : k === "hide" ? "Lock" : "Shadow"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "zoom" ? "Zoom" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : k === "hide" ? "Lock" : "Shadow"}
             </button>
           ))}
         </div>
@@ -2796,6 +2912,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           {tab === "hide" && <HideEditor engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "cut" && <CutEditor video={() => engine.current?.video() ?? null} viewKey={viewKey} />}
           {tab === "shadow" && <ShadowEditor viewKey={viewKey} />}
+          {tab === "zoom" && <ZoomEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} />}
           {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "items" && <TagsFromControl engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}
