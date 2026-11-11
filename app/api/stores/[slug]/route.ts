@@ -60,7 +60,7 @@ import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readStats, widgetPlan } from "@/lib/stores/widget";
 import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
 import { readReel, startReel } from "@/lib/stores/reel";
-import { productLink, walkLink } from "@/lib/stores/productLink";
+import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
 import { ownerSeesWidget, snippet } from "@/lib/stores/widgetRules";
 import { demoClear, demoCount, demoFill } from "@/lib/stores/demoFill";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
@@ -96,7 +96,9 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     store: forPage(o.s),
     status: statusOf(o.s),
     products: c?.products ?? [],
-    walkUrl: o.s.out.walk ? `/vca/walk?v=${encodeURIComponent(o.s.out.walk)}` : null,
+    // A published store's walk has its short address; the editor always opens the video by its key.
+    walkUrl: o.s.out.walk ? (o.s.live ? storeWalkPath(o.s.slug) : `/vca/walk?v=${encodeURIComponent(o.s.out.walk)}`) : null,
+    editUrl: o.s.out.walk ? `/vca/walk?v=${encodeURIComponent(o.s.out.walk)}&edit=1` : null,
   });
 }
 
@@ -134,10 +136,10 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const [reel, walks, c] = await Promise.all([readReel(s.slug), readWalks().catch(() => null), readCatalogue(sceneOf(s.slug)).catch(() => null)]);
     const lit = new Set((walks?.walks[s.out.walk]?.items ?? []).filter((it) => it.n && it.pins.length).map((it) => it.n as number));
     const products = (c?.products ?? []).filter((p) => lit.has(p.n)).map((p) => ({
-      n: p.n, name: p.en || p.fa || `#${p.n}`, fa: p.fa ?? null, photo: p.photo ?? null, link: productLink(s.out.walk!, p.n),
+      n: p.n, name: p.en || p.fa || `#${p.n}`, fa: p.fa ?? null, photo: p.photo ?? null, link: productLink(s.out.walk!, p.n, undefined, s.live ? s.slug : undefined),
     }));
     const download = reel?.key ? await presignDownload(reel.key, `${s.slug}-reel.mp4`).catch(() => null) : null;
-    return ok({ reel: reel ? { ...reel, download } : null, walkLink: walkLink(s.out.walk), products });
+    return ok({ reel: reel ? { ...reel, download } : null, walkLink: walkLink(s.out.walk, undefined, s.live ? s.slug : undefined), products });
   }
   if (body.action === "reelMake") {
     if (!s.out.walk) return fail(409, "The store's walk is not made yet.");

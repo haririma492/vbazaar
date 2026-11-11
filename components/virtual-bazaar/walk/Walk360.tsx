@@ -525,7 +525,9 @@ function signTexture(en: string, fa?: string, site = false): THREE.CanvasTexture
   return t;
 }
 
-export default function Walk360() {
+/** `walkKey`: the walk to open when the address names none (`/walk/<store>`, a published store's short address). */
+export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
+  const keyProp = useRef(walkKey);
   const host = useRef<HTMLDivElement>(null);
   const flatHost = useRef<HTMLDivElement>(null);
   const engine = useRef<Engine | null>(null);
@@ -614,6 +616,16 @@ export default function Walk360() {
     const flatEl = flatHost.current;
     if (!el || !flatEl) return;
     const params = new URLSearchParams(window.location.search);
+    if (!params.get("v") && !params.get("src") && keyProp.current) params.set("v", keyProp.current);
+    /** The address follows the walk on screen. Leaving a store's short address (/walk/<store>) for another walk, it becomes the long one. */
+    const addressTo = (key: string) => {
+      try {
+        const u = new URL(window.location.href);
+        if (u.pathname.startsWith("/walk/")) { u.pathname = "/vca/walk"; u.searchParams.delete("p"); }
+        u.searchParams.set("v", key);
+        window.history.replaceState(null, "", u.toString());
+      } catch { /* the address is a convenience */ }
+    };
     /** The operator's pages read the walk's own video: no reversed twin there. */
     const noReverse = params.get("edit") === "1" || params.get("spots") === "1";
     const debugOn = params.get("debug") === "1";
@@ -1029,11 +1041,7 @@ export default function Walk360() {
       const h = heading();
       if (await switchTo(to, () => -h)) {
         planFace(key);
-        try {
-          const u = new URL(window.location.href);
-          u.searchParams.set("v", key);
-          window.history.replaceState(null, "", u.toString());
-        } catch { /* the address is a convenience */ }
+        addressTo(key);
       }
       report(true);
     }
@@ -1058,11 +1066,7 @@ export default function Walk360() {
       const spin = current.spin;
       const playing = rate > 0;
       if (await switchTo(to, () => spin)) {
-        try {
-          const u = new URL(window.location.href);
-          u.searchParams.set("v", key);
-          window.history.replaceState(null, "", u.toString());
-        } catch { /* the address is a convenience */ }
+        addressTo(key);
         if (playing) current?.video.play().catch(() => {});
       }
       carrying = false;
@@ -2519,7 +2523,9 @@ export default function Walk360() {
           className="absolute right-4 top-[12rem] z-20"
           snapshot={() => engine.current?.snapshot() ?? Promise.resolve(null)}
           title={walkOf(walks, view.key)?.title ?? { en: "the Virtual Bazaar" }}
-          link={() => `${window.location.origin}/vca/walk?v=${encodeURIComponent(view.key!)}${card?.n ? `&p=${card.n}` : ""}`}
+          link={() => view.key === walkKey && window.location.pathname.startsWith("/walk/")
+            ? `${window.location.origin}${window.location.pathname}${card?.n ? `?p=${card.n}` : ""}`
+            : `${window.location.origin}/vca/walk?v=${encodeURIComponent(view.key!)}${card?.n ? `&p=${card.n}` : ""}`}
         />
       )}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}

@@ -50,6 +50,8 @@ export default function ShelfTour() {
   const slug = useSearchParams().get("s") ?? "";
   const [tour, setTour] = useState<Tour | null>(null);
   const [title, setTitle] = useState<WalkLabel | null>(null);
+  /** The store is published: its Free Tour has the short address (/walk/<store>). */
+  const [live, setLive] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
   const [card, setCard] = useState<WalkItem | null>(null);
@@ -91,7 +93,7 @@ export default function ShelfTour() {
   useEffect(() => {
     if (!slug) { setErr("No store given."); return; }
     void fetch(`/api/tour/${encodeURIComponent(slug)}`, { cache: "no-store" }).then((r) => r.json())
-      .then((j) => { if (j?.ok) { setTour(j.tour); setTitle(j.title); } else setErr(j?.error ?? "No tour."); })
+      .then((j) => { if (j?.ok) { setTour(j.tour); setTitle(j.title); setLive(j.live === true); } else setErr(j?.error ?? "No tour."); })
       .catch(() => setErr("The tour could not be loaded. Check the connection and try again."));
     void fetch(`/api/splats/catalogue?store=${encodeURIComponent(`store-${slug}`)}`, { cache: "no-store" }).then((r) => r.json())
       .then((j) => { if (j?.ok && j.catalogue) setCatalogue(checkCatalogue(j.catalogue).catalogue); })
@@ -202,7 +204,7 @@ export default function ShelfTour() {
           {tour && (
             <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
               <span className="rounded-full bg-[#00B8C8] px-3 py-1 text-[#06131c]">🛒 Shelf Tour</span>
-              <a className="rounded-full px-3 py-1 text-white/80" href={`/vca/walk?v=${encodeURIComponent(tour.walk)}`}>👣 Free Tour</a>
+              <a className="rounded-full px-3 py-1 text-white/80" href={live ? `/walk/${slug}` : `/vca/walk?v=${encodeURIComponent(tour.walk)}`}>👣 Free Tour</a>
             </span>
           )}
           <a className="text-white/80 underline" href={`/vca/tour?s=${encodeURIComponent(slug)}&view=photos`}>📷 Photos</a>

@@ -54,7 +54,7 @@ export function planWidget(slug: string, f: WidgetFacts): WidgetPlan {
   const preview: WidgetPlan["preview"] = f.freeTour ? { kind: "video", src: f.freeTour.src, sound: f.freeTour.sound }
     : f.tourVideo ? { kind: "video", src: f.tourVideo } : photos.length ? { kind: "photos", srcs: photos } : { kind: "card" };
   if (!f.live || (!f.walk && !f.tourVideo)) return { preview, go: "/", soon: true, say: { en: "Coming soon to the Virtual Bazaar", fa: "به‌زودی در بازار مجازی" } };
-  const go = f.walk ? `/vca/walk?v=${encodeURIComponent(f.walk)}` : `/vca/tour?s=${encodeURIComponent(slug)}`;
+  const go = f.walk ? `/walk/${slug}` : `/vca/tour?s=${encodeURIComponent(slug)}`;
   return { preview, go, soon: false, say: { en: "Walk into our store", fa: "وارد فروشگاه ما شوید" } };
 }
 

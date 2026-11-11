@@ -14,7 +14,7 @@ test("the snippet: our frame, and a plain counted link for a site without script
 test("a published store: the Shelf Tour's loop, and the key opens its Free Tour on vbazaar.app", () => {
   const p = planWidget("shirazgallery", facts);
   assert.deepEqual(p.preview, { kind: "video", src: facts.tourVideo });
-  assert.equal(p.go, "/vca/walk?v=scenes%2Fstore-shirazgallery%2Fwalk-1.mp4");
+  assert.equal(p.go, "/walk/shirazgallery");
   assert.equal(p.soon, false);
 });
 

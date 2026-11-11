@@ -4,13 +4,22 @@
 
 export const SITE = "https://vbazaar.app";
 
-export function productLink(walkKey: string, n: number, origin = SITE): string {
-  return `${origin}/vca/walk?v=${encodeURIComponent(walkKey)}&p=${n}`;
+/**
+ * A PUBLISHED STORE'S SHORT ADDRESS (owner, 2026-11-10: "change these URLs to one that is sensible … e.g.
+ * vbazaar.app/walk/saraye-bamdad"): /walk/<slug> opens the store's walk as it is today, so the link also outlives a
+ * new video. Only a published store has it (an unpublished one's slug must not open its walk); the long address
+ * with the video's key keeps working for every walk.
+ */
+export const storeWalkPath = (slug: string) => `/walk/${slug}`;
+
+/** With `slug` (a published store): the short address. */
+export function productLink(walkKey: string, n: number, origin = SITE, slug?: string): string {
+  return slug ? `${origin}${storeWalkPath(slug)}?p=${n}` : `${origin}/vca/walk?v=${encodeURIComponent(walkKey)}&p=${n}`;
 }
 
-/** The store's walk from its door: the link for the bio and the Reel's caption. */
-export function walkLink(walkKey: string, origin = SITE): string {
-  return `${origin}/vca/walk?v=${encodeURIComponent(walkKey)}`;
+/** The store's walk from its door: the link for the bio and the Reel's caption. With `slug` (a published store): the short address. */
+export function walkLink(walkKey: string, origin = SITE, slug?: string): string {
+  return slug ? `${origin}${storeWalkPath(slug)}` : `${origin}/vca/walk?v=${encodeURIComponent(walkKey)}`;
 }
 
 /** `p` from a walk address: a product number 1–9999, or null. */

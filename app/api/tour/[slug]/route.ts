@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import { readTour } from "@/lib/stores/tourJob";
 import { readWalks } from "@/lib/splats/r2";
+import { readStore } from "@/lib/stores/bucket";
 import { toMediaUrl } from "@/lib/splats/media";
 
 export const runtime = "nodejs";
@@ -17,5 +18,5 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
   void _plan;
   const walk = (await readWalks().catch(() => null))?.walks[r.walk] ?? null;
   // A tour made before the videos went private names the public address: played through /api/media now.
-  return NextResponse.json({ ok: true, tour: { ...tour, video: toMediaUrl(tour.video) }, title: walk?.title ?? null }, { headers: NO_STORE });
+  return NextResponse.json({ ok: true, tour: { ...tour, video: toMediaUrl(tour.video) }, title: walk?.title ?? null, live: Boolean((await readStore(params.slug).catch(() => null))?.live) }, { headers: NO_STORE });
 }

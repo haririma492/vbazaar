@@ -47,6 +47,7 @@ type Page = {
   status: { en: string; fa: string; tone: string };
   products: Product[];
   walkUrl: string | null;
+  editUrl?: string | null;
   music?: Track[];
   radio?: 4 | null;
 };
@@ -195,7 +196,7 @@ export default function StorePage({ slug }: { slug: string }) {
         <div className="flex flex-wrap items-center gap-2">
           {page.walkUrl ? <a href={page.walkUrl} target="_blank" rel="noreferrer" className={KEY + " inline-flex items-center"}>قدم زدن در فروشگاه · Walk the store ↗</a>
             : <p className="text-[13px] text-white/55">The walk appears here once the Video agent has made it. · پس از آماده شدن ویدیو</p>}
-          {op && page.walkUrl && <a href={`${page.walkUrl}&edit=1`} target="_blank" rel="noreferrer" className={QUIET + " inline-flex items-center"}>Edit tags by hand ↗</a>}
+          {op && page.editUrl && <a href={page.editUrl} target="_blank" rel="noreferrer" className={QUIET + " inline-flex items-center"}>Edit tags by hand ↗</a>}
           {op && !s.live && page.walkUrl && (
             <button type="button" className={KEY} onClick={() => void act({ action: "publish" })}>انتشار در بازار · Publish</button>
           )}
