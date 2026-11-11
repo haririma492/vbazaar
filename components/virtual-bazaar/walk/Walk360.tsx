@@ -64,6 +64,7 @@ import { isBookStore } from "@/lib/stores/store";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import ShareToStory from "./ShareToStory";
 import WalkStats from "./WalkStats";
+import { useAdminMode } from "@/lib/admin/useAdminMode";
 import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
@@ -585,8 +586,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   // owner, signed in with the store's password, starts in the owner's view. Either one's own choice is kept.
   const [asShopper, setAsShopper] = useState(false);
   const viewChosen = useRef(false);
-  const [statsAsked, setStatsAsked] = useState(false);
-  useEffect(() => { setStatsAsked(new URLSearchParams(window.location.search).get("stats") === "1"); }, []);
+  // The walk's PPD and FPS show only in admin mode (AAA, the admin token; owner, 2026-11-11).
+  const adminMode = useAdminMode();
   const statsVideo = useCallback(() => engine.current?.video() ?? null, []);
   useEffect(() => {
     try {
@@ -2539,9 +2540,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
-      {/* The walk's own PPD and FPS (owner, 2026-11-11), under the logo and the view switch: for the store's owner
-          and the operator, or anyone with ?stats=1; not for shoppers. */}
-      {(owner || statsAsked) && phase === "walking" && !editing && (
+      {/* The walk's own PPD and FPS (owner, 2026-11-11), under the logo and the view switch: only in admin mode
+          (AAA): "hide PPD and FPS unless in admin mode (AAA)". */}
+      {adminMode && phase === "walking" && !editing && (
         <WalkStats video={statsVideo} projection={view.flat ? "flat" : walkOf(walks, view.key)?.projection ?? null}
           lens={view.flat ? walkOf(walks, view.key)?.lens ?? null : null} className="absolute left-3 top-[7.75rem] z-20" />
       )}

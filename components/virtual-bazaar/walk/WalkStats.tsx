@@ -2,8 +2,8 @@
 
 /**
  * The walk's own numbers at its top left: PPD and FPS (`lib/splats/walkStats.ts`; owner, 2026-11-11). Read from
- * the video on screen: its width, and the times of the frames the browser shows. For the store's owner and the
- * operator (signed in), and for anyone who adds `?stats=1` to the walk's address; shoppers do not see it.
+ * the video on screen: its width, and the times of the frames the browser shows. Shown only in admin mode (AAA
+ * with the admin token; owner, 2026-11-11: "hide PPD and FPS unless in admin mode (AAA)").
  */
 import { useEffect, useState } from "react";
 import { fpsOf, ppdOf } from "@/lib/splats/walkStats";
