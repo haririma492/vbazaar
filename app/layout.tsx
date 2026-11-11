@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import ErrorReporter from "@/components/common/ErrorReporter";
+import VisitorStats from "@/components/common/VisitorStats";
 
 // The Virtual Bazaar (VCA) on its own site, vbazaar.app (copied out of
 // olgoo-com/vca-app on 2026-10-29; before that olgoo.com, and Sarekooche until
@@ -18,7 +19,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fa" dir="rtl">
-      <body className="min-h-screen"><ErrorReporter />{children}</body>
+      <body className="min-h-screen"><ErrorReporter /><VisitorStats />{children}</body>
     </html>
   );
 }

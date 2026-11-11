@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { track } from "@/lib/visitors/track";
 import { BASKET_KEY, OLD_OFFLINE_KEY, addLine, parseBasket, setQty as setQtyOf, type BasketLine } from "@/lib/basket";
 
 const EVENT = "vbazaar-basket";
@@ -37,6 +38,7 @@ function write(lines: BasketLine[]) {
 export function addToBasket(line: Omit<BasketLine, "qty" | "at">, qty = 1): number {
   const next = addLine(read(), line, qty);
   write(next);
+  track("basket-add");
   return next.reduce((n, l) => n + l.qty, 0);
 }
 

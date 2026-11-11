@@ -120,6 +120,26 @@ plan and the Managed Agents decision are in
   after `renderer.render`) on a 9:16 card with the store's name and vbazaar.app, to the phone's share sheet (or saved);
   the link (the walk, or the open product) is copied for Instagram's link sticker. Not built yet: «comment WALK →
   automatic DM» (needs a Meta app, its review and each store's Business account).
+- **Visitor statistics, with AAA** (owner, 2026-11-11: *"add statistics collection to vbazaar.app with admin mode
+  (AAA + admin token) exactly similar to olgoo.com"*). A port of olgoo.com's `visitor-stats.js`, `api/visitors.js`,
+  `api/visitors-stats.js` and their two stores. `components/common/VisitorStats.tsx` is in the root layout: every
+  page sends a heartbeat a minute to `/api/visitors`, and its journey (page opened with referrer and utm_*, seconds
+  in view and deepest scroll, clicks on `[data-track]`, outbound links, tel:, mailto:; `track("name")` from
+  `lib/visitors/track.ts`, used by «Add to basket» as `basket-add`). **AAA** (`useAdminMode`, the admin token asked
+  once and checked by the server) shows the readout at the top right, AAA again hides it: pills L/H/S/D/W/T for
+  visits and distinct visitors, Now / Today / Active / Total, the last 24 h of journeys, the operator's address,
+  «full readout» (all of `/api/visitors-stats` as JSON, `x-admin-token`). Rules in `lib/visitors/rules.ts`
+  (pure, tested). Where it differs from olgoo.com, on purpose:
+  - **Stored in R2, written every 30 s** (`lib/visitors/store.ts`: `analytics/visitors.json`, `journeys.json`,
+    `excluded-ips.json`, masters bucket). The documents live in the server's memory; a deploy loses at most 30 s.
+    ONE server only. A failed read never becomes an empty document written over the totals.
+  - **The readout waits for AAA** (olgoo.com shows it by itself once a token is in the browser): the operator's
+    browser is the one the walks are demonstrated on.
+  - **Counts need the admin token**, not a cookie anyone can set; the token is never read from the address.
+  - **A link that loads a whole new page is the same visit** (olgoo.com counts each as a new arrival).
+  - The operator is never counted: the token, the `vb_admin=1` cookie, an address that opened the statistics in
+    the last 30 days, `EXCLUDED_IPS`. Bots are not counted. Not counted either: the widget's frame (`/w/…`), the
+    offline demo. Counting started 2026-11-11.
 - **Owners' visits are counted** (owner, 2026-11-06: *"we need to count store owners using their password and
   visiting their page"*, *"lets add that statistics to vbazaar.app/stores"*): each sign-in with the store's
   password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit
