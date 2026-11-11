@@ -158,7 +158,7 @@ export type StoreRecord = {
   widgetForOwner?: boolean;
   /** The widget on the store's own site, set from OUR side (`widgetSettings` in `widgetRules.ts`): shown or not,
    *  where, how wide, which language. The store's two lines of code never change (owner, 2026-11-11). */
-  widget?: { on?: boolean; place?: "top" | "here"; width?: number; lang?: "fa" | "en" };
+  widget?: { on?: boolean; place?: "float" | "top" | "here"; corner?: "br" | "bl" | "tr" | "tl"; width?: number; lang?: "fa" | "en" };
   /** Shown on vbazaar.app/tours, with its short address /walk/<slug>, without being published into the bazaar: the
    *  operator's switch (owner, 2026-11-10: "I am going to demo these ready stores to new prospects"). */
   onTours?: boolean;

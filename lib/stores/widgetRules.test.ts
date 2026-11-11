@@ -67,9 +67,10 @@ test("the preview looks away from the camera operator, and the operator never en
 });
 
 test("the widget's settings are ours: defaults for a store that set none, anything odd made safe", () => {
-  assert.deepEqual(widgetSettings(undefined), { on: true, place: "top", width: 480, lang: "fa" });
-  assert.deepEqual(widgetSettings({ on: false, place: "here", width: 360, lang: "en" }), { on: false, place: "here", width: 360, lang: "en" });
-  assert.deepEqual(widgetSettings({ place: "moon", width: "abc", lang: "de" }), { on: true, place: "top", width: 480, lang: "fa" });
+  assert.deepEqual(widgetSettings(undefined), { on: true, place: "float", corner: "br", width: 480, lang: "fa" });
+  assert.deepEqual(widgetSettings({ on: false, place: "here", corner: "tl", width: 360, lang: "en" }), { on: false, place: "here", corner: "tl", width: 360, lang: "en" });
+  assert.deepEqual(widgetSettings({ place: "moon", corner: "x", width: "abc", lang: "de" }), { on: true, place: "float", corner: "br", width: 480, lang: "fa" });
+  assert.equal(widgetSettings({ place: "top" }).place, "top");
   assert.equal(widgetSettings({ width: 50 }).width, 240);
   assert.equal(widgetSettings({ width: 99999 }).width, 1200);
 });

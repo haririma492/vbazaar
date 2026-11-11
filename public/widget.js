@@ -4,7 +4,8 @@
  *   <script async src="https://vbazaar.app/widget.js" data-vbazaar-store="<store>"></script>
  * (The older two lines, a <div data-vbazaar-store="<store>"> and then this script, work the same.)
  * It shows the store's Free Tour in the Virtual Bazaar; the arch at its top left opens the store on vbazaar.app.
- * Everything about it (shown or not, where on the page, how wide, the language) is set on vbazaar.app, on the
+ * By default it is a floating window over a corner of the page (it takes no room in the page), with a × to close.
+ * Everything about it (shown or not, floating or in the page, which corner, how wide, the language) is set on vbazaar.app, on the
  * store's page there, and asked for here each time (/api/w/<store>). Attributes on the <div> (data-place="here",
  * data-width, data-lang) are used only if that answer cannot be had.
  */
@@ -18,7 +19,8 @@
   function fromDiv(box) {
     return {
       on: true,
-      place: box.getAttribute("data-place") === "here" ? "here" : "top",
+      place: box.getAttribute("data-place") === "here" ? "here" : box.getAttribute("data-place") === "top" ? "top" : "float",
+      corner: "br",
       width: parseInt(box.getAttribute("data-width") || "480", 10) || 480,
       lang: box.getAttribute("data-lang") === "en" ? "en" : "fa"
     };
@@ -46,16 +48,39 @@
     if (under && under.parentNode) under.parentNode.insertBefore(wrap, under.nextSibling);
     else document.body.insertBefore(wrap, document.body.firstChild);
   }
+  // A window of its own over a corner of the page: it takes no room in the page (no empty lane beside it), stays in
+  // view as the page scrolls, is never wider than the screen, and has a × that closes it for this visit.
+  function floatIt(wrap, set, slug) {
+    var c = set.corner || "br";
+    wrap.style.position = "fixed";
+    wrap.style.zIndex = "2147483000";
+    wrap.style.width = "min(" + set.width + "px, calc(100vw - 24px))";
+    wrap.style.maxWidth = "none";
+    wrap.style[c.charAt(0) === "t" ? "top" : "bottom"] = "12px";
+    wrap.style[c.charAt(1) === "l" ? "left" : "right"] = "12px";
+    wrap.style.boxShadow = "0 8px 30px rgba(0,0,0,.35)";
+    var x = document.createElement("button");
+    x.type = "button";
+    x.setAttribute("aria-label", "Close");
+    x.textContent = "\u00d7";
+    x.style.cssText = "position:absolute;top:6px;right:6px;z-index:2;width:28px;height:28px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:#fff;font:700 18px/28px system-ui,sans-serif;padding:0;cursor:pointer";
+    x.onclick = function () { closed[slug] = true; try { sessionStorage.setItem("vbazaar-widget-closed-" + slug, "1"); } catch (e) {} if (wrap.parentNode) wrap.parentNode.removeChild(wrap); };
+    wrap.appendChild(x);
+    document.body.appendChild(wrap);
+  }
+  var closed = {};
+  function isClosed(slug) { if (closed[slug]) return true; try { return sessionStorage.getItem("vbazaar-widget-closed-" + slug) === "1"; } catch (e) { return false; } }
   function draw(box, slug, set) {
     box.setAttribute("data-vbazaar-ready", "1");
     if (!set.on) { if (box.tagName !== "SCRIPT") box.style.display = "none"; return; }
     if (set.place !== "here") {
       if (box.tagName !== "SCRIPT") box.style.display = "none";
-      // One widget a store at the top, even when the site draws the <div> again (a new page of a one-page site).
+      // One widget a store, even when the site draws the <div> again (a new page of a one-page site).
       for (var i = 0; i < made.length; i++) if (made[i].top && made[i].slug === slug) return;
+      if (set.place === "float" && isClosed(slug)) return;
       var wrap = frame(slug, set);
-      putOnTop(wrap);
-      made.push({ slug: slug, wrap: wrap, top: true });
+      made.push({ slug: slug, wrap: wrap, top: true, float: set.place === "float", set: set });
+      if (set.place === "float") floatIt(wrap, set, slug); else putOnTop(wrap);
     } else {
       var w = frame(slug, set);
       // "Here": inside the store's <div>, or right after the one line of script when that is all there is.
@@ -77,7 +102,7 @@
       var x = new XMLHttpRequest();
       x.open("GET", ORIGIN + "/api/w/" + slug);
       x.timeout = 6000;
-      x.onload = function () { var j = null; try { j = JSON.parse(x.responseText); } catch (e) {} done(j && j.ok ? { on: j.on !== false, place: j.place === "here" ? "here" : "top", width: +j.width || 480, lang: j.lang === "en" ? "en" : "fa" } : null); };
+      x.onload = function () { var j = null; try { j = JSON.parse(x.responseText); } catch (e) {} done(j && j.ok ? { on: j.on !== false, place: j.place === "here" ? "here" : j.place === "top" ? "top" : "float", corner: j.corner || "br", width: +j.width || 480, lang: j.lang === "en" ? "en" : "fa" } : null); };
       x.onerror = x.ontimeout = function () { done(null); };
       x.send();
     } catch (e) { done(null); }
@@ -87,7 +112,7 @@
     var l = document.querySelectorAll("[data-vbazaar-store]");
     for (var i = 0; i < l.length; i++) mount(l[i]);
     // A site that draws itself again can drop our frame from the top: it is put back.
-    for (var k = 0; k < made.length; k++) if (made[k].top && !made[k].wrap.isConnected) putOnTop(made[k].wrap);
+    for (var k = 0; k < made.length; k++) if (made[k].top && !made[k].wrap.isConnected && !closed[made[k].slug]) { if (made[k].float) document.body.appendChild(made[k].wrap); else putOnTop(made[k].wrap); }
   }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", all); else all();
   // A site drawn by a script adds the <div> after this file has run: looked for again, lightly.

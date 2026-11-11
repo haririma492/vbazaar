@@ -109,14 +109,23 @@ export default function WidgetCard({ api, slug, operator }: { api: string; slug:
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-white/60">Where:</span>
-            {([["top", "Top of the page, under its header"], ["here", "Where the code was pasted"]] as const).map(([v, say]) => (
+            {([["float", "A floating window (takes no room in the page)"], ["top", "In the page, under its header"], ["here", "In the page, where the code was pasted"]] as const).map(([v, say]) => (
               <button key={v} type="button" disabled={busy} aria-pressed={got.settings.place === v} onClick={() => set({ place: v })}
                 className={`rounded-full border px-3 py-1 ${got.settings.place === v ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{say}</button>
             ))}
           </div>
+          {got.settings.place === "float" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-white/60">Corner:</span>
+              {([["br", "Bottom right"], ["bl", "Bottom left"], ["tr", "Top right"], ["tl", "Top left"]] as const).map(([v, say]) => (
+                <button key={v} type="button" disabled={busy} aria-pressed={got.settings.corner === v} onClick={() => set({ corner: v })}
+                  className={`rounded-full border px-3 py-1 ${got.settings.corner === v ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{say}</button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-white/60">Widest (4:3):</span>
-            {[320, 400, 480, 640, 800].map((w) => (
+            {[280, 320, 400, 480, 640, 800].map((w) => (
               <button key={w} type="button" disabled={busy} aria-pressed={got.settings.width === w} onClick={() => set({ width: w })}
                 className={`rounded-full border px-3 py-1 ${got.settings.width === w ? "border-emerald-300 bg-emerald-400 font-bold text-black" : "border-white/25 text-white/80"}`}>{w} px</button>
             ))}

@@ -107,13 +107,20 @@ export function parseStats(raw: unknown): WidgetStats {
 export type WidgetSettings = {
   /** Shown at all (off: nothing is drawn on the store's site). */
   on: boolean;
-  /** "top": under the site's header, wherever the code was pasted. "here": inside the store's own <div>. */
-  place: "top" | "here";
+  /**
+   * "float": a window of its own over a corner of the page, taking no room in the page (owner, 2026-11-11: "why the
+   * widget window goes left to right taking a whole horizontal lane … it should only be a window taking as much
+   * space as needed for the video"); it stays in view as the page scrolls and has a × to close it.
+   * "top": in the page, under the site's header. "here": in the page, where the code was pasted.
+   */
+  place: "float" | "top" | "here";
+  /** Which corner a floating window sits in: bottom/top, right/left. */
+  corner: "br" | "bl" | "tr" | "tl";
   /** Its widest, in pixels (always 4:3; narrower on a small screen). */
   width: number;
   lang: "fa" | "en";
 };
-export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "top", width: 480, lang: "fa" };
+export const WIDGET_DEFAULTS: WidgetSettings = { on: true, place: "float", corner: "br", width: 480, lang: "fa" };
 export const WIDGET_WIDTHS = { min: 240, max: 1200 };
 
 /** Whatever was stored or sent, made safe: unknown values fall back to the defaults, the width is kept in range. */
@@ -122,7 +129,8 @@ export function widgetSettings(raw: unknown): WidgetSettings {
   const w = Math.round(Number(o.width));
   return {
     on: o.on !== false,
-    place: o.place === "here" ? "here" : "top",
+    place: o.place === "here" ? "here" : o.place === "top" ? "top" : "float",
+    corner: o.corner === "bl" || o.corner === "tr" || o.corner === "tl" ? o.corner : "br",
     width: Number.isFinite(w) && w > 0 ? Math.min(WIDGET_WIDTHS.max, Math.max(WIDGET_WIDTHS.min, w)) : WIDGET_DEFAULTS.width,
     lang: o.lang === "en" ? "en" : "fa",
   };
