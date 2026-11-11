@@ -26,7 +26,20 @@ export type ZoomSet = {
   tiles?: number;
   /** The stitched master (private bucket), kept for the agents (reading every label, later). */
   master?: string;
+  /** The finder's last look for this shelf in the store's walk (`scripts/stitch/locate.py`): which walk and photo it
+   *  looked with, whether the shelf was seen, and what it said. Looked again only when the walk or the photo changes. */
+  place?: { walk: string; manifest: string; found: boolean; note: string; at: string };
 };
+/** Whether the finder should look for `set` in `walk`: never looked, or the walk or the photo changed since. */
+export function toLocate(set: ZoomSet, walk: string, force = false): boolean {
+  if (set.state !== "done" || !set.manifest || !set.master) return false;
+  return force || !set.place || set.place.walk !== walk || set.place.manifest !== set.manifest;
+}
+/** At most `max` of `frames`, evenly, keeping the first and the last. */
+export function thin<T>(frames: T[], max: number): T[] {
+  if (frames.length <= max) return frames;
+  return Array.from({ length: max }, (_, i) => frames[Math.round((i * (frames.length - 1)) / (max - 1))]);
+}
 export type ZoomRecord = { store: string; sets: ZoomSet[]; updated: string };
 
 /** The uploads grouped into shelves, in the order each shelf's first photo came. */

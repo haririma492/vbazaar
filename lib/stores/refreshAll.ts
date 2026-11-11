@@ -10,7 +10,8 @@
 //   5  Spine reader              the shelf photos not read yet, if any (Haiku, a few cents a photo)
 //   6  Zoom photos               each shelf's three phone photos stitched into its zoom photo and cut into tiles
 //                                 (free; `gigapan.ts`; owner, 2026-11-11: "add the integration as part of
-//                                 Refresh all agents"); only the shelves not stitched yet, or whose photos changed
+//                                 Refresh all agents"); only the shelves not stitched yet, or whose photos changed;
+//                                 then each shelf is found in the walk and bordered in green (free)
 //   …  Photo improver            queued by step 1 when it found new books; it runs on its own
 //
 // ⚠️ AUTOMATIC FOR EVERY STORE (owner, 2026-11-06: "what ever we built for saraye-bamdad need to apply and work
@@ -35,7 +36,7 @@ import { readTitles } from "./titles";
 import { readShelfPhotos, readShelfTitles } from "./shelfTitles";
 import { readIndex } from "./bucket";
 import { readTour } from "./tourJob";
-import { stitchZooms } from "./gigapan";
+import { refreshZooms } from "./gigapan";
 
 export type RefreshStep = { name: string; note: string; at: string };
 export type RefreshRun = { store: string; started: string; finished: string | null; steps: RefreshStep[]; running: boolean; version?: number };
@@ -130,7 +131,7 @@ async function refreshAll(slug: string): Promise<void> {
   const unread = (s?.files.shelf ?? []).length - ((await readShelfTitles(slug))?.done.length ?? 0);
   await step(REFRESH_STEPS[5], async () => (unread > 0 ? readShelfPhotos(slug) : "No shelf photos waiting to be read."));
   // Last: it is free and stands on nothing above, and a long stitch never holds the tour back.
-  await step(REFRESH_STEPS[6], () => stitchZooms(slug));
+  await step(REFRESH_STEPS[6], () => refreshZooms(slug));
   run.running = false;
   run.finished = new Date().toISOString();
   await save();

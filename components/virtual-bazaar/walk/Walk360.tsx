@@ -1237,6 +1237,70 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       for (const g of [0, 0.0015, 0.003]) outline.add(ring(g));
     }
     const outlineMaterial = new THREE.LineBasicMaterial({ color: 0xffd24a, depthTest: false, depthWrite: false, transparent: true });
+    // ── A SHELF WITH A ZOOM PHOTO IS BORDERED IN GREEN (owner, 2026-11-11: "bordered with some line, maybe green
+    // line, in a rectangle shape … so the shopper know … this shelf is the one that is fully pictured in a high
+    // quality"). The border is the photo's own outline on the shelf (`WalkZoom.outline`), a ribbon about a third of
+    // a degree wide whose sides are straight in the view (great arcs on the sphere); a tap anywhere inside opens the
+    // photo, and the 🔍 sits in its top right corner. On a flat video it is an SVG shape over the picture.
+    const ZOOM_SEG = 10, ZOOM_HALF = 0.003 * MARK_R;
+    const zoomRibbonMaterial = new THREE.MeshBasicMaterial({ color: 0x35e07a, depthTest: false, depthWrite: false, transparent: true, opacity: 0.95, side: THREE.DoubleSide });
+    const zoomRibbons = new Map<string, THREE.Mesh>();
+    const dirOf = (x: number, y: number) => {
+      const h = x - (current?.spin ?? 0), cp = Math.cos(y);
+      return new THREE.Vector3(Math.sin(h) * cp, Math.sin(y), -Math.cos(h) * cp);
+    };
+    function ribbonFor(id: string): THREE.Mesh {
+      let m = zoomRibbons.get(id);
+      if (m) return m;
+      const n = 4 * ZOOM_SEG;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 2 * 3), 3));
+      const idx: number[] = [];
+      for (let i = 0; i < n; i++) { const a = i * 2, b = ((i + 1) % n) * 2; idx.push(a, a + 1, b, b, a + 1, b + 1); }
+      g.setIndex(idx);
+      m = new THREE.Mesh(g, zoomRibbonMaterial);
+      m.frustumCulled = false;
+      m.renderOrder = 10;
+      zoomRibbons.set(id, m);
+      scene.add(m);
+      return m;
+    }
+    function drawRibbon(id: string, quad: number[]) {
+      const c = [0, 1, 2, 3].map((k) => dirOf(quad[k * 2], quad[k * 2 + 1]));
+      const pts: THREE.Vector3[] = [];
+      for (let e = 0; e < 4; e++) for (let i = 0; i < ZOOM_SEG; i++) pts.push(c[e].clone().lerp(c[(e + 1) % 4], i / ZOOM_SEG).normalize());
+      const pos = (ribbonFor(id).geometry.getAttribute("position") as THREE.BufferAttribute);
+      const n = pts.length;
+      for (let i = 0; i < n; i++) {
+        const p = pts[i], side = pts[(i + 1) % n].clone().sub(pts[(i + n - 1) % n]).cross(p).normalize().multiplyScalar(ZOOM_HALF);
+        pos.setXYZ(i * 2, p.x * MARK_R + side.x, p.y * MARK_R + side.y, p.z * MARK_R + side.z);
+        pos.setXYZ(i * 2 + 1, p.x * MARK_R - side.x, p.y * MARK_R - side.y, p.z * MARK_R - side.z);
+      }
+      pos.needsUpdate = true;
+    }
+    let zoomSvg: SVGSVGElement | null = null;
+    const zoomPolys = new Map<string, { el: SVGPolygonElement; item: WalkItem }>();
+    function polyFor(id: string): SVGPolygonElement {
+      const had = zoomPolys.get(id);
+      if (had) return had.el;
+      if (!zoomSvg) {
+        zoomSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        zoomSvg.setAttribute("class", "pointer-events-none absolute inset-0 h-full w-full");
+        zoomSvg.style.zIndex = "1"; // under the products' lights: a product inside the border still opens its own card
+        flatEl.appendChild(zoomSvg);
+      }
+      const el = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+      el.setAttribute("fill", "rgba(53,224,122,0.06)");
+      el.setAttribute("stroke", "#35e07a");
+      el.setAttribute("stroke-width", "4");
+      el.setAttribute("stroke-linejoin", "round");
+      el.style.pointerEvents = "all";
+      el.style.cursor = "zoom-in";
+      el.addEventListener("click", () => { const m = zoomPolys.get(id); if (m && !itemPick) onItem?.(m.item); });
+      zoomSvg.appendChild(el);
+      zoomPolys.set(id, { el, item: null as unknown as WalkItem });
+      return el;
+    }
     /** On screen now: each product's sprite (a light, or a special's tag), with where it is and its outline. */
     const itemSprites = new Map<string, { sprite: THREE.Sprite; item: WalkItem; x: number; y: number; size?: { w: number; h: number } }>();
     const itemButtons = new Map<string, { el: HTMLButtonElement; item: WalkItem }>();
@@ -1386,8 +1450,28 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
         m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
       }
       // A shelf's zoom photo: its 🔍 on the shelf (a sprite on a 360° walk, a key over a flat video). A tap opens it.
-      for (const { item, x, y } of ready ? zoomsAt(walk, t, !flat) : []) {
+      const wantBorders = new Set<string>();
+      for (const { item, x: cx0, y: cy0, quad } of ready ? zoomsAt(walk, t, !flat) : []) {
         const id = `${current!.key}#zoom#${item.zoom.id}`;
+        // Bordered: the 🔍 sits just inside the border's top right corner (the border itself is the key).
+        let x = cx0, y = cy0;
+        if (quad) {
+          wantBorders.add(id);
+          if (flat) {
+            const r = flatRect(v!);
+            const el = polyFor(id);
+            el.setAttribute("points", [0, 1, 2, 3].map((k) => `${(r.x + quad[k * 2] * r.w).toFixed(1)},${(r.y + quad[k * 2 + 1] * r.h).toFixed(1)}`).join(" "));
+            el.style.pointerEvents = itemPick ? "none" : "all";
+            zoomPolys.get(id)!.item = item;
+            x = quad[2] + (cx0 - quad[2]) * 0.14;
+            y = quad[3] + (cy0 - quad[3]) * 0.14;
+          } else {
+            drawRibbon(id, quad);
+            const d = dirOf(quad[2], quad[3]).lerp(dirOf(cx0, cy0), 0.14).normalize();
+            y = Math.asin(THREE.MathUtils.clamp(d.y, -1, 1));
+            x = wrapAngle(Math.atan2(d.x, -d.z) + current!.spin);
+          }
+        }
         if (flat) {
           wantButtons.add(id);
           let b = itemButtons.get(id);
@@ -1427,13 +1511,16 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
           scene.add(sprite);
         }
         m.item = item;
-        m.x = x;
-        m.y = y;
+        // A tap counts anywhere inside the border (its middle and its size); the 🔍 itself is drawn at (x, y).
+        m.x = cx0;
+        m.y = cy0;
         m.size = item.size;
         const h = x - current!.spin;
         const cp = Math.cos(y);
         m.sprite.position.set(Math.sin(h) * cp * MARK_R, Math.sin(y) * MARK_R, -Math.cos(h) * cp * MARK_R);
       }
+      for (const [id, mesh] of zoomRibbons) if (!wantBorders.has(id)) { scene.remove(mesh); mesh.geometry.dispose(); zoomRibbons.delete(id); }
+      for (const [id, p] of zoomPolys) if (!wantBorders.has(id)) { p.el.remove(); zoomPolys.delete(id); }
       // The open card's product, outlined (360°: lines on the picture; flat: the button's border).
       const lit = highlightId ? [...itemSprites.values()].find((m) => m.item.id === highlightId) : undefined;
       if (lit) drawOutline(lit.x, lit.y, lit.size ?? { w: 0.05, h: 0.05 });

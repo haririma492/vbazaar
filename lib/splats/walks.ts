@@ -308,13 +308,62 @@ export type Walk = {
  * of the frame on a flat one); a tap opens `manifest` (the photo's Deep Zoom tiles) over the walk, which stops
  * meanwhile. `id` is the zoom photo's (the store's `gigapans.json`), so a photo stitched again keeps its place.
  */
-export type WalkZoom = { id: string; label: WalkLabel; manifest: string; thumb?: string; pins: ItemPin[] };
+export type WalkZoom = {
+  id: string; label: WalkLabel; manifest: string; thumb?: string; pins: ItemPin[];
+  /**
+   * THE SHELF'S BORDER (owner, 2026-11-11: "identify the shelves for which … gigapan photos are submitted … bordered
+   * with some line, maybe green line, in a rectangle shape … so the shopper know … this shelf is the one that is
+   * fully pictured in a high quality"). The photo's four corners (top-left, top-right, bottom-right, bottom-left) at
+   * each step the shelf is in view, in the pins' units; found in the walk's own video by `scripts/stitch/locate.py`.
+   * With it the walk draws the green border and a tap anywhere inside opens the photo.
+   */
+  outline?: ZoomFrame[];
+  /** Placed by the finder, not by the operator's tap: a new run may replace it; an operator's pin is never replaced. */
+  auto?: boolean;
+};
+export type ZoomFrame = { t: number; c: number[] };
+/** Steps further apart than this are two visits to the shelf: no border is drawn across the gap. */
+export const ZOOM_GAP = 1.6;
+/** The border's four corners at `t` (8 numbers), or null when the shelf is not in view then. */
+export function outlineAt(z: WalkZoom, t: number, round: boolean): number[] | null {
+  const f = z.outline;
+  if (!f?.length) return null;
+  if (t < f[0].t - ITEM_HOLD || t > f[f.length - 1].t + ITEM_HOLD) return null;
+  if (t <= f[0].t) return f[0].c;
+  if (t >= f[f.length - 1].t) return f[f.length - 1].c;
+  let i = 0;
+  while (f[i + 1].t < t) i++;
+  const a = f[i], b = f[i + 1];
+  if (b.t - a.t > ZOOM_GAP) return Math.min(t - a.t, b.t - t) <= ITEM_HOLD ? (t - a.t < b.t - t ? a.c : b.c) : null;
+  const k = (t - a.t) / (b.t - a.t || 1);
+  return a.c.map((v, j) => {
+    // A direction's yaw is taken the short way round.
+    const d = round && j % 2 === 0 ? wrapAngle(b.c[j] - v) : b.c[j] - v;
+    return round && j % 2 === 0 ? wrapAngle(v + d * k) : v + d * k;
+  });
+}
+/** The middle of a border and how wide and tall it is (the pins' units): where a tap counts. */
+export function quadBox(c: number[], round: boolean): { x: number; y: number; w: number; h: number } {
+  const xs = [0, 2, 4, 6].map((j) => (round ? wrapAngle(c[j] - c[0]) : c[j] - c[0]));
+  const ys = [1, 3, 5, 7].map((j) => c[j]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const x = c[0] + (x0 + x1) / 2;
+  return { x: round ? wrapAngle(x) : x, y: (y0 + y1) / 2, w: x1 - x0, h: y1 - y0 };
+}
 /** How big the 🔍 is to a tap (radians on a 360° walk). */
 export const ZOOM_HIT = { w: 0.14, h: 0.14 };
 /** The zoom hotspots on screen at `t`, each as an item the walk already knows how to place and tap. */
-export function zoomsAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem & { zoom: WalkZoom }; x: number; y: number }> {
-  const out: Array<{ item: WalkItem & { zoom: WalkZoom }; x: number; y: number }> = [];
+export function zoomsAt(walk: Walk | null, t: number, round: boolean): Array<{ item: WalkItem & { zoom: WalkZoom }; x: number; y: number; quad?: number[] }> {
+  const out: Array<{ item: WalkItem & { zoom: WalkZoom }; x: number; y: number; quad?: number[] }> = [];
   for (const z of walk?.zooms ?? []) {
+    if (z.outline?.length) {
+      // A bordered shelf: shown exactly while its border is, and the whole border is the key.
+      const quad = outlineAt(z, t, round);
+      if (!quad) continue;
+      const b = quadBox(quad, round);
+      out.push({ item: { id: `zoom-${z.id}`, label: z.label, pins: z.pins, size: { w: Math.max(ZOOM_HIT.w, b.w), h: Math.max(ZOOM_HIT.h, b.h) }, zoom: z }, x: b.x, y: b.y, quad });
+      continue;
+    }
     const item = { id: `zoom-${z.id}`, label: z.label, pins: z.pins, size: ZOOM_HIT, zoom: z };
     const at = itemAt(item, t, round);
     if (at) out.push({ item, x: at.x, y: at.y });
@@ -767,9 +816,13 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
           problems.push(`${key}, zoom photo «${id || "?"}»: it needs an id, its pins and its https manifest.`);
           continue;
         }
+        const outline = (Array.isArray(x.outline) ? (x.outline as Array<Record<string, unknown>>) : [])
+          .filter((q) => q && finite(q.t) && q.t >= 0 && Array.isArray(q.c) && q.c.length === 8 && (q.c as unknown[]).every((v) => finite(v) && Math.abs(v) <= 6))
+          .slice(0, 600).map((q) => ({ t: q.t as number, c: (q.c as number[]).slice() })).sort((a, b) => a.t - b.t);
         zooms.push({
           id, label: fa ? { en: en || "Shelf", fa } : { en: en || "Shelf" }, manifest: x.manifest as string, ...(isSiteUrl(x.thumb) ? { thumb: x.thumb as string } : {}),
           pins: sortItemPins(pins.map((q) => ({ t: q.t as number, x: q.x as number, y: q.y as number }))),
+          ...(outline.length ? { outline } : {}), ...(x.auto === true ? { auto: true } : {}),
         });
       }
       if (zooms.length) walk.zooms = zooms;

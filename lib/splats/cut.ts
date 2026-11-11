@@ -147,7 +147,9 @@ export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: 
     const old = keptZooms.get(z.id);
     if (old) return [{ ...z, pins: old.pins }];
     const pins = z.pins.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
-    return pins.length ? [{ ...z, pins }] : [];
+    const outline = z.outline?.flatMap((f) => { const pt = back(f.t); return pt === null ? [] : [{ ...f, t: pt }]; });
+    const { outline: _o, ...zr } = z;
+    return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}) }] : [];
   });
   const { zooms: _z, ...nowRest } = now;
   return { walk: { ...nowRest, doors, ...(items.length ? { items } : {}), ...(covers.length ? { covers } : {}), ...(zooms.length ? { zooms } : {}) }, lost };
@@ -178,7 +180,10 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
   const zooms = walk.zooms?.flatMap((z) => {
     const pins = z.pins.flatMap((p) => { const pt = mapTime(p.t, parts); return pt === null ? [] : [{ ...p, t: pt }]; });
     if (!pins.length) dropped.push(`the zoom photo «${z.label.en}» (pin it on its shelf again)`);
-    return pins.length ? [{ ...z, pins }] : [];
+    // Its border moves the same way; steps cut out leave a gap no border is drawn across.
+    const outline = z.outline?.flatMap((f) => { const pt = mapTime(f.t, parts); return pt === null ? [] : [{ ...f, t: pt }]; }).sort((a, b) => a.t - b.t);
+    const { outline: _o, ...zr } = z;
+    return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}) }] : [];
   });
   const { zooms: _z, ...walkRest } = walk;
   return { walk: { ...walkRest, doors, ...(items ? { items } : {}), ...(covers ? { covers } : {}), ...(zooms?.length ? { zooms } : {}) }, dropped };

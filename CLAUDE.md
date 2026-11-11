@@ -280,6 +280,21 @@ plan and the Managed Agents decision are in
     (`manifest.json`, `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`, `thumb.jpg`; public). The master is
     private (`stores/<slug>/gigapan/<set>/master.jpg`), kept for reading labels later. State:
     `stores/<slug>/gigapans.json`. Never serve the master to a shopper.
+  - **The shelf is found in the walk and bordered in green, by itself** (owner, 2026-11-11: *"during the free tour
+    … we need to identify the shelves for which a set of gigapan photos are submitted … bordered with some line,
+    maybe green line, in a rectangle shape … so the shopper know … this shelf is the one that is fully pictured in a
+    high quality"*). After every stitch (and in «Refresh all agents»), `locateZooms` (`gigapan.ts`) runs
+    `scripts/stitch/locate.py`: the stitched photo is matched (SIFT, MAGSAC) against the walk's own video (its
+    phone copy when there is one), one moment a second (six views round on a 360° walk, the frame on a flat one),
+    then followed every 0.25 s while the shelf is in view; the photo's four corners at each step become
+    `WalkZoom.outline` (`auto: true`). `Walk360.tsx` draws them as a green ribbon (an SVG shape on a flat video),
+    the 🔍 in the top right corner; a tap anywhere inside opens the photo, a product's light inside still opens the
+    product (the smaller outline wins, `itemHitAt`). ⚠️ Two unrelated pictures still "agree" at 10–25 points
+    (measured: the owner's pantry walk against a dresser photo), so a find counts only as a sane quadrilateral of
+    about the photo's shape, its agreeing points spread over the photo, followed for at least a second. Measured on
+    made-up walks holding the shelf: corners within 1% of the frame (flat), 0.35° (360°). Not in the walk: the
+    card says so (`ZoomSet.place`), and it is looked for again only when the walk or the photo changes, or on
+    «Find it in the walk again». A shelf the operator pinned by hand is never replaced. Cube-map walks: by hand.
   - **On the walk** it is a 🔍 on the shelf (`Walk.zooms`, `WalkZoom`: the photo's id, its manifest's address,
     pins that follow the shelf like a light). The operator pins it: «Zoom» on the walk's `?edit=1`
     (`walk/WalkZoom.tsx`), walk to the shelf, one tap on its middle. A tap by a shopper opens
@@ -287,7 +302,7 @@ plan and the Managed Agents decision are in
     the tiles on screen are fetched (`lib/zoom/pyramid.ts`, tested), wheel / pinch / drag / double tap, never past
     the photo's edges, a mini-map, «Back». A cut moves the 🔍 with the picture; a photo stitched again keeps its
     place. Works on 360° and flat walks and in the widget. Not yet: the 🔍 in the Shelf Tour; the products'
-    lights on the zoom photo; placing the 🔍 automatically.
+    lights on the zoom photo.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
   rules in `lib/splats/walkStats.ts` (tested). PPD = the playing copy's width ÷ the angle it spans (360° walk:

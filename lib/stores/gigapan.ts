@@ -19,12 +19,13 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, r2Config, readMastersText, readWalks, uploadFile, uploadMastersFile, writeMastersJson, writeWalks } from "@/lib/splats/r2";
-import { dropZoom, type Walks } from "@/lib/splats/walks";
+import { MAX_ITEM_PINS, dropZoom, phoneKeyOf, quadBox, setZoom, type Walks, type ZoomFrame } from "@/lib/splats/walks";
+import { webObjectExists } from "@/lib/splats/r2";
 import { readStore, updateStore } from "./bucket";
 import { run } from "./media";
 import { setJob, readJob } from "./jobState";
 import { sceneOf, type StoreRecord } from "./store";
-import { noteOf, setsOf, sigOf, stateOf, toStitch, zoomLabel, type ZoomRecord, type ZoomSet } from "./gigapanRules";
+import { noteOf, setsOf, sigOf, stateOf, thin, toLocate, toStitch, zoomLabel, type ZoomRecord, type ZoomSet } from "./gigapanRules";
 
 export const gigapansKey = (slug: string) => `stores/${slug}/gigapans.json`;
 /** The master is at most this many megapixels (`ZOOM_MAX_MP` overrides: the stitcher needs ~12 MB of memory a megapixel). */
@@ -128,6 +129,85 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
   }
 }
 
+// ── THE SHELF FOUND IN THE WALK, AND BORDERED (owner, 2026-11-11: "during the free tour … we need to identify the
+// shelves for which a set of gigapan photos are submitted … bordered with some line, maybe green line, in a
+// rectangle shape"). Free: no AI. For every stitched shelf not looked for yet in the store's current walk,
+// `scripts/stitch/locate.py` matches the stitched photo against the walk's own video (its phone copy when there is
+// one: smaller to fetch, sharp enough), follows the shelf while it is in view, and gives the photo's four corners at
+// every step. They go on the walk as the shelf's border (`WalkZoom.outline`, `auto`): the player draws it in green
+// and a tap inside opens the photo. A shelf the operator pinned by hand is left as it is. A shelf not in the walk
+// (another room, a walk filmed before the shelf was set up) says so on the card, and is looked for again only when
+// the walk or the photo changes.
+let locating = false;
+type Found = { ok: boolean; found: boolean; note: string; frames?: ZoomFrame[] };
+
+export async function locateZooms(slug: string, opts: { force?: boolean } = {}): Promise<string> {
+  if (locating) return "The shelf finder is busy.";
+  locating = true;
+  const dir = mkdtempSync(join(tmpdir(), "zoomfind-"));
+  try {
+    const s = await readStore(slug);
+    const walkKey = s?.out.walk;
+    if (!s || !walkKey) return "No walk yet: the shelves are looked for once the store's walk is made.";
+    const record = await readZooms(slug);
+    const walks0 = await readWalks();
+    const w0 = walks0.walks[walkKey];
+    const byHand = new Set((w0?.zooms ?? []).filter((z) => !z.auto).map((z) => z.id));
+    const todo = (record?.sets ?? []).filter((x) => toLocate(x, walkKey, opts.force) && !byHand.has(x.id));
+    if (!record || !todo.length) return "";
+    if (w0?.projection === "eac") return "This walk is a cube-map video: shelves are not looked for in it (pin each 🔍 by hand: «Zoom» in the walk's editor).";
+    const projection = w0?.projection === "flat" ? "flat" : "equirect";
+    await setJob("gigapan", { busy: true, key: slug, note: "fetching the walk to look for the shelves in it" });
+    const phone = phoneKeyOf(walkKey);
+    const videoKey = phone && (await webObjectExists(phone).catch(() => false)) ? phone : walkKey;
+    const video = join(dir, "walk.mp4");
+    await downloadToFile(videoKey, video, "web");
+    const said: string[] = [];
+    for (const [i, set] of todo.entries()) {
+      await setJob("gigapan", { busy: true, key: slug, note: `looking for ${set.label.en} in the walk (${i + 1} of ${todo.length})` });
+      let place: NonNullable<ZoomSet["place"]> = { walk: walkKey, manifest: set.manifest!, found: false, note: "", at: new Date().toISOString() };
+      try {
+        const master = join(dir, `${set.id}.jpg`), out = join(dir, `${set.id}.json`);
+        await downloadToFile(set.master!, master, "master");
+        await run("python3", [join(process.cwd(), "scripts/stitch/locate.py"), "--master", master, "--video", video, "--projection", projection, "--out", out, "--threads", "2"]);
+        const f = JSON.parse(readFileSync(out, "utf8")) as Found;
+        place = { ...place, found: Boolean(f.found && f.frames?.length), note: f.note };
+        if (place.found) {
+          const round = projection !== "flat";
+          const outline = thin(f.frames!, 400);
+          const pins = thin(outline, MAX_ITEM_PINS).map((fr) => { const b = quadBox(fr.c, round); return { t: fr.t, x: b.x, y: b.y }; });
+          const walks = await readWalks();
+          await writeWalks(setZoom(walks, walkKey, { id: set.id, label: set.label, manifest: set.manifest!, ...(set.thumb ? { thumb: set.thumb } : {}), pins, outline, auto: true }), walks);
+        } else {
+          // Looked for and not there: a border the finder put there for an earlier photo or walk comes off.
+          const walks = await readWalks();
+          if (walks.walks[walkKey]?.zooms?.some((z) => z.id === set.id && z.auto)) await writeWalks(dropZoom(walks, walkKey, set.id), walks);
+        }
+        rmSync(master, { force: true });
+      } catch (e) {
+        const m = (e as Error).message;
+        place.note = /No module named|not on this server/.test(m) ? "The finder is not installed on this server (python3 with OpenCV: see the Dockerfile)." : `The finder stopped: ${m.slice(0, 200)}`;
+        console.error("[zoom] locate", slug, set.id, e);
+      }
+      said.push(`${set.label.en}: ${place.found ? "bordered on the walk" : `not on the walk (${place.note})`}`);
+      const now = await readZooms(slug);
+      if (now) await writeMastersJson(gigapansKey(slug), { ...now, updated: new Date().toISOString(), sets: now.sets.map((x) => (x.id === set.id ? { ...x, place } : x)) });
+    }
+    return `Shelves looked for in the walk: ${said.join("; ")}.`;
+  } finally {
+    locating = false;
+    rmSync(dir, { recursive: true, force: true });
+    await setJob("gigapan", { busy: false, key: null });
+  }
+}
+
+/** The whole of it, as «Refresh all agents» and the card run it: stitch what waits, then find each shelf in the walk. */
+export async function refreshZooms(slug: string, opts: { force?: boolean; relocate?: boolean } = {}): Promise<string> {
+  const stitched = await stitchZooms(slug, { force: opts.force });
+  const found = await locateZooms(slug, { force: opts.relocate }).catch((e) => `The shelf finder stopped: ${(e as Error).message.slice(0, 200)}`);
+  return [stitched, found].filter(Boolean).join(" ");
+}
+
 /** The walk's hotspot for `set` (if it has one) pointed at the set's new tiles. */
 async function repoint(walkKey: string, set: ZoomSet): Promise<void> {
   const walks = await readWalks();
@@ -153,12 +233,16 @@ export async function removeZoom(slug: string, id: string): Promise<StoreRecord 
 export type ZoomForPage = {
   id: string; label: { en: string; fa: string }; photos: Array<{ name: string; size: number }>;
   state: "waiting" | "changed" | "done" | "failed"; note: string; pinned: boolean;
+  /** On the walk with its green border, found by the finder; and what the finder last said. */
+  bordered: boolean; placeNote: string | null;
   manifest: string | null; thumb: string | null; w: number | null; h: number | null; mp: number | null;
 };
 /** What the store's page shows: every shelf with photos, where it stands, and whether its 🔍 is on the walk. */
 export async function zoomsForPage(s: StoreRecord): Promise<{ sets: ZoomForPage[]; working: boolean; note: string }> {
   const [record, walks, job] = await Promise.all([readZooms(s.slug), s.out.walk ? readWalks().catch(() => null) : null, readJob("gigapan")]);
-  const on = new Set((s.out.walk ? walks?.walks[s.out.walk]?.zooms ?? [] : []).map((z) => z.id));
+  const onWalk = s.out.walk ? walks?.walks[s.out.walk]?.zooms ?? [] : [];
+  const on = new Set(onWalk.map((z) => z.id));
+  const bordered = new Set(onWalk.filter((z) => z.outline?.length).map((z) => z.id));
   const working = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3600_000);
   return {
     working, note: working ? job?.note ?? "" : "",
@@ -168,6 +252,7 @@ export async function zoomsForPage(s: StoreRecord): Promise<{ sets: ZoomForPage[
       const shown = state === "done" || state === "changed";
       return {
         id: set.id, label: zoomLabel(i), photos: set.photos.map((p) => ({ name: p.name, size: p.size })), state, note: m?.note ?? "", pinned: on.has(set.id),
+        bordered: bordered.has(set.id), placeNote: m?.place && m.place.walk === s.out.walk ? m.place.note : null,
         manifest: shown ? m?.manifest ?? null : null, thumb: shown ? m?.thumb ?? null : null, w: m?.w ?? null, h: m?.h ?? null, mp: m?.mp ?? null,
       };
     }),

@@ -61,15 +61,16 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
     try {
       await postJson(api, { action: "zoomStitch" });
       setSaid({ ok: true, text: `✓ ${sent} photo${sent > 1 ? "s" : ""} uploaded. Stitching now: about a minute a shelf; this card follows it. · بارگذاری شد؛ در حال دوختن عکس‌ها` });
-      setSt((x) => (x ? { ...x, working: true, note: "starting…" } : x));
+      // The card follows the job from here (it asks every 5 s while the job works).
+      setSt((x) => (x ? { ...x, working: true, note: "starting…" } : { sets: [], working: true, note: "starting…" }));
     } catch (e) {
       setSaid({ ok: false, text: `Uploaded, but the stitcher did not start: ${(e as Error).message}. Press «Stitch now».` });
+      await load();
     }
-    await load();
   }
 
   const act = async (body: Record<string, unknown>, okText: string) => {
-    try { await postJson(api, body); setSaid({ ok: true, text: okText }); if (body.action === "zoomStitch") setSt((x) => (x ? { ...x, working: true, note: "starting…" } : x)); await load(); }
+    try { await postJson(api, body); setSaid({ ok: true, text: okText }); if (body.action === "zoomStitch") setSt((x) => (x ? { ...x, working: true, note: "starting…" } : x)); else await load(); }
     catch (e) { setSaid({ ok: false, text: `Not done: ${(e as Error).message}` }); }
   };
   const sets = st?.sets ?? [];
@@ -79,7 +80,7 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
 
   return (
     <Card>
-      <Bi fa="عکس بزرگ‌نمایی قفسه‌ها" en="Shelf zoom photos — three phone photos of a shelf, joined into one that shoppers zoom into until they can read every label" className="text-[15px] font-bold text-amber-100" />
+      <Bi fa="عکس بزرگ‌نمایی قفسه‌ها" en="Shelf zoom photos — three phone photos of a shelf, joined into one that shoppers zoom into until they can read every label; the shelf is then found in the walk and bordered in green" className="text-[15px] font-bold text-amber-100" />
       {operator && (
         <p dir="ltr" className="mt-1 text-left text-[12px] text-white/50">
           How to take them: stand about 1.5 m from the shelf, square on, and do not step. Take three photos turning the camera only, each sharing about a third with the next:
@@ -102,10 +103,18 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
                   {s.state === "done" ? `✓ ${s.note}` : s.state === "failed" ? `Not joined: ${s.note}` : s.state === "changed" ? "Its photos changed: waiting to be stitched again." : "Waiting to be stitched."}
                 </p>
                 <p className="truncate text-white/45">{s.photos.length} photo{s.photos.length > 1 ? "s" : ""}: {s.photos.map((p) => `${p.name} (${mb(p.size)})`).join(", ")}</p>
-                {s.state === "done" && <p className={s.pinned ? "text-white/60" : "text-amber-200"}>{s.pinned ? "🔍 On the walk: shoppers open it from its shelf." : "Not on the walk yet: pin its 🔍 on the shelf (below)."}</p>}
+                {s.state === "done" && (
+                  <p className={s.pinned ? "text-white/60" : "text-amber-200"}>
+                    {s.bordered ? `🟩 Found in the walk by itself and bordered in green: a tap inside opens this photo. ${s.placeNote ?? ""}`
+                      : s.pinned ? "🔍 On the walk (pinned by hand): shoppers open it from its shelf."
+                      : s.placeNote ? `Not on the walk: ${s.placeNote} If the shelf is in the walk, pin its 🔍 by hand (below).`
+                      : "Not looked for in the walk yet: «Find it in the walk»."}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-2 pt-1">
                   {s.manifest && <button type="button" className={QUIET} onClick={() => setOpen(s)}>🔍 Open · باز کردن</button>}
                   {operator && <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => { into.current = s.id; input.current?.click(); }}>Add or retake a photo</button>}
+                  {operator && s.state === "done" && <button type="button" className={QUIET} disabled={st?.working} onClick={() => void act({ action: "zoomStitch", relocate: true }, "Looking for the shelves in the walk… about a minute. · در حال جست‌وجو")}>Find it in the walk{s.placeNote ? " again" : ""}</button>}
                   {operator && s.state === "failed" && <button type="button" className={QUIET} disabled={st?.working} onClick={() => void act({ action: "zoomStitch", force: true }, "Trying again… · دوباره")}>Try again</button>}
                   {operator && <button type="button" className={QUIET} onClick={() => { if (confirm(`Take «${s.label.en}» away? Its photos leave this page and its 🔍 leaves the walk.`)) void act({ action: "zoomRemove", set: s.id }, "✓ Taken away · حذف شد"); }}>Remove</button>}
                 </div>

@@ -58,7 +58,7 @@ import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
-import { removeZoom, stitchZooms, zoomsForPage } from "@/lib/stores/gigapan";
+import { refreshZooms, removeZoom, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readStats, widgetPlan } from "@/lib/stores/widget";
@@ -391,7 +391,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
   if (body.action === "zoomStitch") {
     if (!(s.files.gigapan ?? []).length) return fail(400, "No shelf zoom photos uploaded yet.");
-    void stitchZooms(s.slug, { force: body.force === true }).then((note) => console.log("[zoom]", s.slug, note)).catch((e) => console.error("[zoom]", s.slug, e));
+    // Stitch what waits, then find each shelf in the walk and border it. `relocate`: look in the walk again.
+    void refreshZooms(s.slug, { force: body.force === true, relocate: body.relocate === true }).then((note) => console.log("[zoom]", s.slug, note)).catch((e) => console.error("[zoom]", s.slug, e));
     return ok({ started: true });
   }
   if (body.action === "zoomRemove") {
