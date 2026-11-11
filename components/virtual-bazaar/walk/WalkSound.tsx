@@ -67,7 +67,7 @@ function writeOn(on: boolean) {
   }
 }
 
-export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, place = "bottom-14 left-3" }: {
+export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, place = "bottom-14 left-3", label = true }: {
   /** What the walk plays, in order (`musicOf`): one looped, or up to 3 one after another, then from the first. */
   audioKeys: string[];
   srcOf: (key: string) => Promise<string | null>;
@@ -77,8 +77,11 @@ export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, pl
   radio?: RadioChannel | null;
   /** Where the key sits (the store's widget puts it at the top right: its frame is small and the wheel fills the bottom). */
   place?: string;
+  /** The «nikoo.tv live music» label beside the key; not in the store's widget (owner, 2026-11-11: "also remove
+   *  'nikoo.tv live music' label"). The walk on vbazaar.app keeps it. */
+  label?: boolean;
 }) {
-  if (radio) return <RadioSound ch={radio} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
+  if (radio) return <RadioSound ch={radio} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
   return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
 }
 
@@ -186,8 +189,8 @@ const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14p
  *   takes it away. A PHONE will not start it at all, so there the channel's own file programmes play in its place.
  * - Nothing playable on air (a live HLS stream, nikoo.tv unreachable): the store's own tracks, or nothing.
  */
-function RadioSound({ ch, audioKeys, srcOf, specials, place }: {
-  ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string;
+function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
+  ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean;
 }) {
   const [on, setOn] = useState(true);
   const [now, setNow] = useState<RadioNow | null>(null);
@@ -352,7 +355,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place }: {
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {on ? ((waiting && !yt) || (yt && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
         </button>
-        <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv live music</span>
+        {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv live music</span>}
       </div>
     </>
   );

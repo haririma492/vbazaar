@@ -142,6 +142,8 @@ plan and the Managed Agents decision are in
   is covered; on a phone it is as wide as the screen. ⚠️ Seen on dioncollege.com: the site's row beside the window
   is squeezed narrower. `place: "float"` (the hovering window, `corner`, × for the visit) stays as a choice on the
   card only; never the default.
+  No «nikoo.tv live music» label in the widget, only the 🔊 key (owner, 2026-11-11: *"also remove 'nikoo.tv live
+  music' label"*); the walk on vbazaar.app keeps the label.
   **The visitor moves and resizes the window** (owner, 2026-11-11: *"users on each website should be able to
   resize the window and also move the location of the window around"*): all in `/widget.js`, nothing in the
   store's code. A bar on top to drag by, a corner at the bottom right to pull its size (4:3, 220 px to the page's

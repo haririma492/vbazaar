@@ -2557,7 +2557,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       {phase !== "loading" && !editing && !embedded && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {phase !== "loading" && (
         <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={walkOf(walks, view.key)?.radio ?? null}
-          specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} place={embedded ? "left-14 top-1" : undefined} />
+          specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} place={embedded ? "left-14 top-1" : undefined} label={!embedded} />
       )}
 
       {/* The walk's own PPD and FPS (owner, 2026-11-11), under the logo and the view switch: only in admin mode
