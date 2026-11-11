@@ -55,7 +55,8 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
   of the header and with only one border as browser tab icon"*): the green pointed arch on its warm-white tile
   (`components/brand/TourBazaarLink.tsx`). On the home page it is at the LEFT end of the header in both languages
   (`here`, same tab; `.vb-sign` in `home.css`; on a phone the arch alone). The tab icon is the arch on its tile with
-  no second line round it: `app/icon.svg`, with `app/favicon.ico` (16/32/48) and `app/apple-icon.png` (180) made
+  no second line round it (in the home header the arch alone, larger, no address under it: owner, 2026-11-11):
+  `app/icon.svg`, with `app/favicon.ico` (16/32/48) and `app/apple-icon.png` (180) made
   from it. Change the arch in all of them together.
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
@@ -139,7 +140,9 @@ plan and the Managed Agents decision are in
   owner, 2026-11-11, of named products saying «Price in store»: *"I asked … to add prices on all item arbitrarily
   but sensible"*. A name or a price that is there is never changed; a named product's price comes from the kind's
   row most like its name. Each filled one is marked `demo` (true both, "name", "price"): «Remove them» takes only
-  what was made up; a product saved by hand stops being a demo one. Free, no AI; the same store gets the same
+  what was made up; a product saved by hand stops being a demo one. **Outside a bookshop the demo name is what
+  the crew saw** (`seen`, English only: "Grey wok with cream rim and glass lid"), so it fits the photo; a name dealt
+  from the list sat under a photo of something else. Free, no AI; the same store gets the same
   names and prices each time. Applied 2026-11-11 to saraye-bamdad, shirazgallery and helogolab.
   ⚠️ A demo name blocks `nameFromTitles` for that product until removed.
 - **The owner can see the walk as a shopper** (owner, 2026-11-10, in a browser signed in as operator: *"when we
@@ -157,9 +160,10 @@ plan and the Managed Agents decision are in
   editor always uses it (`editUrl`). Links made for such a store are short: the store page's «Walk the store»,
   the Instagram bio and product links (`walkLink` / `productLink` with `slug`), Share to Story, the widget's key,
   `/s/<slug>`, the Shelf Tour's «Free Tour». Walking on from a store into another walk turns the address long again.
-  `/tours` (`app/tours/page.tsx`): each store's door photo and a key per tour; noindex, not linked from the home
+  **The list is `/walk`** (`app/walk/page.tsx`; owner, 2026-11-11: *"for consistency also change this to /walk"*;
+  `/tours` is sent there): each store's door photo and a key per tour; noindex, not linked from the home
   page. **No store was published on 2026-11-11**, so a store is on `/tours` and has its short address when it is
-  published OR the operator ticks «Show on the tours page» on its page (`onTours` on the record, action
+  published OR the operator ticks «Show on the stores' list» on its page (`onTours` on the record, action
   `toursShow`, `hasShortAddress`, `readTourStores`). The bazaar's own directory (home page, `/s/<slug>`) stays
   published stores only. Switched on that day: saraye-bamdad, shirazgallery, helogolab (the test stores left off).
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and

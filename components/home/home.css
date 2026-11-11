@@ -12,7 +12,10 @@
 /* The bazaar's sign (components/brand/TourBazaarLink.tsx): at the left end of the header in both languages. */
 .ovca[dir=rtl] .vb-nav .vb-sign { order: 3; }
 /* The page's own reset takes the badge's padding away, so it is said again here. */
-.ovca .vb-nav .vb-sign { padding: 4px 8px; }
+.ovca .vb-nav .vb-sign { padding: 4px 6px; }
+/* The arch alone, larger, no address under it (owner, 2026-11-11: "remove vbazaar.app and make the arch larger"). */
+.ovca .vb-nav .vb-sign > span:last-child { display: none; }
+.ovca .vb-nav .vb-sign svg { width: 66px; height: 45px; display: block; }
 .vb-links a { color: rgba(255, 255, 255, 0.72); font-size: 13px; letter-spacing: 0.3px; white-space: nowrap; }
 .vb-links a:hover { color: #fff; }
 .vb-links .vb-lang { border: 1px solid rgba(212, 168, 67, 0.45); border-radius: 4px; padding: 5px 10px; color: var(--gold-light); }
@@ -22,9 +25,9 @@
 .vb-foot a { color: var(--gold-light); }
 @media (max-width: 560px) {
   .vb-nav { padding: 0 16px; gap: 8px; }
-  /* A phone's header has no room for the address under the sign: the arch alone, and a smaller name. */
-  .ovca .vb-nav .vb-sign { padding: 4px; }
-  .ovca .vb-nav .vb-sign > span:last-child { display: none; }
+  /* A phone's header: a slightly smaller arch, and a smaller name. */
+  .ovca .vb-nav .vb-sign { padding: 3px; }
+  .ovca .vb-nav .vb-sign svg { width: 54px; height: 37px; }
   /* The English header ran off a phone's edge (the language key was cut) before the sign too: it now fits 375 px,
      and on a narrower phone the name gives way, never the keys. */
   .ovca .vb-brand { font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }

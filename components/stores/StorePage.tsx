@@ -205,7 +205,7 @@ export default function StorePage({ slug }: { slug: string }) {
         {page.walkUrl && (
           <label dir="ltr" className="mt-3 flex cursor-pointer items-center gap-2 text-left text-[13px] text-white/80">
             <input type="checkbox" className="h-5 w-5" checked={s.onTours === true} onChange={(e) => void act({ action: "toursShow", on: e.target.checked })} />
-            <span>Show on the tours page (<a className="underline" href="/tours" target="_blank" rel="noreferrer">vbazaar.app/tours</a>){s.onTours === true || s.live ? <> · its address: <b>vbazaar.app/walk/{s.slug}</b></> : null}</span>
+            <span>Show on the stores&apos; list (<a className="underline" href="/walk" target="_blank" rel="noreferrer">vbazaar.app/walk</a>){s.onTours === true || s.live ? <> · its address: <b>vbazaar.app/walk/{s.slug}</b></> : null}</span>
           </label>
         )}
         <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of ${(BUDGET_CENTS / 100).toFixed(2)}</p>

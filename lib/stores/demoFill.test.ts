@@ -54,12 +54,15 @@ test("names are not repeated while the kind has more, and prices stay in the kin
   }
 });
 
-test("the same store gets the same names and prices each time; what was seen picks a fitting name", () => {
+test("the same store gets the same names and prices each time; what the crew saw is the name, at a fitting price", () => {
   const products = [found(1), found(2, { seen: "glass jar of mixed pickles" }), found(3)];
   const store = { slug: "alis-market", category: "Grocery" };
   const a = demoFill(products, new Set([1, 2, 3]), store), b = demoFill(products, new Set([1, 2, 3]), store);
   assert.deepEqual(a.products, b.products);
-  assert.match(a.products[1].en!, /pickle/i);
+  assert.equal(a.products[1].en, "Glass jar of mixed pickles");
+  assert.equal(a.products[1].fa, undefined);
+  assert.ok(a.products[1].priceCents! >= 400 && a.products[1].priceCents! <= 1100, String(a.products[1].priceCents));
+  assert.deepEqual(demoClear(a.products).products, products);
 });
 
 test("a word every product was seen with does not pile them onto one name", () => {

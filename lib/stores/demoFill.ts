@@ -273,9 +273,9 @@ export type DemoResult = { products: Product[]; filled: number; skipped: number;
  * of demo to add prices on all item arbitrarily but sensible"). A name or a price that is there is never changed.
  * `skipped` is the shown products that have both already.
  *
- * A NAME: what the crew saw of the product (`seen`) picks it when a name in the store's kind fits ("jar of
- * pickles" → the pickles); otherwise names are dealt out in an order that is the store's own. A name dealt a
- * second time comes as another edition or size, at that one's price.
+ * A NAME: what the crew saw of the product (`seen`), as written ("Grey wok with cream rim and glass lid"), so the
+ * name fits the photo. In a bookshop, or with nothing seen, names are dealt out from the kind's list in an order
+ * that is the store's own; a name dealt a second time comes as another edition or size, at that one's price.
  * A PRICE for a product that has its own name: the range of the kind's row most like that name ("GRANITE COOKWARE
  * SET" → the cookware set's range), else the kind's middle range; the same name always gets the same price.
  */
@@ -302,6 +302,19 @@ export function demoFill(products: Product[], shown: Set<number>, store: DemoSto
       rowWords.forEach((ws, r) => { const n = [...ws].filter((w) => mine.has(w)).length; if (n > most) { most = n; best = r; } });
       const [lo, hi] = best >= 0 ? [kind.rows[best][2], kind.rows[best][3]] : middle;
       return { ...p, priceCents: shopPrice(between(lo, hi, (p.en || p.fa || "").trim().toLowerCase())), demo: "price" as const };
+    }
+    // WHAT THE CREW SAW IS THE NAME, where it says what the thing is ("Grey wok with cream rim and glass lid"): a name
+    // dealt from the list sat under a photo of something else. Not in a bookshop, where what was seen is the cover's
+    // look, not a title. English only; its price is the row most like it, else the kind's middle range.
+    const sawAs = kind.id === "books" ? "" : (p.seen ?? "").trim().replace(/\s+/g, " ");
+    if (sawAs.length >= 4) {
+      const name = { en: (sawAs[0].toUpperCase() + sawAs.slice(1)).slice(0, 120) };
+      if (p.priceCents !== null) return { ...p, ...name, demo: "name" as const };
+      const mine = new Set([...words(sawAs)].filter(telling));
+      let best = -1, most = 0;
+      rowWords.forEach((ws, r) => { const n = [...ws].filter((w) => mine.has(w)).length; if (n > most) { most = n; best = r; } });
+      const [lo, hi] = best >= 0 ? [kind.rows[best][2], kind.rows[best][3]] : middle;
+      return { ...p, ...name, priceCents: shopPrice(between(lo, hi, sawAs.toLowerCase())), demo: true as const };
     }
     const saw = new Set([...(p.seen ? words(p.seen) : [])].filter(telling));
     const least = Math.min(...used);
