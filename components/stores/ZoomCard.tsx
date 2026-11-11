@@ -82,9 +82,9 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
       <Bi fa="عکس بزرگ‌نمایی قفسه‌ها" en="Shelf zoom photos — three phone photos of a shelf, joined into one that shoppers zoom into until they can read every label" className="text-[15px] font-bold text-amber-100" />
       {operator && (
         <p dir="ltr" className="mt-1 text-left text-[12px] text-white/50">
-          How to take them: stand about 1.5 m from the shelf, square on, and do not step. Take three photos tilting the phone only: the top of the shelf, its middle, its bottom,
-          each sharing about a third with the next. Tap the screen on the products to focus. Send the photos at full size (from the phone&apos;s gallery, not a messaging app&apos;s copy).
-          Choose all three together, in any order.
+          How to take them: stand about 1.5 m from the shelf, square on, and do not step. Take three photos turning the camera only, each sharing about a third with the next:
+          top, middle, bottom of a tall shelf, or left, middle, right of a wide one (which it is, is recognised). Focus on the products. Send the photos at full size
+          (not a messaging app&apos;s copy). Choose all three together, in any order.
         </p>
       )}
       {st?.working && <p dir="ltr" className="mt-2 rounded-md bg-white/10 p-2 text-left text-[13px]"><span className="mr-2 inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-amber-300" />Stitching: {st.note || "…"}</p>}

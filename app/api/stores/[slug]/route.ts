@@ -383,6 +383,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   // A SHELF'S ZOOM PHOTOS (owner, 2026-11-11; `lib/stores/gigapan.ts`): where each shelf stands; «Stitch now» (free,
   // no AI: the owner's too); a shelf taken away.
   if (body.action === "zooms") return ok(await zoomsForPage(s));
+  if (body.action === "zoomLinks") {
+    // Operator: a shelf's uploaded photos, each with a private link good for 1 h (to look at photos that did not
+    // join). Reads only; nothing changes.
+    if (who !== "operator") return fail(403, "The operator only.");
+    return ok({ photos: await Promise.all((s.files.gigapan ?? []).map(async (f) => ({ set: f.set, name: f.name, size: f.size, url: await presignGet(f.key, "master", 3600) }))) });
+  }
   if (body.action === "zoomStitch") {
     if (!(s.files.gigapan ?? []).length) return fail(400, "No shelf zoom photos uploaded yet.");
     void stitchZooms(s.slug, { force: body.force === true }).then((note) => console.log("[zoom]", s.slug, note)).catch((e) => console.error("[zoom]", s.slug, e));

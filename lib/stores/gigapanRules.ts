@@ -56,6 +56,6 @@ export function toStitch(files: ZoomUpload[], record: ZoomRecord | null, force =
   });
 }
 /** What the stitcher's answer says, in a sentence for the card. */
-export function noteOf(r: { w: number; h: number; mp: number; tiles: number; order: string[]; seconds: number }): string {
-  return `${r.w}×${r.h} px (${r.mp} megapixels) in ${r.tiles} tiles, ${r.seconds} s${r.order.length > 1 ? `; top to bottom: ${r.order.join(" → ")}` : "; one photo, not stitched"}.`;
+export function noteOf(r: { w: number; h: number; mp: number; tiles: number; order: string[]; seconds: number; row?: boolean }): string {
+  return `${r.w}×${r.h} px (${r.mp} megapixels) in ${r.tiles} tiles, ${r.seconds} s${r.order.length > 1 ? `; ${r.row ? "left to right" : "top to bottom"}: ${r.order.join(" → ")}` : "; one photo, not stitched"}.`;
 }

@@ -272,6 +272,10 @@ plan and the Managed Agents decision are in
     least, blended multi-band round the seam only; cropped to the largest clean rectangle; at most 100 megapixels
     (`ZOOM_MAX_MP`). Measured on three synthetic 48 MP photos: 18 s, 1.2 GB of memory, 0.2 px median error.
     Photos that share too little: the card says which two and what to retake; the same photos are not tried again.
+    **A row is recognised too** (owner's first real set, 2026-11-11, Insta360 single-lens photos overlapping
+    sideways, "0 points agree"; *"you can ask on the form … or can build intelligence so it is recognized"*): when
+    no stack joins top to bottom the photos are tried turned a quarter and the master turned back; the note says
+    «left to right». Nothing is asked on the form. Operator action `zoomLinks`: private links to a shelf's photos.
   - **The tiles** are Deep Zoom (DZI), 512 px progressive JPEG at 85: `scenes/store-<slug>/zoom/<set>-<stamp>/`
     (`manifest.json`, `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`, `thumb.jpg`; public). The master is
     private (`stores/<slug>/gigapan/<set>/master.jpg`), kept for reading labels later. State:

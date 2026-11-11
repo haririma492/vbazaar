@@ -9,6 +9,10 @@ shelf and you need to stitch them together so user … zoom in and out and read 
 The photos are one shelf bay from one spot, the camera tilted between them (top, middle, bottom, about a third of
 each shared with its neighbour). Any order: which is above which is found from the matches.
 
+⚠️ SIDE BY SIDE TOO (owner's first real photos, 2026-11-11: an Insta360 single-lens set, "0 points agree"). When
+no stack joins top to bottom, the photos are turned a quarter and tried again: that is a row of photos panned left
+to right, or a tilted stack the camera saved on its side. The master is turned back, so it is as the photos were.
+
   1  Order     every pair is matched both ways on small copies; the stack with the most agreeing points wins.
   2  Match     SIFT points, ONLY in the bands that can overlap (the lower part of the upper photo, the upper part of
                the lower one: a shelf is rows of the same packaging, and a point matched outside the overlap is a
@@ -50,11 +54,14 @@ class Refused(Exception):
     pass
 
 
+TURN = False  # the photos are being read turned a quarter (a row of photos, stitched as a stack)
+
+
 def load(path):
     img = cv2.imread(path, cv2.IMREAD_COLOR)  # upright: the phone's rotation tag is followed
     if img is None:
         raise Refused(f"«{os.path.basename(path)}» could not be opened as a photo.")
-    return img
+    return cv2.rotate(img, cv2.ROTATE_90_CLOCKWISE) if TURN else img
 
 
 def shrink(img, side):
@@ -173,12 +180,10 @@ def lut_gain(img, gains):
     return cv2.LUT(img, table)
 
 
-def stitch(paths, max_mp, log):
-    sift = cv2.SIFT_create(nfeatures=8000, contrastThreshold=0.03)
+def find_order(paths, sift):
+    """Which photo is above which, on small copies (one photo in memory at a time): the stack whose pairs agree most."""
     n = len(paths)
-    sizes = []
-    # 1. The order, on small copies (one photo in memory at a time).
-    feats = []
+    sizes, feats = [], []
     for p in paths:
         img = load(p)
         sizes.append((img.shape[1], img.shape[0]))
@@ -197,13 +202,30 @@ def stitch(paths, max_mp, log):
         val = (min(ks), sum(ks))
         if val > best:
             best, order = val, list(perm)
+    return best, order, score, sizes
+
+
+def stitch(paths, max_mp, log):
+    global TURN
+    sift = cv2.SIFT_create(nfeatures=8000, contrastThreshold=0.03)
+    n = len(paths)
     names = [os.path.basename(p) for p in paths]
+    best, order, score, sizes = find_order(paths, sift)
+    if best[0] < MIN_INLIERS:
+        # Not a stack as the photos are: side by side (a row), or a stack saved on its side.
+        TURN = True
+        turned = find_order(paths, sift)
+        log(f"top to bottom: {best}; turned a quarter: {turned[0]}")
+        if turned[0] > best:
+            best, order, score, sizes = turned
+        else:
+            TURN = False
     if best[0] < MIN_INLIERS:
         weakest = min(range(n - 1), key=lambda i: score[(order[i], order[i + 1])])
         raise Refused(
             f"These photos do not join: «{names[order[weakest]]}» and «{names[order[weakest + 1]]}» share too little "
-            f"(only {score[(order[weakest], order[weakest + 1])]} points agree). Take them again from one spot, tilting "
-            "the camera up and down only, with about a third of each photo shared with the next."
+            f"(only {score[(order[weakest], order[weakest + 1])]} points agree, top to bottom or side by side). Take them "
+            "again from one spot, turning the camera only, with about a third of each photo shared with the next."
         )
     log(f"order (top to bottom): {[names[i] for i in order]}; agreeing points on the small copies: {[score[(order[i], order[i + 1])] for i in range(n - 1)]}")
 
@@ -226,7 +248,7 @@ def stitch(paths, max_mp, log):
             raise Refused(f"«{names[order[k]]}» and «{names[order[k + 1]]}» could not be lined up exactly ({cnt} points agree). Take them again with more of each shared.")
         up_from_low.append(H)
         inliers.append(cnt)
-    del big, feats
+    del big
 
     # 3. Every photo onto the middle photo's plane.
     ref = n // 2
@@ -342,7 +364,11 @@ def stitch(paths, max_mp, log):
         if not moved or b - t < 16 or r - l < 16:
             break
     master = np.ascontiguousarray(canvas[t:b, l:r])
-    return master, {"order": [names[i] for i in order], "inliers": inliers, "gains": gains_out}
+    if TURN:  # back the way the photos were: the stack was a row, left to right
+        master = np.ascontiguousarray(cv2.rotate(master, cv2.ROTATE_90_COUNTERCLOCKWISE))
+        order = order[::-1]
+        inliers = inliers[::-1]
+    return master, {"order": [names[i] for i in order], "inliers": inliers, "gains": gains_out, "row": bool(TURN)}
 
 
 def tiles(master, out, tile, quality):
