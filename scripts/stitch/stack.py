@@ -374,7 +374,13 @@ def stitch(paths, max_mp, log):
     return master, {"order": [names[i] for i in order], "inliers": inliers, "gains": gains_out, "row": bool(TURN)}
 
 
-def look(img, log=lambda m: None):
+def look_template(path=None):
+    """THE VBAZAAR LOOK: one template for every photo (`look.json` beside this file): its brief in words, its numbers."""
+    with open(path or os.path.join(os.path.dirname(os.path.abspath(__file__)), "look.json")) as fh:
+        return json.load(fh)
+
+
+def look(img, log=lambda m: None, T=None):
     """
     THE PHOTO MADE NICER, NOTHING INVENTED (owner, 2026-11-12, after an image generator "improved" a shelf photo by
     repainting it: O·P·I Nail Envy became Aveeno, AZELDERM became E45 — "lets make the pictures nicer this way but
@@ -397,25 +403,28 @@ def look(img, log=lambda m: None):
     No model, no generation: a letter that cannot be read before cannot be read after. In place, in bands, so a
     100-megapixel master needs about one extra copy of its lightness in memory.
     """
+    T = T or look_template()
     h, w = img.shape[:2]
     small = cv2.resize(img, (max(1, w // 8), max(1, h // 8)), interpolation=cv2.INTER_AREA).astype(np.float32)
     # White balance: half of the grey-world correction, within ±12%.
     mean = small.reshape(-1, 3).mean(axis=0)
-    wb = np.clip(1 + 0.5 * (mean.mean() / np.maximum(1.0, mean) - 1), 0.88, 1.12)
+    ms = T["white_balance"]["max_shift"]
+    wb = np.clip(1 + T["white_balance"]["strength"] * (mean.mean() / np.maximum(1.0, mean) - 1), 1 - ms, 1 + ms)
     # Exposure from the lightness of the balanced small copy.
     lum = (small * wb).clip(0, 255) @ np.float32([0.114, 0.587, 0.299])
-    lo, hi = np.percentile(lum, 0.5), np.percentile(lum, 99.5)
+    # The black point is only partly pulled down (`black_keep`): shadows stay open, the photo stays light.
+    lo, hi = np.percentile(lum, T["levels"]["black_percentile"]) * (1 - T["levels"]["black_keep"]), np.percentile(lum, T["levels"]["white_percentile"])
     hi = max(hi, lo + 40)
     med = (np.median(lum) - lo) / (hi - lo)
     # The median toward 0.55: a dark photo is lifted (at most a gamma of 1.6); a bright one is never darkened.
-    gamma = float(np.clip(math.log(0.55) / math.log(max(0.05, min(0.95, med))), 1 / 1.6, 1.0))
+    gamma = float(np.clip(math.log(T["exposure"]["target_median"]) / math.log(max(0.05, min(0.95, med))), 1 / T["exposure"]["max_lift_gamma"], 1.0))
     log(f"look: white balance {np.round(wb, 3).tolist()} (b, g, r), levels {lo:.0f}–{hi:.0f}, gamma {gamma:.2f}")
     x = np.arange(256, dtype=np.float32)
     table = np.zeros((256, 1, 3), np.uint8)
     for ch in range(3):
         v = np.clip((x * wb[ch] - lo) / (hi - lo), 0, 1) ** gamma
         table[:, 0, ch] = np.round(v * 255)
-    clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(max(4, round(w / 900)), max(4, round(h / 900))))
+    clahe = cv2.createCLAHE(clipLimit=T["local_contrast"]["clahe_clip"], tileGridSize=(max(4, round(w / 900)), max(4, round(h / 900))))
     # The lightness of the whole photo (CLAHE needs it whole); the colour in bands.
     L = np.empty((h, w), np.uint8)
     BAND = max(64, min(1024, int(6e6 / w)))  # about 6 megapixels a band: the floats made for a band stay small
@@ -424,17 +433,18 @@ def look(img, log=lambda m: None):
         img[y:y + BAND] = band
         L[y:y + BAND] = cv2.cvtColor(band, cv2.COLOR_BGR2LAB)[:, :, 0]
     L2 = clahe.apply(L)
-    cv2.addWeighted(L, 0.4, L2, 0.6, 0, dst=L2)
+    cv2.addWeighted(L, 1 - T["local_contrast"]["mix"], L2, T["local_contrast"]["mix"], 0, dst=L2)
     del L
     # Punch (clarity), then the S-curve and the shine, on the lightness alone.
-    wide = cv2.GaussianBlur(L2, (0, 0), max(6.0, max(w, h) / 260))
-    curve = np.arange(256, dtype=np.float32) / 255
-    curve = curve - 0.045 * np.sin((curve - 0.5) * 2 * math.pi) * -1                  # S: darks a little darker, lights lighter
-    curve = curve + 0.55 * np.clip(curve - 0.70, 0, 1) ** 2 / 0.30                    # shine: the top 30% toward white
+    wide = cv2.GaussianBlur(L2, (0, 0), max(6.0, max(w, h) / T["clarity"]["radius_divisor"]))
+    C = T["curve"]
+    curve = (np.arange(256, dtype=np.float32) / 255) ** T["exposure"]["brighten_gamma"]  # lighter: the mid-tones lifted
+    curve = curve + C["s_strength"] * np.sin((curve - 0.5) * 2 * math.pi)                 # S: darks a little darker, lights lighter
+    curve = curve + C["shine_amount"] * np.clip(curve - C["shine_from"], 0, 1) ** 2 / (1 - C["shine_from"])  # shine: the top toward white
     curve = np.clip(curve * 255, 0, 255).astype(np.uint8)
     for y in range(0, h, BAND):
         f = L2[y:y + BAND].astype(np.float32)
-        f += 0.45 * (f - wide[y:y + BAND]) * (1 - (f / 127.5 - 1) ** 2)  # mid-tones most: no clipped shadows or lights
+        f += T["clarity"]["amount"] * (f - wide[y:y + BAND]) * (1 - (f / 127.5 - 1) ** 2)  # mid-tones most: no clipped shadows or lights
         L2[y:y + BAND] = cv2.LUT(np.clip(f, 0, 255).astype(np.uint8), curve)
     del wide
     PAD = 16
@@ -445,16 +455,17 @@ def look(img, log=lambda m: None):
         # Colour: a and b away from grey by 18%, eased off where already strong.
         ab = lab[:, :, 1:].astype(np.float32) - 128
         chroma = np.sqrt((ab * ab).sum(axis=2, keepdims=True))
-        ab *= 1 + 0.35 * np.clip(1 - chroma / 95, 0, 1)
+        ab *= 1 + T["colour"]["saturation"] * np.clip(1 - chroma / T["colour"]["ease_above_chroma"], 0, 1)
         lab[:, :, 1:] = np.clip(ab + 128, 0, 255).astype(np.uint8)
         bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
         # Sharpening where there is detail: the difference from a blur, added back, faded out on flat areas.
         f3 = bgr.astype(np.float32)
-        d1 = f3 - cv2.GaussianBlur(bgr, (0, 0), 1.2).astype(np.float32)
-        d2 = f3 - cv2.GaussianBlur(bgr, (0, 0), 3.5).astype(np.float32)
+        S = T["sharpen"]
+        d1 = f3 - cv2.GaussianBlur(bgr, (0, 0), S["fine_radius"]).astype(np.float32)
+        d2 = f3 - cv2.GaussianBlur(bgr, (0, 0), S["coarse_radius"]).astype(np.float32)
         edge = cv2.GaussianBlur(np.abs(d1).max(axis=2), (0, 0), 2.0)
         gate = np.clip((edge - 1.2) / 3.5, 0, 1)[:, :, None]
-        add = np.clip(1.3 * d1 + 0.45 * d2, -60, 45) * gate          # limited: a crisp edge, not a white halo
+        add = np.clip(S["fine_amount"] * d1 + S["coarse_amount"] * d2, -S["max_dark"], S["max_bright"]) * gate          # limited: a crisp edge, not a white halo
         sharp = np.clip(f3 + add, 0, 255).astype(np.uint8)
         del f3, d1, d2, add
         img[y:min(h, y + BAND)] = sharp[y - ya:y - ya + min(BAND, h - y)]

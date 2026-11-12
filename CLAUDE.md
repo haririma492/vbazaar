@@ -287,6 +287,16 @@ plan and the Managed Agents decision are in
     Aveeno, AZELDERM %20 became E45, Vichy became "VICHAL". Real-ESRGAN (tried the same day, 19 min a photo on
     CPU) added nothing visible. `STITCH_VERSION` (in a shelf's `sig`) makes every shelf stitch again when the
     look changes.
+  - **«The VBazaar Look» is ONE template for every photo** (owner, 2026-11-12: *"it is much better thanks, is a bit
+    darker, it could be lighter … lets coin a template prompt that we use for all vbazaar photoes"*).
+    `scripts/stitch/look.json`: its `brief` in words (a shop photo that sells: bright and clean, colours a little
+    richer, crisp contours, glass and gloss catching the light, every product standing off its background; nothing
+    drawn, added, removed or guessed) and the numbers that carry it out (white balance, levels, exposure, local
+    contrast, clarity, curve, colour, sharpen). Change the look THERE, raise its `version` and `STITCH_VERSION`.
+    v2 is lighter (mid-tones lifted, the black point only partly pulled down). `scripts/stitch/look.py in out`
+    puts it on any photo: the way in for the other photo pipelines (product photos, shelf stills, door photos),
+    which do not use it yet. It is a settings template, not a text prompt: a prompt to an image generator is what
+    rewrote the labels.
   - **The tiles** are Deep Zoom (DZI), 512 px progressive JPEG at 85: `scenes/store-<slug>/zoom/<set>-<stamp>/`
     (`manifest.json`, `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`, `thumb.jpg`; public). The master is
     private (`stores/<slug>/gigapan/<set>/master.jpg`), kept for reading labels later. State:
