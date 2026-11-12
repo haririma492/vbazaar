@@ -276,6 +276,17 @@ plan and the Managed Agents decision are in
     sideways, "0 points agree"; *"you can ask on the form … or can build intelligence so it is recognized"*): when
     no stack joins top to bottom the photos are tried turned a quarter and the master turned back; the note says
     «left to right». Nothing is asked on the form. Operator action `zoomLinks`: private links to a shelf's photos.
+  - **The look: nicer, and nothing invented** (owner, 2026-11-12: *"lets make the pictures nicer this way but do not
+    invent texts"*; *"make countours sharper, surfaces shiny etc etc for God's sake we are going to sell these
+    darn things"*). `look()` in `stack.py`, on by default (`--look off`), after the stitch and before the tiles:
+    white balance (half the grey-world cast), levels, a lift for dark photos (never darkened), CLAHE on the
+    lightness at 60%, "clarity" (lightness pushed off its own wide blur), an S-curve, highlights above 70% toward
+    white (the shine), saturation +35%, two unsharp masks gated to where there is detail and limited against
+    halos. Strong on purpose. The private master stays as stitched. ⚠️ NEVER a generating model on a shop's
+    photo: ChatGPT "made the labels readable" on this store's dresser by repainting it — O·P·I Nail Envy became
+    Aveeno, AZELDERM %20 became E45, Vichy became "VICHAL". Real-ESRGAN (tried the same day, 19 min a photo on
+    CPU) added nothing visible. `STITCH_VERSION` (in a shelf's `sig`) makes every shelf stitch again when the
+    look changes.
   - **The tiles** are Deep Zoom (DZI), 512 px progressive JPEG at 85: `scenes/store-<slug>/zoom/<set>-<stamp>/`
     (`manifest.json`, `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`, `thumb.jpg`; public). The master is
     private (`stores/<slug>/gigapan/<set>/master.jpg`), kept for reading labels later. State:

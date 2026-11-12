@@ -25,7 +25,10 @@ to right, or a tilted stack the camera saved on its side. The master is turned b
   6  Seam      a path across the shared part where the two photos differ least (a jar that stands out from the
                shelf is not cut in two), blended in bands of detail (multi-band, OpenCV's blender) round that path
                only; everywhere else a photo's own pixels are kept as they are.
-  7  Tiles     the master (JPEG) and a Deep Zoom (DZI) pyramid: `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`,
+  7  Look      the photo made nicer with nothing invented (`look`): white balance, exposure, local contrast,
+               colour and sharpening of the pixels that are there. Never a generating model: one repainted the
+               owner's shelf with other brands' names.
+  8  Tiles     the master (JPEG, as stitched, before the look) and a Deep Zoom (DZI) pyramid: `shelf.dzi`, `shelf_files/<level>/<col>_<row>.jpg`,
                progressive JPEG; `manifest.json` says the same in JSON; `thumb.jpg` for the mini-map.
 
 The answer is `<out>/result.json`: { ok: true, w, h, … } or { ok: false, error: a sentence a person can act on }.
@@ -371,6 +374,93 @@ def stitch(paths, max_mp, log):
     return master, {"order": [names[i] for i in order], "inliers": inliers, "gains": gains_out, "row": bool(TURN)}
 
 
+def look(img, log=lambda m: None):
+    """
+    THE PHOTO MADE NICER, NOTHING INVENTED (owner, 2026-11-12, after an image generator "improved" a shelf photo by
+    repainting it: O·P·I Nail Envy became Aveeno, AZELDERM became E45 — "lets make the pictures nicer this way but
+    do not invent texts"). Only what a photo lab does to the pixels that are there, the same sums for every pixel:
+
+      white balance   a colour cast taken half way out (the grey-world average, never more than 12% a channel);
+      exposure        the darkest 0.5% to black and the brightest 0.5% to white, the mid-tones lifted when the
+                      photo is dark (a gamma, at most 1.5);
+      local contrast  CLAHE on the lightness only, mixed in at 60%: shelves in shadow open up;
+      punch           "clarity": the lightness pushed away from its own wide blur (the photo's width / 260), so
+                      every bottle and box stands off its background; then a gentle S-curve;
+      shine           highlights above 70% lifted toward white: glass, foil and gloss catch the light;
+      colour          saturation up 35%, less where a colour is already strong;
+      contours        two unsharp masks (1.2 px at 130%, 3.5 px at 45%), not where the picture is flat (noise is
+                      left alone), each limited so no bright halo is drawn round an edge.
+
+    ⚠️ STRONG ON PURPOSE (owner, 2026-11-12: "make countours sharper, surfaces shiny etc etc for God's sake we are
+    going to sell these darn things"). It is still arithmetic on the camera's pixels.
+
+    No model, no generation: a letter that cannot be read before cannot be read after. In place, in bands, so a
+    100-megapixel master needs about one extra copy of its lightness in memory.
+    """
+    h, w = img.shape[:2]
+    small = cv2.resize(img, (max(1, w // 8), max(1, h // 8)), interpolation=cv2.INTER_AREA).astype(np.float32)
+    # White balance: half of the grey-world correction, within ±12%.
+    mean = small.reshape(-1, 3).mean(axis=0)
+    wb = np.clip(1 + 0.5 * (mean.mean() / np.maximum(1.0, mean) - 1), 0.88, 1.12)
+    # Exposure from the lightness of the balanced small copy.
+    lum = (small * wb).clip(0, 255) @ np.float32([0.114, 0.587, 0.299])
+    lo, hi = np.percentile(lum, 0.5), np.percentile(lum, 99.5)
+    hi = max(hi, lo + 40)
+    med = (np.median(lum) - lo) / (hi - lo)
+    # The median toward 0.55: a dark photo is lifted (at most a gamma of 1.6); a bright one is never darkened.
+    gamma = float(np.clip(math.log(0.55) / math.log(max(0.05, min(0.95, med))), 1 / 1.6, 1.0))
+    log(f"look: white balance {np.round(wb, 3).tolist()} (b, g, r), levels {lo:.0f}–{hi:.0f}, gamma {gamma:.2f}")
+    x = np.arange(256, dtype=np.float32)
+    table = np.zeros((256, 1, 3), np.uint8)
+    for ch in range(3):
+        v = np.clip((x * wb[ch] - lo) / (hi - lo), 0, 1) ** gamma
+        table[:, 0, ch] = np.round(v * 255)
+    clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(max(4, round(w / 900)), max(4, round(h / 900))))
+    # The lightness of the whole photo (CLAHE needs it whole); the colour in bands.
+    L = np.empty((h, w), np.uint8)
+    BAND = max(64, min(1024, int(6e6 / w)))  # about 6 megapixels a band: the floats made for a band stay small
+    for y in range(0, h, BAND):
+        band = cv2.LUT(img[y:y + BAND], table)
+        img[y:y + BAND] = band
+        L[y:y + BAND] = cv2.cvtColor(band, cv2.COLOR_BGR2LAB)[:, :, 0]
+    L2 = clahe.apply(L)
+    cv2.addWeighted(L, 0.4, L2, 0.6, 0, dst=L2)
+    del L
+    # Punch (clarity), then the S-curve and the shine, on the lightness alone.
+    wide = cv2.GaussianBlur(L2, (0, 0), max(6.0, max(w, h) / 260))
+    curve = np.arange(256, dtype=np.float32) / 255
+    curve = curve - 0.045 * np.sin((curve - 0.5) * 2 * math.pi) * -1                  # S: darks a little darker, lights lighter
+    curve = curve + 0.55 * np.clip(curve - 0.70, 0, 1) ** 2 / 0.30                    # shine: the top 30% toward white
+    curve = np.clip(curve * 255, 0, 255).astype(np.uint8)
+    for y in range(0, h, BAND):
+        f = L2[y:y + BAND].astype(np.float32)
+        f += 0.45 * (f - wide[y:y + BAND]) * (1 - (f / 127.5 - 1) ** 2)  # mid-tones most: no clipped shadows or lights
+        L2[y:y + BAND] = cv2.LUT(np.clip(f, 0, 255).astype(np.uint8), curve)
+    del wide
+    PAD = 16
+    for y in range(0, h, BAND):
+        ya, yb = max(0, y - PAD), min(h, y + BAND + PAD)
+        lab = cv2.cvtColor(img[ya:yb], cv2.COLOR_BGR2LAB)
+        lab[:, :, 0] = L2[ya:yb]
+        # Colour: a and b away from grey by 18%, eased off where already strong.
+        ab = lab[:, :, 1:].astype(np.float32) - 128
+        chroma = np.sqrt((ab * ab).sum(axis=2, keepdims=True))
+        ab *= 1 + 0.35 * np.clip(1 - chroma / 95, 0, 1)
+        lab[:, :, 1:] = np.clip(ab + 128, 0, 255).astype(np.uint8)
+        bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+        # Sharpening where there is detail: the difference from a blur, added back, faded out on flat areas.
+        f3 = bgr.astype(np.float32)
+        d1 = f3 - cv2.GaussianBlur(bgr, (0, 0), 1.2).astype(np.float32)
+        d2 = f3 - cv2.GaussianBlur(bgr, (0, 0), 3.5).astype(np.float32)
+        edge = cv2.GaussianBlur(np.abs(d1).max(axis=2), (0, 0), 2.0)
+        gate = np.clip((edge - 1.2) / 3.5, 0, 1)[:, :, None]
+        add = np.clip(1.3 * d1 + 0.45 * d2, -60, 45) * gate          # limited: a crisp edge, not a white halo
+        sharp = np.clip(f3 + add, 0, 255).astype(np.uint8)
+        del f3, d1, d2, add
+        img[y:min(h, y + BAND)] = sharp[y - ya:y - ya + min(BAND, h - y)]
+    return img
+
+
 def tiles(master, out, tile, quality):
     """The Deep Zoom pyramid: level `max` is the master, each level below half of it, down to one pixel."""
     h, w = master.shape[:2]
@@ -406,6 +496,7 @@ def main():
     ap.add_argument("--quality", type=int, default=85)
     ap.add_argument("--max-mp", type=float, default=100.0)
     ap.add_argument("--threads", type=int, default=2)
+    ap.add_argument("--look", choices=["on", "off"], default="on")
     ap.add_argument("photos", nargs="+")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -424,7 +515,11 @@ def main():
                 master = cv2.resize(master, None, fx=s, fy=s, interpolation=cv2.INTER_AREA)
         else:
             master, info = stitch(a.photos, a.max_mp, log)
+        # The master is kept as the camera made it (for reading labels later); what shoppers see gets the look.
         cv2.imwrite(os.path.join(a.out, "master.jpg"), master, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        if a.look == "on":
+            master = look(master, log)
+        info["look"] = a.look == "on"
         manifest, count = tiles(master, a.out, a.tile, a.quality)
         out = {"ok": True, **manifest, "tiles": count, "mp": round(manifest["w"] * manifest["h"] / 1e6, 1), "seconds": round(time.time() - started, 1), **info}
     except Refused as e:

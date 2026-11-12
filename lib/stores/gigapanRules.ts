@@ -48,7 +48,10 @@ export function setsOf(files: ZoomUpload[]): Array<{ id: string; photos: ZoomUpl
   for (const f of [...files].sort((a, b) => a.at.localeCompare(b.at))) out.set(f.set, [...(out.get(f.set) ?? []), f]);
   return [...out].map(([id, photos]) => ({ id, photos }));
 }
-export const sigOf = (photos: Array<{ key: string }>) => photos.map((p) => p.key).sort().join("|");
+/** Raised when the stitcher changes what shoppers see, so every shelf is stitched again by the next run
+ *  (2: the look pass: sharper contours, punch, shine, colour — owner, 2026-11-12). */
+export const STITCH_VERSION = 2;
+export const sigOf = (photos: Array<{ key: string }>) => `${photos.map((p) => p.key).sort().join("|")}#v${STITCH_VERSION}`;
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 export const zoomLabel = (i: number) => ({ en: `Shelf ${i + 1}`, fa: `قفسه ${String(i + 1).replace(/\d/g, (d) => FA_DIGITS[Number(d)])}` });
 
