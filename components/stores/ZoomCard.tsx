@@ -113,6 +113,7 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
                 )}
                 <div className="flex flex-wrap gap-2 pt-1">
                   {s.manifest && <button type="button" className={QUIET} onClick={() => setOpen(s)}>🔍 Open · باز کردن</button>}
+                  {s.manifest && <a className={`${QUIET} inline-flex items-center`} href={`${api.replace("/api/stores/", "/zoom/")}?shelf=${sets.filter((x) => x.manifest).indexOf(s) + 1}`} target="_blank" rel="noreferrer">Direct link ↗</a>}
                   {operator && <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => { into.current = s.id; input.current?.click(); }}>Add or retake a photo</button>}
                   {operator && s.state === "done" && <button type="button" className={QUIET} disabled={st?.working} onClick={() => void act({ action: "zoomStitch", relocate: true }, "Looking for the shelves in the walk… about a minute. · در حال جست‌وجو")}>Find it in the walk{s.placeNote ? " again" : ""}</button>}
                   {operator && s.state === "failed" && <button type="button" className={QUIET} disabled={st?.working} onClick={() => void act({ action: "zoomStitch", force: true }, "Trying again… · دوباره")}>Try again</button>}

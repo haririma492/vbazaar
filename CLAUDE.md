@@ -295,6 +295,9 @@ plan and the Managed Agents decision are in
     made-up walks holding the shelf: corners within 1% of the frame (flat), 0.35° (360°). Not in the walk: the
     card says so (`ZoomSet.place`), and it is looked for again only when the walk or the photo changes, or on
     «Find it in the walk again». A shelf the operator pinned by hand is never replaced. Cube-map walks: by hand.
+  - **A direct address** (owner, 2026-11-12: *"provide the link where I can see them directly"*): `/zoom/<slug>`
+    lists a store's stitched shelves and opens one full screen; `?shelf=<n>` opens that one at once (as does a
+    store with one shelf). Public like the tiles, not indexed. «Direct link ↗» on the card.
   - **On the walk** it is a 🔍 on the shelf (`Walk.zooms`, `WalkZoom`: the photo's id, its manifest's address,
     pins that follow the shelf like a light). The operator pins it: «Zoom» on the walk's `?edit=1`
     (`walk/WalkZoom.tsx`), walk to the shelf, one tap on its middle. A tap by a shopper opens
