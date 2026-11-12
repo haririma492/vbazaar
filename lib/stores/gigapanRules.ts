@@ -35,6 +35,19 @@ export function toLocate(set: ZoomSet, walk: string, force = false): boolean {
   if (set.state !== "done" || !set.manifest || !set.master) return false;
   return force || !set.place || set.place.walk !== walk || set.place.manifest !== set.manifest;
 }
+/**
+ * WHAT A SHELF IS CALLED (owner, 2026-11-12: "identify 'Shelves' and assign number or name or both to them"): the
+ * number and name the operator gave it on the walk (`named`: the walk's shelves that have either, by id), else its
+ * place among the store's zoom photos («Shelf 2»).
+ */
+export function labelFor(id: string, index: number, named: Map<string, { en: string; fa?: string }>): { en: string; fa: string } {
+  const l = named.get(id);
+  return l ? { en: l.en, fa: l.fa ?? l.en } : zoomLabel(index);
+}
+/** The walk's shelves the operator numbered or named, by id. */
+export function namedShelves(zooms: Array<{ id: string; n?: number; name?: unknown; label: { en: string; fa?: string } }> | undefined): Map<string, { en: string; fa?: string }> {
+  return new Map((zooms ?? []).filter((z) => z.n !== undefined || z.name).map((z) => [z.id, z.label]));
+}
 /** At most `max` of `frames`, evenly, keeping the first and the last. */
 export function thin<T>(frames: T[], max: number): T[] {
   if (frames.length <= max) return frames;

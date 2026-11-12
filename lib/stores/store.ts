@@ -55,7 +55,7 @@ export type Uploaded = { key: string; name: string; size: number; at: string };
 export type ZoomUpload = Uploaded & { set: string };
 export const ZOOM_SET_RE = /^[a-z0-9]{4,16}$/;
 /** At most this many photos a shelf (three is what is asked for: top, middle, bottom). */
-export const MAX_ZOOM_PHOTOS = 5;
+export const MAX_ZOOM_PHOTOS = 6;
 
 export type StepName = "video" | "lock" | "catalogue" | "website" | "photos" | "tag" | "place" | "check";
 export const STEPS: StepName[] = ["video", "lock", "catalogue", "website", "photos", "tag", "place", "check"];

@@ -516,8 +516,8 @@ def main():
     log = lambda m: print(f"[stack] {m}", file=sys.stderr, flush=True)
     result_path = os.path.join(a.out, "result.json")
     try:
-        if len(a.photos) > 5:
-            raise Refused("At most 5 photos a shelf.")
+        if len(a.photos) > 6:
+            raise Refused("At most 6 photos a shelf.")
         if len(a.photos) == 1:  # one photo: nothing to join, only its tiles
             master, info = load(a.photos[0]), {"order": [os.path.basename(a.photos[0])], "inliers": [], "gains": {}}
             mp = master.shape[0] * master.shape[1] / 1e6

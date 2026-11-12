@@ -7,7 +7,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   doorPhotoOf,
-  DEFAULT_PITCH, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
+  DEFAULT_PITCH, zoomsAt, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
   isFlatDoor, itemHitAt, entryOf, faceOf, rightShelfOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setTrack, musicOf, MAX_TRACKS, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
@@ -610,4 +610,39 @@ test("a store walk plays up to 3 tracks of music, in order (owner, 2026-11-06)",
   w = setTrack(setTrack(w, K, 0, null), K, 0, null);
   assert.deepEqual(musicOf(walkOf(w, K)), []);
   assert.equal(checkWalks({ walks: { [K]: { doors: [], playlist: [A, B, C, A] } } }).problems.length, 1, "four is too many");
+});
+
+test("a shelf the operator marked is kept with its border, number and name, before it has a photo", () => {
+  const border = [{ t: 4, c: [0.1, 0.3, 0.6, 0.3, 0.6, -0.2, 0.1, -0.2] }];
+  const raw = { walks: { "scenes/store-x/walk.mp4": { doors: [], zooms: [
+    { id: "gabc123", label: { en: "3 · Spices", fa: "۳ · ادویه" }, n: 3, name: { en: "Spices", fa: "ادویه" }, pins: [{ t: 4, x: 0.35, y: 0.05 }], outline: border },
+    { id: "gphoto1", label: { en: "Shelf 1" }, manifest: "https://cdn.example/zoom/manifest.json", pins: [{ t: 9, x: 1, y: 0 }] },
+    { id: "gnothing", label: { en: "Nothing" }, pins: [{ t: 1, x: 0, y: 0 }] }, // no border and no photo: not a shelf
+    { id: "gbadurl", label: { en: "Bad" }, manifest: "javascript:alert(1)", pins: [{ t: 1, x: 0, y: 0 }], outline: border },
+  ] } } };
+  const { walks, problems } = checkWalks(raw);
+  const zs = walks.walks["scenes/store-x/walk.mp4"].zooms!;
+  assert.deepEqual(zs.map((z) => z.id), ["gabc123", "gphoto1"]);
+  assert.equal(zs[0].manifest, undefined);
+  assert.equal(zs[0].n, 3);
+  assert.deepEqual(zs[0].name, { en: "Spices", fa: "ادویه" });
+  assert.equal(problems.length, 2);
+  // Shown while its border is, with nothing to open.
+  const shown = zoomsAt(walks.walks["scenes/store-x/walk.mp4"], 4.1, true);
+  assert.equal(shown.length, 1);
+  assert.equal(shown[0].item.zoom.manifest, undefined);
+  assert.equal(shown[0].item.label.en, "3 · Spices");
+});
+
+test("shelves merge one by one: a shelf marked here and a photo the stitcher put on another are both kept", () => {
+  const k = "scenes/store-x/walk.mp4";
+  const border = [{ t: 4, c: [0.1, 0.3, 0.6, 0.3, 0.6, -0.2, 0.1, -0.2] }];
+  const a = { id: "gaaaa1", label: { en: "Shelf 1" }, n: 1, pins: [{ t: 4, x: 0.35, y: 0.05 }], outline: border };
+  const b = { id: "gbbbb2", label: { en: "Shelf 2" }, n: 2, pins: [{ t: 8, x: 0.35, y: 0.05 }], outline: border };
+  const base = checkWalks({ walks: { [k]: { doors: [], zooms: [a] } } }).walks;
+  const mine = checkWalks({ walks: { [k]: { doors: [], zooms: [a, b] } } }).walks;
+  const theirs = checkWalks({ walks: { [k]: { doors: [], zooms: [{ ...a, manifest: "https://cdn.example/z/manifest.json" }] } } }).walks;
+  const z = mergeWalks(base, mine, theirs).walks[k].zooms!;
+  assert.deepEqual(z.map((x) => x.id), ["gaaaa1", "gbbbb2"]);
+  assert.equal(z[0].manifest, "https://cdn.example/z/manifest.json");
 });

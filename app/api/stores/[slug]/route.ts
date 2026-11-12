@@ -181,12 +181,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (kind === "video" && who !== "operator") return fail(403, "Only the bazaar's operator uploads the store's video. · ویدیو را اپراتور بارگذاری می‌کند.");
     const name = String(body.name ?? "");
     let key = String(body.key ?? "");
-    // A shelf's zoom photos say which shelf they are of (`set`, made by the card): at most 5 a shelf.
+    // A shelf's zoom photos say which shelf they are of (`set`: the shelf chosen on the card, marked on the walk or new): at most 6 a shelf.
     const set = kind === "gigapan" ? String(body.set ?? "") : undefined;
     if (kind === "gigapan") {
       if (!ZOOM_SET_RE.test(set!)) return fail(400, "Which shelf is this photo of? Start from «Add a shelf's photos».");
       const had = setsOf(s.files.gigapan ?? []).find((x) => x.id === set)?.photos ?? [];
-      if (body.ask === "start" && had.length >= MAX_ZOOM_PHOTOS && !had.some((p) => p.name === name)) return fail(400, `A shelf takes at most ${MAX_ZOOM_PHOTOS} photos (three is right: top, middle, bottom).`);
+      if (body.ask === "start" && had.length >= MAX_ZOOM_PHOTOS && !had.some((p) => p.name === name)) return fail(400, `A shelf takes at most ${MAX_ZOOM_PHOTOS} photos. Remove the shelf's photos to start it again.`);
     }
     if (body.ask === "start" || !key) {
       const refused = checkUploadName(kind, name);

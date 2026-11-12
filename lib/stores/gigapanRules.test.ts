@@ -1,6 +1,18 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { noteOf, setsOf, sigOf, stateOf, toStitch, zoomLabel, type ZoomRecord } from "./gigapanRules.ts";
+import { labelFor, namedShelves, noteOf, setsOf, sigOf, stateOf, toStitch, zoomLabel, type ZoomRecord } from "./gigapanRules.ts";
+
+test("a shelf is called what the operator called it on the walk, else by its place", () => {
+  const named = namedShelves([
+    { id: "gaaaa", n: 3, label: { en: "3 · Spices", fa: "۳ · ادویه" } },
+    { id: "gbbbb", name: { en: "Tea" }, label: { en: "Tea" } },
+    { id: "gcccc", label: { en: "Shelf 9" } }, // found by the finder, never named: its place decides
+  ]);
+  assert.deepEqual(labelFor("gaaaa", 0, named), { en: "3 · Spices", fa: "۳ · ادویه" });
+  assert.deepEqual(labelFor("gbbbb", 1, named), { en: "Tea", fa: "Tea" });
+  assert.deepEqual(labelFor("gcccc", 2, named), zoomLabel(2));
+  assert.deepEqual(labelFor("gdddd", 0, namedShelves(undefined)), zoomLabel(0));
+});
 import { addUpload, checkUploadName, isUploadKeyOf, parseStore, uploadKey, type ZoomUpload } from "./store.ts";
 
 const up = (set: string, name: string, at: string): ZoomUpload => ({ set, name, key: `stores/x/uploads/gigapan/${at}-${name}`, size: 9_000_000, at });

@@ -16,7 +16,8 @@
 
 import { clampCentre, followStep, patchAt, toGray } from "@/lib/splats/track";
 import { renderView, viewDir, type Projection } from "@/lib/splats/projection";
-import type { ItemPin } from "@/lib/splats/walks";
+import type { ItemPin, ZoomFrame } from "@/lib/splats/walks";
+import { followPoints, moveQuad, smoothOutline } from "@/lib/splats/shelves";
 
 /** Seconds between followed frames. */
 const STEP = 0.2;
@@ -192,6 +193,114 @@ export async function followProduct360(
       }
     }
     return pins.sort((a, b) => a.t - b.t);
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+// ── A SHELF'S BORDER, FOLLOWED (owner, 2026-11-12: "draw rectangles on the shelf and identify 'Shelves'") ──
+// The operator draws the border at one moment; five points inside it (its middle and each corner pulled in, where
+// the shelf's own products are, not its edge against the wall) are followed through the video in ONE pass, the same
+// way a product is, and at every step the border is moved, turned and sized to fit them (`moveQuad`). A step with
+// fewer than three points left, or a border that came out unbelievable, is left out; the follow ends where the
+// border is lost for a second.
+
+type Pt = [number, number];
+/** How far either way a shelf is followed (s): a shelf stays in view longer than one product. */
+const SHELF_SPAN = 25;
+
+export async function followShelf(
+  src: string,
+  t0: number,
+  quad: number[],
+  flat: boolean,
+  projection: Projection,
+  onProgress: (p: FollowProgress) => void,
+  signal: { cancelled: boolean },
+): Promise<ZoomFrame[]> {
+  const seeds = followPoints(quad, !flat);
+  const video = document.createElement("video");
+  video.crossOrigin = "anonymous";
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.src = src;
+  try {
+    await new Promise<void>((ok, fail) => {
+      video.addEventListener("loadeddata", () => ok(), { once: true });
+      video.addEventListener("error", () => fail(new Error("The video could not be opened to follow the shelf.")), { once: true });
+      video.load();
+    });
+    const duration = video.duration;
+    const W = flat ? WORK_W * 2 : WORK_360, H = Math.round((video.videoHeight / video.videoWidth) * W);
+    const canvas = document.createElement("canvas");
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    const grayAt = async (t: number): Promise<Float32Array> => {
+      await new Promise<void>((ok) => {
+        video.addEventListener("seeked", () => ok(), { once: true });
+        video.currentTime = Math.min(Math.max(0, t), Math.max(0, duration - 0.05));
+      });
+      ctx.drawImage(video, 0, 0, W, H);
+      // Throws on a video without CORS: the caller says so.
+      return toGray(ctx.getImageData(0, 0, W, H).data, W, H);
+    };
+    // Each point's own follow, as `followProduct` / `followProduct360` do it.
+    const size = Math.max(12, Math.round(W * PATCH * 0.5) | 1), radius = Math.round(size * 1.2), c = VIEW_N / 2;
+    type Live = { at: Pt; move: Pt; template: Float32Array; alive: boolean };
+    const first = await grayAt(t0);
+    const start = (): Live[] => seeds.map((p) => {
+      if (flat) {
+        const k = clampCentre(p[0] * W, p[1] * H, W, H, size);
+        return { at: [k.x, k.y] as Pt, move: [0, 0] as Pt, template: patchAt(first, W, k.x, k.y, size), alive: true };
+      }
+      return { at: p, move: [0, 0] as Pt, template: patchAt(renderView(first, W, H, projection, p[0], p[1], VIEW_FOV, VIEW_N), VIEW_N, c, c, VIEW_PATCH), alive: true };
+    });
+    const forwardSteps = Math.max(0, Math.min(Math.floor(SHELF_SPAN / STEP), Math.floor((duration - t0) / STEP)));
+    const backSteps = Math.max(0, Math.min(Math.floor(SHELF_SPAN / STEP), Math.floor(t0 / STEP)));
+    const total = forwardSteps + backSteps;
+    let done = 0;
+    const frames: ZoomFrame[] = [{ t: Math.round(t0 * 100) / 100, c: quad }];
+    for (const dir of [1, -1] as const) {
+      const live = start();
+      const steps = dir === 1 ? forwardSteps : backSteps;
+      let lost = 0;
+      for (let i = 1; i <= steps; i++) {
+        if (signal.cancelled) throw new Error("cancelled");
+        const t = t0 + dir * i * STEP;
+        const gray = await grayAt(t);
+        const nows: Array<Pt | null> = live.map((l) => {
+          if (!l.alive) return null;
+          if (flat) {
+            const r = followStep(gray, W, H, l.template, size, { x: l.at[0], y: l.at[1] }, radius);
+            if (!r) { l.alive = false; return null; }
+            l.at = [r.x, r.y];
+            l.template = r.template;
+            return [r.x / W, r.y / H];
+          }
+          const guess = { lon: l.at[0] + l.move[0], lat: l.at[1] + l.move[1] };
+          const r = followStep(renderView(gray, W, H, projection, guess.lon, guess.lat, VIEW_FOV, VIEW_N), VIEW_N, VIEW_N, l.template, VIEW_PATCH, { x: c, y: c }, VIEW_RADIUS);
+          if (!r) { l.alive = false; return null; }
+          const next = viewDir(guess.lon, guess.lat, VIEW_FOV, VIEW_N, r.x, r.y);
+          l.move = [Math.atan2(Math.sin(next.lon - l.at[0]), Math.cos(next.lon - l.at[0])), next.lat - l.at[1]];
+          l.at = [next.lon, next.lat];
+          l.template = r.template;
+          return l.at;
+        });
+        done++;
+        onProgress({ done, total });
+        const moved = moveQuad(quad, seeds, nows, !flat);
+        if (moved) { frames.push({ t: Math.round(t * 100) / 100, c: moved }); lost = 0; }
+        else if (++lost >= 5 || live.filter((l) => l.alive).length < 3) {
+          done += steps - i; // the rest of this way is not needed
+          onProgress({ done, total });
+          break;
+        }
+      }
+    }
+    return smoothOutline(frames.sort((a, b) => a.t - b.t), !flat);
   } finally {
     video.removeAttribute("src");
     video.load();

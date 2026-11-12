@@ -263,7 +263,7 @@ plan and the Managed Agents decision are in
   (once switch its focus on this shelf) to be able to zoom in and out and read labels"*; the owner's brief: a
   vertical stack top / middle / bottom, ~30% shared, planar stitch, Deep Zoom tiles, a hotspot on the walk, a modal
   viewer with a mini-map). «Shelf zoom photos» card on `/stores/<slug>` (`ZoomCard.tsx`, upload kind `gigapan`):
-  «Add a shelf's photos» takes the three together, any order (`set` keeps a shelf's photos together; at most 5), and
+  «Add a shelf's photos» takes the three together, any order (`set` keeps a shelf's photos together; at most 6 since 2026-11-12, the shelf chosen from a dropdown: below), and
   the stitcher starts by itself; it is also the last step of «Refresh all agents» («Zoom photos»). Free, no AI.
   - **The stitcher** is `scripts/stitch/stack.py` (python3 + OpenCV, installed by the `Dockerfile`), run by
     `lib/stores/gigapan.ts`: finds which photo is above which; SIFT points matched ONLY in the bands that can
@@ -320,13 +320,43 @@ plan and the Managed Agents decision are in
     lists a store's stitched shelves and opens one full screen; `?shelf=<n>` opens that one at once (as does a
     store with one shelf). Public like the tiles, not indexed. «Direct link ↗» on the card.
   - **On the walk** it is a 🔍 on the shelf (`Walk.zooms`, `WalkZoom`: the photo's id, its manifest's address,
-    pins that follow the shelf like a light). The operator pins it: «Zoom» on the walk's `?edit=1`
-    (`walk/WalkZoom.tsx`), walk to the shelf, one tap on its middle. A tap by a shopper opens
+    pins that follow the shelf like a light). The operator marks the shelf: «Shelves» on the walk's `?edit=1`
+    (below; the one-tap «Zoom» pin of 2026-11-11 is gone). A tap by a shopper opens
     `components/zoom/DeepZoom.tsx` over the walk, which stops drawing and steering meanwhile (`setPaused`): only
     the tiles on screen are fetched (`lib/zoom/pyramid.ts`, tested), wheel / pinch / drag / double tap, never past
     the photo's edges, a mini-map, «Back». A cut moves the 🔍 with the picture; a photo stitched again keeps its
     place. Works on 360° and flat walks and in the widget. Not yet: the 🔍 in the Shelf Tour; the products'
     lights on the zoom photo.
+- **The operator marks the shelves; shoppers see each shelf's border and name** (owner, 2026-11-12: *"after
+  completion of Refresh all agents I need to be able as operator to draw rectangles on the shelf and identify
+  'Shelves' and assign number or name or both to them, When uploading gigapan photos of shelves then operator will
+  get a drop down list to assign which shelf they belong to, to each shelf there should be room to add upto 6
+  photos … ON shopper's free tour, the borders of each shelf and their name will be visible to them so shoppers
+  can decide to approach or pass"*). A shelf is a `WalkZoom` (`Walk.zooms`): `manifest` is now optional, with `n`,
+  `name`, and `label` made from them (`shelfLabel`: «Shelf 3», «Spices», «3 · Spices»). Rules in
+  `lib/splats/shelves.ts` (pure, tested).
+  - **Marking** is «Shelves» on the walk's `?edit=1` (`walk/WalkShelves.tsx`; it replaced «Zoom» and its one-tap
+    🔍): «＋ Mark a shelf» → tap one corner → tap the opposite corner (stand still; `rectFromTaps`: an upright
+    rectangle in the view, not a box of yaw and pitch) → its number (the next free one offered) → its name → its
+    Farsi name. The border is on the walk and saved after the second tap; the questions each save by themselves.
+    The border is then followed through the video in the browser (`followShelf` in `followProduct.ts`): five
+    points inside it followed in one pass, the border fitted to them at every 0.2 s (`moveQuad`), up to 25 s
+    either way, a step with fewer than 3 points or an unbelievable border left out. «Draw again», «Number and
+    name», «Remove» per shelf. A stitched photo the finder did not see in the walk is listed: «Draw its border».
+    ⚠️ Not tried on a real walk yet (no bucket in the build session): the arithmetic is tested, the follow is not.
+  - **The operator's border is never replaced** by the finder (`locateZooms` skips a shelf without `auto`); a
+    number or name given to a shelf the finder bordered is kept when it is found again.
+  - **Photos** («Shelf zoom photos» on `/stores/<slug>`): a dropdown «Which shelf are the photos of?» lists every
+    shelf marked on the walk and every shelf with photos, plus «A new shelf». The shelf's id IS the upload's `set`.
+    At most 6 a shelf (`MAX_ZOOM_PHOTOS`; `stack.py` too): one line of photos, top to bottom or left to right, not
+    a grid. Stitched, the photo opens from the operator's border (`repoint`). «Remove photos» on a marked shelf
+    takes the photo off and leaves the border and the name.
+  - **Shoppers** see the green border with the name on a green plate in its top left corner, on 360° and flat
+    walks and in the widget; a shelf with a photo also has the 🔍 and opens on a tap inside, one without does
+    nothing on a tap (a product's light inside still opens the product).
+  - `mergeWalks` merges shelves one by one (the editor marking one shelf while the stitcher puts another's photo
+    on the walk). After «Refresh all agents» finishes, its card points to the editor.
+  - Not done: the stitched photo is not cropped to the drawn border; names are not shown in the Shelf Tour.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
   rules in `lib/splats/walkStats.ts` (tested). PPD = the playing copy's width ÷ the angle it spans (360° walk:

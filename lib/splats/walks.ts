@@ -309,7 +309,18 @@ export type Walk = {
  * meanwhile. `id` is the zoom photo's (the store's `gigapans.json`), so a photo stitched again keeps its place.
  */
 export type WalkZoom = {
-  id: string; label: WalkLabel; manifest: string; thumb?: string; pins: ItemPin[];
+  id: string; label: WalkLabel;
+  /** The shelf's zoom photo (its Deep Zoom tiles). A shelf the operator marked has none until its photos are
+   *  uploaded and stitched: it then shows its border and its name only. */
+  manifest?: string; thumb?: string; pins: ItemPin[];
+  /**
+   * A SHELF THE OPERATOR MARKED (owner, 2026-11-12: "draw rectangles on the shelf and identify 'Shelves' and assign
+   * number or name or both to them … the borders of each shelf and their name will be visible to them so shoppers
+   * can decide to approach or pass"). `n` and `name` are what the operator gave; `label` is made from them
+   * (`shelfLabel` in `shelves.ts`) and is what shoppers read on the border.
+   */
+  n?: number;
+  name?: WalkLabel;
   /**
    * THE SHELF'S BORDER (owner, 2026-11-11: "identify the shelves for which … gigapan photos are submitted … bordered
    * with some line, maybe green line, in a rectangle shape … so the shopper know … this shelf is the one that is
@@ -812,15 +823,21 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         const lbl = (x.label ?? {}) as Record<string, unknown>;
         const en = str(lbl.en, 80), fa = str(lbl.fa, 80);
         const pins = Array.isArray(x.pins) ? (x.pins as Array<Record<string, unknown>>).filter((q) => q && finite(q.t) && q.t >= 0 && finite(q.x) && finite(q.y) && Math.abs(q.x) <= 3.2 && Math.abs(q.y) <= 1.6) : [];
-        if (!DOOR_ID_RE.test(id) || zooms.some((z) => z.id === id) || !pins.length || pins.length > MAX_ITEM_PINS || !isSiteUrl(x.manifest)) {
-          problems.push(`${key}, zoom photo «${id || "?"}»: it needs an id, its pins and its https manifest.`);
-          continue;
-        }
         const outline = (Array.isArray(x.outline) ? (x.outline as Array<Record<string, unknown>>) : [])
           .filter((q) => q && finite(q.t) && q.t >= 0 && Array.isArray(q.c) && q.c.length === 8 && (q.c as unknown[]).every((v) => finite(v) && Math.abs(v) <= 6))
           .slice(0, 600).map((q) => ({ t: q.t as number, c: (q.c as number[]).slice() })).sort((a, b) => a.t - b.t);
+        // A shelf has its zoom photo, or (marked by the operator, its photos still to come) its border.
+        const hasPhoto = isSiteUrl(x.manifest);
+        if (!DOOR_ID_RE.test(id) || zooms.some((z) => z.id === id) || !pins.length || pins.length > MAX_ITEM_PINS || (!hasPhoto && !outline.length) || (x.manifest !== undefined && !hasPhoto)) {
+          problems.push(`${key}, shelf «${id || "?"}»: it needs an id, its pins, and its border or its https zoom photo.`);
+          continue;
+        }
+        const nm = (x.name ?? {}) as Record<string, unknown>;
+        const nameEn = str(nm.en, 60), nameFa = str(nm.fa, 60);
         zooms.push({
-          id, label: fa ? { en: en || "Shelf", fa } : { en: en || "Shelf" }, manifest: x.manifest as string, ...(isSiteUrl(x.thumb) ? { thumb: x.thumb as string } : {}),
+          id, label: fa ? { en: en || "Shelf", fa } : { en: en || "Shelf" }, ...(hasPhoto ? { manifest: x.manifest as string } : {}), ...(isSiteUrl(x.thumb) ? { thumb: x.thumb as string } : {}),
+          ...(Number.isInteger(x.n) && (x.n as number) >= 1 && (x.n as number) <= 999 ? { n: x.n as number } : {}),
+          ...(nameEn || nameFa ? { name: nameFa ? { en: nameEn, fa: nameFa } : { en: nameEn } } : {}),
           pins: sortItemPins(pins.map((q) => ({ t: q.t as number, x: q.x as number, y: q.y as number }))),
           ...(outline.length ? { outline } : {}), ...(x.auto === true ? { auto: true } : {}),
         });
@@ -1489,7 +1506,10 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     // vanished from all 8 walks the next time anything saved. Whatever is not
     // merged by hand above takes this page's value if it changed it here, else
     // the stored one; a field added later is kept without touching this code.
-    const handled = new Set(["title", "doors", "items", "projection", "audio", "rev", "next", "hide", "tagsFrom", "tilt"]);
+    // Shelves merge one by one (2026-11-12): the operator marks a shelf in the editor while the stitcher puts
+    // another shelf's new photo on the walk; taking this page's whole list dropped the stitcher's.
+    const zooms = mergeById(bb.zooms ?? [], m.zooms ?? [], t.zooms ?? []);
+    const handled = new Set(["title", "doors", "items", "zooms", "projection", "audio", "rev", "next", "hide", "tagsFrom", "tilt"]);
     const rest: Record<string, unknown> = {};
     for (const f of new Set([...Object.keys(m), ...Object.keys(t), ...Object.keys(bb)])) {
       if (handled.has(f)) continue;
@@ -1499,7 +1519,7 @@ export function mergeWalks(base: Walks, mine: Walks, theirs: Walks): Walks {
     }
     walks[k] = {
       ...rest,
-      ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}),
+      ...(title ? { title } : {}), doors: mergeById(bb.doors, m.doors, t.doors), ...(items.length ? { items } : {}), ...(zooms.length ? { zooms } : {}),
       ...(projection ? { projection } : {}), ...(audio ? { audio } : {}), ...(rev ? { rev } : {}),
       ...(next ? { next } : {}), ...(hide ? { hide } : {}), ...(tagsFrom ? { tagsFrom } : {}), ...(tilt ? { tilt } : {}),
     };

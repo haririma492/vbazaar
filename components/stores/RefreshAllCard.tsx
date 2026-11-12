@@ -11,7 +11,7 @@ import { postJson } from "./upload";
 import { Bi, Card, KEY, Said } from "./ui";
 import type { RefreshRun } from "@/lib/stores/refreshAll";
 
-export default function RefreshAllCard({ api, spentCents, budgetCents }: { api: string; spentCents: number; budgetCents: number }) {
+export default function RefreshAllCard({ api, spentCents, budgetCents, editUrl }: { api: string; spentCents: number; budgetCents: number; editUrl?: string | null }) {
   const [run, setRun] = useState<RefreshRun | null>(null);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const load = useCallback(async () => {
@@ -40,6 +40,13 @@ export default function RefreshAllCard({ api, spentCents, budgetCents }: { api: 
           ))}
           <li className="text-white/45">{run.running ? `Running since ${new Date(run.started).toLocaleTimeString()}…` : `Finished ${run.finished ? new Date(run.finished).toLocaleString() : ""}`}</li>
         </ol>
+      )}
+      {/* What comes after it (owner, 2026-11-12: "after completion of Refresh all agents I need to be able as operator to draw rectangles on the shelf"). */}
+      {run && !run.running && run.finished && editUrl && (
+        <p dir="ltr" className="mt-3 rounded-md border border-emerald-300/30 bg-emerald-400/10 p-2 text-left text-[13px]">
+          Next: <a className="font-bold text-emerald-200 underline" href={editUrl} target="_blank" rel="noreferrer">mark the shelves on the walk ↗</a> (editor → «Shelves»: a rectangle round each shelf, its number and name).
+          Then «Shelf zoom photos» below: choose the shelf, add its photos (up to six). · مرحلهٔ بعد: علامت‌گذاری قفسه‌ها
+        </p>
       )}
       {said && <Said ok={said.ok} text={said.text} />}
     </Card>

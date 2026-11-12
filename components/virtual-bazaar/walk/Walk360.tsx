@@ -68,7 +68,7 @@ import { useAdminMode } from "@/lib/admin/useAdminMode";
 import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
-import { ZoomEditor } from "./WalkZoom";
+import { ShelfEditor } from "./WalkShelves";
 import DeepZoom from "@/components/zoom/DeepZoom";
 import { track } from "@/lib/visitors/track";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
@@ -380,6 +380,44 @@ function coverTexture(url: string): THREE.Texture {
 }
 
 const TAG_W = 560;
+/**
+ * A SHELF'S NAME ON ITS BORDER (owner, 2026-11-12: "the borders of each shelf and their name will be visible to
+ * them so shoppers can decide to approach or pass"): a green plate with the name in white, English and Farsi when
+ * it has both, sitting in the border's top left corner.
+ */
+const SHELF_NAME_H = 1.15;
+const shelfNameTex = new Map<string, { texture: THREE.CanvasTexture; aspect: number }>();
+function shelfNameTexture(en: string, fa?: string): { texture: THREE.CanvasTexture; aspect: number } {
+  const key = `${en}|${fa ?? ""}`;
+  const had = shelfNameTex.get(key);
+  if (had) return had;
+  const cut = (v: string) => (v.length > 26 ? `${v.slice(0, 25)}…` : v);
+  const text = fa && fa !== en ? `${cut(en)}  ·  ${cut(fa)}` : cut(en);
+  const c = document.createElement("canvas");
+  const h = 96, font = "800 54px system-ui, 'Vazirmatn', sans-serif";
+  let g = c.getContext("2d")!;
+  g.font = font;
+  c.width = Math.min(2048, Math.ceil(g.measureText(text).width) + 56);
+  c.height = h;
+  g = c.getContext("2d")!;
+  g.beginPath();
+  g.roundRect(3, 3, c.width - 6, h - 6, 20);
+  g.fillStyle = "rgba(14,110,58,0.94)";
+  g.fill();
+  g.lineWidth = 5;
+  g.strokeStyle = "#35e07a";
+  g.stroke();
+  g.font = font;
+  g.fillStyle = "#fff";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.fillText(text, c.width / 2, h / 2 + 3, c.width - 30);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const made = { texture, aspect: c.width / h };
+  shelfNameTex.set(key, made);
+  return made;
+}
 function tagTexture(item: WalkItem, listPrice?: string): { texture: THREE.CanvasTexture; aspect: number; foot: number } {
   const sp = item.special;
   const en = item.label.en.length > 22 ? `${item.label.en.slice(0, 21)}…` : item.label.en;
@@ -1278,6 +1316,9 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       }
       pos.needsUpdate = true;
     }
+    /** Each bordered shelf's name: a sprite on a 360° walk, a plate over a flat video. */
+    const shelfNames = new Map<string, THREE.Sprite>();
+    const shelfPlates = new Map<string, HTMLDivElement>();
     let zoomSvg: SVGSVGElement | null = null;
     const zoomPolys = new Map<string, { el: SVGPolygonElement; item: WalkItem }>();
     function polyFor(id: string): SVGPolygonElement {
@@ -1451,27 +1492,58 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       }
       // A shelf's zoom photo: its 🔍 on the shelf (a sprite on a 360° walk, a key over a flat video). A tap opens it.
       const wantBorders = new Set<string>();
+      const wantNames = new Set<string>();
       for (const { item, x: cx0, y: cy0, quad } of ready ? zoomsAt(walk, t, !flat) : []) {
         const id = `${current!.key}#zoom#${item.zoom.id}`;
+        // A shelf with a zoom photo opens it; one with only its border and name (its photos still to come) does not.
+        const hasPhoto = Boolean(item.zoom.manifest);
         // Bordered: the 🔍 sits just inside the border's top right corner (the border itself is the key).
         let x = cx0, y = cy0;
         if (quad) {
           wantBorders.add(id);
+          const nameId = `${id}#${item.label.en}#${item.label.fa ?? ""}`;
+          wantNames.add(nameId);
           if (flat) {
             const r = flatRect(v!);
             const el = polyFor(id);
             el.setAttribute("points", [0, 1, 2, 3].map((k) => `${(r.x + quad[k * 2] * r.w).toFixed(1)},${(r.y + quad[k * 2 + 1] * r.h).toFixed(1)}`).join(" "));
-            el.style.pointerEvents = itemPick ? "none" : "all";
+            el.style.pointerEvents = itemPick || !hasPhoto ? "none" : "all";
+            el.style.cursor = hasPhoto ? "zoom-in" : "";
             zoomPolys.get(id)!.item = item;
             x = quad[2] + (cx0 - quad[2]) * 0.14;
             y = quad[3] + (cy0 - quad[3]) * 0.14;
+            // The shelf's name, on the border's top left corner.
+            let plate = shelfPlates.get(nameId);
+            if (!plate) {
+              plate = document.createElement("div");
+              plate.className = "pointer-events-none absolute whitespace-nowrap rounded-md border-2 border-[#35e07a] bg-[#0e6e3a]/95 px-2 py-0.5 text-[13px] font-extrabold text-white shadow";
+              plate.style.zIndex = "2";
+              plate.textContent = item.label.fa && item.label.fa !== item.label.en ? `${item.label.en} · ${item.label.fa}` : item.label.en;
+              shelfPlates.set(nameId, plate);
+              flatEl.appendChild(plate);
+            }
+            plate.style.left = `${r.x + quad[0] * r.w + 6}px`;
+            plate.style.top = `${r.y + quad[1] * r.h + 6}px`;
           } else {
             drawRibbon(id, quad);
             const d = dirOf(quad[2], quad[3]).lerp(dirOf(cx0, cy0), 0.14).normalize();
             y = Math.asin(THREE.MathUtils.clamp(d.y, -1, 1));
             x = wrapAngle(Math.atan2(d.x, -d.z) + current!.spin);
+            // The shelf's name, hung from the border's top left corner, inside it.
+            let name = shelfNames.get(nameId);
+            if (!name) {
+              const tex = shelfNameTexture(item.label.en, item.label.fa);
+              name = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex.texture, depthTest: false, depthWrite: false, transparent: true }));
+              name.center.set(0, 1);
+              name.scale.set(SHELF_NAME_H * tex.aspect, SHELF_NAME_H, 1);
+              name.renderOrder = 11;
+              shelfNames.set(nameId, name);
+              scene.add(name);
+            }
+            name.position.copy(dirOf(quad[0], quad[1]).lerp(dirOf(cx0, cy0), 0.04).normalize().multiplyScalar(MARK_R));
           }
         }
+        if (!hasPhoto) continue; // no 🔍 and nothing to open: the border and the name say where the shelf is
         if (flat) {
           wantButtons.add(id);
           let b = itemButtons.get(id);
@@ -1521,6 +1593,8 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       }
       for (const [id, mesh] of zoomRibbons) if (!wantBorders.has(id)) { scene.remove(mesh); mesh.geometry.dispose(); zoomRibbons.delete(id); }
       for (const [id, p] of zoomPolys) if (!wantBorders.has(id)) { p.el.remove(); zoomPolys.delete(id); }
+      for (const [id, n] of shelfNames) if (!wantNames.has(id)) { scene.remove(n); n.material.dispose(); shelfNames.delete(id); }
+      for (const [id, el] of shelfPlates) if (!wantNames.has(id)) { el.remove(); shelfPlates.delete(id); }
       // The open card's product, outlined (360°: lines on the picture; flat: the button's border).
       const lit = highlightId ? [...itemSprites.values()].find((m) => m.item.id === highlightId) : undefined;
       if (lit) drawOutline(lit.x, lit.y, lit.size ?? { w: 0.05, h: 0.05 });
@@ -2371,6 +2445,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
     engine.current?.setOnItem((item) => {
       // A shelf's 🔍: its zoom photo over the walk (the widget too: it is a picture, no basket in it).
       if ("zoom" in item) {
+        if (!(item as WalkItem & { zoom: WalkZoom }).zoom.manifest) return; // marked, its photos still to come
         setDrive(null);
         setZoomOpen((item as WalkItem & { zoom: WalkZoom }).zoom);
         track("zoom-open");
@@ -2791,7 +2866,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
           </div>
         );
       })()}
-      {zoomOpen && <DeepZoom manifest={zoomOpen.manifest} title={zoomOpen.label} onClose={() => setZoomOpen(null)} />}
+      {zoomOpen?.manifest && <DeepZoom manifest={zoomOpen.manifest} title={zoomOpen.label} onClose={() => setZoomOpen(null)} />}
       {card && view.key && (
         <ItemCard item={card} walkKey={view.key} walk={walkOf(walks, view.key)} catalogue={catalogue} onClose={() => { setCard(null); setLit(null); }} />
       )}
@@ -2985,7 +3060,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
         <div className="flex flex-wrap gap-1">
           {(["doors", "items", "zoom", "sound", "cut", "hide", "shadow"] as const).map((k) => (
             <button key={k} className={`${btn} ${tab === k ? "border-white/60 bg-white/25 font-semibold" : ""}`} onClick={() => setTab(k)}>
-              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "zoom" ? "Zoom" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : k === "hide" ? "Lock" : "Shadow"}
+              {k === "doors" ? "Doors" : k === "items" ? "Products" : k === "zoom" ? "Shelves" : k === "sound" ? "Sound" : k === "cut" ? "Cut" : k === "hide" ? "Lock" : "Shadow"}
             </button>
           ))}
         </div>
@@ -2999,7 +3074,7 @@ function DoorEditor({ engine, walks, viewKey, onChange, serverWalks, store, cata
           {tab === "hide" && <HideEditor engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "cut" && <CutEditor video={() => engine.current?.video() ?? null} viewKey={viewKey} />}
           {tab === "shadow" && <ShadowEditor viewKey={viewKey} />}
-          {tab === "zoom" && <ZoomEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} />}
+          {tab === "zoom" && <ShelfEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "sound" && <SoundEditor walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} />}
           {tab === "items" && <TagsFromControl engine={engine} walks={walks} viewKey={viewKey} change={change} />}
           {tab === "items" && <ItemsEditor engine={engine} walks={walks} viewKey={viewKey} change={change} setStatus={setStatus} store={store} catalogue={catalogue} saveCatalogue={saveCatalogue} />}

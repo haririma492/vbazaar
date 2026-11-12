@@ -25,7 +25,7 @@ import { readStore, updateStore } from "./bucket";
 import { run } from "./media";
 import { setJob, readJob } from "./jobState";
 import { sceneOf, type StoreRecord } from "./store";
-import { noteOf, setsOf, sigOf, stateOf, thin, toLocate, toStitch, zoomLabel, type ZoomRecord, type ZoomSet } from "./gigapanRules";
+import { labelFor, namedShelves, noteOf, setsOf, sigOf, stateOf, thin, toLocate, toStitch, type ZoomRecord, type ZoomSet } from "./gigapanRules";
 
 export const gigapansKey = (slug: string) => `stores/${slug}/gigapans.json`;
 /** The master is at most this many megapixels (`ZOOM_MAX_MP` overrides: the stitcher needs ~12 MB of memory a megapixel). */
@@ -62,10 +62,12 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
       return `Every shelf's zoom photo is stitched already (${all.length - failed} of ${all.length}${failed ? `; ${failed} could not be joined: new photos needed` : ""}).`;
     }
     const base = r2Config().publicBase;
+    // A shelf the operator marked on the walk keeps the number and name given there.
+    const named = namedShelves(s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.zooms : undefined);
     let made = 0;
     const problems: string[] = [];
     for (const [i, set] of todo.entries()) {
-      const label = zoomLabel(set.index);
+      const label = labelFor(set.id, set.index, named);
       await setJob("gigapan", { busy: true, key: slug, note: `stitching ${label.en} (${i + 1} of ${todo.length}): ${set.photos.length} photos` });
       const work = join(dir, set.id), src = join(work, "in"), out = join(work, "out");
       mkdirSync(src, { recursive: true });
@@ -177,7 +179,14 @@ export async function locateZooms(slug: string, opts: { force?: boolean } = {}):
           const outline = thin(f.frames!, 400);
           const pins = thin(outline, MAX_ITEM_PINS).map((fr) => { const b = quadBox(fr.c, round); return { t: fr.t, x: b.x, y: b.y }; });
           const walks = await readWalks();
-          await writeWalks(setZoom(walks, walkKey, { id: set.id, label: set.label, manifest: set.manifest!, ...(set.thumb ? { thumb: set.thumb } : {}), pins, outline, auto: true }), walks);
+          // Marked by the operator meanwhile: their border stays. A number or name they gave a found shelf is kept.
+          const had = walks.walks[walkKey]?.zooms?.find((z) => z.id === set.id);
+          if (had && !had.auto) { place = { ...place, note: "Bordered by the operator on the walk." }; }
+          else await writeWalks(setZoom(walks, walkKey, {
+            id: set.id, label: had && (had.n !== undefined || had.name) ? had.label : set.label,
+            ...(had?.n !== undefined ? { n: had.n } : {}), ...(had?.name ? { name: had.name } : {}),
+            manifest: set.manifest!, ...(set.thumb ? { thumb: set.thumb } : {}), pins, outline, auto: true,
+          }), walks);
         } else {
           // Looked for and not there: a border the finder put there for an earlier photo or walk comes off.
           const walks = await readWalks();
@@ -224,17 +233,25 @@ export async function removeZoom(slug: string, id: string): Promise<StoreRecord 
   if (record?.sets.some((x) => x.id === id)) await writeMastersJson(gigapansKey(slug), { ...record, sets: record.sets.filter((x) => x.id !== id), updated: new Date().toISOString() });
   if (next?.out.walk) {
     const walks: Walks = await readWalks();
-    const without = dropZoom(walks, next.out.walk, id);
-    if (without !== walks) await writeWalks(without, walks);
+    // A shelf the operator marked stays on the walk with its border and its name; only its photo comes off.
+    const z = walks.walks[next.out.walk]?.zooms?.find((x) => x.id === id);
+    if (z && !z.auto && z.outline?.length) {
+      const { manifest: _m, thumb: _t, ...bare } = z;
+      await writeWalks(setZoom(walks, next.out.walk, bare), walks);
+    } else {
+      const without = dropZoom(walks, next.out.walk, id);
+      if (without !== walks) await writeWalks(without, walks);
+    }
   }
   return next;
 }
 
 export type ZoomForPage = {
   id: string; label: { en: string; fa: string }; photos: Array<{ name: string; size: number }>;
-  state: "waiting" | "changed" | "done" | "failed"; note: string; pinned: boolean;
-  /** On the walk with its green border, found by the finder; and what the finder last said. */
-  bordered: boolean; placeNote: string | null;
+  /** `empty`: a shelf marked on the walk whose photos are still to come. */
+  state: "empty" | "waiting" | "changed" | "done" | "failed"; note: string; pinned: boolean;
+  /** On the walk with its green border; `drawn`: by the operator (else found by the finder); what the finder last said. */
+  bordered: boolean; drawn: boolean; placeNote: string | null;
   manifest: string | null; thumb: string | null; w: number | null; h: number | null; mp: number | null;
 };
 /** What the store's page shows: every shelf with photos, where it stands, and whether its 🔍 is on the walk. */
@@ -243,18 +260,24 @@ export async function zoomsForPage(s: StoreRecord): Promise<{ sets: ZoomForPage[
   const onWalk = s.out.walk ? walks?.walks[s.out.walk]?.zooms ?? [] : [];
   const on = new Set(onWalk.map((z) => z.id));
   const bordered = new Set(onWalk.filter((z) => z.outline?.length).map((z) => z.id));
+  const drawn = new Set(onWalk.filter((z) => z.outline?.length && !z.auto).map((z) => z.id));
+  const named = namedShelves(onWalk);
+  const withPhotos = setsOf(s.files.gigapan ?? []);
+  // Shelves marked on the walk with no photos yet: listed, so their photos can be added to them.
+  const empty: ZoomForPage[] = onWalk.filter((z) => z.outline?.length && !withPhotos.some((x) => x.id === z.id)).sort((a, b) => (a.n ?? 1000) - (b.n ?? 1000))
+    .map((z) => ({ id: z.id, label: { en: z.label.en, fa: z.label.fa ?? z.label.en }, photos: [], state: "empty", note: "", pinned: true, bordered: true, drawn: !z.auto, placeNote: null, manifest: null, thumb: null, w: null, h: null, mp: null }));
   const working = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3600_000);
   return {
     working, note: working ? job?.note ?? "" : "",
-    sets: setsOf(s.files.gigapan ?? []).map((set, i) => {
+    sets: [...withPhotos.map((set, i): ZoomForPage => {
       const m = record?.sets.find((x) => x.id === set.id);
       const state = stateOf(set.photos, m);
       const shown = state === "done" || state === "changed";
       return {
-        id: set.id, label: zoomLabel(i), photos: set.photos.map((p) => ({ name: p.name, size: p.size })), state, note: m?.note ?? "", pinned: on.has(set.id),
-        bordered: bordered.has(set.id), placeNote: m?.place && m.place.walk === s.out.walk ? m.place.note : null,
+        id: set.id, label: labelFor(set.id, i, named), photos: set.photos.map((p) => ({ name: p.name, size: p.size })), state, note: m?.note ?? "", pinned: on.has(set.id),
+        bordered: bordered.has(set.id), drawn: drawn.has(set.id), placeNote: m?.place && m.place.walk === s.out.walk ? m.place.note : null,
         manifest: shown ? m?.manifest ?? null : null, thumb: shown ? m?.thumb ?? null : null, w: m?.w ?? null, h: m?.h ?? null, mp: m?.mp ?? null,
       };
-    }),
+    }), ...empty],
   };
 }
