@@ -2623,17 +2623,17 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
                 type="button" key={z.id} data-track="shelf-photo"
                 onClick={() => { setDrive(null); setZoomOpen(z); track("zoom-open"); }}
                 aria-label={`Open the photo of ${z.label.en}`}
-                className={`absolute overflow-hidden rounded-xl border-2 border-[#35e07a] bg-black/70 text-left shadow-xl $"bottom-[19.75rem] right-5 w-40 [@media(max-height:620px)]:bottom-[9.25rem] [@media(max-height:620px)]:right-[12rem] [@media(max-height:620px)]:w-32"`}
+                className={`absolute overflow-hidden rounded-xl border-2 border-[#35e07a] bg-black/70 text-left shadow-xl bottom-[19.75rem] right-5 w-40 [@media(max-height:620px)]:bottom-[9.25rem] [@media(max-height:620px)]:right-[12rem] [@media(max-height:620px)]:w-32`}
               >
                 {z.thumb
-                  ? <img src={z.thumb} alt="" className={`w-full object-cover $"h-28 [@media(max-height:620px)]:h-20"`} />
-                  : <div className={`flex w-full items-center justify-center text-[28px] $"h-28"`}>🔍</div>}
+                  ? <img src={z.thumb} alt="" className={`w-full object-cover h-28 [@media(max-height:620px)]:h-20`} />
+                  : <div className={`flex w-full items-center justify-center text-[28px] h-28`}>🔍</div>}
                 <span dir="auto" className="block truncate px-2 py-1 text-[12px] font-bold text-white">🔍 {z.label.fa && z.label.fa !== z.label.en ? `${z.label.en} · ${z.label.fa}` : z.label.en}</span>
               </button>
             );
           })()}
           {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}
-          <div dir="ltr" className={`absolute flex flex-col gap-1.5 $"bottom-[3.75rem] right-5 w-72 max-w-[calc(100vw-2.5rem)]"`}>
+          <div dir="ltr" className={`absolute flex flex-col gap-1.5 bottom-[3.75rem] right-5 w-72 max-w-[calc(100vw-2.5rem)]`}>
             <div className="flex gap-1.5">
               {([["back", "◀ عقب · Back"], ["on", "▶ برو · Walk"]] as const).map(([k, label]) => (
                 <button
@@ -2792,7 +2792,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           )}
 
           {/* Where along the walk: drag to jump. */}
-          <div dir="ltr" className={`absolute flex items-center gap-3 $"inset-x-4 bottom-5 sm:right-56"`}>
+          <div dir="ltr" className={`absolute flex items-center gap-3 inset-x-4 bottom-5 sm:right-56`}>
             <span className="w-10 text-right font-mono text-[12px] text-white/70">{mmss(time.now)}</span>
             <input
               type="range"
