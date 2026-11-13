@@ -1016,6 +1016,30 @@ quality and choice to break away and enter in a shop. (period)"*
   file programmes in channel order (`nextFileProgramme`, `/api/radio?file=1&after=<itemIndex>`). The file player is ONE
   `<audio>` for the visit, its address changed per programme, told to play at once (an iPhone loads nothing until
   asked to play; a new element would need a new tap). Nothing playable (a live HLS stream): the store's own tracks. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
+- **A walk's music: any nikoo.tv channel, or any category of its Iranian / World Music** (owner, 2026-11-13: *"let the
+  music for free store tour be chosen from any of nikoo.tv live tv channels or from any category in World Music or in
+  Iranian Music"*). This replaces "only channel 4" above. `Walk.radio` is 4 (as stored before; read as the main
+  broadcast) or a `RadioSource` (`lib/radio.ts`, pure, tested): a CHANNEL (`main` = channel 4, else nikoo.tv's id from
+  its `/api/channels`; joined live as before) or MUSIC (`member` iranmusic | worldmusic, `id` a `cat-…` singer/label
+  or a whole `grp-…` group such as Jazz or Pop, from nikoo.tv's `/api/home-sections-type-3/list`; not live: its
+  tracks one after another, from a different one each visit). The names are stored with the choice.
+  - **The card** (`MusicCard.tsx`, owner and operator): own tracks · a live channel · Iranian Music · World Music;
+    then one dropdown each (which channel; which group, then «★ All of it» or one singer). A pick saves by itself
+    (action `musicRadio {source}`, looked up in nikoo.tv's list on our server, so only what it has is saved) and the
+    card says what shoppers will hear, asked of nikoo.tv that moment (`Heard`). The list is nikoo.tv's own, read
+    hourly: what it adds appears by itself. Instagram categories (nothing to play) and nameless ones are left out.
+  - **Server** (`lib/radioServer.ts`, `/api/radio`): `?catalogue=1`; `?ch=<id>` (10 s memory); `?m=<member>&c=<id>`
+    the tracks (6 h memory): a YouTube category through nikoo.tv's `/api/music/nonstop`, its own files through
+    `/api/home-sections-type-2/resolve` (`videoUrl`; `postUrl` is a signed link that has run out). A group: at most
+    40 of its categories, 25 tracks each, taking turns, 400 in all (first read ~5 s).
+  - **Player** (`WalkSound.tsx`): `RadioSound` for a channel, `ListSound` for music. A file plays in the one
+    `<audio>`; a YouTube video in YouTube's player out of sight (as channel 4's; same terms warning), which tells
+    the page when the video ends (`postMessage`: `listening`, `onStateChange`, `onError`); one that will not play is
+    passed over, 12 in a row give up. ⚠️ Almost every category (and channels 1, 11, 12) is YouTube: a PHONE plays
+    only the files. What cannot play (a phone and YouTube, an HLS news channel 5 / 9, nothing found) falls to
+    `Standby`: the store's own tracks, else the main broadcast. ⚠️ The main broadcast's state says `isLive` while it
+    plays ordinary videos (still joined at its second); only another channel's `isLive` means a live stream.
+  - Not verified in a real browser when built: YouTube videos playing (the test browser answered error 150 to each).
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the

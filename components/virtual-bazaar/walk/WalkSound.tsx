@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MAX_WALK_AUDIO_BYTES, audioTypeOf } from "@/lib/splats/keys";
 import { setAudio, walkOf, type Walks } from "@/lib/splats/walks";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
-import { positionAt, type RadioChannel, type RadioFile, type RadioNow } from "@/lib/radio";
+import { MAIN_CHANNEL, positionAt, radioSourceOf, sourceQuery, type RadioFile, type RadioNow, type RadioSource, type RadioTrack } from "@/lib/radio";
 
 const MUTE_KEY = "walk-sound";
 
@@ -73,15 +73,18 @@ export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, pl
   srcOf: (key: string) => Promise<string | null>;
   /** The walk has items on special, which speak: the key is shown for them too. */
   specials?: boolean;
-  /** Tuned in to Nikoo.tv channel 4 (`Walk.radio`): that plays live instead of `audioKeys`. */
-  radio?: RadioChannel | null;
+  /** Tuned in to nikoo.tv (`Walk.radio`): a channel, live, or a category of its music, instead of `audioKeys`. */
+  radio?: 4 | RadioSource | null;
   /** Where the key sits (the store's widget puts it at the top right: its frame is small and the wheel fills the bottom). */
   place?: string;
   /** The «nikoo.tv live music» label beside the key; not in the store's widget (owner, 2026-11-11: "also remove
    *  'nikoo.tv live music' label"). The walk on vbazaar.app keeps it. */
   label?: boolean;
 }) {
-  if (radio) return <RadioSound ch={radio} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
+  const source = radioSourceOf(radio);
+  // `key`: another choice is another player, never the last one's state carried over.
+  if (source?.kind === "music") return <ListSound key={sourceQuery(source)} source={source} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
+  if (source) return <RadioSound key={source.id} ch={source.id} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
   return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
 }
 
@@ -190,7 +193,7 @@ const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14p
  * - Nothing playable on air (a live HLS stream, nikoo.tv unreachable): the store's own tracks, or nothing.
  */
 function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
-  ch: RadioChannel; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean;
+  ch: string; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean;
 }) {
   const [on, setOn] = useState(true);
   const [now, setNow] = useState<RadioNow | null>(null);
@@ -206,7 +209,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
     let gone = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
-      const j = (await fetch(`/api/radio?ch=${ch}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null)) as
+      const j = (await fetch(`/api/radio?ch=${encodeURIComponent(ch)}`, { cache: "no-store" }).then((r) => r.json()).catch(() => null)) as
         { ok?: boolean; radio?: RadioNow; serverTime?: number } | null;
       if (gone) return;
       const r = j?.radio ?? null;
@@ -227,13 +230,16 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
   useEffect(() => { setPhone(window.matchMedia?.("(pointer: coarse)").matches ?? false); }, []);
   const [fb, setFb] = useState<RadioFile | null>(null);
   const liveYoutube = now?.kind === "youtube";
+  // Only the main broadcast carries its playlist: another channel on a phone has no file programmes to stand in
+  // (below: the store's own tracks, else the main broadcast, play in its place).
+  const main = ch === MAIN_CHANNEL;
   useEffect(() => {
-    if (!phone || !liveYoutube) { setFb(null); return; }
+    if (!main || !phone || !liveYoutube) { setFb(null); return; }
     if (fb) return;
     let gone = false;
     void fetch(`/api/radio?ch=${ch}&file=1`, { cache: "no-store" }).then((r) => r.json()).then((j: { file?: RadioFile | null }) => { if (!gone) setFb(j.file ?? null); }).catch(() => undefined);
     return () => { gone = true; };
-  }, [phone, liveYoutube, fb, ch]);
+  }, [main, phone, liveYoutube, fb, ch]);
   const nextFb = useCallback(() => {
     const after = fb?.itemIndex;
     void fetch(`/api/radio?ch=${ch}&file=1${after !== undefined ? `&after=${after}` : ""}`, { cache: "no-store" })
@@ -321,6 +327,8 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
 
   // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
   if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
+  // A phone, another channel than the main one, a YouTube programme on air: a phone cannot play it.
+  if (phone && liveYoutube && !main) return <Standby audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
   const yt = !phone && now?.kind === "youtube" && now.youtubeId ? now : null;
 
   const toggle = () => {
@@ -356,6 +364,182 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
           {on ? ((waiting && !yt) || (yt && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
         </button>
         {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv live music</span>}
+      </div>
+    </>
+  );
+}
+
+/** What plays when the choice cannot: the store's own tracks, else nikoo.tv's main broadcast (which has files a phone plays). */
+function Standby({ audioKeys, srcOf, specials, place, label }: { audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean }) {
+  if (audioKeys.length) return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
+  return <RadioSound ch={MAIN_CHANNEL} audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
+}
+
+/**
+ * A CATEGORY OF NIKOO.TV'S MUSIC IN THE WALK (owner, 2026-11-13: "from any category in World Music or in Iranian
+ * Music"): a singer, a label, or a whole group (Jazz, Pop). Not live: its tracks one after another, round and
+ * round, from a different one each visit (`/api/radio?m=…&c=…`).
+ * - A file nikoo.tv keeps plays in ONE <audio> (as the channels' do).
+ * - A YouTube video plays in YouTube's player kept out of sight, as the channels' YouTube programmes do (the
+ *   owner's choice, 2026-11-06). The player tells us when the video ends (its own messages), and the next one
+ *   starts; one that will not play (not allowed off YouTube, removed) is passed over after 25 s.
+ * - A PHONE cannot start a hidden YouTube player: there only the files are played. Nothing left to play (a phone
+ *   and a YouTube-only category, twelve tracks in a row that would not play, nikoo.tv unreachable): `Standby`.
+ */
+const FAILS_IN_A_ROW = 12;
+function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
+  source: RadioSource; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean;
+}) {
+  const [on, setOn] = useState(true);
+  const [tracks, setTracks] = useState<RadioTrack[] | null>(null); // null: still asking
+  const [pos, setPos] = useState({ i: 0, turn: 0 }); // `turn` moves on every change, so one track alone plays again
+  const [dead, setDead] = useState(false);
+  const [waiting, setWaiting] = useState(false);
+  const audio = useRef<HTMLAudioElement | null>(null);
+  const frame = useRef<HTMLIFrameElement | null>(null);
+  const failures = useRef(0);
+
+  useEffect(() => setOn(readOn()), []);
+
+  const query = sourceQuery(source);
+  useEffect(() => {
+    let gone = false;
+    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+    void fetch(`/api/radio?${query}`, { cache: "no-store" }).then((r) => r.json()).then((j: { tracks?: RadioTrack[] }) => {
+      if (gone) return;
+      const all = Array.isArray(j?.tracks) ? j.tracks : [];
+      const list = phone ? all.filter((t) => t.kind === "file") : all;
+      setPos({ i: list.length ? Math.floor(Math.random() * list.length) : 0, turn: 0 });
+      setTracks(list);
+    }).catch(() => { if (!gone) setTracks([]); });
+    return () => { gone = true; };
+  }, [query]);
+
+  const n = tracks?.length ?? 0;
+  const next = useCallback((failed: boolean) => {
+    if (failed) { if (++failures.current >= FAILS_IN_A_ROW) { setDead(true); return; } } else failures.current = 0;
+    setPos((p) => ({ i: n ? (p.i + 1) % n : 0, turn: p.turn + 1 }));
+  }, [n]);
+  const nextRef = useRef(next);
+  nextRef.current = next;
+
+  const cur = tracks && n && !dead ? tracks[pos.i] ?? null : null;
+  const fileUrl = cur?.kind === "file" ? cur.url : null;
+  const ytId = cur?.kind === "youtube" ? cur.id : null;
+
+  // ONE audio element for the visit (an iPhone keeps playing the element a tap unlocked), told to play at once.
+  const audioEl = (): HTMLAudioElement => {
+    if (!audio.current) {
+      const el = new Audio();
+      el.preload = "auto";
+      el.volume = WALK_MUSIC_VOLUME;
+      el.addEventListener("ended", () => nextRef.current(false));
+      el.addEventListener("error", () => { if (el.getAttribute("src")) setTimeout(() => nextRef.current(true), 1500); });
+      el.addEventListener("playing", () => { failures.current = 0; setWaiting(false); });
+      audio.current = el;
+    }
+    return audio.current;
+  };
+  const start = (el: HTMLAudioElement) => {
+    el.play().then(() => setWaiting(false), () => {
+      setWaiting(true);
+      const go = () => {
+        window.removeEventListener("pointerdown", go, true);
+        window.removeEventListener("keydown", go, true);
+        if (audio.current === el && readOn() && el.getAttribute("src")) el.play().then(() => setWaiting(false), () => {});
+      };
+      window.addEventListener("pointerdown", go, true);
+      window.addEventListener("keydown", go, true);
+    });
+  };
+  useEffect(() => {
+    if (!fileUrl) { audio.current?.pause(); return; }
+    const el = audioEl();
+    el.src = fileUrl;
+    if (readOn()) start(el);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileUrl, pos.turn]);
+  useEffect(() => () => { const el = audio.current; if (el) { el.pause(); el.removeAttribute("src"); el.load(); } }, []);
+
+  // The shopper's first tap anywhere: a YouTube player made after it may play with sound.
+  const [tapped, setTapped] = useState(false);
+  useEffect(() => {
+    if (tapped) return;
+    const go = () => setTapped(true);
+    window.addEventListener("pointerdown", go, true);
+    window.addEventListener("keydown", go, true);
+    return () => { window.removeEventListener("pointerdown", go, true); window.removeEventListener("keydown", go, true); };
+  }, [tapped]);
+
+  // YouTube's player says what it is doing in messages to this page: ended → the next track; an error, or
+  // answering but not playing after 25 s → passed over. If it never answers at all we cannot know when the
+  // video ends, so it is left to play and the next one starts after 10 minutes.
+  const showYt = Boolean(ytId && on && tapped);
+  const tell = (func: string, args: unknown[] = []) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "https://www.youtube.com");
+  const listen = () => {
+    frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "vb-music", channel: "widget" }), "https://www.youtube.com");
+    tell("addEventListener", ["onStateChange"]);
+    tell("addEventListener", ["onError"]);
+    tell("setVolume", [Math.round(WALK_MUSIC_VOLUME * 100)]);
+  };
+  useEffect(() => {
+    if (!showYt) return;
+    let heard = false, playing = false, over = false;
+    const move = (failed: boolean) => { if (!over) { over = true; nextRef.current(failed); } };
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== "https://www.youtube.com" || e.source !== frame.current?.contentWindow) return;
+      let d: { event?: string; info?: unknown } | null = null;
+      try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch { return; }
+      if (!d || typeof d !== "object") return;
+      heard = true;
+      if (d.event === "onError") { move(true); return; }
+      const st = d.event === "onStateChange" ? d.info
+        : (d.event === "infoDelivery" || d.event === "initialDelivery") && d.info && typeof d.info === "object" ? (d.info as { playerState?: unknown }).playerState : undefined;
+      if (st === 1) { playing = true; failures.current = 0; tell("setVolume", [Math.round(WALK_MUSIC_VOLUME * 100)]); }
+      if (st === 0) move(false);
+    };
+    window.addEventListener("message", onMsg);
+    const again = [setTimeout(listen, 1000), setTimeout(listen, 3000)];
+    const stuck = setTimeout(() => { if (heard && !playing) move(true); }, 25_000);
+    const deaf = setTimeout(() => { if (!heard) move(false); }, 600_000);
+    return () => { over = true; window.removeEventListener("message", onMsg); again.forEach(clearTimeout); clearTimeout(stuck); clearTimeout(deaf); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showYt, ytId, pos.turn]);
+
+  if (tracks && (!n || dead)) return <Standby audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
+
+  const toggle = () => {
+    const turnOn = !on;
+    setOn(turnOn);
+    writeOn(turnOn);
+    if (!turnOn && "speechSynthesis" in window) window.speechSynthesis.cancel();
+    const el = audio.current;
+    if (!el || !fileUrl) return;
+    if (turnOn) start(el);
+    else el.pause();
+  };
+  return (
+    <>
+      {showYt && ytId && (
+        <iframe
+          key={`${pos.turn}:${ytId}`}
+          ref={frame}
+          title="nikoo.tv music"
+          aria-hidden="true"
+          tabIndex={-1}
+          width={1}
+          height={1}
+          className="pointer-events-none absolute bottom-0 left-0 opacity-0"
+          src={`https://www.youtube.com/embed/${ytId}?autoplay=1&playsinline=1&controls=0&rel=0&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
+          allow="autoplay; encrypted-media"
+          onLoad={listen}
+        />
+      )}
+      <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
+        <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
+          {on ? ((waiting && fileUrl) || (ytId && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
+        </button>
+        {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv music</span>}
       </div>
     </>
   );
