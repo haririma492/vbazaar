@@ -12,6 +12,7 @@
  *   POST { action: "musicDone", key, slot }     (music 1–3: slot 0–2; played in order, then from 1)
  *   POST { action: "musicClear", slot }         (that track taken out)
  *   POST { action: "musicRadio", channel }      (tune in to Nikoo.tv channel 4; null = the uploaded tracks)
+ *   POST { action: "musicRadio", source }       (any nikoo.tv channel, or a category / group of its music)
  *   POST { action: "message", text }            (to the crew; answered on the page)
  *   POST { action: "password", password }       (a new password for the store)
  *   POST { action: "publish" | "unpublish" }    (operator: shoppers see the store, or not)
@@ -37,6 +38,8 @@ import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } f
 import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, formatCents, readPrice, type Unit } from "@/lib/splats/catalogue";
 import { MAX_TRACKS, musicOf, setRadio, setTrack } from "@/lib/splats/walks";
+import { radioSourceOf, sourceInCatalogue } from "@/lib/radio";
+import { radioCatalogue } from "@/lib/radioServer";
 import { soundOnly } from "@/lib/stores/music";
 import {
   EDITABLE, MIN_PASSWORD, SLUG_RE, STEPS, addToThread, addUpload, applyEdits, checkUploadName, forPage, isUploadKeyOf, redo, sceneOf, statusOf, uploadKey,
@@ -95,7 +98,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   const base = r2Config().publicBase;
   return ok({
     music: musicOf(walk).map((key) => ({ key, url: base ? `${base}/${key}` : null })),
-    radio: walk?.radio ?? null,
+    radio: radioSourceOf(walk?.radio),
     who: o.who,
     store: forPage(o.s),
     status: statusOf(o.s),
@@ -238,10 +241,21 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     return ok({ before: tracks, after: clean });
   }
   if (body.action === "musicRadio") {
-    const ch = body.channel === null ? null : body.channel === 4 ? 4 : undefined;
-    if (!s.out.walk || ch === undefined) return fail(400, "Nikoo.tv channel 4, or null for the store's own tracks.");
+    // { channel: 4 | null } as before, or { source: { kind: "channel", id } | { kind: "music", member, id } }:
+    // any nikoo.tv channel, or a category / group of its Iranian or World Music (owner, 2026-11-13). The choice
+    // is looked up in nikoo.tv's own list, so only what it has can be saved, under its own names.
+    if (!s.out.walk) return fail(409, "No walk.");
+    let radio: Parameters<typeof setRadio>[2] | undefined;
+    if (body.source && typeof body.source === "object") {
+      const src = body.source as Record<string, unknown>;
+      let cat;
+      try { cat = await radioCatalogue(); } catch (e) { return fail(502, `Not changed: nikoo.tv's list could not be read (${(e as Error).message}). Try again.`); }
+      radio = sourceInCatalogue(cat, src.kind, src.id, src.member) ?? undefined;
+      if (!radio) return fail(400, "nikoo.tv has no such channel or category.");
+    } else radio = body.channel === null ? null : body.channel === 4 ? 4 : undefined;
+    if (radio === undefined) return fail(400, "A Nikoo.tv channel or music category, or null for the store's own tracks.");
     const walks = await readWalks();
-    await writeWalks(setRadio(walks, s.out.walk, ch), walks);
+    await writeWalks(setRadio(walks, s.out.walk, radio), walks);
     return ok();
   }
   if (body.action === "musicClear") {
