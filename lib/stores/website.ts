@@ -30,7 +30,7 @@ import { matchVideoToWebsite } from "./websiteMatch";
 import { mergeIntoCatalogue } from "./websiteMerge";
 import {
   fillEndpoint, findJsonEndpoints, handleOf, isDisallowed, parseRobots, parseSitemap, productFromHtml, productFromJson, productPages,
-  withSitemapImages, type Robots, type SiteProduct, type SitemapEntry, type WebsiteRun,
+  socialPage, withSitemapImages, type Robots, type SiteProduct, type SitemapEntry, type WebsiteRun,
 } from "./websiteRules";
 
 export const websiteKey = (slug: string) => `stores/${slug}/website.json`;
@@ -72,6 +72,13 @@ const json = (g: Got): unknown => { if (g.status !== 200) return null; try { ret
 export function siteOf(website: string | undefined): { origin: string } | { error: string } {
   if (!website) return { error: "The store has no website on its details. Add it on /stores/<slug> (مشخصات فروشگاه)." };
   if (!/^https:\/\//.test(website)) return { error: `“${website}” is not a website (an Instagram name?). The explorer reads https:// sites.` };
+  const social = socialPage(website);
+  if (social) {
+    const name = social.network[0].toUpperCase() + social.network.slice(1);
+    return { error: `The store's website on its details is its ${name} page (${website}), which has no product list to read. `
+      + (social.guess ? `Its name looks like the shop's own site: ${social.guess} — put that as the website on the store's page (مشخصات فروشگاه), then read again.`
+        : "Put the shop's own website on the store's page (مشخصات فروشگاه), then read again; with no website there is nothing to read.") };
+  }
   try { return { origin: new URL(website).origin }; } catch { return { error: `“${website}” is not an address.` }; }
 }
 

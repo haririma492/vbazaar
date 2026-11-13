@@ -151,3 +151,14 @@ test("the CSV keeps the Farsi and never starts a cell Excel would run", () => {
   assert.ok(csv.includes("سوفله‌خوری"));
   assert.ok(csv.includes(",95.00,"));
 });
+
+import { socialPage } from "./websiteRules.ts";
+test("a social page is not a shop; a page named like a web address points to it", () => {
+  assert.deepEqual(socialPage("https://www.instagram.com/nuttime.ca/"), { network: "instagram", guess: "https://nuttime.ca" });
+  assert.deepEqual(socialPage("https://www.instagram.com/saraye_bamdad/"), { network: "instagram", guess: null });
+  assert.equal(socialPage("https://m.facebook.com/someshop")?.network, "facebook");
+  assert.equal(socialPage("https://linktr.ee/shop")?.network, "linktree");
+  assert.equal(socialPage("https://www.shirazgallery.ca/"), null);
+  assert.equal(socialPage("https://notinstagram.com.example.ca/"), null);
+  assert.equal(socialPage("not a url"), null);
+});
