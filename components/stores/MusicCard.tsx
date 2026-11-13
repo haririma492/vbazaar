@@ -75,7 +75,12 @@ export default function MusicCard({ api, tracks, radio, reload }: {
   const [cat, setCat] = useState<RadioCatalogue | null>(null);
   const [catErr, setCatErr] = useState<string | null>(null);
   const [group, setGroup] = useState<string | null>(null); // the group being looked through, before a pick
-  useEffect(() => { setMode(modeOf(radio)); setGroup(null); }, [radio]);
+  // Only when the SAVED choice changes. The store's page reloads itself every 8 s and hands a new `radio` object
+  // each time with the same choice in it: resetting on that threw away a pick in progress (owner, 2026-11-13:
+  // choosing World Music "keeps jumping back to" the live channel).
+  const savedKey = radio ? sourceQuery(radio) : "";
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setMode(modeOf(radio)); setGroup(null); }, [savedKey]);
   // nikoo.tv's list, asked for when a nikoo.tv choice is opened (or already made).
   const wantCat = mode !== "own";
   useEffect(() => {
