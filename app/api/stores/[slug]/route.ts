@@ -57,7 +57,7 @@ import { readJob } from "@/lib/stores/jobState";
 import { cutJob, cutParts, startCutJob } from "@/lib/splats/cut-job";
 import { nameFromTitles, readTitleList, readTitles } from "@/lib/stores/titles";
 import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
-import { readRefresh, startRefreshAll } from "@/lib/stores/refreshAll";
+import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refreshAll";
 import { refreshZooms, removeZoom, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
@@ -378,7 +378,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "refreshAll") {
     // Operator: every agent in order (`refreshAll.ts`), in the background. Spends a little, asked on the card.
     if (who !== "operator") return fail(403, "The operator only.");
-    return ok({ note: startRefreshAll(s.slug) });
+    return ok({ note: startRefreshAll(s.slug, body.skip) });
+  }
+  if (body.action === "refreshSkip") {
+    // Operator: leave one step out of the run now going (the one being worked on too; `refreshAll.ts`).
+    if (who !== "operator") return fail(403, "The operator only.");
+    return ok({ note: await skipRefreshStep(s.slug, body.step) });
   }
   // A SHELF'S ZOOM PHOTOS (owner, 2026-11-11; `lib/stores/gigapan.ts`): where each shelf stands; «Stitch now» (free,
   // no AI: the owner's too); a shelf taken away.

@@ -49,6 +49,7 @@ BAND = 0.62          # the share of a photo (from its shared edge) where matches
 ORDER_SIDE = 1100    # the long side of the copies the order is found on
 MATCH_SIDE = 2400    # …and of the copies the final homographies come from
 MIN_INLIERS = 14
+PLAIN_BELOW_MP = 6    # one photo smaller than this is a finished picture, not a camera's original: no look on it
 PAD = 192            # rows blended each side of the seam's span
 BANDS = 6
 
@@ -507,7 +508,7 @@ def main():
     ap.add_argument("--quality", type=int, default=85)
     ap.add_argument("--max-mp", type=float, default=100.0)
     ap.add_argument("--threads", type=int, default=2)
-    ap.add_argument("--look", choices=["on", "off"], default="on")
+    ap.add_argument("--look", choices=["auto", "on", "off"], default="auto")
     ap.add_argument("photos", nargs="+")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -528,9 +529,15 @@ def main():
             master, info = stitch(a.photos, a.max_mp, log)
         # The master is kept as the camera made it (for reading labels later); what shoppers see gets the look.
         cv2.imwrite(os.path.join(a.out, "master.jpg"), master, [cv2.IMWRITE_JPEG_QUALITY, 92])
-        if a.look == "on":
+        # ⚠️ A FINISHED PICTURE IS SHOWN AS UPLOADED (owner, 2026-11-13, nuttime: "the photo looks terrible whereas
+        # the photo I uploaded for that shelf was the best quality improved by an advanced AI tool"). The look is
+        # made for a camera's own photo. On one photo of 1448×1086 that a tool had already brightened and
+        # sharpened it did everything a second time: posterised glass, halos round every label. A single photo
+        # under `PLAIN_BELOW_MP` megapixels is no camera's original (a phone makes 12 or more): it is not touched.
+        use_look = a.look == "on" or (a.look == "auto" and not (len(a.photos) == 1 and master.shape[0] * master.shape[1] < PLAIN_BELOW_MP * 1e6))
+        if use_look:
             master = look(master, log)
-        info["look"] = a.look == "on"
+        info["look"] = use_look
         manifest, count = tiles(master, a.out, a.tile, a.quality)
         out = {"ok": True, **manifest, "tiles": count, "mp": round(manifest["w"] * manifest["h"] / 1e6, 1), "seconds": round(time.time() - started, 1), **info}
     except Refused as e:

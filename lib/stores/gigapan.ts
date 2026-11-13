@@ -42,7 +42,7 @@ function filesUnder(dir: string, rel = ""): string[] {
 }
 const TYPE: Record<string, string> = { jpg: "image/jpeg", json: "application/json", dzi: "application/xml" };
 
-type Answer = { ok: true; w: number; h: number; mp: number; tiles: number; order: string[]; seconds: number; row?: boolean } | { ok: false; error: string };
+type Answer = { ok: true; w: number; h: number; mp: number; tiles: number; order: string[]; seconds: number; row?: boolean; look?: boolean } | { ok: false; error: string };
 
 /** Stitch every shelf waiting (or changed; with `force`, the failed ones again). Returns what it did, in a sentence. */
 export async function stitchZooms(slug: string, opts: { force?: boolean } = {}): Promise<string> {

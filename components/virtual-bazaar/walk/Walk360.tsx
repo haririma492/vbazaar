@@ -1880,6 +1880,8 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
     };
     window.addEventListener("pointerdown", onAnyTap, true);
     let facingBack = false;
+    /** When the visitor last turned the view themselves (the stick or keys pushed sideways, a drag): `facingBack`. */
+    let ownTurnAt = -1e9;
     let gyroOn = false;
     let gyroHave = false;
     let gyroAligned = false;
@@ -2106,6 +2108,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       if (current?.flat) wantTurn = 0;
       velTurn += (wantTurn * TURN_RATE - velTurn) * ease;
       turnYaw += velTurn * dt;
+      if (Math.abs(wantTurn) > TAKE_OVER || pointers.size) ownTurnAt = performance.now();
       // Turning in to the shelf: when the walk reaches the store's door (`entryOf`), after the door photo,
       // smoothly; the shopper's own turn or drag takes over.
       if (facePlan && current?.key === facePlan.key && !busy && tShown() >= facePlan.t) {
@@ -2192,7 +2195,13 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       if (current && !current.flat) {
         const away = Math.abs(videoYaw()); // (fills lookDir)
         if (Math.abs(lookDir.y) < 0.85) {
-          if (!facingBack && away > FACE_BACK) facingBack = true;
+          // ⚠️ ONLY THE VISITOR'S OWN TURN MAKES "BACK" (owner, 2026-11-13, nuttime: "the route is in a loop on one
+          // side of store and even the video bar showing that the video is going back and forth"). The walk
+          // turns the view by itself too: 90° to the shelves at the door, and away from the camera operator
+          // (the Lock zone, here 170–230° wide and moving). Pushed past a right angle by those, the walk played
+          // backwards to where the zone stood elsewhere, turned in again, was pushed again: for ever.
+          const own = performance.now() - ownTurnAt < 1500 || (gyroOn && gyroHave);
+          if (!facingBack && away > FACE_BACK && own) facingBack = true;
           else if (facingBack && away < Math.PI - FACE_BACK) facingBack = false;
         }
       } else facingBack = false;

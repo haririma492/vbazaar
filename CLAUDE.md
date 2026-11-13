@@ -287,6 +287,13 @@ plan and the Managed Agents decision are in
     Aveeno, AZELDERM %20 became E45, Vichy became "VICHAL". Real-ESRGAN (tried the same day, 19 min a photo on
     CPU) added nothing visible. `STITCH_VERSION` (in a shelf's `sig`) makes every shelf stitch again when the
     look changes.
+  - **⚠️ A finished picture is shown as uploaded: no look on it** (owner, 2026-11-13, nuttime: *"the photo looks
+    terrible whereas the photo I uploaded for that shelf was the best quality improved by an advanced AI tool"*).
+    The upload was ONE picture of 1448×1086 (1.6 MP) a tool had already brightened and sharpened; the look did it
+    all a second time (posterised glass, halos round every label). `--look auto` (the default): one photo under
+    6 MP (`PLAIN_BELOW_MP`) is not a camera's original and is not touched; stitched sets and full-size photos get
+    the look as before. The card's note says «Shown exactly as uploaded» and warns that so few pixels cannot be
+    zoomed into: an AI tool's export is small, and (above) a generating tool repaints labels.
   - **«The VBazaar Look» is ONE template for every photo** (owner, 2026-11-12: *"it is much better thanks, is a bit
     darker, it could be lighter … lets coin a template prompt that we use for all vbazaar photoes"*).
     `scripts/stitch/look.json`: its `brief` in words (a shop photo that sells: bright and clean, colours a little
@@ -751,6 +758,14 @@ quality and choice to break away and enter in a shop. (period)"*
   founder: "funny and does not make any sense"); «Products» marks it «not
   pinned to the product» with «📌 Pin to the product», which follows it from
   that tap and saves (`isPinned`).
+- **⚠️ Only the visitor's own turn makes the walk go back** (owner, 2026-11-13, nuttime: *"the route is in a loop
+  on one side of store and even the video bar showing that the video is going back and forth"*). Facing more than
+  100° from the camera's way, «Walk» plays the walk backwards (founder's rule, 2026-10-10). But the walk also turns
+  the view by itself: 90° to the shelves at the door, and away from the camera operator (nuttime's Lock zone is
+  170–230° wide and moves). Pushed past 100° by those, the walk went backwards to where the zone stood elsewhere,
+  turned in again, was pushed again, for ever. `facingBack` now turns on only within 1.5 s of the visitor's own
+  turn (stick or keys sideways, a drag, the phone's motion): `ownTurnAt` in `Walk360.tsx`. Not tried in a browser
+  (the build session's browser cannot play the video).
 - **A speed bar, not Slow and Fast** (owner, 2026-11-04, on the Saraye
   Bamdad bookshop: *"Slow and Fast is not good enough, the slow end of this
   bar should be really slow"*): under the wheel, «◀ Back» · «▶ Walk», then a
@@ -1058,6 +1073,12 @@ quality and choice to break away and enter in a shop. (period)"*
   Lights pinned before 2026-11-04 carry no box size; `tourInputs` gives them `LIGHT_SIZE`, so old stores tour too. The queue lives in R2
   (`stores/refresh-pending.json`), one store at a time, after any run the operator started by hand. The AI comes
   out of the store's own $15 budget, which stops it. The «Refresh all agents» key still runs it by hand.
+- **A step of «Refresh all agents» can be skipped, before or during the run** (owner, 2026-11-13: *"allow operator
+  to skip a step … even in the middle of execution or before"*). Before: the card lists the seven steps with a
+  tick each; unticked ones go as `skip` with `refreshAll`. During: every step not finished has «Skip» (action
+  `refreshSkip {step}`, `skipRefreshStep`); on the step being worked on the run stops waiting and goes on.
+  ⚠️ That agent is not killed (no job has an off switch): what it has in hand finishes behind the run, and an AI
+  step still spends for it; the step's note says so. Names and states in `lib/stores/refreshSteps.ts` (tested).
 - **The Photo improver** runs by itself for every store (owner: *"this task is
   repeatable on all new stores"*): queued when products are found or the
   lights re-pinned, in the background, carried on after a restart.

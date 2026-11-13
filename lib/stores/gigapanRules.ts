@@ -63,7 +63,7 @@ export function setsOf(files: ZoomUpload[]): Array<{ id: string; photos: ZoomUpl
 }
 /** Raised when the stitcher changes what shoppers see, so every shelf is stitched again by the next run
  *  (2: the look pass: sharper contours, punch, shine, colour — owner, 2026-11-12). */
-export const STITCH_VERSION = 3; // 3: the VBazaar Look v2 (lighter), now a template: scripts/stitch/look.json
+export const STITCH_VERSION = 4; // 4: a finished picture (one photo under 6 MP) is shown as uploaded, no look on it (2026-11-13)
 export const sigOf = (photos: Array<{ key: string }>) => `${photos.map((p) => p.key).sort().join("|")}#v${STITCH_VERSION}`;
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 export const zoomLabel = (i: number) => ({ en: `Shelf ${i + 1}`, fa: `قفسه ${String(i + 1).replace(/\d/g, (d) => FA_DIGITS[Number(d)])}` });
@@ -85,6 +85,9 @@ export function toStitch(files: ZoomUpload[], record: ZoomRecord | null, force =
   });
 }
 /** What the stitcher's answer says, in a sentence for the card. */
-export function noteOf(r: { w: number; h: number; mp: number; tiles: number; order: string[]; seconds: number; row?: boolean }): string {
-  return `${r.w}×${r.h} px (${r.mp} megapixels) in ${r.tiles} tiles, ${r.seconds} s${r.order.length > 1 ? `; ${r.row ? "left to right" : "top to bottom"}: ${r.order.join(" → ")}` : "; one photo, not stitched"}.`;
+export function noteOf(r: { w: number; h: number; mp: number; tiles: number; order: string[]; seconds: number; row?: boolean; look?: boolean }): string {
+  return `${r.w}×${r.h} px (${r.mp} megapixels) in ${r.tiles} tiles, ${r.seconds} s${r.order.length > 1 ? `; ${r.row ? "left to right" : "top to bottom"}: ${r.order.join(" → ")}` : "; one photo, not stitched"}.`
+    // Said plainly: a small picture cannot be zoomed into, whatever was done to it before it was uploaded.
+    + (r.look === false ? ` Shown exactly as uploaded (a finished picture, not a camera's own photo).` : "")
+    + (r.mp < 6 ? ` ⚠️ Only ${r.mp} megapixels: shoppers can zoom in very little. For labels that can be read, upload the phone's own full-size photos (12 megapixels or more each).` : "");
 }

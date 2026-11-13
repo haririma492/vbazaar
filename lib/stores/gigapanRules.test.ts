@@ -152,3 +152,9 @@ test("a shelf is looked for in a walk once; again when the walk or its photo cha
   assert.deepEqual(thin([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 5), [0, 3, 5, 8, 10]);
   assert.deepEqual(thin([1, 2], 5), [1, 2]);
 });
+
+test("a small finished picture says it is shown as uploaded, and that it cannot be zoomed far", () => {
+  const n = noteOf({ w: 1448, h: 1086, mp: 1.6, tiles: 12, order: ["shelf.png"], seconds: 1, look: false });
+  assert.match(n, /Shown exactly as uploaded/);
+  assert.match(n, /Only 1\.6 megapixels/);
+});
