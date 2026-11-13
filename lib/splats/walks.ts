@@ -37,6 +37,7 @@
  */
 
 import { parseMotion, type WalkMotion } from "./motion";
+import { radioSourceOf, type RadioSource } from "../radio";
 import { flatLens, parseLens, type FlatLens } from "./lens";
 
 export const WALKS_KEY = "scenes/walks.json";
@@ -217,8 +218,10 @@ export type Walk = {
    * page in addition to uploading 3 audio file lets have the choice of tuning into a music channel from
    * nikoo.tv"): 3 = موسیقی جهان, 4 = نغمه‌های نوستالژیک فرانسه و ایتالیا (`lib/radio.ts`). The walk joins what
    * the channel airs this minute. The uploaded tracks are kept, and play again when this is taken off.
+   * Since 2026-11-13 (owner: "chosen from any of nikoo.tv live tv channels or from any category in World Music
+   * or in Iranian Music") it is 4 (as stored before) or a choice: any channel, or a music category or group.
    */
-  radio?: 4;
+  radio?: 4 | RadioSource;
   /**
    * Bumped by each cut of the video (`cut.ts`): the file keeps its name but
    * changes, and files are cached "forever" by name, so the player asks for
@@ -676,7 +679,11 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.radio !== undefined && r.radio !== null) {
       // Only channel 4 now (owner, 2026-11-06): a walk set to 3 before then plays 4.
       if (r.radio === 3 || r.radio === 4) walk.radio = 4;
-      else problems.push(`${key}: «radio» is Nikoo.tv channel 4.`);
+      else {
+        const src = radioSourceOf(r.radio);
+        if (src) walk.radio = src;
+        else problems.push(`${key}: «radio» is a Nikoo.tv channel or a category of its music.`);
+      }
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -1405,8 +1412,8 @@ export function setTrack(w: Walks, key: string, slot: number, audio: string | nu
 }
 
 /** A walk's background sound (a `walkAudioKey`); null: none. */
-/** The walk tuned in to Nikoo.tv channel 4, or back to its own tracks (null). */
-export function setRadio(w: Walks, key: string, radio: 4 | null): Walks {
+/** The walk tuned in to a Nikoo.tv channel or a category of its music, or back to its own tracks (null). */
+export function setRadio(w: Walks, key: string, radio: 4 | RadioSource | null): Walks {
   const walk = w.walks[key] ?? { doors: [] };
   const { radio: _r, ...rest } = walk;
   return { ...w, walks: { ...w.walks, [key]: radio ? { ...rest, radio } : rest } };

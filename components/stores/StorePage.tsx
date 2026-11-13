@@ -40,6 +40,7 @@ import WalkFrame from "./WalkFrame";
 import WidgetCard from "./WidgetCard";
 import InstagramCard from "./InstagramCard";
 import MusicCard, { type Track } from "./MusicCard";
+import type { RadioSource } from "@/lib/radio";
 import { Bi, Card, FIELD, FilePick, KEY, QUIET, Said, Steps, Thread, type StepView } from "./ui";
 
 type Page = {
@@ -50,7 +51,7 @@ type Page = {
   walkUrl: string | null;
   editUrl?: string | null;
   music?: Track[];
-  radio?: 4 | null;
+  radio?: RadioSource | null;
 };
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };
