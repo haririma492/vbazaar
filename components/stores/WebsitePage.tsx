@@ -92,6 +92,10 @@ export default function WebsitePage({ slug }: { slug: string }) {
   }, [api]);
   useEffect(() => { void load(); }, [load]);
   const running = page?.run?.running === true;
+  // The answer to «Read…» ("Reading the site…") is cleared once the run is seen finished: it stayed on the page
+  // after a run that ended in a second, and looked like a run still going (owner, 2026-11-13).
+  const finishedAt = page?.run?.finished ?? null;
+  useEffect(() => { if (!running && finishedAt) setSaid((x) => (x?.ok ? null : x)); }, [running, finishedAt]);
   useEffect(() => {
     if (!running) return;
     const id = setInterval(load, 4000);

@@ -24,6 +24,9 @@ export type ZoomSet = {
   h?: number;
   mp?: number;
   tiles?: number;
+  /** The whole photo, small (public): what the operator draws a crop on. `crop`: the part shown, when one is set. */
+  full?: string;
+  crop?: number[];
   /** The stitched master (private bucket), kept for the agents (reading every label, later). */
   master?: string;
   /** The finder's last look for this shelf in the store's walk (`scripts/stitch/locate.py`): which walk and photo it
@@ -53,7 +56,22 @@ export function thin<T>(frames: T[], max: number): T[] {
   if (frames.length <= max) return frames;
   return Array.from({ length: max }, (_, i) => frames[Math.round((i * (frames.length - 1)) / (max - 1))]);
 }
-export type ZoomRecord = { store: string; sets: ZoomSet[]; updated: string };
+/** `crops`: the part of each shelf's photo the operator chose to show (x, y, w, h as fractions of the whole), by shelf id. */
+export type ZoomRecord = { store: string; sets: ZoomSet[]; updated: string; crops?: Record<string, number[]> };
+
+/**
+ * THE OPERATOR'S CROP (owner, 2026-11-13: "when we load the photo of a shelf, allow operator to crop that"): four
+ * fractions of the whole photo (x, y, width, height), kept inside it. Null for "the whole photo" (nothing given,
+ * nearly all of it, or not a rectangle worth showing: under a twentieth of a side).
+ */
+export function cropOf(v: unknown): number[] | null {
+  if (!Array.isArray(v) || v.length !== 4 || !v.every((n) => typeof n === "number" && Number.isFinite(n))) return null;
+  const r = (n: number) => Math.round(n * 1e4) / 1e4;
+  const x = Math.min(1, Math.max(0, v[0])), y = Math.min(1, Math.max(0, v[1]));
+  const w = Math.min(1 - x, Math.max(0, v[2])), h = Math.min(1 - y, Math.max(0, v[3]));
+  if (w < 0.05 || h < 0.05 || (w > 0.995 && h > 0.995)) return null;
+  return [r(x), r(y), r(w), r(h)];
+}
 
 /** The uploads grouped into shelves, in the order each shelf's first photo came. */
 export function setsOf(files: ZoomUpload[]): Array<{ id: string; photos: ZoomUpload[] }> {
@@ -64,7 +82,7 @@ export function setsOf(files: ZoomUpload[]): Array<{ id: string; photos: ZoomUpl
 /** Raised when the stitcher changes what shoppers see, so every shelf is stitched again by the next run
  *  (2: the look pass: sharper contours, punch, shine, colour — owner, 2026-11-12). */
 export const STITCH_VERSION = 4; // 4: a finished picture (one photo under 6 MP) is shown as uploaded, no look on it (2026-11-13)
-export const sigOf = (photos: Array<{ key: string }>) => `${photos.map((p) => p.key).sort().join("|")}#v${STITCH_VERSION}`;
+export const sigOf = (photos: Array<{ key: string }>, crop?: number[] | null) => `${photos.map((p) => p.key).sort().join("|")}#v${STITCH_VERSION}${crop ? `#c${crop.join(",")}` : ""}`;
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
 export const zoomLabel = (i: number) => ({ en: `Shelf ${i + 1}`, fa: `قفسه ${String(i + 1).replace(/\d/g, (d) => FA_DIGITS[Number(d)])}` });
 
@@ -72,15 +90,15 @@ export const zoomLabel = (i: number) => ({ en: `Shelf ${i + 1}`, fa: `قفسه $
  * Where a shelf stands: `waiting` (never stitched), `changed` (photos added or replaced since), `done`, `failed`
  * (the same photos would fail the same way: only new photos, or «Try again», run it again).
  */
-export function stateOf(photos: ZoomUpload[], made: ZoomSet | undefined): "waiting" | "changed" | "done" | "failed" {
+export function stateOf(photos: ZoomUpload[], made: ZoomSet | undefined, crop?: number[] | null): "waiting" | "changed" | "done" | "failed" {
   if (!made) return "waiting";
-  if (made.sig !== sigOf(photos)) return "changed";
+  if (made.sig !== sigOf(photos, crop)) return "changed";
   return made.state;
 }
 /** The shelves a run stitches: the ones waiting or changed; with `force`, the failed ones too. */
 export function toStitch(files: ZoomUpload[], record: ZoomRecord | null, force = false): Array<{ id: string; photos: ZoomUpload[]; index: number }> {
   return setsOf(files).map((s, index) => ({ ...s, index })).filter((s) => {
-    const st = stateOf(s.photos, record?.sets.find((x) => x.id === s.id));
+    const st = stateOf(s.photos, record?.sets.find((x) => x.id === s.id), record?.crops?.[s.id]);
     return st === "waiting" || st === "changed" || (force && st === "failed");
   });
 }

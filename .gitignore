@@ -11,3 +11,4 @@ next-env.d.ts
 
 # The demo without internet: the folder `npm run offline:pack` fills (videos, GBs)
 /offline/
+__pycache__/

@@ -411,3 +411,22 @@ export function toCsv(products: SiteProduct[]): string {
   ]);
   return "﻿" + [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
+
+/**
+ * A SOCIAL PAGE IS NOT A SHOP (owner, 2026-11-13, nuttime: the explorer said "this site needs a closer look" a second
+ * after it started, and looked as if it were still reading). The intake asks "Website or Instagram?" in one field,
+ * so a store's `website` may be its Instagram page, which holds no product list. Null for an ordinary site; else
+ * what to tell the operator, with the shop's own address when the page's name is one (@nuttime.ca → nuttime.ca).
+ */
+const SOCIAL = /^(?:[a-z0-9-]+\.)*(instagram\.com|instagr\.am|facebook\.com|fb\.com|tiktok\.com|linktr\.ee|t\.me|wa\.me|whatsapp\.com|x\.com|twitter\.com|youtube\.com|pinterest\.com|threads\.net)$/i;
+export function socialPage(url: string): { network: string; guess: string | null } | null {
+  let u: URL;
+  try { u = new URL(url); } catch { return null; }
+  const m = SOCIAL.exec(u.hostname);
+  if (!m) return null;
+  const network = m[1].replace(/\.(com|am|ee|me|net)$/, "").replace(/^instagr$/, "instagram").replace(/^linktr$/, "linktree").replace(/^fb$/, "facebook");
+  const name = u.pathname.split("/").filter(Boolean)[0]?.replace(/^@/, "") ?? "";
+  // A page named like a web address (nuttime.ca, shop.example.com): that is likely the shop.
+  const guess = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(name) && !SOCIAL.test(name) ? `https://${name.toLowerCase()}` : null;
+  return { network, guess };
+}

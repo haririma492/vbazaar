@@ -23,6 +23,48 @@ import type { ZoomForPage } from "@/lib/stores/gigapan";
 import { MAX_ZOOM_PHOTOS } from "@/lib/stores/store";
 
 type State = { sets: ZoomForPage[]; working: boolean; note: string };
+/**
+ * THE CROP SCREEN (owner, 2026-11-13: "when we load the photo of a shelf, allow operator to crop that"). The whole
+ * photo, and one thing to do on it: drag a rectangle round the part shoppers should see. «Save» cuts the photo to
+ * it (the stitcher runs again by itself; the uploads stay whole, so the crop can be drawn again or taken off).
+ */
+function CropScreen({ shelf, onSave, onClose }: { shelf: ZoomForPage; onSave: (crop: number[] | null) => void; onClose: () => void }) {
+  const [box, setBox] = useState<number[] | null>(shelf.crop);
+  const start = useRef<{ x: number; y: number } | null>(null);
+  const at = (e: React.PointerEvent<HTMLDivElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    return { x: Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), y: Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)) };
+  };
+  const drag = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!start.current) return;
+    const p = at(e), a = start.current;
+    setBox([Math.min(a.x, p.x), Math.min(a.y, p.y), Math.abs(p.x - a.x), Math.abs(p.y - a.y)]);
+  };
+  const good = box && box[2] >= 0.05 && box[3] >= 0.05;
+  return (
+    <div dir="ltr" className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/90 p-4 text-left text-white">
+      <p className="text-[15px] font-bold">Crop «{shelf.label.en}» · برش عکس</p>
+      <p className="text-[13px] text-white/70">Drag a rectangle round the part shoppers should see. Drag again to change it.</p>
+      <div className="relative max-h-[70vh] max-w-full touch-none select-none"
+        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); start.current = at(e); setBox(null); }}
+        onPointerMove={drag} onPointerUp={(e) => { drag(e); start.current = null; }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={shelf.full!} alt="" draggable={false} className="block max-h-[70vh] max-w-full" />
+        {box && (
+          <div className="pointer-events-none absolute border-2 border-emerald-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)]"
+            style={{ left: `${box[0] * 100}%`, top: `${box[1] * 100}%`, width: `${box[2] * 100}%`, height: `${box[3] * 100}%` }} />
+        )}
+      </div>
+      {box && !good && <p className="text-[13px] text-amber-200">Too small: drag a bigger rectangle.</p>}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={QUIET} onClick={onClose}>← Back</button>
+        <button type="button" className={KEY} disabled={!good} onClick={() => onSave(box)}>✓ Save this crop · ذخیره</button>
+        {shelf.crop && <button type="button" className={QUIET} onClick={() => onSave(null)}>Show the whole photo again</button>}
+      </div>
+    </div>
+  );
+}
+
 const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
 /** A new shelf's id: made here, so the photos chosen together stay together. */
 const newSet = () => `g${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.slice(0, 16);
@@ -32,6 +74,7 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<{ name: string; p: Progress; i: number; of: number } | null>(null);
   const [open, setOpen] = useState<ZoomForPage | null>(null);
+  const [cropping, setCropping] = useState<ZoomForPage | null>(null);
   const input = useRef<HTMLInputElement>(null);
   /** The shelf the next chosen photos go to: null for a new shelf. */
   const into = useRef<string | null>(null);
@@ -133,6 +176,7 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
                 <div className="flex flex-wrap gap-2 pt-1">
                   {s.manifest && <button type="button" className={QUIET} onClick={() => setOpen(s)}>🔍 Open · باز کردن</button>}
                   {s.manifest && <a className={`${QUIET} inline-flex items-center`} href={`${api.replace("/api/stores/", "/zoom/")}?shelf=${sets.filter((x) => x.manifest).indexOf(s) + 1}`} target="_blank" rel="noreferrer">Direct link ↗</a>}
+                  {operator && s.full && s.photos.length > 0 && <button type="button" className={QUIET} disabled={st?.working} onClick={() => setCropping(s)}>✂ Crop{s.crop ? " (cropped)" : ""} · برش</button>}
                   {operator && <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => { into.current = s.id; input.current?.click(); }}>{s.photos.length ? "Add or retake a photo" : "＋ Add its photos"}</button>}
                   {operator && s.state === "done" && !s.drawn && <button type="button" className={QUIET} disabled={st?.working} onClick={() => void act({ action: "zoomStitch", relocate: true }, "Looking for the shelves in the walk… about a minute. · در حال جست‌وجو")}>Find it in the walk{s.placeNote ? " again" : ""}</button>}
                   {operator && s.state === "failed" && <button type="button" className={QUIET} disabled={st?.working} onClick={() => void act({ action: "zoomStitch", force: true }, "Trying again… · دوباره")}>Try again</button>}
@@ -171,6 +215,19 @@ export default function ZoomCard({ api, operator, editUrl }: { api: string; oper
         </div>
       )}
       {said && <Said ok={said.ok} text={said.text} />}
+      {cropping?.full && (
+        <CropScreen shelf={cropping} onClose={() => setCropping(null)} onSave={(crop) => {
+          const id = cropping.id;
+          setCropping(null);
+          void (async () => {
+            try {
+              await postJson(api, { action: "zoomCrop", set: id, crop });
+              setSaid({ ok: true, text: crop ? "✓ Crop saved. Cutting the photo now: under a minute; this card follows it. · برش ذخیره شد" : "✓ The whole photo again: redoing it now. · عکس کامل" });
+              setSt((x) => (x ? { ...x, working: true, note: "starting…" } : x));
+            } catch (e) { setSaid({ ok: false, text: `Crop not saved: ${(e as Error).message}` }); }
+          })();
+        }} />
+      )}
       {open?.manifest && <DeepZoom manifest={open.manifest} title={open.label} onClose={() => setOpen(null)} />}
     </Card>
   );
