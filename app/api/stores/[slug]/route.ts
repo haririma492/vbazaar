@@ -20,12 +20,8 @@
  *   POST { action: "product", n, unit?, price?, sku?, note?, en?, fa? }  a product's details, from the store's page
  *   POST { action: "productDrop", n }           not a product: off the list and off the walk
  *   POST { action: "productSame", n, into }     the same product as #into: its tags move there, #n goes
- *   POST { action: "widgetSet", settings }      the widget on the store's site: { on, place, width, lang } (operator)
- *   POST { action: "widget" }                   the store's widget: { snippet, stats, plan, forOwner } (operator; the owner when switched on)
  *   POST { action: "instagram" }              (the Reel, the walk link, one link per lit product)
  *   POST { action: "reelMake" }               (the vertical Instagram Reel made again, in the background)
- *   POST { action: "widgetRemake" }            (operator: the Free Tour preview made again now; returns how it was aimed)
- *   POST { action: "widgetOwner", on }          (operator: the owner sees the widget card, or not)
  *   POST { action: "tidy" }                     the Tidy agent (operator; spends from the store's budget, at most $2): clutter hidden behind products
  *   POST { action: "tidyState" }                → { run, covers, ceiling }: the run, and every object hidden (its photo, what stands there)
  *   POST { action: "tidyDrop", id }             «Bring it back» (operator): that cover off, and the spot left alone by later runs; id "all": every cover off
@@ -64,11 +60,8 @@ import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refr
 import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
-import { readStats, widgetPlan } from "@/lib/stores/widget";
-import { readPreview, remakePreview } from "@/lib/stores/widgetPreview";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
-import { ownerSeesWidget, snippet, widgetSettings } from "@/lib/stores/widgetRules";
 import { demoClear, demoCount, demoFill } from "@/lib/stores/demoFill";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
@@ -131,11 +124,6 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     return ok({ store: next ? forPage(next) : null });
   }
 
-  if (body.action === "widget") {
-    if (who !== "operator" && !ownerSeesWidget(s)) return fail(403, "The operator only.");
-    const [stats, plan, preview] = await Promise.all([readStats(s.slug), widgetPlan(s.slug), readPreview(s.slug)]);
-    return ok({ snippet: snippet(s.slug), stats, plan, forOwner: ownerSeesWidget(s), settings: widgetSettings(s.widget), preview: who === "operator" ? preview : undefined });
-  }
   // INSTAGRAM (owner, 2026-11-06: the Instagram pathway): the store's vertical Reel, the walk's link for the bio, and
   // one link per lit product (opens the walk facing it, its card open). The owner's too: it is their marketing.
   if (body.action === "instagram") {
@@ -153,28 +141,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (!startReel(s.slug, s.out.walk)) return fail(409, "Another store's Reel is being made right now; try again in a minute.");
     return ok({ started: true });
   }
-  if (body.action === "widgetRemake") {
-    if (who !== "operator") return fail(403, "The operator only.");
-    return ok({ preview: await remakePreview(s.slug, s.out.walk ?? null) });
-  }
   // «Show on the tours page» (owner, 2026-11-10): the store on vbazaar.app/tours with its short address, published or not.
   if (body.action === "toursShow") {
     if (who !== "operator") return fail(403, "The operator only.");
     if (body.on === true && !s.out.walk) return fail(400, "This store has no walk yet.");
     const next = await updateStore(s.slug, (x) => ({ ...x, onTours: body.on === true }));
     return ok({ onTours: next?.onTours === true, store: next ? forPage(next) : null });
-  }
-  // The widget's settings, changed here and never in the store's code (owner, 2026-11-11): shown or not, where, how
-  // wide, which language. `/widget.js` reads them on the store's site within a minute.
-  if (body.action === "widgetSet") {
-    if (who !== "operator") return fail(403, "The operator only.");
-    const next = await updateStore(s.slug, (x) => ({ ...x, widget: widgetSettings({ ...widgetSettings(x.widget), ...((body.settings ?? {}) as object) }) }));
-    return ok({ settings: widgetSettings(next?.widget) });
-  }
-  if (body.action === "widgetOwner") {
-    if (who !== "operator") return fail(403, "The operator only.");
-    const next = await updateStore(s.slug, (x) => ({ ...x, widgetForOwner: body.on === true }));
-    return ok({ forOwner: next ? ownerSeesWidget(next) : false });
   }
 
   if (body.action === "upload") {

@@ -37,7 +37,6 @@ import RefreshAllCard from "./RefreshAllCard";
 import DemoCard from "./DemoCard";
 import TidyCard from "./TidyCard";
 import WalkFrame from "./WalkFrame";
-import WidgetCard from "./WidgetCard";
 import InstagramCard from "./InstagramCard";
 import MusicCard, { type Track } from "./MusicCard";
 import type { RadioSource } from "@/lib/radio";
@@ -220,8 +219,6 @@ export default function StorePage({ slug }: { slug: string }) {
           <a href={`/stores/${slug}/website`} className={`${QUIET} mt-3 inline-flex items-center`}>Open · باز کردن</a>
         </Card>
       )}
-      {/* The store's widget for its own website: the operator's, and the owner's too when the operator switches it on. */}
-      {(op || page.store.widgetForOwner === true) && <WidgetCard api={api} slug={slug} operator={op} />}
       {page.walkUrl && <InstagramCard api={api} name={page.store.name.en || page.store.name.fa} />}
       {op && page.walkUrl && <RefreshAllCard api={api} spentCents={s.spentCents} budgetCents={BUDGET_CENTS} editUrl={page.editUrl ?? null} />}
       {op && page.walkUrl && page.products.length > 0 && <DemoCard api={api} onChange={load} />}

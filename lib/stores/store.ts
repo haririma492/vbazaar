@@ -161,12 +161,6 @@ export type StoreRecord = {
   spentCents: number;
   /** Shoppers see it once the operator presses «Publish». */
   live: boolean;
-  /** The store's owner sees the widget card (its code, preview and counts) on their page: the operator's switch
-   *  (owner, 2026-11-06: "only for operator with a flag/key … if we need the owner also to see it or not"). */
-  widgetForOwner?: boolean;
-  /** The widget on the store's own site, set from OUR side (`widgetSettings` in `widgetRules.ts`): shown or not,
-   *  where, how wide, which language. The store's two lines of code never change (owner, 2026-11-11). */
-  widget?: { on?: boolean; place?: "float" | "top" | "here"; side?: "right" | "left" | "center"; corner?: "br" | "bl" | "tr" | "tl"; width?: number; lang?: "fa" | "en"; movable?: boolean };
   /** Shown on vbazaar.app/tours, with its short address /walk/<slug>, without being published into the bazaar: the
    *  operator's switch (owner, 2026-11-10: "I am going to demo these ready stores to new prospects"). */
   onTours?: boolean;

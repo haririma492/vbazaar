@@ -22,7 +22,7 @@
  * operator's browser is the one the walks are demonstrated on, so it waits for AAA. A browser that holds the token
  * is still marked (`vb_admin=1`) so its visits are never counted.
  * ⚠️ A PAGE CHANGE HERE IS NOT A PAGE LOAD (Next's router): the path is watched, and each new one is a page view.
- * Not counted: the store widget's frame (`/w/…`, shown on other sites and counted by itself), the offline demo.
+ * Not counted: the offline demo.
  */
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -59,7 +59,7 @@ function pageView(path: string) {
 
 export default function VisitorStats() {
   const pathname = usePathname() || "/";
-  const skip = OFFLINE || pathname.startsWith("/w/");
+  const skip = OFFLINE;
   const admin = useAdminMode(!skip);
   const [counts, setCounts] = useState<Counts | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);

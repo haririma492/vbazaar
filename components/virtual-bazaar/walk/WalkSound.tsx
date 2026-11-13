@@ -75,10 +75,9 @@ export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, pl
   specials?: boolean;
   /** Tuned in to nikoo.tv (`Walk.radio`): a channel, live, or a category of its music, instead of `audioKeys`. */
   radio?: 4 | RadioSource | null;
-  /** Where the key sits (the store's widget puts it at the top right: its frame is small and the wheel fills the bottom). */
+  /** Where the key sits. */
   place?: string;
-  /** The «nikoo.tv live music» label beside the key; not in the store's widget (owner, 2026-11-11: "also remove
-   *  'nikoo.tv live music' label"). The walk on vbazaar.app keeps it. */
+  /** The label beside the key. */
   label?: boolean;
 }) {
   const source = radioSourceOf(radio);

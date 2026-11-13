@@ -98,63 +98,14 @@ plan and the Managed Agents decision are in
   every new product list. Its last part matches each product found in the video to its website product (Haiku
   compares the photos, ≥ 0.75), so the product keeps its lights and gets the site's name, price, description and
   photos; the website copy leaves the list. A store with no https website: the step says so and is done.
-- **The store widget** (owner, 2026-11-06: *"a preview / widget is the verdict … place the widget code on the store
-  page … only for operator with a flag/key … if we need the owner also to see it"*; *"this will apply to all
-  stores, existing and new"*). Two lines on the store's own site (`snippet`): `/widget.js` frames `/w/<slug>`, a
-  TEASER only (the Free Tour's first 20 s as a flat clip with its music, made by `widgetPreview.ts`; else the Shelf Tour's loop or the product photos; the store's name, our mark, one key to
-  `/w/<slug>/go`, counted, then the visit on vbazaar.app). The moat: the walk, the tours and the basket are never
-  on the store's site; a full embed would be a separate paid white-label product. Unpublished: «Coming soon».
-  Card on `/stores/<slug>` for the operator; `widgetForOwner` on the record shows it to the owner.
-  Our mark on the widget is the arch alone on its tile, small (owner, 2026-11-11: *"replace the big logo on the
-  widget with small (just arch)"*). How big it is on the store's site: `data-width` (its widest, 480 if left out,
-  always 4:3); where: below.
-  «Copy the code» answers on the key itself, and falls back to selecting the code (it "did nothing": the answer
-  was at the card's end).
-  **⚠️ The widget now plays the Free Tour itself, for every store with a walk, published or not** (owner,
-  2026-11-11: *"instead of the texts and the yellow key … add the wheel so viewers can adjust the speed and look
-  around and listen to the music the widget has to perform exactly like the free tour"*; *"the active link should
-  only be on the top left logo (the arch)"*; *"for all stores the widget should work the same"*). This replaces the
-  teaser and the "never on the store's site" rule above for the walk. `/w/<slug>` renders `WidgetWalk` → `Walk360`
-  with `embed`: the door photo, «Start walking», the wheel (smaller), Back / Walk, the speed bar, the time bar, the
-  lights, the music key beside the arch. The arch (top left) is the frame's ONLY link (`/w/<slug>/go`, counted; the
-  store's `/walk/<slug>` when it has its short address, else the home page). Still only on vbazaar.app: the product
-  card and the basket (a frame on another site cannot reach the basket kept on the device), the Shelf Tour switch,
-  Share to Story, the owner's view. A store with no walk yet: its photos, its name, «Coming soon» (`WidgetFrame`),
-  the arch its only link. The 20 s preview clip (`widgetPreview.ts`) is no longer shown where there is a walk.
-  **The widget sits at the TOP of the store's page by default** (owner, 2026-11-11: *"let by default the location
-  of the widget be somewhere on top of page rather than all the way down"*): `/widget.js` puts its frame under the
-  site's header (the last `<header>` outside main/article/section/footer; else the start of the page), centred,
-  wherever the two lines were pasted; `data-place="here"` on the `<div>` keeps it in the `<div>`. The store's own
-  `<div>` is hidden, never moved (a React site owns it); the script looks again every 1.5 s for a `<div>` drawn
-  later and puts its frame back if the site dropped it.
-  **Everything about the widget is changed on OUR side; the store pastes its two lines once** (owner, 2026-11-11:
-  *"make sure that we can change everything from our side (vbazaar) and not having to change anything on the widget
-  code, the customer only place the code once"*). `StoreRecord.widget` (`widgetSettings` in `widgetRules.ts`,
-  tested): shown or not, place (top | here), width, language; set on the card («On the store's website», operator,
-  action `widgetSet`, saves by itself). `/widget.js` (served `max-age=0`, so always ours) asks `GET /api/w/<slug>`
-  (open to any site, cached 60 s) before it draws; the `<div>`'s `data-*` attributes are used only if that answer
-  fails. Never ask a store to edit its code: add a setting here instead.
-  **In the page it is a WINDOW at one side, not a stripe** (owner, 2026-11-11, of the widget on dioncollege.com:
-  *"why the widget window goes left to right taking a whole horizontal lane, with a bit white space on left and
-  right, it should only be a window"*; then, of a window fixed over a corner with a ×: *"should not be floating"*,
-  *"not floating, but it should be window not a whole horizontal stripe"*). `side` (right default, left, center):
-  the frame is CSS-floated to that side, so the page's own content runs beside it and nothing of the store's page
-  is covered; on a phone it is as wide as the screen. ⚠️ Seen on dioncollege.com: the site's row beside the window
-  is squeezed narrower. `place: "float"` (the hovering window, `corner`, × for the visit) stays as a choice on the
-  card only; never the default.
-  No «nikoo.tv live music» label in the widget, only the 🔊 key (owner, 2026-11-11: *"also remove 'nikoo.tv live
-  music' label"*); the walk on vbazaar.app keeps the label.
-  **The visitor moves and resizes the window** (owner, 2026-11-11: *"users on each website should be able to
-  resize the window and also move the location of the window around"*): all in `/widget.js`, nothing in the
-  store's code. A bar on top to drag by, a corner at the bottom right to pull its size (4:3, 220 px to the page's
-  width). The first drag lifts the window out of the page's rows (absolute on the page: it still scrolls with it;
-  the site's row gets its room back). Kept on the visitor's device per site (`localStorage`
-  `vbazaar-widget-pos-<slug>`); a double click on the bar puts it back. `movable` in the settings turns it off.
-  **The code is ONE line** (owner, 2026-11-11: *"why the code is so long and look complicated?"*):
-  `<script async src="https://vbazaar.app/widget.js" data-vbazaar-store="<slug>"></script>`. The two lines given
-  out before (a `<div data-vbazaar-store>` with a link, then the script) keep working; "here" with the one line is
-  right after the script.
-  `lib/stores/widget*.ts`, `components/stores/Widget*.tsx`.
+- **The store widget was REMOVED** (owner, 2026-11-13: *"remove the widget"*, and of what that meant: "Delete the
+  widget feature"). It was a line of script a store pasted on its own site (`/widget.js` framing `/w/<slug>`, first
+  a teaser, then on 2026-11-11 the Free Tour itself), with a card on `/stores/<slug>`. Gone: `public/widget.js`,
+  `app/w/`, `app/api/w/`, `components/stores/Widget*.tsx`, `lib/stores/widget*.ts`, the store API's `widget*`
+  actions, `Walk360`'s `embed` mode, `StoreRecord.widget` / `widgetForOwner`. A site that still holds the line
+  loads nothing (the script is a 404) and shows nothing. Left in R2, unused: `stores/<slug>/widget-stats.json`
+  and the `widget-preview-*.mp4` clips. The history is in git (up to `8696e5e`). Don't bring it back without a
+  new decision.
 - **Instagram: three pathways into the walk** (owner, 2026-11-06: *"come up with some modern, trendy, cutting-edge
   technology that Instagram friendly and can link the two sides"*, then *"Let's do that for saraye-bamdad"*). Instagram
   holds no widget or 360°, so every post is a teaser whose link opens the walk. An «Instagram» card on
@@ -187,8 +138,7 @@ plan and the Managed Agents decision are in
   - **Counts need the admin token**, not a cookie anyone can set; the token is never read from the address.
   - **A link that loads a whole new page is the same visit** (olgoo.com counts each as a new arrival).
   - The operator is never counted: the token, the `vb_admin=1` cookie, an address that opened the statistics in
-    the last 30 days, `EXCLUDED_IPS`. Bots are not counted. Not counted either: the widget's frame (`/w/…`), the
-    offline demo. Counting started 2026-11-11.
+    the last 30 days, `EXCLUDED_IPS`. Bots are not counted. Not counted either: the offline demo. Counting started 2026-11-11.
 - **Owners' visits are counted** (owner, 2026-11-06: *"we need to count store owners using their password and
   visiting their page"*, *"lets add that statistics to vbazaar.app/stores"*): each sign-in with the store's
   password, and each visit by the owner to `/stores/<slug>` (a sitting: the page polls every 8 s, so a visit
@@ -227,7 +177,7 @@ plan and the Managed Agents decision are in
   walkKey`), `?p=<n>` at a product; `/walk/<slug>.mp4` is sent on to it; any other store's slug is a 404 (its
   walk still opens by its key). The long `/vca/walk?v=<key>` works for every walk as before, and the operator's
   editor always uses it (`editUrl`). Links made for such a store are short: the store page's «Walk the store»,
-  the Instagram bio and product links (`walkLink` / `productLink` with `slug`), Share to Story, the widget's key,
+  the Instagram bio and product links (`walkLink` / `productLink` with `slug`), Share to Story,
   `/s/<slug>`, the Shelf Tour's «Free Tour». Walking on from a store into another walk turns the address long again.
   **The list is `/walk`** (`app/walk/page.tsx`; owner, 2026-11-11: *"for consistency also change this to /walk"*;
   `/tours` is sent there): each store's door photo and a key per tour; noindex, not linked from the home
@@ -256,7 +206,7 @@ plan and the Managed Agents decision are in
   (`renderView` with the lens). ⚠️ A flat walk's lights are stored as FRACTIONS of the frame (what the walk page
   draws): `flatItem` on saving, `itemDirs` when the crew reads them. Works: walk, lights, product photos, Photo
   improver, title reader, basket. 360° only for now, each saying so (`flatNotYet`): Lock (skipped), Shelf finder,
-  store map, Shelf Tour, Route optimizer, Tidy, Reel, widget clip, Shadow. Areas (outside, lobby, hallway) stay
+  store map, Shelf Tour, Route optimizer, Tidy, Reel, Shadow. Areas (outside, lobby, hallway) stay
   360°. Table in `agents/store-builder/README.md`.
 - **A shelf's zoom photo** (owner, 2026-11-11: *"we are struggling with free tour quality and low pixels of shelf,
   to resolve this we are going to take 3 Gigapan style photo of a shelf and you need to stich them together so user
@@ -332,7 +282,7 @@ plan and the Managed Agents decision are in
     `components/zoom/DeepZoom.tsx` over the walk, which stops drawing and steering meanwhile (`setPaused`): only
     the tiles on screen are fetched (`lib/zoom/pyramid.ts`, tested), wheel / pinch / drag / double tap, never past
     the photo's edges, a mini-map, «Back». A cut moves the 🔍 with the picture; a photo stitched again keeps its
-    place. Works on 360° and flat walks and in the widget. Not yet: the 🔍 in the Shelf Tour; the products'
+    place. Works on 360° and flat walks. Not yet: the 🔍 in the Shelf Tour; the products'
     lights on the zoom photo.
 - **The operator marks the shelves; shoppers see each shelf's border and name** (owner, 2026-11-12: *"after
   completion of Refresh all agents I need to be able as operator to draw rectangles on the shelf and identify
@@ -373,7 +323,7 @@ plan and the Managed Agents decision are in
     border, name plate and 🔍 on the video (2026-11-11/12) for shoppers: they are drawn only in the editor
     (`setShelfMarks(editing)` in `Walk360.tsx`). The border's steps still say WHEN the shopper is at a shelf:
     `shelfNear` (`shelves.ts`, tested) picks the shelf with a photo whose time in view holds the walk's time, or
-    the nearest within 6 s; its thumb and name are a key above the wheel (left of the wheel in the widget and
+    the nearest within 6 s; its thumb and name are a key above the wheel (left of the wheel
     on a short screen); a tap opens the zoom photo. A shelf with no photo shows nothing to shoppers.
   - **The operator crops a shelf's photo** (owner, 2026-11-13: *"when we load the photo of a shelf, allow
     operator to crop that"*): «✂ Crop» on the shelf in «Shelf zoom photos» opens the whole photo; drag a
@@ -1028,7 +978,7 @@ quality and choice to break away and enter in a shop. (period)"*
   play on mobile"*) no browser starts sound in a hidden YouTube player, so while one airs a phone plays the channel's own
   file programmes in channel order (`nextFileProgramme`, `/api/radio?file=1&after=<itemIndex>`). The file player is ONE
   `<audio>` for the visit, its address changed per programme, told to play at once (an iPhone loads nothing until
-  asked to play; a new element would need a new tap). Nothing playable (a live HLS stream): the store's own tracks. «stop the music» clears the channel too. Not in the Shelf Tour nor the widget.
+  asked to play; a new element would need a new tap). Nothing playable (a live HLS stream): the store's own tracks. «stop the music» clears the channel too. Not in the Shelf Tour.
 - **A walk's music: any nikoo.tv channel, or any category of its Iranian / World Music** (owner, 2026-11-13: *"let the
   music for free store tour be chosen from any of nikoo.tv live tv channels or from any category in World Music or in
   Iranian Music"*). This replaces "only channel 4" above. `Walk.radio` is 4 (as stored before; read as the main
@@ -1058,7 +1008,7 @@ quality and choice to break away and enter in a shop. (period)"*
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the
   corrected key, every text file mentioning it rewritten (store record, index, walks.json, catalogues, tours). A dry
   run without `apply`; the old objects stay until `deleteOld`. Renaming a store's slug this way changes its page
-  address (`/stores/<slug>`) and the widget snippet.
+  address (`/stores/<slug>`).
 - **Both tours open on the store's door photo for 7 s** (owner, 2026-11-06: *"start both free tour and shelf tour
   with the photo of the front of the door for 7 sec"*; it was 4 s, Free Tour only): `DOOR_PHOTO_MS` in
   `lib/splats/walks.ts`, `doorPhotoOf` for both.
