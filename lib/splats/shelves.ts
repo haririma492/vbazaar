@@ -202,3 +202,23 @@ export function smoothOutline(frames: Array<{ t: number; c: number[] }>, round: 
     };
   });
 }
+
+/**
+ * THE SHELF THE SHOPPER IS AT (owner, 2026-11-13: "the photo of that shelf … should appear on the screen, not on
+ * the video itself … just like a section on top of the wheel … as we get closer to other shelf, this photo will
+ * change to the other shelf's photo"). Of the walk's shelves that have a photo, the one whose time in view (its
+ * border's steps, else its pins) holds `t`, or the one nearest in time within `reach` seconds; none when the
+ * shopper is further than that from every shelf. In view of two at once: the one whose middle moment is nearer.
+ */
+export function shelfNear<Z extends { manifest?: string; pins: Array<{ t: number }>; outline?: Array<{ t: number }> }>(zooms: Z[] | undefined, t: number, reach = 6): Z | null {
+  let best: Z | null = null, bestD = Infinity, bestMid = Infinity;
+  for (const z of zooms ?? []) {
+    if (!z.manifest) continue;
+    const steps = z.outline?.length ? z.outline : z.pins;
+    if (!steps.length) continue;
+    const a = steps[0].t, b = steps[steps.length - 1].t;
+    const d = t < a ? a - t : t > b ? t - b : 0, mid = Math.abs(t - (a + b) / 2);
+    if (d <= reach && (d < bestD || (d === bestD && mid < bestMid))) { best = z; bestD = d; bestMid = mid; }
+  }
+  return best;
+}

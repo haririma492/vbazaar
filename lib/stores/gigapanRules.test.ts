@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { labelFor, namedShelves, noteOf, setsOf, sigOf, stateOf, toStitch, zoomLabel, type ZoomRecord } from "./gigapanRules.ts";
+import { cropOf, labelFor, namedShelves, noteOf, setsOf, sigOf, stateOf, toStitch, zoomLabel, type ZoomRecord } from "./gigapanRules.ts";
 
 test("a shelf is called what the operator called it on the walk, else by its place", () => {
   const named = namedShelves([
@@ -157,4 +157,18 @@ test("a small finished picture says it is shown as uploaded, and that it cannot 
   const n = noteOf({ w: 1448, h: 1086, mp: 1.6, tiles: 12, order: ["shelf.png"], seconds: 1, look: false });
   assert.match(n, /Shown exactly as uploaded/);
   assert.match(n, /Only 1\.6 megapixels/);
+});
+
+test("the operator's crop is four fractions inside the photo; the whole photo is no crop; a new crop stitches again", () => {
+  assert.deepEqual(cropOf([0.1, 0.2, 0.5, 0.6]), [0.1, 0.2, 0.5, 0.6]);
+  assert.deepEqual(cropOf([-0.2, 0.5, 2, 2]), [0, 0.5, 1, 0.5]); // kept inside the photo
+  assert.equal(cropOf([0, 0, 1, 1]), null);
+  assert.equal(cropOf([0.4, 0.4, 0.01, 0.5]), null);
+  assert.equal(cropOf([0.1, 0.2, 0.5]), null);
+  assert.equal(cropOf("0.1,0.2,0.5,0.6"), null);
+  const photos = [{ key: "a", name: "a.jpg", size: 1, at: "2026-11-13T00:00:00Z", set: "gaaaa" }];
+  const made = { id: "gaaaa", label: zoomLabel(0), sig: sigOf(photos), state: "done" as const, note: "", made: "" };
+  assert.equal(stateOf(photos, made), "done");
+  assert.equal(stateOf(photos, made, [0.1, 0.2, 0.5, 0.6]), "changed");
+  assert.equal(toStitch(photos, { store: "x", updated: "", sets: [made], crops: { gaaaa: [0.1, 0.2, 0.5, 0.6] } }).length, 1);
 });

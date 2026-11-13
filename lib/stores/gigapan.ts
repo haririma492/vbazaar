@@ -25,7 +25,7 @@ import { readStore, updateStore } from "./bucket";
 import { run } from "./media";
 import { setJob, readJob } from "./jobState";
 import { sceneOf, type StoreRecord } from "./store";
-import { labelFor, namedShelves, noteOf, setsOf, sigOf, stateOf, thin, toLocate, toStitch, type ZoomRecord, type ZoomSet } from "./gigapanRules";
+import { cropOf, labelFor, namedShelves, noteOf, setsOf, sigOf, stateOf, thin, toLocate, toStitch, type ZoomRecord, type ZoomSet } from "./gigapanRules";
 
 export const gigapansKey = (slug: string) => `stores/${slug}/gigapans.json`;
 /** The master is at most this many megapixels (`ZOOM_MAX_MP` overrides: the stitcher needs ~12 MB of memory a megapixel). */
@@ -58,7 +58,7 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
     const todo = toStitch(files, record, opts.force);
     const all = setsOf(files);
     if (!todo.length) {
-      const failed = all.filter((x) => stateOf(x.photos, record.sets.find((r) => r.id === x.id)) === "failed").length;
+      const failed = all.filter((x) => stateOf(x.photos, record.sets.find((r) => r.id === x.id), record.crops?.[x.id]) === "failed").length;
       return `Every shelf's zoom photo is stitched already (${all.length - failed} of ${all.length}${failed ? `; ${failed} could not be joined: new photos needed` : ""}).`;
     }
     const base = r2Config().publicBase;
@@ -71,7 +71,8 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
       await setJob("gigapan", { busy: true, key: slug, note: `stitching ${label.en} (${i + 1} of ${todo.length}): ${set.photos.length} photos` });
       const work = join(dir, set.id), src = join(work, "in"), out = join(work, "out");
       mkdirSync(src, { recursive: true });
-      let result: ZoomSet = { id: set.id, label, sig: sigOf(set.photos), state: "failed", note: "", made: new Date().toISOString() };
+      const crop = cropOf(record.crops?.[set.id]);
+      let result: ZoomSet = { id: set.id, label, sig: sigOf(set.photos, crop), state: "failed", note: "", made: new Date().toISOString(), ...(crop ? { crop } : {}) };
       try {
         // The photos under their own names (what the note calls them), made safe for a path.
         const paths: string[] = [];
@@ -80,7 +81,7 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
           await downloadToFile(ph.key, p, "master");
           paths.push(p);
         }
-        await run("python3", [join(process.cwd(), "scripts/stitch/stack.py"), "--out", out, "--max-mp", String(MAX_MP()), "--threads", "2", ...paths]);
+        await run("python3", [join(process.cwd(), "scripts/stitch/stack.py"), "--out", out, "--max-mp", String(MAX_MP()), "--threads", "2", ...(crop ? ["--crop", crop.join(",")] : []), ...paths]);
         const a = JSON.parse(readFileSync(join(out, "result.json"), "utf8")) as Answer;
         if ("error" in a) result.note = a.error;
         else {
@@ -99,7 +100,8 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
           const master = `stores/${slug}/gigapan/${set.id}/master.jpg`;
           await uploadMastersFile(master, join(out, "master.jpg"), "image/jpeg");
           result = {
-            ...result, state: "done", note: noteOf({ ...a, order }), w: a.w, h: a.h, mp: a.mp, tiles: a.tiles, master,
+            ...result, state: "done", note: `${noteOf({ ...a, order })}${crop ? " Cropped by the operator." : ""}`, w: a.w, h: a.h, mp: a.mp, tiles: a.tiles, master,
+            full: `${base}/${folder}/full.jpg`,
             manifest: `${base}/${folder}/manifest.json`, thumb: `${base}/${folder}/thumb.jpg`, dzi: `${base}/${folder}/shelf.dzi`,
           };
           made++;
@@ -113,7 +115,8 @@ export async function stitchZooms(slug: string, opts: { force?: boolean } = {}):
       }
       if (result.state === "failed") problems.push(`${label.en}: ${result.note}`);
       // Saved after every shelf: a restart loses at most the one being stitched.
-      record = { store: slug, updated: new Date().toISOString(), sets: [...((await readZooms(slug))?.sets ?? record.sets).filter((x) => x.id !== set.id), result] };
+      const latest = (await readZooms(slug)) ?? record;
+      record = { ...latest, store: slug, updated: new Date().toISOString(), sets: [...latest.sets.filter((x) => x.id !== set.id), result] };
       await writeMastersJson(gigapansKey(slug), record);
       // A hotspot already on the walk for this shelf opens the new photo.
       if (result.state === "done" && s.out.walk) await repoint(s.out.walk, result).catch((e) => console.error("[zoom] repoint", slug, e));
@@ -246,6 +249,16 @@ export async function removeZoom(slug: string, id: string): Promise<StoreRecord 
   return next;
 }
 
+/** The part of a shelf's photo to show (null: the whole photo). The next stitch run cuts it; the uploads are untouched. */
+export async function setZoomCrop(slug: string, id: string, crop: unknown): Promise<number[] | null> {
+  const c = cropOf(crop);
+  const record: ZoomRecord = (await readZooms(slug)) ?? { store: slug, sets: [], updated: "" };
+  const crops = { ...(record.crops ?? {}) };
+  if (c) crops[id] = c; else delete crops[id];
+  await writeMastersJson(gigapansKey(slug), { ...record, crops, updated: new Date().toISOString() });
+  return c;
+}
+
 export type ZoomForPage = {
   id: string; label: { en: string; fa: string }; photos: Array<{ name: string; size: number }>;
   /** `empty`: a shelf marked on the walk whose photos are still to come. */
@@ -253,6 +266,8 @@ export type ZoomForPage = {
   /** On the walk with its green border; `drawn`: by the operator (else found by the finder); what the finder last said. */
   bordered: boolean; drawn: boolean; placeNote: string | null;
   manifest: string | null; thumb: string | null; w: number | null; h: number | null; mp: number | null;
+  /** The whole photo, small, to draw a crop on; and the crop now set (x, y, w, h as fractions of it). */
+  full: string | null; crop: number[] | null;
 };
 /** What the store's page shows: every shelf with photos, where it stands, and whether its 🔍 is on the walk. */
 export async function zoomsForPage(s: StoreRecord): Promise<{ sets: ZoomForPage[]; working: boolean; note: string }> {
@@ -265,18 +280,21 @@ export async function zoomsForPage(s: StoreRecord): Promise<{ sets: ZoomForPage[
   const withPhotos = setsOf(s.files.gigapan ?? []);
   // Shelves marked on the walk with no photos yet: listed, so their photos can be added to them.
   const empty: ZoomForPage[] = onWalk.filter((z) => z.outline?.length && !withPhotos.some((x) => x.id === z.id)).sort((a, b) => (a.n ?? 1000) - (b.n ?? 1000))
-    .map((z) => ({ id: z.id, label: { en: z.label.en, fa: z.label.fa ?? z.label.en }, photos: [], state: "empty", note: "", pinned: true, bordered: true, drawn: !z.auto, placeNote: null, manifest: null, thumb: null, w: null, h: null, mp: null }));
+    .map((z) => ({ id: z.id, label: { en: z.label.en, fa: z.label.fa ?? z.label.en }, photos: [], state: "empty", note: "", pinned: true, bordered: true, drawn: !z.auto, placeNote: null, manifest: null, thumb: null, w: null, h: null, mp: null, full: null, crop: null }));
   const working = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3600_000);
   return {
     working, note: working ? job?.note ?? "" : "",
     sets: [...withPhotos.map((set, i): ZoomForPage => {
       const m = record?.sets.find((x) => x.id === set.id);
-      const state = stateOf(set.photos, m);
+      const crop = cropOf(record?.crops?.[set.id]);
+      const state = stateOf(set.photos, m, crop);
       const shown = state === "done" || state === "changed";
       return {
         id: set.id, label: labelFor(set.id, i, named), photos: set.photos.map((p) => ({ name: p.name, size: p.size })), state, note: m?.note ?? "", pinned: on.has(set.id),
         bordered: bordered.has(set.id), drawn: drawn.has(set.id), placeNote: m?.place && m.place.walk === s.out.walk ? m.place.note : null,
         manifest: shown ? m?.manifest ?? null : null, thumb: shown ? m?.thumb ?? null : null, w: m?.w ?? null, h: m?.h ?? null, mp: m?.mp ?? null,
+        // Before the first stitch that makes `full.jpg`, an uncropped shelf's mini-map picture is the whole photo.
+        full: m?.full ?? (!m?.crop ? m?.thumb ?? null : null), crop,
       };
     }), ...empty],
   };

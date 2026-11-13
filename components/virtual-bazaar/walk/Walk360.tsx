@@ -69,6 +69,7 @@ import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
+import { shelfNear } from "@/lib/splats/shelves";
 import DeepZoom from "@/components/zoom/DeepZoom";
 import { track } from "@/lib/visitors/track";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
@@ -539,6 +540,8 @@ type Engine = {
   setItemPreview: (item: WalkItem | null) => void;
   /** A shelf's zoom photo is open over the walk: the video stops and nothing is drawn or steered until it closes. */
   setPaused: (on: boolean) => void;
+  /** The shelves' borders, names and 🔍 drawn on the picture: for the operator's editor only (`shelfMarks`). */
+  setShelfMarks: (on: boolean) => void;
   /** A tap on an item's dot. */
   setOnItem: (f: ((item: WalkItem) => void) | null) => void;
   /** What an item's tag says as its price: the store's list where it has one (`productOf`), else its own. */
@@ -707,6 +710,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
   const [editing, setEditing] = useState(false);
   /** ?spots=1 (the operator, from /stores/areas): «Door spot here» marks where a store's door can go on the hallway. */
   const [spotMode, setSpotMode] = useState(false);
+  useEffect(() => { engine.current?.setShelfMarks(editing); }, [editing, phase]);
   const [spotSaid, setSpotSaid] = useState<string | null>(null);
   /** ?edit=1 in a browser not signed in as operator: ask here, rather than show nothing. */
   const [needSignIn, setNeedSignIn] = useState(false);
@@ -1236,6 +1240,12 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
     // On a 360° walk a sprite like a door's sign; on a flat video a button
     // over the picture, where the pins put it (fractions of the frame).
     let itemPick: ((pin: ItemPin) => void) | null = null;
+    // ⚠️ SHOPPERS DO NOT SEE THE SHELVES' BORDERS (owner, 2026-11-13: "When operator draw the border around the
+    // shelf, that is fine. But do not show that border to shoppers … it gets distorted the lines and everything
+    // when they walk, and it's useless. Keep it for the information where we need it"). The border, its name and
+    // its 🔍 are drawn only in the operator's editor; the border still says WHEN the shopper is at a shelf, and
+    // that shelf's photo shows in a panel above the wheel (`shelfNear`, `ShelfPhoto` below).
+    let shelfMarks = false;
     let itemPreview: WalkItem | null = null;
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
@@ -1493,7 +1503,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       // A shelf's zoom photo: its 🔍 on the shelf (a sprite on a 360° walk, a key over a flat video). A tap opens it.
       const wantBorders = new Set<string>();
       const wantNames = new Set<string>();
-      for (const { item, x: cx0, y: cy0, quad } of ready ? zoomsAt(walk, t, !flat) : []) {
+      for (const { item, x: cx0, y: cy0, quad } of ready && shelfMarks ? zoomsAt(walk, t, !flat) : []) {
         const id = `${current!.key}#zoom#${item.zoom.id}`;
         // A shelf with a zoom photo opens it; one with only its border and name (its photos still to come) does not.
         const hasPhoto = Boolean(item.zoom.manifest);
@@ -1726,6 +1736,7 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
       setOnItem(f) {
         onItem = f;
       },
+      setShelfMarks(on) { shelfMarks = on; },
       setPaused(on) {
         paused = on;
         if (on && current && !current.video.paused) current.video.pause();
@@ -2611,6 +2622,26 @@ export default function Walk360({ walkKey, embed }: { walkKey?: string; embed?: 
             onZoom={(z) => engine.current?.setZoom(z)}
             follow={() => engine.current?.turn() ?? 0}
           />
+          {/* THE SHELF'S PHOTO, ABOVE THE WHEEL (owner, 2026-11-13: "the photo of that shelf … should appear on the
+              screen, not on the video itself … just like a section on top of the wheel … as we get closer to other
+              shelf, this photo will change … shopper can click on it, see a better view"). */}
+          {!editing && !spotMode && !view.busy && (() => {
+            const z = shelfNear(walkOf(walks, view.key)?.zooms, time.now);
+            if (!z?.manifest) return null;
+            return (
+              <button
+                type="button" key={z.id} data-track="shelf-photo"
+                onClick={() => { setDrive(null); setZoomOpen(z); track("zoom-open"); }}
+                aria-label={`Open the photo of ${z.label.en}`}
+                className={`absolute overflow-hidden rounded-xl border-2 border-[#35e07a] bg-black/70 text-left shadow-xl ${embedded ? "bottom-[7.75rem] right-[7.5rem] w-24" : "bottom-[19.75rem] right-5 w-40 [@media(max-height:620px)]:bottom-[9.25rem] [@media(max-height:620px)]:right-[12rem] [@media(max-height:620px)]:w-32"}`}
+              >
+                {z.thumb
+                  ? <img src={z.thumb} alt="" className={`w-full object-cover ${embedded ? "h-16" : "h-28 [@media(max-height:620px)]:h-20"}`} />
+                  : <div className={`flex w-full items-center justify-center text-[28px] ${embedded ? "h-16" : "h-28"}`}>🔍</div>}
+                <span dir="auto" className="block truncate px-2 py-1 text-[12px] font-bold text-white">🔍 {z.label.fa && z.label.fa !== z.label.en ? `${z.label.en} · ${z.label.fa}` : z.label.en}</span>
+              </button>
+            );
+          })()}
           {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}
           <div dir="ltr" className={`absolute flex flex-col gap-1.5 ${embedded ? "bottom-10 right-3 w-56 max-w-[calc(100vw-4.5rem)]" : "bottom-[3.75rem] right-5 w-72 max-w-[calc(100vw-2.5rem)]"}`}>
             <div className="flex gap-1.5">

@@ -509,6 +509,7 @@ def main():
     ap.add_argument("--max-mp", type=float, default=100.0)
     ap.add_argument("--threads", type=int, default=2)
     ap.add_argument("--look", choices=["auto", "on", "off"], default="auto")
+    ap.add_argument("--crop", help="x,y,w,h as fractions of the stitched photo: only that part is shown to shoppers")
     ap.add_argument("photos", nargs="+")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -529,6 +530,23 @@ def main():
             master, info = stitch(a.photos, a.max_mp, log)
         # The master is kept as the camera made it (for reading labels later); what shoppers see gets the look.
         cv2.imwrite(os.path.join(a.out, "master.jpg"), master, [cv2.IMWRITE_JPEG_QUALITY, 92])
+        # THE OPERATOR'S CROP (owner, 2026-11-13: "when we load the photo of a shelf, allow operator to crop that").
+        # `full.jpg` is the whole photo, small, for the crop screen: a crop can always be drawn again from all of it.
+        # The private master stays whole; only what shoppers see is cut.
+        fs = min(1.0, 1600.0 / max(master.shape[:2]))
+        cv2.imwrite(os.path.join(a.out, "full.jpg"), cv2.resize(master, None, fx=fs, fy=fs, interpolation=cv2.INTER_AREA) if fs < 1 else master, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        if a.crop:
+            try:
+                cx, cy, cw, ch = [float(v) for v in a.crop.split(",")]
+            except ValueError:
+                raise Refused("The crop is not four numbers.")
+            H, W = master.shape[:2]
+            x0, y0 = int(round(max(0.0, cx) * W)), int(round(max(0.0, cy) * H))
+            x1, y1 = int(round(min(1.0, cx + cw) * W)), int(round(min(1.0, cy + ch) * H))
+            if x1 - x0 < 64 or y1 - y0 < 64:
+                raise Refused("The crop is too small: draw a bigger part of the photo.")
+            master = np.ascontiguousarray(master[y0:y1, x0:x1])
+            info["cropped"] = True
         # ⚠️ A FINISHED PICTURE IS SHOWN AS UPLOADED (owner, 2026-11-13, nuttime: "the photo looks terrible whereas
         # the photo I uploaded for that shelf was the best quality improved by an advanced AI tool"). The look is
         # made for a camera's own photo. On one photo of 1448×1086 that a tool had already brightened and

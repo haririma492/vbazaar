@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { followPoints, moveQuad, nextShelfNumber, quadFromTaps, rectFromTaps, shelfLabel, smoothOutline } from "./shelves.ts";
+import { followPoints, moveQuad, nextShelfNumber, quadFromTaps, rectFromTaps, shelfLabel, shelfNear, smoothOutline } from "./shelves.ts";
 
 const near = (a: number[], b: number[], eps: number) => a.every((v, i) => Math.abs(v - b[i]) <= eps);
 
@@ -92,4 +92,22 @@ test("four corners on a 360° walk: pitch is up, and the seam at ±π does not s
   const seeds = followPoints(q, true);
   const moved = moveQuad(q, seeds, seeds.map(([x, y]) => [x + 0.2, y] as [number, number]), true)!;
   assert.ok(near([moved[1], moved[3], moved[5], moved[7]], [0.3, 0.2, -0.2, -0.35], 2e-3));
+});
+
+test("the shelf whose photo is on screen is the one the shopper is at, then the next one", () => {
+  const o = (a: number, b: number) => [{ t: a }, { t: b }];
+  const honey = { id: "h", manifest: "https://x/h.json", pins: [{ t: 12 }], outline: o(10, 20) };
+  const tea = { id: "t", manifest: "https://x/t.json", pins: [{ t: 32 }], outline: o(30, 40) };
+  const bare = { id: "b", pins: [{ t: 22 }], outline: o(21, 29) }; // marked, no photo: never shown
+  const all = [honey, tea, bare];
+  assert.equal(shelfNear(all, 2, 6), null);         // too far before the first
+  assert.equal(shelfNear(all, 5, 6)?.id, "h");      // coming up to it
+  assert.equal(shelfNear(all, 15, 6)?.id, "h");     // at it
+  assert.equal(shelfNear(all, 24, 6)?.id, "h");     // just past it, the next still further
+  assert.equal(shelfNear(all, 26, 6)?.id, "t");     // nearer the next: its photo takes over
+  assert.equal(shelfNear(all, 60, 6), null);
+  assert.equal(shelfNear(undefined, 5), null);
+  // Two in view at once: the one whose middle is nearer.
+  const wide = { id: "w", manifest: "https://x/w.json", pins: [{ t: 0 }], outline: o(0, 100) };
+  assert.equal(shelfNear([wide, honey], 15)?.id, "h");
 });

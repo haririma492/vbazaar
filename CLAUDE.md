@@ -365,12 +365,25 @@ plan and the Managed Agents decision are in
     At most 6 a shelf (`MAX_ZOOM_PHOTOS`; `stack.py` too): one line of photos, top to bottom or left to right, not
     a grid. Stitched, the photo opens from the operator's border (`repoint`). «Remove photos» on a marked shelf
     takes the photo off and leaves the border and the name.
-  - **Shoppers** see the green border with the name on a green plate in its top left corner, on 360° and flat
-    walks and in the widget; a shelf with a photo also has the 🔍 and opens on a tap inside, one without does
-    nothing on a tap (a product's light inside still opens the product).
+  - **⚠️ Shoppers do NOT see the border; the shelf's photo shows in a panel above the wheel** (owner, 2026-11-13:
+    *"do not show that border to shoppers … it gets distorted the lines and everything when they walk, and it's
+    useless. Keep it for the information where we need it. And also the photo of that shelf … should appear on
+    the screen, not on the video itself … just like a section on top of the wheel … as we get closer to other
+    shelf, this photo will change to the other shelf's photo … shopper can click on it"*). This replaces the
+    border, name plate and 🔍 on the video (2026-11-11/12) for shoppers: they are drawn only in the editor
+    (`setShelfMarks(editing)` in `Walk360.tsx`). The border's steps still say WHEN the shopper is at a shelf:
+    `shelfNear` (`shelves.ts`, tested) picks the shelf with a photo whose time in view holds the walk's time, or
+    the nearest within 6 s; its thumb and name are a key above the wheel (left of the wheel in the widget and
+    on a short screen); a tap opens the zoom photo. A shelf with no photo shows nothing to shoppers.
+  - **The operator crops a shelf's photo** (owner, 2026-11-13: *"when we load the photo of a shelf, allow
+    operator to crop that"*): «✂ Crop» on the shelf in «Shelf zoom photos» opens the whole photo; drag a
+    rectangle, «Save this crop» (action `zoomCrop {set, crop}`; `cropOf`, tested). Kept in `gigapans.json`
+    (`crops`, by shelf id) and in the shelf's `sig`, so the stitcher runs again (`stack.py --crop x,y,w,h`) and
+    cuts what shoppers see; the uploads and the private master stay whole, `full.jpg` (the whole photo, small) is
+    what the crop is drawn on, and «Show the whole photo again» takes it off.
   - `mergeWalks` merges shelves one by one (the editor marking one shelf while the stitcher puts another's photo
     on the walk). After «Refresh all agents» finishes, its card points to the editor.
-  - Not done: the stitched photo is not cropped to the drawn border; names are not shown in the Shelf Tour.
+  - Not done: the photo panel in the Shelf Tour. Not tried in a browser on a real walk (2026-11-13).
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
   rules in `lib/splats/walkStats.ts` (tested). PPD = the playing copy's width ÷ the angle it spans (360° walk:
