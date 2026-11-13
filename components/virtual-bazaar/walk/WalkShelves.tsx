@@ -6,9 +6,10 @@
  * shopper's free tour, the borders of each shelf and their name will be visible to them so shoppers can decide to
  * approach or pass"). Starting from the thing itself, one question a card, each with «← Back»:
  *
- *   1  walk until the whole shelf is in view, tap one corner of it;
- *   2  tap the opposite corner: the green border is on the shelf at once, saved by itself, and is followed
- *      through the walk in the background (`followShelf`), so it stays on the shelf as the shopper walks;
+ *   1  walk until the whole shelf is in view, then tap its FOUR CORNERS, in any order (owner, 2026-11-13: "let
+ *      operator choose 4 corners for a shelf": a shelf seen at an angle is not a rectangle in the picture; it was
+ *      two opposite corners). After the fourth the green border is on the shelf at once, saved by itself, and is
+ *      followed through the walk in the background (`followShelf`), so it stays on the shelf as the shopper walks;
  *   3  its number (the next free one is offered) · 4  its name · 5  its name in Farsi (either may be skipped).
  *
  * A marked shelf is then in the dropdown of «Shelf zoom photos» on the store's page: its photos are uploaded to
@@ -18,14 +19,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { dropZoom, quadBox, setZoom, walkOf, type ItemPin, type Walks, type WalkZoom } from "@/lib/splats/walks";
-import { nextShelfNumber, rectFromTaps, shelfLabel } from "@/lib/splats/shelves";
+import { nextShelfNumber, quadFromTaps, shelfLabel } from "@/lib/splats/shelves";
 import { thin } from "@/lib/stores/gigapanRules";
 import { followShelf } from "./followProduct";
 import type { ItemEngine } from "./WalkItems";
 
 type Ready = { id: string; label: { en: string; fa: string }; manifest: string; thumb: string | null; mp: number };
 type Step =
-  | { step: "a" | "b"; id?: string; a?: ItemPin }
+  | { step: "tap"; id?: string; taps: ItemPin[] }
   | { step: "n" | "en" | "fa"; id: string };
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 /** The store a walk is of: `scenes/store-<slug>/…`. */
@@ -68,20 +69,21 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   const save = (z: WalkZoom) => { if (viewKey) change(setZoom(walksRef.current, viewKey, z)); };
 
   /** The border drawn: on the walk at once, then followed through the video in the background. */
-  function drawn(a: ItemPin, b: ItemPin, id0?: string) {
+  function drawn(taps: ItemPin[], id0?: string) {
     const e = engine.current;
     if (!e || !viewKey) return;
     const here = e.here();
     const round = !here.flat;
-    if (Math.abs(a.t - b.t) > 0.15) {
-      setStatus({ tone: "bad", text: "The video moved between the two taps. Stand still (do not walk) and tap both corners again." });
-      setAt({ step: "a", id: id0 });
+    const a = taps[0];
+    if (taps.some((p) => Math.abs(p.t - a.t) > 0.15)) {
+      setStatus({ tone: "bad", text: "The video moved between the taps. Stand still (do not walk) and tap the four corners again." });
+      setAt({ step: "tap", id: id0, taps: [] });
       return;
     }
-    const quad = rectFromTaps(a, b, round);
+    const quad = quadFromTaps(taps, round);
     if (!quad) {
-      setStatus({ tone: "bad", text: "That is not a rectangle: tap one corner of the shelf, then the corner diagonally opposite." });
-      setAt({ step: "a", id: id0 });
+      setStatus({ tone: "bad", text: "Those four taps do not make a shelf's outline (two on one spot, or one inside the other three). Tap the shelf's four corners again." });
+      setAt({ step: "tap", id: id0, taps: [] });
       return;
     }
     const had = id0 ? shelfNow(id0) : undefined;
@@ -133,11 +135,12 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   // While a corner is asked for, the next tap on the picture is it.
   useEffect(() => {
     const e = engine.current;
-    if (!e || !at || (at.step !== "a" && at.step !== "b")) return;
+    if (!e || !at || at.step !== "tap") return;
     e.video().pause();
     e.setItemPick((pin: ItemPin) => {
-      if (at.step === "a") setAt({ step: "b", id: at.id, a: pin });
-      else { e.setItemPick(null); drawn(at.a!, pin, at.id); }
+      const taps = [...at.taps, pin];
+      if (taps.length < 4) setAt({ step: "tap", id: at.id, taps });
+      else { e.setItemPick(null); drawn(taps, at.id); }
     });
     return () => e.setItemPick(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -145,7 +148,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
 
   /** A question answered (or skipped): the shelf is saved with it, and the next one asked. */
   function answer(skip = false) {
-    if (!at || (at.step !== "n" && at.step !== "en" && at.step !== "fa")) return;
+    if (!at || at.step === "tap") return;
     const cur = shelfNow(at.id);
     if (!cur) { setAt(null); return; }
     const v = skip ? "" : text.trim();
@@ -167,7 +170,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   function back() {
     if (!at) return;
     const cur = "id" in at && at.id ? shelfNow(at.id) : undefined;
-    if (at.step === "b") setAt({ step: "a", id: at.id });
+    if (at.step === "tap" && at.taps.length) setAt({ ...at, taps: at.taps.slice(0, -1) });
     else if (at.step === "en") { setText(cur?.n !== undefined ? String(cur.n) : ""); setAt({ ...at, step: "n" }); }
     else if (at.step === "fa") { setText(cur?.name?.en ?? ""); setAt({ ...at, step: "en" }); }
     else setAt(null);
@@ -186,13 +189,12 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
     const cur = "id" in at && at.id ? shelfNow(at.id) : undefined;
     return (
       <div className="space-y-2 rounded-lg border border-emerald-300/40 bg-emerald-400/10 p-2">
-        {at.step === "a" && (<>
-          <p className="font-semibold">{cur ? `«${cur.label.en}»: draw its border again` : "Mark a shelf"} · 1 of 2</p>
-          <p>Walk until the <b>whole shelf</b> is in view, square on, then stand still and <b>tap one corner</b> of the shelf in the picture (the top left, say).</p>
-        </>)}
-        {at.step === "b" && (<>
-          <p className="font-semibold">Mark a shelf · 2 of 2</p>
-          <p>Now <b>tap the opposite corner</b> (the bottom right). Do not walk in between; you may look round.</p>
+        {at.step === "tap" && (<>
+          <p className="font-semibold">{cur ? `«${cur.label.en}»: draw its border again` : "Mark a shelf"} · corner {at.taps.length + 1} of 4</p>
+          {at.taps.length === 0
+            ? <p>Walk until the <b>whole shelf</b> is in view, then stand still and <b>tap one of its four corners</b> in the picture.</p>
+            : <p><b>Tap the next corner</b> ({4 - at.taps.length} to go), in any order. Do not walk in between; you may look round. «← Back» takes the last tap away.</p>}
+          <p className="text-[18px] tracking-widest text-emerald-300" aria-hidden>{"●".repeat(at.taps.length)}<span className="text-white/25">{"○".repeat(4 - at.taps.length)}</span></p>
         </>)}
         {at.step === "n" && (<>
           <p className="font-semibold">What is this shelf&apos;s number?</p>
@@ -206,11 +208,11 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
           <p className="font-semibold">Its name in Farsi?</p>
           <input className={field} dir="rtl" autoFocus maxLength={60} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") answer(); }} placeholder="نام قفسه" />
         </>)}
-        {cur && at.step !== "a" && at.step !== "b" && <p className="text-white/60">Shoppers will read: <b className="text-emerald-200">{cur.label.en}{cur.label.fa && cur.label.fa !== cur.label.en ? ` · ${cur.label.fa}` : ""}</b></p>}
+        {cur && at.step !== "tap" && <p className="text-white/60">Shoppers will read: <b className="text-emerald-200">{cur.label.en}{cur.label.fa && cur.label.fa !== cur.label.en ? ` · ${cur.label.fa}` : ""}</b></p>}
         <div className="flex flex-wrap gap-1">
           <button className={btn} onClick={back}>← Back</button>
-          {at.step !== "a" && at.step !== "b" && <button className={key} onClick={() => answer()}>{at.step === "fa" ? "Done" : "Next →"}</button>}
-          {at.step !== "a" && at.step !== "b" && <button className={btn} onClick={() => answer(true)}>Skip</button>}
+          {at.step !== "tap" && <button className={key} onClick={() => answer()}>{at.step === "fa" ? "Done" : "Next →"}</button>}
+          {at.step !== "tap" && <button className={btn} onClick={() => answer(true)}>Skip</button>}
         </div>
         {progress}
       </div>
@@ -221,7 +223,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   return (
     <div className="space-y-2">
       <p className="text-white/70">Mark each shelf: a rectangle round it, its number and its name. Shoppers see the border and the name as they walk; its zoom photos are added on the store&apos;s page.</p>
-      <button className={key} disabled={Boolean(following)} onClick={() => { setStatus(null); setAt({ step: "a" }); }}>＋ Mark a shelf</button>
+      <button className={key} disabled={Boolean(following)} onClick={() => { setStatus(null); setAt({ step: "tap", taps: [] }); }}>＋ Mark a shelf</button>
       {progress}
       <ul className="max-h-[45vh] space-y-2 overflow-y-auto">
         {sorted.map((z) => {
@@ -237,7 +239,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
               <div className="flex flex-wrap gap-1">
                 <button className={btn} onClick={() => engine.current?.seek((o?.length ? o[o.length >> 1] : z.pins[z.pins.length >> 1]).t)}>Go to</button>
                 <button className={btn} onClick={() => { setText(z.n !== undefined ? String(z.n) : ""); setAt({ step: "n", id: z.id }); }}>Number and name</button>
-                <button className={btn} disabled={Boolean(following)} onClick={() => setAt({ step: "a", id: z.id })}>Draw again</button>
+                <button className={btn} disabled={Boolean(following)} onClick={() => setAt({ step: "tap", id: z.id, taps: [] })}>Draw again</button>
                 {viewKey && <button className={btn} onClick={() => {
                   if (!confirm(`Take «${z.label.en}» off the walk?${z.manifest ? " Its photos stay on the store's page." : ""}`)) return;
                   if (following?.id === z.id && run.current) { run.current.cancelled = true; setFollowing(null); }
@@ -254,7 +256,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
             <div className="min-w-0 flex-1 space-y-1">
               <p className="font-semibold">{r.label.en} <span className="font-normal text-white/50">· stitched photo, {r.mp} MP</span></p>
               <p className="text-amber-200">Not on the walk: its shelf was not found by itself.</p>
-              <button className={btn} disabled={Boolean(following)} onClick={() => setAt({ step: "a", id: r.id })}>Draw its border</button>
+              <button className={btn} disabled={Boolean(following)} onClick={() => setAt({ step: "tap", id: r.id, taps: [] })}>Draw its border</button>
             </div>
           </li>
         ))}

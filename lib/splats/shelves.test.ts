@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { followPoints, moveQuad, nextShelfNumber, rectFromTaps, shelfLabel, smoothOutline } from "./shelves.ts";
+import { followPoints, moveQuad, nextShelfNumber, quadFromTaps, rectFromTaps, shelfLabel, smoothOutline } from "./shelves.ts";
 
 const near = (a: number[], b: number[], eps: number) => a.every((v, i) => Math.abs(v - b[i]) <= eps);
 
@@ -69,4 +69,27 @@ test("a border's steps are evened out, a yaw the short way round", () => {
   assert.equal(s.length, 3);
   assert.ok(Math.abs(Math.abs(s[1].c[0]) - Math.PI) < 0.1); // stays by the seam, not averaged to 1.0
   assert.equal(s[1].c[1], 0.1);
+});
+
+test("four tapped corners are the border, in any order, given from the top left round", () => {
+  // A shelf seen at an angle on a flat video (y down): its right side further off, so shorter.
+  const tl = { x: 0.2, y: 0.1 }, tr = { x: 0.7, y: 0.2 }, br = { x: 0.7, y: 0.6 }, bl = { x: 0.2, y: 0.8 };
+  const want = [0.2, 0.1, 0.7, 0.2, 0.7, 0.6, 0.2, 0.8];
+  assert.deepEqual(quadFromTaps([tl, tr, br, bl], false), want);
+  assert.deepEqual(quadFromTaps([br, tl, bl, tr], false), want);
+  assert.deepEqual(quadFromTaps([bl, br, tr, tl], false), want);
+  // A tap inside the other three, a tap repeated, three taps: not a shelf.
+  assert.equal(quadFromTaps([tl, tr, bl, { x: 0.35, y: 0.35 }], false), null);
+  assert.equal(quadFromTaps([tl, tr, br, br], false), null);
+  assert.equal(quadFromTaps([tl, tr, br], false), null);
+});
+
+test("four corners on a 360° walk: pitch is up, and the seam at ±π does not split the shelf", () => {
+  const tl = { x: 3.0, y: 0.3 }, tr = { x: -2.9, y: 0.2 }, br = { x: -2.9, y: -0.2 }, bl = { x: 3.0, y: -0.35 };
+  assert.deepEqual(quadFromTaps([br, bl, tr, tl], true), [3.0, 0.3, -2.9, 0.2, -2.9, -0.2, 3.0, -0.35]);
+  // What the follow needs from it works on such a border too.
+  const q = quadFromTaps([tl, tr, br, bl], true)!;
+  const seeds = followPoints(q, true);
+  const moved = moveQuad(q, seeds, seeds.map(([x, y]) => [x + 0.2, y] as [number, number]), true)!;
+  assert.ok(near([moved[1], moved[3], moved[5], moved[7]], [0.3, 0.2, -0.2, -0.35], 2e-3));
 });

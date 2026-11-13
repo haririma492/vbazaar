@@ -79,6 +79,32 @@ export function rectFromTaps(a: { x: number; y: number }, b: { x: number; y: num
   return ([[x0, y1], [x1, y1], [x1, y0], [x0, y0]] as P[]).flatMap((q) => pl.from(q)).map(r4);
 }
 
+/**
+ * THE BORDER THROUGH FOUR TAPPED CORNERS (owner, 2026-11-13: "let operator choose 4 corners for a shelf"): a shelf
+ * seen at an angle is not a rectangle in the picture, so each corner is tapped where it is. The taps may come in
+ * any order; the border is given top-left, top-right, bottom-right, bottom-left. Null when the four do not make a
+ * shape with four corners (one tap inside the other three, two taps on one spot) or it is too small to be a shelf.
+ */
+export function quadFromTaps(taps: Array<{ x: number; y: number }>, round: boolean): number[] | null {
+  if (taps.length !== 4) return null;
+  const raw = taps.map((p) => [p.x, p.y] as P);
+  // In the picture in front of the shelf, x to the right and y UP.
+  const pl = round ? (() => { const m = middle(raw); return plane(m[0], m[1]); })() : null;
+  const flat = raw.map((p) => (pl ? pl.to(p) : ([p[0], -p[1]] as P)));
+  if (flat.some((p) => !p)) return null;
+  const q = flat as P[];
+  const cx = (q[0][0] + q[1][0] + q[2][0] + q[3][0]) / 4, cy = (q[0][1] + q[1][1] + q[2][1] + q[3][1]) / 4;
+  // Clockwise as seen (the angle falling), starting from the corner furthest up and to the left.
+  const order = [0, 1, 2, 3].sort((i, j) => Math.atan2(q[j][1] - cy, q[j][0] - cx) - Math.atan2(q[i][1] - cy, q[i][0] - cx));
+  const first = order.reduce((b, i) => (q[i][0] - q[i][1] < q[b][0] - q[b][1] ? i : b), order[0]);
+  const k = order.indexOf(first);
+  const o = [0, 1, 2, 3].map((i) => order[(k + i) % 4]);
+  const shape = o.map((i) => q[i]);
+  const side = shape.map((p, i) => Math.hypot(shape[(i + 1) % 4][0] - p[0], shape[(i + 1) % 4][1] - p[1]));
+  if (!strictlyConvex(shape) || Math.min(...side) < 0.02 || area(shape) < 0.001 || (round && Math.max(...side) > 4)) return null;
+  return o.flatMap((i) => raw[i]).map(r4);
+}
+
 /** The middle of a border, and `points` inside it to follow: the middle and each corner pulled `pull` of the way in. */
 export function followPoints(c: number[], round: boolean, pull = 0.45): P[] {
   const q = pairs(c);
@@ -126,6 +152,13 @@ const convex = (q: P[]) => {
     sign = Math.sign(z);
   }
   return true;
+};
+
+/** Four corners, each a real turn the same way (no corner inside the others, none on a line between two). */
+const strictlyConvex = (q: P[]) => {
+  const z = q.map((a, i) => { const b = q[(i + 1) % 4], c = q[(i + 2) % 4]; return (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]); });
+  const big = Math.max(...z.map(Math.abs));
+  return z.every((v) => Math.sign(v) === Math.sign(z[0]) && Math.abs(v) > big * 0.02);
 };
 
 /**

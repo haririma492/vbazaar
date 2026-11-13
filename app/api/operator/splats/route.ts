@@ -33,7 +33,7 @@ import {
 } from "@/lib/splats/keys";
 import {
   abortUpload, completeUpload, downloadLink, installCors, listParts, listSplats, r2Config, readTour, signImageHeaders, signImagePutUrl,
-  signPart, startUpload, writeCatalogue, writeTour, writeWalks,
+  signPart, startUpload, writeCatalogue, writeTour, writeWalks, readWalks,
 } from "@/lib/splats/r2";
 import { TOUR_KEY } from "@/lib/splats/tour";
 import { WALKS_KEY, checkWalks, keysNamed } from "@/lib/splats/walks";
@@ -227,7 +227,12 @@ export async function POST(req: NextRequest) {
       // file that was never uploaded (or was renamed) would lead to nothing.
       if (!problems.length) {
         const have = new Set((await listSplats()).map((o) => o.key));
-        for (const k of keysNamed(walks)) if (!have.has(k)) problems.push(`«${k}» is not in the buckets.`);
+        // ⚠️ ONLY WHAT THIS SAVE NAMES ANEW (owner, 2026-11-13, marking a shelf in one store: "Not saved: «scenes/
+        // store-helogolab/audio/sound-….mp3» is not in the buckets"). A file gone from ANOTHER store's walk (four
+        // sound files that day) refused every save in every editor. A key the stored walks already name is not
+        // this save's doing: it is kept as it is and the save goes through.
+        const already = new Set(keysNamed(await readWalks()));
+        for (const k of keysNamed(walks)) if (!have.has(k) && !already.has(k)) problems.push(`«${k}» is not in the buckets.`);
       }
       if (problems.length) return fail(400, `Not saved:\n${problems.join("\n")}`);
       const base = body.base && typeof body.base === "object" ? checkWalks(body.base).walks : undefined;

@@ -336,14 +336,21 @@ plan and the Managed Agents decision are in
   `name`, and `label` made from them (`shelfLabel`: «Shelf 3», «Spices», «3 · Spices»). Rules in
   `lib/splats/shelves.ts` (pure, tested).
   - **Marking** is «Shelves» on the walk's `?edit=1` (`walk/WalkShelves.tsx`; it replaced «Zoom» and its one-tap
-    🔍): «＋ Mark a shelf» → tap one corner → tap the opposite corner (stand still; `rectFromTaps`: an upright
-    rectangle in the view, not a box of yaw and pitch) → its number (the next free one offered) → its name → its
-    Farsi name. The border is on the walk and saved after the second tap; the questions each save by themselves.
+    🔍): «＋ Mark a shelf» → tap the shelf's FOUR corners, any order, standing still (owner, 2026-11-13: *"let
+    operator choose 4 corners for a shelf"*; `quadFromTaps`; it was two opposite corners, `rectFromTaps`, which
+    could not fit a shelf seen at an angle; «← Back» takes the last tap away) → its number (the next free one offered) → its name → its
+    Farsi name. The border is on the walk and saved after the fourth tap; the questions each save by themselves.
     The border is then followed through the video in the browser (`followShelf` in `followProduct.ts`): five
     points inside it followed in one pass, the border fitted to them at every 0.2 s (`moveQuad`), up to 25 s
     either way, a step with fewer than 3 points or an unbelievable border left out. «Draw again», «Number and
     name», «Remove» per shelf. A stitched photo the finder did not see in the walk is listed: «Draw its border».
-    ⚠️ Not tried on a real walk yet (no bucket in the build session): the arithmetic is tested, the follow is not.
+    First real use, nuttime, 2026-11-13: the follow gave a border 0:00–0:24 from one drawing.
+  - **⚠️ A save is refused only for a missing file it names ANEW** (owner, 2026-11-13, the first shelf marked:
+    *"Not saved: «scenes/store-helogolab/audio/sound-….mp3» is not in the buckets"*). `walksSave` checked every
+    file every walk names; four sound files of three OTHER stores (helogolab's `audio`, saraye-bamdad's and
+    shirazgallery's `playlist`) were not in the buckets, so no editor could save anything. A key the stored walks
+    already name now passes. Those four tracks are still missing: those walks' own music has nothing to play
+    (the two with `radio: 4` play the channel).
   - **The operator's border is never replaced** by the finder (`locateZooms` skips a shelf without `auto`); a
     number or name given to a shelf the finder bordered is kept when it is found again.
   - **Photos** («Shelf zoom photos» on `/stores/<slug>`): a dropdown «Which shelf are the photos of?» lists every
