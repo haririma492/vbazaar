@@ -366,7 +366,7 @@ export function uploadKey(slug: string, kind: UploadKind, name: string, now: Dat
 }
 
 export const isUploadKeyOf = (slug: string, key: string) =>
-  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|logo|raw|shelf|gigapan)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
+  new RegExp(`^stores/${slug}/uploads/(video|sheet|photo|door|logo|raw|shelf|gigapan|kit)/[0-9]{8}-[0-9]{6}-[A-Za-z0-9._-]{1,80}$`).test(key);
 
 /** The upload recorded: a video, sheet or door replaces the last one; photos add up. Then the steps it affects go back to do. */
 export function addUpload(s: StoreRecord, kind: UploadKind, file: Uploaded, set?: string): StoreRecord {

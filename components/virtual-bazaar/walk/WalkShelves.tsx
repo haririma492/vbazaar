@@ -11,6 +11,8 @@
  *      two opposite corners). After the fourth the green border is on the shelf at once, saved by itself, and is
  *      followed through the walk in the background (`followShelf`), so it stays on the shelf as the shopper walks;
  *   3  its number (the next free one is offered) · 4  its name · 5  its name in Farsi (either may be skipped).
+ *   6  its quality photo (Type III, the whole shelf square-on) · 7  its 3–5 section photos (Type IV) · 8  a pointer to
+ *      the store's page for the products and prices (owner, 2026-11-15, the pastry redesign; `lib/stores/kitRules.ts`).
  *
  * A marked shelf is then in the dropdown of «Shelf zoom photos» on the store's page: its photos are uploaded to
  * it there, stitched, and open from this border (`lib/stores/gigapan.ts`). A stitched photo with no shelf yet (the
@@ -23,11 +25,17 @@ import { nextShelfNumber, quadFromTaps, shelfLabel } from "@/lib/splats/shelves"
 import { thin } from "@/lib/stores/gigapanRules";
 import { followShelf } from "./followProduct";
 import type { ItemEngine } from "./WalkItems";
+import { uploadInParts } from "@/components/stores/upload";
+import { MAX_SECTIONS, kitFileName, nextFree, parseKitName } from "@/lib/stores/kitRules";
 
 type Ready = { id: string; label: { en: string; fa: string }; manifest: string; thumb: string | null; mp: number };
 type Step =
   | { step: "tap"; id?: string; taps: ItemPin[] }
-  | { step: "n" | "en" | "fa"; id: string };
+  | { step: "n" | "en" | "fa"; id: string }
+  /** THE SHELF'S PHOTOS, asked right after its border and name (owner, 2026-11-15: "after identifying the border of a
+   *  shelf with 4 points in &edit=1 operator will be asked to upload this photo"; then its 3–5 sections, Type IV;
+   *  then the products and prices on the store's page). */
+  | { step: "photo" | "sections" | "next"; id: string };
 const mmss = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 /** The store a walk is of: `scenes/store-<slug>/…`. */
 export const storeSlugOf = (key: string | null) => /^scenes\/store-([a-z0-9-]+)\//.exec(key ?? "")?.[1] ?? null;
@@ -49,6 +57,9 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   const walksRef = useRef(walks);
   walksRef.current = walks;
   const run = useRef<{ cancelled: boolean } | null>(null);
+  const [sending, setSending] = useState<{ name: string; sent: number; total: number; i: number; of: number } | null>(null);
+  const pickOne = useRef<HTMLInputElement>(null);
+  const pickMany = useRef<HTMLInputElement>(null);
 
   // The store's stitched photos: one with no shelf on the walk yet is offered for its border.
   useEffect(() => {
@@ -165,7 +176,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
     save(next);
     if (at.step === "n") { setText(next.name?.en ?? ""); setAt({ ...at, step: "en" }); }
     else if (at.step === "en") { setText(next.name?.fa ?? ""); setAt({ ...at, step: "fa" }); }
-    else { setAt(null); setStatus({ tone: "ok", text: `✓ «${next.label.en}» — saved. Shoppers see its border and its name. Its photos: the store's page → «Shelf zoom photos».` }); }
+    else { setAt({ step: "photo", id: at.id }); setStatus({ tone: "ok", text: `✓ «${next.label.en}» — saved. Now its photos.` }); }
   }
   function back() {
     if (!at) return;
@@ -173,7 +184,49 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
     if (at.step === "tap" && at.taps.length) setAt({ ...at, taps: at.taps.slice(0, -1) });
     else if (at.step === "en") { setText(cur?.n !== undefined ? String(cur.n) : ""); setAt({ ...at, step: "n" }); }
     else if (at.step === "fa") { setText(cur?.name?.en ?? ""); setAt({ ...at, step: "en" }); }
+    else if (at.step === "photo") { setText(cur?.name?.fa ?? ""); setAt({ ...at, step: "fa" }); }
+    else if (at.step === "sections") setAt({ ...at, step: "photo" });
+    else if (at.step === "next") setAt({ ...at, step: "sections" });
     else setAt(null);
+  }
+
+  /** Photos sent to the store's kit (`kind: "kit"`): the shelf's own (no section) or its sections'. Saved by the
+   *  server as each one completes; says what went and what did not. */
+  async function sendPhotos(id: string, files: File[], sections: boolean) {
+    if (!slug || !files.length) return;
+    let jobs: Array<{ f: File; section?: number }>;
+    if (!sections) jobs = [{ f: files[0] }];
+    else {
+      // A name that says its section keeps it (shelf-03-2.jpg); the others take the free numbers in the order chosen.
+      const named = files.map((f) => parseKitName(f.name)?.section);
+      const used = named.filter((n): n is number => n !== undefined);
+      jobs = [];
+      for (const [k, f] of files.entries()) {
+        const n = named[k] ?? nextFree(used, MAX_SECTIONS);
+        if (n === null || n === undefined) { setStatus({ tone: "bad", text: `A shelf has at most ${MAX_SECTIONS} sections: «${f.name}» and the ones after it were not sent.` }); break; }
+        if (named[k] === undefined) used.push(n);
+        jobs.push({ f, section: n });
+      }
+    }
+    let sent = 0;
+    for (const [i, j] of jobs.entries()) {
+      setSending({ name: j.f.name, sent: 0, total: j.f.size, i, of: jobs.length });
+      try {
+        await uploadInParts(`/api/stores/${slug}`, { action: "upload", kind: "kit", shelf: id, ...(j.section ? { section: j.section } : {}) }, j.f,
+          (p) => setSending({ name: j.f.name, sent: p.sent, total: p.total, i, of: jobs.length }));
+        sent++;
+      } catch (e) {
+        setSending(null);
+        setStatus({ tone: "bad", text: `Not saved: «${j.f.name}» — ${(e as Error).message}` });
+        return;
+      }
+    }
+    setSending(null);
+    const label = shelfNow(id)?.label.en ?? "the shelf";
+    setStatus({ tone: "ok", text: sections
+      ? `✓ ${sent} section photo${sent > 1 ? "s" : ""} of «${label}» saved (${jobs.map((j) => `section ${j.section}`).join(", ")}).`
+      : `✓ «${label}»'s quality photo saved.` });
+    setAt({ step: sections ? "next" : "sections", id });
   }
 
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
@@ -208,11 +261,38 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
           <p className="font-semibold">Its name in Farsi?</p>
           <input className={field} dir="rtl" autoFocus maxLength={60} value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") answer(); }} placeholder="نام قفسه" />
         </>)}
+        {at.step === "photo" && (<>
+          <p className="font-semibold">The shelf&apos;s quality photo (Type III) — the whole shelf, square-on</p>
+          <p className="text-white/70">One photo of the whole shelf, taken straight from the front (straight down for a pallet or a table), so its corners are the four you just tapped. Full size, as improved. Name it <b>{kitFileName(cur?.n ?? 3)}</b> if you like.</p>
+          <input ref={pickOne} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden"
+            onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; void sendPhotos(at.id, f, false); }} />
+          <button className={key} disabled={Boolean(sending)} onClick={() => pickOne.current?.click()}>📷 Choose the shelf&apos;s photo</button>
+        </>)}
+        {at.step === "sections" && (<>
+          <p className="font-semibold">Its sections (Type IV) — 3 to {MAX_SECTIONS} photos, top to bottom, then left to right</p>
+          <p className="text-white/70">Close photos of each level of the shelf, a few products in each. Choose them together. Named <b>{kitFileName(cur?.n ?? 3, 2)}</b> (section 2) they keep their number; otherwise they are numbered in the order chosen.</p>
+          <input ref={pickMany} type="file" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden"
+            onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; void sendPhotos(at.id, f, true); }} />
+          <button className={key} disabled={Boolean(sending)} onClick={() => pickMany.current?.click()}>📷 Choose the section photos</button>
+        </>)}
+        {at.step === "next" && (<>
+          <p className="font-semibold">Products and prices: next, on the store&apos;s page</p>
+          <p className="text-white/70">There: each section&apos;s product photos (<b>{kitFileName(cur?.n ?? 3, 2, 1)}</b>, …) and the website&apos;s products matched to them, with their prices.</p>
+          <a className={`${key} inline-block`} href={`/stores/${slug}#kit`} target="_blank" rel="noreferrer">Open the store&apos;s page ↗</a>
+        </>)}
+        {sending && (
+          <div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full bg-emerald-300/80 transition-all" style={{ width: `${sending.total ? (sending.sent / sending.total) * 100 : 0}%` }} /></div>
+            <p className="mt-1 text-white/60">{sending.of > 1 ? `${sending.i + 1} / ${sending.of} · ` : ""}{sending.name} — {(sending.sent / 1e6).toFixed(1)} of {(sending.total / 1e6).toFixed(1)} MB</p>
+          </div>
+        )}
         {cur && at.step !== "tap" && <p className="text-white/60">Shoppers will read: <b className="text-emerald-200">{cur.label.en}{cur.label.fa && cur.label.fa !== cur.label.en ? ` · ${cur.label.fa}` : ""}</b></p>}
         <div className="flex flex-wrap gap-1">
           <button className={btn} onClick={back}>← Back</button>
-          {at.step !== "tap" && <button className={key} onClick={() => answer()}>{at.step === "fa" ? "Done" : "Next →"}</button>}
-          {at.step !== "tap" && <button className={btn} onClick={() => answer(true)}>Skip</button>}
+          {(at.step === "n" || at.step === "en" || at.step === "fa") && <button className={key} onClick={() => answer()}>Next →</button>}
+          {(at.step === "n" || at.step === "en" || at.step === "fa") && <button className={btn} onClick={() => answer(true)}>Skip</button>}
+          {(at.step === "photo" || at.step === "sections") && <button className={btn} disabled={Boolean(sending)} onClick={() => setAt({ step: at.step === "photo" ? "sections" : "next", id: at.id })}>Skip</button>}
+          {at.step === "next" && <button className={key} onClick={() => { setAt(null); setStatus(null); }}>Done</button>}
         </div>
         {progress}
       </div>
@@ -222,7 +302,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   const sorted = [...shelves].sort((a, b) => (a.n ?? 1000) - (b.n ?? 1000) || a.pins[0].t - b.pins[0].t);
   return (
     <div className="space-y-2">
-      <p className="text-white/70">Mark each shelf: a rectangle round it, its number and its name. Shoppers see the border and the name as they walk; its zoom photos are added on the store&apos;s page.</p>
+      <p className="text-white/70">Mark each shelf: its four corners, its number and its name; then its quality photo and its sections. Photo names: <b>shelf-03.jpg</b> (the whole shelf 3) · <b>shelf-03-2.jpg</b> (its section 2) · <b>shelf-03-2-p1.jpg</b> (product 1 of section 2, on the store&apos;s page).</p>
       <button className={key} disabled={Boolean(following)} onClick={() => { setStatus(null); setAt({ step: "tap", taps: [] }); }}>＋ Mark a shelf</button>
       {progress}
       <ul className="max-h-[45vh] space-y-2 overflow-y-auto">
@@ -235,11 +315,12 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
                 {o?.length ? `🟩 Border ${mmss(o[0].t)}–${mmss(o[o.length - 1].t)}${z.auto ? " (found by the finder)" : ""}` : `🔍 only, ${mmss(z.pins[0].t)}–${mmss(z.pins[z.pins.length - 1].t)}: no border yet`}
                 {o?.length === 1 ? " — one moment only: «Draw again»" : ""}
               </p>
-              <p className="text-white/60">{z.manifest ? "📷 Its zoom photo opens from the border." : "📷 No photos yet: store's page → «Shelf zoom photos» → choose this shelf."}</p>
+              <p className="text-white/60">📷 Its quality photo and sections: «📷 Photos»; products and prices on the store&apos;s page.</p>
               <div className="flex flex-wrap gap-1">
                 <button className={btn} onClick={() => engine.current?.seek((o?.length ? o[o.length >> 1] : z.pins[z.pins.length >> 1]).t)}>Go to</button>
                 <button className={btn} onClick={() => { setText(z.n !== undefined ? String(z.n) : ""); setAt({ step: "n", id: z.id }); }}>Number and name</button>
                 <button className={btn} disabled={Boolean(following)} onClick={() => setAt({ step: "tap", id: z.id, taps: [] })}>Draw again</button>
+                <button className={btn} onClick={() => { setStatus(null); setAt({ step: "photo", id: z.id }); }}>📷 Photos</button>
                 {viewKey && <button className={btn} onClick={() => {
                   if (!confirm(`Take «${z.label.en}» off the walk?${z.manifest ? " Its photos stay on the store's page." : ""}`)) return;
                   if (following?.id === z.id && run.current) { run.current.cancelled = true; setFollowing(null); }

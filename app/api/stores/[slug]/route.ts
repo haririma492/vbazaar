@@ -59,6 +59,8 @@ import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refreshAll";
 import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
+import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
+import { KIT_ID_RE, checkKitName, emptyKit, putPhoto, removeFromKit, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
@@ -147,6 +149,65 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (body.on === true && !s.out.walk) return fail(400, "This store has no walk yet.");
     const next = await updateStore(s.slug, (x) => ({ ...x, onTours: body.on === true }));
     return ok({ onTours: next?.onTours === true, store: next ? forPage(next) : null });
+  }
+
+  // A SHELF'S KIT (owner, 2026-11-15, the pastry redesign; `lib/stores/kit.ts`): the shelf's quality photo (Type III),
+  // its sections (Type IV) and each section's products, for a shelf bordered on the walk. The operator only.
+  if (body.action === "upload" && body.kind === "kit") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const shelf = String(body.shelf ?? "");
+    const section = body.section === undefined || body.section === null ? undefined : Number(body.section);
+    const product = body.product === undefined || body.product === null ? undefined : Number(body.product);
+    if (!KIT_ID_RE.test(shelf)) return fail(400, "Which shelf? Mark it on the walk first (editor → «Shelves»).");
+    const zooms = s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.zooms ?? [] : [];
+    const z = zooms.find((x) => x.id === shelf);
+    if (!z && !(await readKit(s.slug))?.shelves.some((x) => x.id === shelf)) return fail(400, "That shelf is not marked on the walk. Draw its 4 corners first (editor → «Shelves»).");
+    const name = String(body.name ?? "");
+    let key = String(body.key ?? "");
+    if (body.ask === "start" || !key) {
+      const refused = checkKitName(name);
+      if (refused) return fail(400, refused);
+      key = uploadKey(s.slug, "kit" as UploadKind, name, now);
+    } else if (!isUploadKeyOf(s.slug, key) || !key.includes("/uploads/kit/")) return fail(400, "Not this store's upload.");
+    const turn = await uploadTurn(key, { ...body, action: String(body.ask ?? "") });
+    if (turn) return turn;
+    const slot: KitSlot = { shelf, ...(section !== undefined ? { section } : {}), ...(product !== undefined ? { product } : {}) };
+    let refusedWhy = "";
+    const kit = await updateKit(s.slug, (k) => {
+      const r = putPhoto(k, slot, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }, z?.n);
+      if ("error" in r) { refusedWhy = r.error; return k; }
+      return r.kit;
+    });
+    if (refusedWhy) return fail(400, refusedWhy);
+    startKit(s.slug);
+    return ok({ kit: kit.shelves.find((x) => x.id === shelf) ?? null });
+  }
+  if (body.action === "kit") return ok(await kitForPage(s));
+  if (body.action === "kitRun") { if (who !== "operator") return fail(403, "The operator only."); startKit(s.slug); return ok({ started: true }); }
+  if (body.action === "kitMatch") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.product ?? ""), web = body.web === null ? null : String(body.web ?? "");
+    if (!KIT_ID_RE.test(id) || (web !== null && !web)) return fail(400, "Which product, and which website product (or null for none)?");
+    await updateKit(s.slug, (k) => setMatch(k, id, web));
+    return ok();
+  }
+  if (body.action === "kitPlace") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.section ?? "");
+    if (!KIT_ID_RE.test(id)) return fail(400, "Which section?");
+    const quad = Array.isArray(body.quad) ? (body.quad as unknown[]).map(Number) : null;
+    if (quad && quad.length !== 8) return fail(400, "A section's place is its 4 corners.");
+    await updateKit(s.slug, (k) => setPlace(k, id, quad));
+    if (!quad) startKit(s.slug);
+    return ok();
+  }
+  if (body.action === "kitRemove") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const shelf = String(body.shelf ?? "");
+    if (!KIT_ID_RE.test(shelf)) return fail(400, "Which shelf?");
+    const slot: KitSlot = { shelf, ...(body.section !== undefined ? { section: Number(body.section) } : {}), ...(body.product !== undefined ? { product: Number(body.product) } : {}) };
+    await updateKit(s.slug, (k) => removeFromKit(k ?? emptyKit(s.slug), slot));
+    return ok();
   }
 
   if (body.action === "upload") {

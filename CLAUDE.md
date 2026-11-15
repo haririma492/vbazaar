@@ -334,6 +334,40 @@ plan and the Managed Agents decision are in
   - `mergeWalks` merges shelves one by one (the editor marking one shelf while the stitcher puts another's photo
     on the walk). After «Refresh all agents» finishes, its card points to the editor.
   - Not done: the photo panel in the Shelf Tour. Not tried in a browser on a real walk (2026-11-13).
+- **⚠️ THE PASTRY REDESIGN: the walk for the feel, the tray as the bridge, a real shop's panel to buy** (owner,
+  2026-11-15: *"moving from a full virtual walk with odd and confusing looking labels and green circles on items into
+  a model that, while real shopping experience is there, we bring in solid e-commerce features that are in place for
+  30 years, the bridge between the two is our lower 23% of the screen, the tray"*). The bazaar's first «راسته» is
+  Iranian pastry: every pastry store's door on one walk (the Florida outdoor-mall walk, to come). It applies to EVERY
+  store once its shelf kit is uploaded; until then a store's tours stay as they were (lights and all).
+  - **The kit** (`lib/stores/kitRules.ts`, pure, tested; job `kit.ts`; `stores/<slug>/kit.json`): for each shelf the
+    operator bordered on the walk (4 corners): its quality photo (Type III, square-on, or straight down for a pallet),
+    3–5 section photos (Type IV, top to bottom then left to right), and one photo of each product of a section (cut by
+    the operator, not by code). Each product is matched to the store's website product (Type V, the Website
+    Explorer's): Haiku narrows the names (`namesFor`), then compares the photos (`sameProduct`, ≥ 0.75). Matched: the
+    site's name, price and a second photo; not matched: one photo and no price yet (shown, cannot be added). File names
+    place themselves: `shelf-03.jpg`, `shelf-03-2.jpg`, `shelf-03-2-p1.jpg` (the shelf's number from the walk).
+  - **Quality: as uploaded.** Every kit photo is copied to the public bucket BYTE FOR BYTE (no look, no re-encode);
+    only a 720 px copy is made for the tray and the lists (`scripts/stitch/thumb.py`).
+  - **Each section is placed in its shelf's photo by itself** (`scripts/stitch/section.py`: SIFT + MAGSAC, free;
+    measured on a synthetic shelf: corners within 0.001); the shelf's photo IS the border, so `quadPoints`
+    (`shelves.ts`, a homography) puts it on the walk. Not found: the operator taps its 4 corners on the store's page.
+  - **Uploads:** after the 4 corners in `?edit=1`, the editor asks for the Type III, then the Type IV photos
+    (`WalkShelves.tsx`); products and the website matches are on the store's page («Shelf photos for shopping»,
+    `KitCard.tsx`, also «Drop all the photos» by name). Actions `upload {kind:"kit", shelf, section?, product?}`,
+    `kit`, `kitRun`, `kitMatch`, `kitPlace`, `kitRemove`; shoppers' copy `/api/kit/<slug>` (`shopKit`, prices read now).
+  - **Free Tour** (`Walk360.tsx`, `components/kit/KitTray.tsx`, `KitBridge.tsx`): walk on the top 77%, no lights; wheel,
+    Back/Walk and the speed bar 25% smaller at the top section's lower right; starts walking by itself after the door
+    photo; a tap on the walk stops / starts. The tray (bottom 23%) loops the tray shelf's Type IV photos right to
+    left, slowly, and moves on when another shelf holds more than half of the shelves on screen (`trayShelf`,
+    `coverOf`); with no shelf in view it keeps looping. A tap on a tray photo stops everything (walking back to that
+    shelf first if it is not on screen), draws a thin arrow to the section on the shelf, opens the photo 3× through a
+    funnel, and the shopping panel (`components/kit/KitPanel.tsx`) on the right: names, prices, a weight for what is
+    sold by the kilo, «Add to basket», Farsi / English. No zooming into the photo: this is the e-commerce step.
+    Closing the panel closes the photo and the walk goes on. Phones upright only (a notice when held sideways).
+  - **Shelf Tour** (`components/kit/KitShelfTour.tsx`, from `TourPage.tsx`): no video. Each shelf opens on its whole
+    photo, glides into each section in turn, a tap on a section opens the same 3× photo and panel; «Next shelf ›».
+  - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
   rules in `lib/splats/walkStats.ts` (tested). PPD = the playing copy's width ÷ the angle it spans (360° walk:

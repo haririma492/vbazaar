@@ -1,0 +1,250 @@
+// A SHELF'S KIT — the job (owner, 2026-11-15, the pastry redesign; the rules and the file names are in `kitRules.ts`).
+//
+//   input   the operator's uploads for each shelf bordered on the walk: its quality photo (Type III), its sections
+//           (Type IV) and each section's products (their own photos), private in the masters bucket;
+//   1       Publish   each photo copied to the public bucket BYTE FOR BYTE (owner: "the quality need to be preserved
+//                     through process all the way to shoppers display and purchase": never re-encoded, no look on
+//                     it), plus a small copy for the tray and the lists (`scripts/stitch/thumb.py`);
+//   2       Place     each section found in its shelf's photo (`scripts/stitch/section.py`: SIFT + MAGSAC, free);
+//                     the operator draws one by hand on the store's page only if that fails;
+//   3       Match     each product photo matched to the store's website product it is (Type V, the Website
+//                     Explorer's): Haiku narrows the names (`namesFor`), then compares the photos (`sameProduct`,
+//                     ≥ MATCH_SURE). Matched: the site's name, price and photo. Not matched: one photo, no price yet.
+//                     A fraction of a cent a product, from the store's AI budget. The operator can change any match.
+//   output  `stores/<slug>/kit.json` (masters); shoppers read it through `/api/kit/<slug>` (`shopKit`).
+// Started by every kit upload and by «Run again» on the store's page. One run at a time, a store queued while busy.
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { downloadToFile, r2Config, readCatalogue, readMastersText, readWalks, uploadFile, writeMastersJson } from "@/lib/splats/r2";
+import type { Product } from "@/lib/splats/catalogue";
+import { readStore, updateStore } from "./bucket";
+import { BUDGET_CENTS, sceneOf, type StoreRecord } from "./store";
+import { namesFor, OverBudget, sameProduct, type Purse } from "./ai";
+import { jpegOf, run } from "./media";
+import { MATCH_SURE } from "./websiteMatchRules";
+import { emptyKit, placeSig, toMatch, toPlace, type Kit, type KitPhoto, type ShopKit, type ShopProduct } from "./kitRules";
+
+export const kitKey = (slug: string) => `stores/${slug}/kit.json`;
+const THUMB_PX = 720;
+const TYPE: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
+
+export async function readKit(slug: string): Promise<Kit | null> {
+  try { const t = await readMastersText(kitKey(slug)); return t ? (JSON.parse(t) as Kit) : null; } catch { return null; }
+}
+/** Read, change, write: the change is applied to what is stored NOW (a run and an upload may overlap). */
+export async function updateKit(slug: string, change: (k: Kit) => Kit): Promise<Kit> {
+  const now = (await readKit(slug)) ?? emptyKit(slug);
+  const next = change(now);
+  await writeMastersJson(kitKey(slug), next);
+  return next;
+}
+
+// ── The run ──
+const state: { busy: string | null; queue: Set<string>; note: Record<string, string> } = { busy: null, queue: new Set(), note: {} };
+export const kitWorking = (slug: string) => state.busy === slug || state.queue.has(slug);
+export const kitNote = (slug: string) => state.note[slug] ?? "";
+
+/** Start (or queue) the store's kit run. Safe to call any number of times. */
+export function startKit(slug: string): void {
+  state.queue.add(slug);
+  if (!state.busy && r2Config().configured) void drain();
+}
+async function drain() {
+  while (state.queue.size) {
+    const slug = [...state.queue][0];
+    state.queue.delete(slug);
+    state.busy = slug;
+    try { state.note[slug] = await runKit(slug, (n) => { state.note[slug] = n; }); }
+    catch (e) { console.error("[kit]", slug, e); state.note[slug] = `Stopped: ${(e as Error).message.slice(0, 200)}`; }
+    state.busy = null;
+  }
+}
+
+function purse(slug: string, spentAtStart: number): Purse {
+  let spent = spentAtStart;
+  return {
+    spent: () => spent, limit: BUDGET_CENTS,
+    add: async (cents) => { spent += cents; await updateStore(slug, (x) => ({ ...x, spentCents: Math.round((x.spentCents + cents) * 100) / 100 })); },
+  };
+}
+
+/** Every photo in the kit, with where it is (to write its public copy back). */
+const photosOf = (k: Kit): KitPhoto[] => k.shelves.flatMap((s) => [...(s.photo ? [s.photo] : []), ...s.sections.flatMap((x) => [x.photo, ...x.products.map((p) => p.photo)])]);
+function withPhoto(k: Kit, key: string, extra: Partial<KitPhoto>): Kit {
+  const f = (p: KitPhoto) => (p.key === key ? { ...p, ...extra } : p);
+  return { ...k, shelves: k.shelves.map((s) => ({ ...s, ...(s.photo ? { photo: f(s.photo) } : {}), sections: s.sections.map((x) => ({ ...x, photo: f(x.photo), products: x.products.map((p) => ({ ...p, photo: f(p.photo) })) })) })) };
+}
+
+export async function runKit(slug: string, say: (note: string) => void = () => undefined): Promise<string> {
+  const dir = mkdtempSync(join(tmpdir(), "kit-"));
+  const base = r2Config().publicBase;
+  const local = new Map<string, string>(); // a photo's key → its file here
+  const fetchLocal = async (p: KitPhoto) => {
+    let f = local.get(p.key);
+    if (!f) { f = join(dir, `${local.size}-${p.name.replace(/[^A-Za-z0-9._-]+/g, "-").slice(-60) || "photo.jpg"}`); await downloadToFile(p.key, f, "master"); local.set(p.key, f); }
+    return f;
+  };
+  const parts: string[] = [];
+  try {
+    // 1 · Publish: the original as it is, and a small copy.
+    let kit = (await readKit(slug)) ?? emptyKit(slug);
+    const todo = photosOf(kit).filter((p) => !p.url);
+    for (const [i, p] of todo.entries()) {
+      say(`Putting the photos up for shoppers: ${i + 1} of ${todo.length}…`);
+      try {
+        const f = await fetchLocal(p);
+        const ext = (p.name.split(".").pop() ?? "jpg").toLowerCase();
+        const stamp = Date.now().toString(36);
+        const folder = `scenes/${sceneOf(slug)}/kit/${stamp}-${p.key.split("/").pop()!.replace(/\.[^.]+$/, "").slice(-60)}`;
+        const thumbFile = `${f}.thumb.jpg`;
+        const size = JSON.parse((await run("python3", [join(process.cwd(), "scripts/stitch/thumb.py"), f, thumbFile, String(THUMB_PX)])).toString()) as { w: number; h: number };
+        await uploadFile(`${folder}/photo.${TYPE[ext] ? ext : "jpg"}`, f, TYPE[ext] ?? "image/jpeg");
+        await uploadFile(`${folder}/thumb.jpg`, thumbFile, "image/jpeg");
+        kit = await updateKit(slug, (k) => withPhoto(k, p.key, { url: `${base}/${folder}/photo.${TYPE[ext] ? ext : "jpg"}`, thumb: `${base}/${folder}/thumb.jpg`, w: size.w, h: size.h }));
+      } catch (e) { console.error("[kit] publish", slug, p.key, e); parts.push(`«${p.name}» could not be put up: ${(e as Error).message.slice(0, 120)}.`); }
+    }
+    if (todo.length) parts.push(`${todo.length} photo${todo.length > 1 ? "s" : ""} put up for shoppers, exactly as uploaded.`);
+
+    // 2 · Place each section in its shelf's photo.
+    const places = toPlace(kit);
+    const shelves = [...new Set(places.map((x) => x.shelf.id))];
+    let found = 0, missed = 0;
+    for (const id of shelves) {
+      const group = places.filter((x) => x.shelf.id === id);
+      const shelf = group[0].shelf;
+      say(`Finding the sections in ${shelf.n ? `shelf ${shelf.n}` : "the shelf"}'s photo…`);
+      try {
+        const shelfFile = await fetchLocal(shelf.photo!);
+        const files = [] as string[];
+        for (const x of group) files.push(await fetchLocal(x.section.photo));
+        const out = join(dir, `places-${id}.json`);
+        await run("python3", [join(process.cwd(), "scripts/stitch/section.py"), "--shelf", shelfFile, "--out", out, ...files]);
+        const answers = JSON.parse(readFileSync(out, "utf8")) as Array<{ found: boolean; quad: number[] | null; note: string }>;
+        kit = await updateKit(slug, (k) => ({
+          ...k, shelves: k.shelves.map((s) => (s.id !== id ? s : {
+            ...s, sections: s.sections.map((x) => {
+              const j = group.findIndex((g) => g.section.id === x.id);
+              if (j < 0 || x.place?.by === "hand") return x;
+              const a = answers[j];
+              return { ...x, place: { quad: a?.found ? a.quad : null, by: "auto" as const, note: a?.note ?? "not looked at", sig: placeSig(s, x) } };
+            }),
+          })),
+        }));
+        for (const a of answers) if (a.found) found++; else missed++;
+      } catch (e) {
+        console.error("[kit] place", slug, id, e);
+        parts.push(/No module named/.test((e as Error).message) ? "The section finder is not installed on this server (python3 with OpenCV)." : `Sections not placed: ${(e as Error).message.slice(0, 160)}`);
+      }
+    }
+    if (found || missed) parts.push(`${found} section${found === 1 ? "" : "s"} found in the shelf's photo${missed ? `; ${missed} not found: draw ${missed > 1 ? "them" : "it"} by hand` : ""}.`);
+
+    // 3 · Match each product photo to the website.
+    const s = await readStore(slug);
+    const c = await readCatalogue(sceneOf(slug)).catch(() => null);
+    const site = (c?.products ?? []).filter((p) => p.web && (p.en || p.fa));
+    const waiting = toMatch(kit);
+    if (waiting.length && !site.length) parts.push(`${waiting.length} product photo${waiting.length > 1 ? "s wait" : " waits"} for the store's website products (run the Website Explorer, then «Run again»).`);
+    else if (waiting.length && s) {
+      const wallet = purse(slug, s.spentCents);
+      const names = site.map((p) => [p.en, p.fa].filter(Boolean).join(" · ").slice(0, 120));
+      const sitePhoto = new Map<string, Uint8Array | null>();
+      const photoOf = async (p: Product) => {
+        if (!p.photo) return null;
+        if (sitePhoto.has(p.photo)) return sitePhoto.get(p.photo)!;
+        let b: Uint8Array | null = null;
+        try { const r = await fetch(p.photo, { signal: AbortSignal.timeout(20_000) }); if (r.ok) b = await jpegOf(new Uint8Array(await r.arrayBuffer()), 320); } catch { /* none */ }
+        sitePhoto.set(p.photo, b);
+        return b;
+      };
+      let matched = 0, none = 0;
+      for (const [i, prod] of waiting.entries()) {
+        say(`Matching the product photos to the website: ${i + 1} of ${waiting.length}…`);
+        try {
+          const small = join(dir, `m-${i}.jpg`);
+          await run("python3", [join(process.cwd(), "scripts/stitch/thumb.py"), await fetchLocal(prod.photo), small, "640"]);
+          const mine = new Uint8Array(readFileSync(small));
+          // Many products on the site: Haiku narrows the names first; a short list goes straight to the photos.
+          let pool = site.map((_, k) => k), looks = "";
+          if (site.length > 10) { const r = await namesFor(wallet, mine, names); pool = r.picks.map((k) => k - 1); looks = r.looks; }
+          let pick: { web: string | null; confidence: number; why: string } = { web: null, confidence: 0, why: "no website name could be it" };
+          if (pool.length) {
+            const cands = pool.slice(0, 10).map((k) => site[k]);
+            const jpegs = await Promise.all(cands.map(photoOf));
+            const r = await sameProduct(wallet, { jpeg: mine, looks }, cands.map((p, k) => ({ jpeg: jpegs[k], name: p.en || p.fa || "", price: p.priceCents === null ? "" : `$${(p.priceCents / 100).toFixed(2)}` })));
+            const chosen = r.choice !== null && r.confidence >= MATCH_SURE ? cands[r.choice - 1] : null;
+            pick = { web: chosen?.web ?? null, confidence: r.confidence, why: r.why };
+          }
+          if (pick.web) matched++; else none++;
+          kit = await updateKit(slug, (k) => ({
+            ...k, shelves: k.shelves.map((sh) => ({ ...sh, sections: sh.sections.map((x) => ({ ...x, products: x.products.map((p) => (p.id === prod.id && !p.match ? { ...p, match: { ...pick, by: "auto" as const, at: new Date().toISOString() } } : p)) })) })),
+          }));
+        } catch (e) {
+          if (e instanceof OverBudget) { parts.push("Matching stopped: the store's AI budget is used up."); break; }
+          console.error("[kit] match", slug, prod.id, e);
+        }
+      }
+      parts.push(`${matched} of ${matched + none} product photo${matched + none === 1 ? "" : "s"} matched to the website${none ? `; ${none} not: choose them by hand, or they show with no price yet` : ""}.`);
+    }
+    return parts.join(" ") || "Everything is up to date.";
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ── What shoppers get ──
+const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const faNum = (n: number) => String(n).replace(/\d/g, (d) => FA_DIGITS[Number(d)]);
+
+/** The store's kit as shoppers see it: public photos only, prices read from the store's list NOW. */
+export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
+  const kit = await readKit(s.slug);
+  if (!kit) return null;
+  const [walks, c] = await Promise.all([s.out.walk ? readWalks().catch(() => null) : null, readCatalogue(sceneOf(s.slug)).catch(() => null)]);
+  const walk = s.out.walk ? walks?.walks[s.out.walk] : undefined;
+  const byWeb = new Map<string, Product>((c?.products ?? []).filter((p) => p.web).map((p) => [p.web!, p] as [string, Product]));
+  const shelves = kit.shelves.flatMap((sh) => {
+    const z = walk?.zooms?.find((x) => x.id === sh.id);
+    const sections = sh.sections.filter((x) => x.photo.url).map((x) => ({
+      id: x.id, i: x.i, url: x.photo.url!, thumb: x.photo.thumb ?? x.photo.url!, w: x.photo.w ?? 0, h: x.photo.h ?? 0, quad: x.place?.quad ?? null,
+      products: x.products.filter((p) => p.photo.url).map((p): ShopProduct => {
+        const site = p.match?.web ? byWeb.get(p.match.web) : undefined;
+        return {
+          id: p.id, photo: p.photo.url!, thumb: p.photo.thumb ?? p.photo.url!,
+          more: site ? [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u)).slice(0, 3) : [],
+          en: site?.en ?? "", fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
+        };
+      }),
+    }));
+    if (!sections.length && !sh.photo?.url) return [];
+    const n = z?.n ?? sh.n;
+    return [{
+      id: sh.id, ...(n !== undefined ? { n } : {}),
+      label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: n ? `Shelf ${n}` : "Shelf", fa: n ? `قفسه ${faNum(n)}` : "قفسه" },
+      photo: sh.photo?.url ? { url: sh.photo.url, thumb: sh.photo.thumb ?? sh.photo.url, w: sh.photo.w ?? 0, h: sh.photo.h ?? 0 } : null,
+      sections, outline: z?.outline ?? [],
+    }];
+  });
+  // In walking order: when each shelf is first in view, then its number.
+  shelves.sort((a, b) => (a.outline[0]?.t ?? 1e9) - (b.outline[0]?.t ?? 1e9) || (a.n ?? 1e9) - (b.n ?? 1e9));
+  return { store: s.slug, walk: s.out.walk ?? null, title: walk?.title ? { en: walk.title.en, fa: walk.title.fa ?? walk.title.en } : null, merchant: s.name.en || s.name.fa || s.slug, shelves };
+}
+
+/** What the store's page shows the operator: every shelf on the walk and its kit, the website products to choose from. */
+export async function kitForPage(s: StoreRecord) {
+  const [kit, walks, c] = await Promise.all([readKit(s.slug), s.out.walk ? readWalks().catch(() => null) : null, readCatalogue(sceneOf(s.slug)).catch(() => null)]);
+  const zooms = (s.out.walk ? walks?.walks[s.out.walk]?.zooms : undefined) ?? [];
+  const marked = zooms.filter((z) => z.outline?.length && !z.auto).sort((a, b) => (a.n ?? 1e9) - (b.n ?? 1e9));
+  const k = kit ?? emptyKit(s.slug);
+  const site = (c?.products ?? []).filter((p) => p.web).map((p) => ({ web: p.web!, en: p.en ?? "", fa: p.fa ?? "", priceCents: p.priceCents, unit: p.unit, photo: p.photo ?? null }));
+  const ids = [...new Set([...marked.map((z) => z.id), ...k.shelves.map((x) => x.id)])];
+  return {
+    working: kitWorking(s.slug), note: kitNote(s.slug), site,
+    shelves: ids.map((id) => {
+      const z = zooms.find((x) => x.id === id);
+      const sh = k.shelves.find((x) => x.id === id);
+      return { id, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
+    }),
+  };
+}
+

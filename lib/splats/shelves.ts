@@ -222,3 +222,41 @@ export function shelfNear<Z extends { manifest?: string; pins: Array<{ t: number
   }
   return best;
 }
+
+/**
+ * A POINT OF THE SHELF'S PHOTO ON THE WALK (the pastry redesign, owner, 2026-11-15: "a small thin arrow connects that
+ * photo … to its exact location on the already stopped moving shelf"). The shelf's quality photo (Type III) is taken
+ * square-on, so its four corners ARE the border's four corners: a point (u, v) of the photo (fractions: u right, v
+ * down) lands where the perspective map (homography) of the unit square onto the border takes it. On a 360° walk the
+ * map is made in the picture in front of the shelf, so straight edges stay straight. Null when the border cannot be
+ * mapped (a corner behind the plane).
+ */
+export function quadPoints(c: number[], uv: Array<[number, number]>, round: boolean): Array<[number, number]> | null {
+  const q0 = pairs(c);
+  let q: P[], back: (p: P) => P;
+  if (round) {
+    const m = middle(q0), pl = plane(m[0], m[1]);
+    const f = q0.map((p) => pl.to(p));
+    if (f.some((p) => !p)) return null;
+    q = f as P[]; back = (p) => pl.from(p);
+  } else { q = q0; back = (p) => p; }
+  // Unit square (0,0) (1,0) (1,1) (0,1) → q[0] q[1] q[2] q[3] (Heckbert's square-to-quad).
+  const [x0, y0] = q[0], [x1, y1] = q[1], [x2, y2] = q[2], [x3, y3] = q[3];
+  const sx = x0 - x1 + x2 - x3, sy = y0 - y1 + y2 - y3;
+  let a: number, b: number, d: number, e: number, g: number, h: number;
+  if (Math.abs(sx) < 1e-12 && Math.abs(sy) < 1e-12) {
+    a = x1 - x0; b = x2 - x1; d = y1 - y0; e = y2 - y1; g = 0; h = 0;
+  } else {
+    const dx1 = x1 - x2, dx2 = x3 - x2, dy1 = y1 - y2, dy2 = y3 - y2;
+    const den = dx1 * dy2 - dx2 * dy1;
+    if (Math.abs(den) < 1e-15) return null;
+    g = (sx * dy2 - dx2 * sy) / den; h = (dx1 * sy - sx * dy1) / den;
+    a = x1 - x0 + g * x1; b = x3 - x0 + h * x3; d = y1 - y0 + g * y1; e = y3 - y0 + h * y3;
+  }
+  return uv.map(([u, v]) => {
+    const w = g * u + h * v + 1;
+    const p: P = [(a * u + b * v + x0 * 1) / w, (d * u + e * v + y0) / w];
+    const r = back(p);
+    return [r4(r[0]), r4(r[1])];
+  });
+}
