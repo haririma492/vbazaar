@@ -50,7 +50,7 @@ export type ShopShelf = {
   /** The border on the walk, step by step (the walk's units). */
   outline: Array<{ t: number; c: number[] }>;
 };
-export type ShopKit = { store: string; walk: string | null; title: { en: string; fa: string } | null; merchant: string; shelves: ShopShelf[] };
+export type ShopKit = { store: string; walk: string | null; /** The walk's address for share links (short when the store has one). */ link: string | null; title: { en: string; fa: string } | null; merchant: string; shelves: ShopShelf[] };
 
 /** The store's tours are the new ones once at least one shelf has its photo and a section (owner: "stays the same
  *  until operator go to store page and upload TYPE III, IV & Vs"). */
@@ -226,4 +226,46 @@ export function saneQuad(q: number[] | null | undefined): q is number[] {
   }
   const area = Math.abs(p.reduce((s, a, i) => { const o = p[(i + 1) % 4]; return s + a[0] * o[1] - o[0] * a[1]; }, 0)) / 2;
   return area > 0.003;
+}
+
+// ── SHARE LINKS (owner, 2026-11-15: "while no download should be allowed, share key should be almost everywhere, on
+// shelf (e-commerce shelf - not walk your shelf), on shelf level (Type IV) and on products (type V) and receivers
+// should end up exactly on the same spot on walking tour and the same photo should be made open") ──
+// The link is the store's walk (`ShopKit.link`: its short address when it has one) with `shelf`, `section` (its
+// number) and `product` (its id). The Free Tour opening such a link walks to the shelf, stops facing it, and opens
+// the shelf's photo, the section's photo and panel, or the section's panel with that product shown.
+export type KitShare = { shelf: string; section?: number; product?: string };
+
+/** The address a share key hands out. */
+export function kitShareLink(base: string, to: KitShare): string {
+  const u = new URL(base, "https://vbazaar.app");
+  u.searchParams.set("shelf", to.shelf);
+  if (to.section !== undefined) u.searchParams.set("section", String(to.section));
+  if (to.product) u.searchParams.set("product", to.product);
+  return /^https?:/.test(base) ? u.toString() : `${u.pathname}${u.search}`;
+}
+
+/** What a walk address asks to open, or null (a part that is not well formed is left out; no shelf: nothing). */
+export function readKitShare(q: { get(name: string): string | null }): KitShare | null {
+  const shelf = q.get("shelf");
+  if (!shelf || !KIT_ID_RE.test(shelf)) return null;
+  const sec = Number(q.get("section"));
+  const product = q.get("product");
+  return {
+    shelf,
+    ...(Number.isInteger(sec) && sec >= 1 && sec <= MAX_SECTIONS ? { section: sec } : {}),
+    ...(product && KIT_ID_RE.test(product) ? { product } : {}),
+  };
+}
+
+/** The section a share asks for (its own number, or the section holding the product), or null for the whole shelf. */
+export function sharedSection<S extends { i: number; products: Array<{ id: string }> }>(sections: S[], to: KitShare): S | null {
+  if (to.product) { const s = sections.find((x) => x.products.some((p) => p.id === to.product)); if (s) return s; }
+  return to.section !== undefined ? sections.find((x) => x.i === to.section) ?? null : null;
+}
+
+/** A whole shelf as one panel (a shared shelf link): its own photo, every section's products, section number 0. */
+export function wholeShelf(sh: ShopShelf): ShopSection | null {
+  if (!sh.photo) return null;
+  return { id: `${sh.id}-all`, i: 0, url: sh.photo.url, thumb: sh.photo.thumb, w: sh.photo.w, h: sh.photo.h, quad: null, products: sh.sections.flatMap((x) => x.products) };
 }

@@ -10,10 +10,11 @@
  * No zooming, no wheel: an ordinary shop's list. Placed by the screen that opens it (`className`).
  */
 import { noSave } from "./noSave";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { addToBasket } from "@/components/basket/useBasket";
 import { byWeight, formatCents, UNIT_SAY, weightChoices } from "@/lib/splats/catalogue";
 import type { ShopProduct, ShopSection } from "@/lib/stores/kitRules";
+import ShareKey from "./ShareKey";
 
 export type Lang = "fa" | "en";
 const FA_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
@@ -25,7 +26,9 @@ function amountSay(a: number, unit: ShopProduct["unit"], lang: Lang) {
   return lang === "fa" ? `${fa(String(a))} ${u}` : `${a} ${u}`;
 }
 
-function Row({ p, lang, merchant, href }: { p: ShopProduct; lang: Lang; merchant: string; href?: string }) {
+function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: Lang; merchant: string; href?: string; share?: { base: string | null | undefined; shelf: string }; lit?: boolean }) {
+  const ref = useRef<HTMLLIElement>(null);
+  useEffect(() => { if (lit) ref.current?.scrollIntoView({ block: "center" }); }, [lit]);
   const weighed = byWeight(p.unit);
   const choices = weighed ? weightChoices(p.unit) : [1];
   const [amount, setAmount] = useState(() => (p.unit === "kg" ? 0.5 : choices.includes(1) ? 1 : choices[0]));
@@ -52,7 +55,7 @@ function Row({ p, lang, merchant, href }: { p: ShopProduct; lang: Lang; merchant
     setAdded((n) => n + qty);
   };
   return (
-    <li className="flex gap-3 border-b border-black/10 py-3 last:border-0">
+    <li ref={ref} className={`flex gap-3 border-b border-black/10 py-3 last:border-0 ${lit ? "-mx-2 rounded-lg bg-amber-50 px-2 ring-2 ring-amber-400" : ""}`}>
       <div className="w-20 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
@@ -74,6 +77,7 @@ function Row({ p, lang, merchant, href }: { p: ShopProduct; lang: Lang; merchant
         {priced
           ? <p className="mt-0.5 text-[15px] font-extrabold text-emerald-700">{lang === "fa" ? fa(formatCents(p.priceCents!)) : formatCents(p.priceCents!)} <span className="text-[12px] font-normal text-neutral-500">/ {unitSay}</span></p>
           : <p className="mt-0.5 text-[13px] font-semibold text-neutral-500">{lang === "fa" ? "قیمت به‌زودی" : "Price coming soon"}</p>}
+        {share && <ShareKey base={share.base} to={{ shelf: share.shelf, product: p.id }} title={name} lang={lang} className="mt-1" />}
         {p.note && <p dir="auto" className="mt-1 line-clamp-2 text-[12px] leading-snug text-neutral-600">{p.note}</p>}
         {priced && (
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -99,7 +103,7 @@ function Row({ p, lang, merchant, href }: { p: ShopProduct; lang: Lang; merchant
   );
 }
 
-export default function KitPanel({ section, title, merchant, href, lang, onLang, onClose, className = "" }: {
+export default function KitPanel({ section, title, merchant, href, lang, onLang, onClose, className = "", share, highlight }: {
   section: ShopSection;
   /** The shelf's name, shown at the top. */
   title: { en: string; fa: string };
@@ -109,6 +113,10 @@ export default function KitPanel({ section, title, merchant, href, lang, onLang,
   onLang: (l: Lang) => void;
   onClose: () => void;
   className?: string;
+  /** Share keys: the walk's address (`ShopKit.link`) and the section's shelf id. None: no share keys. */
+  share?: { base: string | null | undefined; shelf: string };
+  /** A product opened from a shared link: shown lit, scrolled to. */
+  highlight?: string;
 }) {
   const products = section.products;
   return (
@@ -117,14 +125,15 @@ export default function KitPanel({ section, title, merchant, href, lang, onLang,
       <div className="flex items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-extrabold">{lang === "fa" ? title.fa : title.en}</p>
-          <p className="truncate text-[12px] text-neutral-500">{merchant} · {lang === "fa" ? `بخش ${fa(String(section.i))}` : `Section ${section.i}`}</p>
+          <p className="truncate text-[12px] text-neutral-500">{merchant} · {section.i > 0 ? (lang === "fa" ? `بخش ${fa(String(section.i))}` : `Section ${section.i}`) : (lang === "fa" ? "همهٔ بخش‌ها" : "All sections")}</p>
         </div>
+        {share && <ShareKey base={share.base} to={section.i > 0 ? { shelf: share.shelf, section: section.i } : { shelf: share.shelf }} title={lang === "fa" ? title.fa : title.en} lang={lang} />}
         <button type="button" onClick={() => onLang(lang === "fa" ? "en" : "fa")} className="rounded-md border border-neutral-300 px-2 py-1 text-[12px]">{lang === "fa" ? "English" : "فارسی"}</button>
         <a href="/basket" className="rounded-md border border-neutral-300 px-2 py-1 text-[12px]">🧺 {lang === "fa" ? "سبد" : "Basket"}</a>
         <button type="button" onClick={onClose} aria-label={lang === "fa" ? "بستن" : "Close"} className="rounded-full px-2 text-[22px] leading-none text-neutral-500 hover:text-neutral-900">×</button>
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto px-4">
-        {products.map((p) => <Row key={p.id} p={p} lang={lang} merchant={merchant} href={href} />)}
+        {products.map((p) => <Row key={p.id} p={p} lang={lang} merchant={merchant} href={href} share={share} lit={p.id === highlight} />)}
         {!products.length && <li className="py-6 text-center text-[13px] text-neutral-500">{lang === "fa" ? "محصولات این بخش به‌زودی." : "This section's products are coming soon."}</li>}
       </ul>
     </div>

@@ -19,7 +19,8 @@ import { join } from "node:path";
 import { downloadToFile, presignGet, r2Config, readCatalogue, readMastersText, readWalks, uploadMastersFile, writeMastersJson } from "@/lib/splats/r2";
 import type { Product } from "@/lib/splats/catalogue";
 import { readStore, updateStore } from "./bucket";
-import { BUDGET_CENTS, sceneOf, type StoreRecord } from "./store";
+import { BUDGET_CENTS, hasShortAddress, sceneOf, type StoreRecord } from "./store";
+import { walkLink } from "./productLink";
 import { namesFor, OverBudget, sameProduct, type Purse } from "./ai";
 import { jpegOf, run } from "./media";
 import { MATCH_SURE } from "./websiteMatchRules";
@@ -261,7 +262,7 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
   });
   // In walking order: when each shelf is first in view, then its number.
   shelves.sort((a, b) => (a.outline[0]?.t ?? 1e9) - (b.outline[0]?.t ?? 1e9) || (a.n ?? 1e9) - (b.n ?? 1e9));
-  return { store: s.slug, walk: s.out.walk ?? null, title: walk?.title ? { en: walk.title.en, fa: walk.title.fa ?? walk.title.en } : null, merchant: s.name.en || s.name.fa || s.slug, shelves };
+  return { store: s.slug, walk: s.out.walk ?? null, link: s.out.walk ? walkLink(s.out.walk, undefined, hasShortAddress(s) ? s.slug : undefined) : null, title: walk?.title ? { en: walk.title.en, fa: walk.title.fa ?? walk.title.en } : null, merchant: s.name.en || s.name.fa || s.slug, shelves };
 }
 
 /** What the store's page shows the operator: every shelf on the walk and its kit, the website products to choose from. */

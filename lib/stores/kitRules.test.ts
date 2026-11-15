@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -77,4 +77,17 @@ test("a section's place is believable only as a real four-cornered shape inside 
   assert.equal(saneQuad([0.1, 0.1, 0.9, 0.4, 0.9, 0.1, 0.1, 0.4]), false);
   assert.equal(saneQuad([0.1, 0.1, 0.11, 0.1, 0.11, 0.11, 0.1, 0.11]), false);
   assert.equal(saneQuad(null), false);
+});
+
+test("a share link says the shelf, the section and the product, and reads back the same", () => {
+  const l = kitShareLink("https://vbazaar.app/walk/nuttime", { shelf: "z1", section: 2, product: "z1-2-p3" });
+  assert.equal(l, "https://vbazaar.app/walk/nuttime?shelf=z1&section=2&product=z1-2-p3");
+  assert.deepEqual(readKitShare(new URL(l).searchParams), { shelf: "z1", section: 2, product: "z1-2-p3" });
+  assert.equal(kitShareLink("/vca/walk?v=scenes%2Fa%2Fb.mp4", { shelf: "z1" }), "/vca/walk?v=scenes%2Fa%2Fb.mp4&shelf=z1");
+  assert.equal(readKitShare(new URLSearchParams("section=2")), null);
+  assert.deepEqual(readKitShare(new URLSearchParams("shelf=z1&section=9&product=<x>")), { shelf: "z1" });
+  const secs = [{ i: 1, products: [{ id: "a" }] }, { i: 2, products: [{ id: "b" }] }];
+  assert.equal(sharedSection(secs, { shelf: "z", product: "b" })?.i, 2);
+  assert.equal(sharedSection(secs, { shelf: "z", section: 1 })?.i, 1);
+  assert.equal(sharedSection(secs, { shelf: "z" }), null);
 });
