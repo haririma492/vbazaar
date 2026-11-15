@@ -17,6 +17,7 @@
  * Phones are held upright: sideways, the screen says so.
  */
 import { noSave } from "./noSave";
+import ShareKey from "./ShareKey";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import KitPanel, { type Lang } from "./KitPanel";
@@ -212,6 +213,16 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             style={{ opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms" }} />
         ))}
 
+        {/* Share (owner, 2026-11-15): the whole shelf, or the section in view; the receiver lands there in the Free Tour.
+            In the corner, never over the photo's middle; a tap on it neither pauses nor opens the panel. */}
+        {!open && (
+          <div className="absolute right-3 top-3 z-10" onClick={(e) => e.stopPropagation()}>
+            <ShareKey base={kit.link} lang={lang}
+              to={sec ? { shelf: shelf.id, section: sec.i } : { shelf: shelf.id }}
+              title={sec ? `${label} · ${lang === "fa" ? "بخش" : "Section"} ${sec.i}` : label}
+              className="shadow" />
+          </div>
+        )}
         {/* The tapped section grown out of its place, a funnel from there, and the shopping panel. */}
         {open && target && shown && (
           <div className="absolute inset-0 z-20" onClick={(e) => { e.stopPropagation(); close(); }}>
@@ -227,7 +238,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             <img {...noSave} src={open.section.url} alt="" onClick={(e) => e.stopPropagation()}
               className="absolute select-none rounded-lg bg-white object-contain shadow-2xl ring-2 ring-white"
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }} />
-            <KitPanel section={open.section} title={shelf.label} merchant={kit.merchant || name} href={`/vca/tour?s=${encodeURIComponent(slug)}`}
+            <KitPanel share={{ base: kit.link, shelf: shelf.id }} section={open.section} title={shelf.label} merchant={kit.merchant || name} href={`/vca/tour?s=${encodeURIComponent(slug)}`}
               lang={lang} onLang={setLang} onClose={close}
               className={narrow ? "absolute inset-x-2 bottom-2 top-[44%]" : "absolute bottom-3 right-3 top-3 w-[400px] max-w-[42%]"}
             />
