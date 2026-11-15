@@ -10,6 +10,7 @@
  * no zooming (owner: "there is no wheel in e-commerce"). Everything here is in the page's (viewport) pixels.
  */
 import { noSave } from "./noSave";
+import Watermark from "./Watermark";
 import { useEffect, useState } from "react";
 
 export type Box = { left: number; top: number; width: number; height: number };
@@ -99,6 +100,7 @@ export default function KitBridge({ from, area, right, url, aspect, target, onCl
         onClick={(ev) => ev.stopPropagation()}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img {...noSave} src={url} alt="" className="h-full w-full select-none object-contain" />
+        <Watermark size="lg" />
       </div>
     </div>
   );

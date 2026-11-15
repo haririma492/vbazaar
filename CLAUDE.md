@@ -355,6 +355,11 @@ plan and the Managed Agents decision are in
     videos are. Every kit photo on screen has no «Save image» menu, no long-press save, no drag (`components/kit/
     noSave.ts`, `img[data-nosave]` in `globals.css`). The website's photos (Type V) are on the store's own site
     anyway; they get the same screen guards. A screenshot cannot be stopped.
+  - **The watermark** (owner, 2026-11-15, told no web page can stop a screenshot: *"add that watermark with our
+    address vbazaar.app and the arch logo"*): `components/kit/Watermark.tsx`, drawn OVER every kit photo on screen
+    (the tray, the 3× photo, the panel's product photos, the Shelf Tour), so a screenshot carries it while the stored
+    photo stays as uploaded: the arch and «vbazaar.app» on a warm-white badge in the corner, and the same faint and
+    turned, tiled across the whole photo, so a crop cannot cut it away. It catches no tap.
   - **Each section is placed in its shelf's photo by itself** (`scripts/stitch/section.py`: SIFT + MAGSAC, free;
     measured on a synthetic shelf: corners within 0.001); the shelf's photo IS the border, so `quadPoints`
     (`shelves.ts`, a homography) puts it on the walk. Not found: the operator taps its 4 corners on the store's page.

@@ -10,6 +10,7 @@
  * No zooming, no wheel: an ordinary shop's list. Placed by the screen that opens it (`className`).
  */
 import { noSave } from "./noSave";
+import Watermark from "./Watermark";
 import { useEffect, useRef, useState } from "react";
 import { addToBasket } from "@/components/basket/useBasket";
 import { byWeight, formatCents, UNIT_SAY, weightChoices } from "@/lib/splats/catalogue";
@@ -58,7 +59,10 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
     <li ref={ref} className={`flex gap-3 border-b border-black/10 py-3 last:border-0 ${lit ? "-mx-2 rounded-lg bg-amber-50 px-2 ring-2 ring-amber-400" : ""}`}>
       <div className="w-20 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
+        <div className="relative h-20 w-20 overflow-hidden rounded-lg">
+          <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
+          <Watermark size="xs" />
+        </div>
         {photos.length > 1 && (
           <div className="mt-1 flex gap-1">
             {photos.slice(0, 4).map((u, i) => (

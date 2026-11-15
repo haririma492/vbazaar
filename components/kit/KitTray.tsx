@@ -8,6 +8,7 @@
  * A tap on a photo is the shopper wanting to buy from it (`onPick`, with where the photo is on the screen).
  */
 import { noSave } from "./noSave";
+import Watermark from "./Watermark";
 import { useEffect, useRef, useState } from "react";
 import type { ShopSection, ShopShelf } from "@/lib/stores/kitRules";
 
@@ -65,6 +66,7 @@ function Track({ shelf, paused, picked, onPick, leaving }: {
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img {...noSave} src={s.thumb || s.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+      <Watermark size="sm" />
     </button>
   ));
   return (
