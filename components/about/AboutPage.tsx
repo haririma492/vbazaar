@@ -10,7 +10,7 @@ import "./about.css";
 // already on olgoo.com (about, virtual-stores, the home page's FAQ): nothing new is claimed.
 type Lang = "fa" | "en";
 
-const PHOTO = "/media/team/farid-hariri-2026c.jpg";
+const PHOTO = "/media/team/farid-hariri-2026d.jpg";
 
 const T = {
   fa: {
