@@ -45,6 +45,19 @@ export const PAGES = {
     h1: "میدان بازار مجازی: نشانی مجازی مغازه‌ها — Virtual Bazaar square",
     description: "نشانی مجازی در بازار مجازی: در بازار قدم بزنید، جلوی هر مغازه بایستید و از مغازه‌ها خرید کنید. Your virtual address in the Virtual Bazaar — walk in and shop.",
   },
+  // About us (owner, 2026-11-15): who builds the bazaar, VCA™ in brief, and the CEO. Farsi /about, English /en/about.
+  about: {
+    path: "/about",
+    title: "درباره بازار مجازی | تیم الگو در تورنتو و نشانی تجاری مجازی VCA™‎",
+    description: "درباره بازار مجازی: تیم Olgoo در نورث یورک تورنتو، مدیرعامل فرید حریری، و VCA™‎ نشانی تجاری مجازی که در آن آنلاین قدم می‌زنید. از ۳٬۵۰۰ دلار کانادا.",
+    h1: "درباره بازار مجازی",
+  },
+  aboutEn: {
+    path: "/en/about",
+    title: "About Virtual Bazaar: the Toronto Team Behind VCA™ Virtual Stores",
+    description: "About Virtual Bazaar (vbazaar.app): Olgoo’s team in North York, Toronto, CEO Farid Hariri, and VCA™, the Virtual Commercial Address. Stores from $3,500 CAD.",
+    h1: "About Virtual Bazaar",
+  },
 } as const;
 
 /** The site's 1200×630 share image, for every page that has none of its own. */

@@ -25,12 +25,12 @@ const BODY: Record<Lang, string> = {
 const T = {
   fa: {
     walk: "قدم بزنید", demo: "دمو", bazaar3d: "بازار سه‌بعدی", other: "English", otherHref: "/en", otherLang: "en",
-    by: "ساخت الگو", olgoo: "https://olgoo.com/fa/", contact: "https://olgoo.com/fa/contact", contactL: "تماس",
+    by: "ساخت الگو", about: "درباره ما", aboutHref: "/about", olgoo: "https://olgoo.com/fa/", contact: "https://olgoo.com/fa/contact", contactL: "تماس",
     tm: "VCA™‎ علامت تجاری Olgoo Enterprise Services Inc. است.",
   },
   en: {
     walk: "Walk it", demo: "Demo", bazaar3d: "3D bazaar", other: "فارسی", otherHref: "/", otherLang: "fa",
-    by: "Made by Olgoo", olgoo: "https://olgoo.com/", contact: "https://olgoo.com/contact", contactL: "Contact",
+    by: "Made by Olgoo", about: "About us", aboutHref: "/en/about", olgoo: "https://olgoo.com/", contact: "https://olgoo.com/contact", contactL: "Contact",
     tm: "VCA™ is a trademark of Olgoo Enterprise Services Inc.",
   },
 } as const;
@@ -84,7 +84,7 @@ export default async function VcaHome({ lang }: { lang: Lang }) {
       <BazaarDirectory lang={lang} dir={directory} />
       <main dangerouslySetInnerHTML={{ __html: body }} />
       <footer className="vb-foot">
-        <p><a href={t.olgoo}>{t.by}</a> · <a href={t.contact}>{t.contactL}</a></p>
+        <p><a href={t.aboutHref}>{t.about}</a> · <a href={t.olgoo}>{t.by}</a> · <a href={t.contact}>{t.contactL}</a></p>
         <p dir="ltr">Olgoo · 238 Doris Ave, North York, ON M2N 6W1 · <a href="tel:+14168001418">+1-416-800-1418</a> · <a href="mailto:admin@olgoo.com">admin@olgoo.com</a></p>
         <p>{t.tm}</p>
       </footer>
