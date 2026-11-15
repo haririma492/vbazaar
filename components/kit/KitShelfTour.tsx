@@ -16,6 +16,7 @@
  * A section whose place in the shelf photo was not found is shown by its own photo fading in, without the glide.
  * Phones are held upright: sideways, the screen says so.
  */
+import { noSave } from "./noSave";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import KitPanel, { type Lang } from "./KitPanel";
@@ -192,7 +193,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             backgroundImage: shelf.photo?.thumb ? `url(${shelf.photo.thumb})` : undefined, backgroundSize: "100% 100%",
           }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shelf.photo!.url} alt={label} draggable={false} className="absolute inset-0 h-full w-full select-none" />
+          <img {...noSave} src={shelf.photo!.url} alt={label} className="absolute inset-0 h-full w-full select-none" />
           <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none"
             style={{ opacity: at.k < 0 ? 1 : 0.35, transition: "opacity 600ms" }}>
             {sections.map((x) => x.quad && (
@@ -206,7 +207,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The section's own photo, as uploaded, faded in once the glide has arrived. */}
         {sections.map((x) => (
           // eslint-disable-next-line @next/next/no-img-element
-          <img key={x.id} src={x.url} alt="" draggable={false}
+          <img {...noSave} key={x.id} src={x.url} alt=""
             className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
             style={{ opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms" }} />
         ))}
@@ -223,7 +224,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
               <rect x={open.from.x} y={open.from.y} width={open.from.w} height={open.from.h} fill="none" stroke="#fff" strokeWidth={2} />
             </svg>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={open.section.url} alt="" draggable={false} onClick={(e) => e.stopPropagation()}
+            <img {...noSave} src={open.section.url} alt="" onClick={(e) => e.stopPropagation()}
               className="absolute select-none rounded-lg bg-white object-contain shadow-2xl ring-2 ring-white"
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }} />
             <KitPanel section={open.section} title={shelf.label} merchant={kit.merchant || name} href={`/vca/tour?s=${encodeURIComponent(slug)}`}

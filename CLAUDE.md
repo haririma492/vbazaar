@@ -347,8 +347,14 @@ plan and the Managed Agents decision are in
     Explorer's): Haiku narrows the names (`namesFor`), then compares the photos (`sameProduct`, ≥ 0.75). Matched: the
     site's name, price and a second photo; not matched: one photo and no price yet (shown, cannot be added). File names
     place themselves: `shelf-03.jpg`, `shelf-03-2.jpg`, `shelf-03-2-p1.jpg` (the shelf's number from the walk).
-  - **Quality: as uploaded.** Every kit photo is copied to the public bucket BYTE FOR BYTE (no look, no re-encode);
-    only a 720 px copy is made for the tray and the lists (`scripts/stitch/thumb.py`).
+  - **Quality: as uploaded.** Every kit photo is copied BYTE FOR BYTE (no look, no re-encode); only a 720 px copy is
+    made for the tray and the lists (`scripts/stitch/thumb.py`).
+  - **⚠️ Not downloadable** (owner, 2026-11-15: *"make the photos (Type III, Type IV & Type V) not downloadable"*): the
+    copies are PRIVATE (masters bucket, `stores/<slug>/kit-shown/…`), never a public address; `/api/kit` and the
+    store page hand out links signed for 6 h (`signKit`, the same link for an hour so the cache works), as the walk
+    videos are. Every kit photo on screen has no «Save image» menu, no long-press save, no drag (`components/kit/
+    noSave.ts`, `img[data-nosave]` in `globals.css`). The website's photos (Type V) are on the store's own site
+    anyway; they get the same screen guards. A screenshot cannot be stopped.
   - **Each section is placed in its shelf's photo by itself** (`scripts/stitch/section.py`: SIFT + MAGSAC, free;
     measured on a synthetic shelf: corners within 0.001); the shelf's photo IS the border, so `quadPoints`
     (`shelves.ts`, a homography) puts it on the walk. Not found: the operator taps its 4 corners on the store's page.

@@ -270,3 +270,7 @@ select.sk-field { color-scheme: dark; }
   .sk-mem-check { animation: none; stroke-dashoffset: 0; }
   .sk-cov-pin, .sk-cov-area { transition: none; }
 }
+
+/* Kit photos (shelves, sections, products) are not to be saved: no long-press menu on a phone, no dragging out
+   (owner, 2026-11-15; `components/kit/noSave.ts`). */
+img[data-nosave] { -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; }

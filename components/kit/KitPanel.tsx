@@ -9,6 +9,7 @@
  * A product not matched yet shows its photo with «Price coming soon» and cannot be added. Farsi or English.
  * No zooming, no wheel: an ordinary shop's list. Placed by the screen that opens it (`className`).
  */
+import { noSave } from "./noSave";
 import { useState } from "react";
 import { addToBasket } from "@/components/basket/useBasket";
 import { byWeight, formatCents, UNIT_SAY, weightChoices } from "@/lib/splats/catalogue";
@@ -54,14 +55,14 @@ function Row({ p, lang, merchant, href }: { p: ShopProduct; lang: Lang; merchant
     <li className="flex gap-3 border-b border-black/10 py-3 last:border-0">
       <div className="w-20 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
+        <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
         {photos.length > 1 && (
           <div className="mt-1 flex gap-1">
             {photos.slice(0, 4).map((u, i) => (
               <button key={u} type="button" aria-label={`Photo ${i + 1}`} onClick={() => setShown(i)}
                 className={`h-[18px] w-[18px] overflow-hidden rounded bg-white ${i === shown ? "ring-2 ring-amber-500" : "opacity-60 ring-1 ring-black/10"}`}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={u} alt="" loading="lazy" className="h-full w-full object-contain" />
+                <img {...noSave} src={u} alt="" loading="lazy" className="h-full w-full object-contain" />
               </button>
             ))}
           </div>
