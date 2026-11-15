@@ -16,7 +16,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { downloadToFile, r2Config, readCatalogue, readMastersText, readWalks, uploadFile, writeMastersJson } from "@/lib/splats/r2";
+import { downloadToFile, presignGet, r2Config, readCatalogue, readMastersText, readWalks, uploadMastersFile, writeMastersJson } from "@/lib/splats/r2";
 import type { Product } from "@/lib/splats/catalogue";
 import { readStore, updateStore } from "./bucket";
 import { BUDGET_CENTS, sceneOf, type StoreRecord } from "./store";
@@ -26,6 +26,37 @@ import { MATCH_SURE } from "./websiteMatchRules";
 import { emptyKit, placeSig, toMatch, toPlace, type Kit, type KitPhoto, type ShopKit, type ShopProduct } from "./kitRules";
 
 export const kitKey = (slug: string) => `stores/${slug}/kit.json`;
+/** Where the photos shoppers see are kept: PRIVATE (masters bucket), each `<folder>/photo.<ext>` and `thumb.jpg`. */
+const shownPrefix = (slug: string) => `stores/${slug}/kit-shown/`;
+
+/**
+ * A KIT PHOTO SHOWN THROUGH A LINK THAT EXPIRES (owner, 2026-11-15: "we also need to make the photos (Type III,
+ * Type IV & Type V) not downloadable"), as the walk videos are (`/api/media`): a link copied out of the page stops
+ * working within hours. The same link is handed out for an hour, so the browser's cache still works.
+ */
+const LINK_SECONDS = 6 * 60 * 60, REUSE_MS = 60 * 60 * 1000;
+const signed = new Map<string, { url: string; until: number }>();
+export async function signKit(key: string | undefined): Promise<string> {
+  if (!key) return "";
+  if (/^https?:/.test(key)) return key;
+  const now = Date.now(), had = signed.get(key);
+  if (had && had.until > now) return had.url;
+  const url = await presignGet(key, "master", LINK_SECONDS);
+  signed.set(key, { url, until: now + REUSE_MS });
+  if (signed.size > 5000) for (const [k, v] of signed) if (v.until <= now) signed.delete(k);
+  return url;
+}
+/** Every kit photo of `k` with its addresses signed (for a screen; never stored). */
+export async function signedKit<K extends Kit>(k: K): Promise<K> {
+  const sign = async (p: KitPhoto): Promise<KitPhoto> => ({ ...p, ...(p.url ? { url: await signKit(p.url) } : {}), ...(p.thumb ? { thumb: await signKit(p.thumb) } : {}) });
+  return {
+    ...k,
+    shelves: await Promise.all(k.shelves.map(async (s) => ({
+      ...s, ...(s.photo ? { photo: await sign(s.photo) } : {}),
+      sections: await Promise.all(s.sections.map(async (x) => ({ ...x, photo: await sign(x.photo), products: await Promise.all(x.products.map(async (p) => ({ ...p, photo: await sign(p.photo) }))) }))),
+    }))),
+  };
+}
 const THUMB_PX = 720;
 const TYPE: Record<string, string> = { jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp" };
 
@@ -78,7 +109,6 @@ function withPhoto(k: Kit, key: string, extra: Partial<KitPhoto>): Kit {
 
 export async function runKit(slug: string, say: (note: string) => void = () => undefined): Promise<string> {
   const dir = mkdtempSync(join(tmpdir(), "kit-"));
-  const base = r2Config().publicBase;
   const local = new Map<string, string>(); // a photo's key → its file here
   const fetchLocal = async (p: KitPhoto) => {
     let f = local.get(p.key);
@@ -89,19 +119,22 @@ export async function runKit(slug: string, say: (note: string) => void = () => u
   try {
     // 1 · Publish: the original as it is, and a small copy.
     let kit = (await readKit(slug)) ?? emptyKit(slug);
-    const todo = photosOf(kit).filter((p) => !p.url);
+    // An https address is the old public copy (none was made before this changed, 2026-11-15): made private again.
+    const todo = photosOf(kit).filter((p) => !p.url || /^https?:/.test(p.url));
     for (const [i, p] of todo.entries()) {
       say(`Putting the photos up for shoppers: ${i + 1} of ${todo.length}…`);
       try {
         const f = await fetchLocal(p);
         const ext = (p.name.split(".").pop() ?? "jpg").toLowerCase();
         const stamp = Date.now().toString(36);
-        const folder = `scenes/${sceneOf(slug)}/kit/${stamp}-${p.key.split("/").pop()!.replace(/\.[^.]+$/, "").slice(-60)}`;
+        const folder = `${shownPrefix(slug)}${stamp}-${p.key.split("/").pop()!.replace(/\.[^.]+$/, "").slice(-60)}`;
         const thumbFile = `${f}.thumb.jpg`;
         const size = JSON.parse((await run("python3", [join(process.cwd(), "scripts/stitch/thumb.py"), f, thumbFile, String(THUMB_PX)])).toString()) as { w: number; h: number };
-        await uploadFile(`${folder}/photo.${TYPE[ext] ? ext : "jpg"}`, f, TYPE[ext] ?? "image/jpeg");
-        await uploadFile(`${folder}/thumb.jpg`, thumbFile, "image/jpeg");
-        kit = await updateKit(slug, (k) => withPhoto(k, p.key, { url: `${base}/${folder}/photo.${TYPE[ext] ? ext : "jpg"}`, thumb: `${base}/${folder}/thumb.jpg`, w: size.w, h: size.h }));
+        // PRIVATE (owner, 2026-11-15: "make the photos … not downloadable"): the masters bucket, shown through links
+        // signed for a few hours (`signKit`), never a permanent address.
+        await uploadMastersFile(`${folder}/photo.${TYPE[ext] ? ext : "jpg"}`, f, TYPE[ext] ?? "image/jpeg");
+        await uploadMastersFile(`${folder}/thumb.jpg`, thumbFile, "image/jpeg");
+        kit = await updateKit(slug, (k) => withPhoto(k, p.key, { url: `${folder}/photo.${TYPE[ext] ? ext : "jpg"}`, thumb: `${folder}/thumb.jpg`, w: size.w, h: size.h }));
       } catch (e) { console.error("[kit] publish", slug, p.key, e); parts.push(`«${p.name}» could not be put up: ${(e as Error).message.slice(0, 120)}.`); }
     }
     if (todo.length) parts.push(`${todo.length} photo${todo.length > 1 ? "s" : ""} put up for shoppers, exactly as uploaded.`);
@@ -198,8 +231,9 @@ const faNum = (n: number) => String(n).replace(/\d/g, (d) => FA_DIGITS[Number(d)
 
 /** The store's kit as shoppers see it: public photos only, prices read from the store's list NOW. */
 export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
-  const kit = await readKit(s.slug);
-  if (!kit) return null;
+  const stored = await readKit(s.slug);
+  if (!stored) return null;
+  const kit = await signedKit(stored);
   const [walks, c] = await Promise.all([s.out.walk ? readWalks().catch(() => null) : null, readCatalogue(sceneOf(s.slug)).catch(() => null)]);
   const walk = s.out.walk ? walks?.walks[s.out.walk] : undefined;
   const byWeb = new Map<string, Product>((c?.products ?? []).filter((p) => p.web).map((p) => [p.web!, p] as [string, Product]));
@@ -235,7 +269,7 @@ export async function kitForPage(s: StoreRecord) {
   const [kit, walks, c] = await Promise.all([readKit(s.slug), s.out.walk ? readWalks().catch(() => null) : null, readCatalogue(sceneOf(s.slug)).catch(() => null)]);
   const zooms = (s.out.walk ? walks?.walks[s.out.walk]?.zooms : undefined) ?? [];
   const marked = zooms.filter((z) => z.outline?.length && !z.auto).sort((a, b) => (a.n ?? 1e9) - (b.n ?? 1e9));
-  const k = kit ?? emptyKit(s.slug);
+  const k = await signedKit(kit ?? emptyKit(s.slug));
   const site = (c?.products ?? []).filter((p) => p.web).map((p) => ({ web: p.web!, en: p.en ?? "", fa: p.fa ?? "", priceCents: p.priceCents, unit: p.unit, photo: p.photo ?? null }));
   const ids = [...new Set([...marked.map((z) => z.id), ...k.shelves.map((x) => x.id)])];
   return {

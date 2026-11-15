@@ -9,6 +9,7 @@
  * the funnel from the tray's photo up to the enlarged one, and the enlarged photo itself: the ORIGINAL upload, whole,
  * no zooming (owner: "there is no wheel in e-commerce"). Everything here is in the page's (viewport) pixels.
  */
+import { noSave } from "./noSave";
 import { useEffect, useState } from "react";
 
 export type Box = { left: number; top: number; width: number; height: number };
@@ -97,7 +98,7 @@ export default function KitBridge({ from, area, right, url, aspect, target, onCl
         style={{ left: cur.left, top: cur.top, width: cur.width, height: cur.height }}
         onClick={(ev) => ev.stopPropagation()}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt="" draggable={false} className="h-full w-full select-none object-contain" />
+        <img {...noSave} src={url} alt="" className="h-full w-full select-none object-contain" />
       </div>
     </div>
   );

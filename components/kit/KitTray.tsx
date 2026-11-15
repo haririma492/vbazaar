@@ -7,6 +7,7 @@
  * the sections of the shelf in view, right to left, round and round, slowly. A new shelf slides in over the last one.
  * A tap on a photo is the shopper wanting to buy from it (`onPick`, with where the photo is on the screen).
  */
+import { noSave } from "./noSave";
 import { useEffect, useRef, useState } from "react";
 import type { ShopSection, ShopShelf } from "@/lib/stores/kitRules";
 
@@ -63,7 +64,7 @@ function Track({ shelf, paused, picked, onPick, leaving }: {
       style={{ aspectRatio: s.w && s.h ? `${s.w} / ${s.h}` : "4 / 3" }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={s.thumb || s.url} alt="" draggable={false} loading="lazy" className="h-full w-full object-cover" />
+      <img {...noSave} src={s.thumb || s.url} alt="" loading="lazy" className="h-full w-full object-cover" />
     </button>
   ));
   return (
