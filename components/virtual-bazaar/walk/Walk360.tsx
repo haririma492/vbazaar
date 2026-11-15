@@ -55,7 +55,7 @@
 
 import StoreLogo from "@/components/brand/StoreLogo";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
@@ -69,7 +69,12 @@ import { productParam } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
-import { shelfNear } from "@/lib/splats/shelves";
+import { quadPoints, shelfNear } from "@/lib/splats/shelves";
+import { coverOf, shelfMoment, trayShelf, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { useKit } from "@/components/kit/useKit";
+import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
+import KitTray from "@/components/kit/KitTray";
+import KitBridge from "@/components/kit/KitBridge";
 import DeepZoom from "@/components/zoom/DeepZoom";
 import { track } from "@/lib/visitors/track";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
@@ -83,7 +88,7 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, outlineAt, quadBox, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
 } from "@/lib/splats/walks";
 
 /**
@@ -556,6 +561,18 @@ type Engine = {
   faceIn: () => void;
   /** Jump to a moment of this video (stands there). */
   seek: (t: number) => void;
+  /**
+   * THE PASTRY REDESIGN (owner, 2026-11-15: "moving from a full virtual walk with odd and confusing looking labels
+   * and green circles on items into … solid e-commerce features"). On: no product lights, tags or specials are drawn
+   * or tapped, and a plain tap on the picture is `onPlainTap` (stop / walk on).
+   */
+  setKit: (on: boolean, onPlainTap: (() => void) | null) => void;
+  /** The shelves the tray follows (their borders), and who is told when the shelf on screen changes (`trayShelf`). */
+  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }> | null, start: string | null, onChange: ((id: string | null) => void) | null) => void;
+  /** Where a shelf (or, with `quad`, a part of its photo) is on the screen now, in the walk area's pixels; null when out of view. */
+  shelfOnScreen: (outline: Array<{ t: number; c: number[] }>, quad: number[] | null) => { poly: Array<[number, number]>; cover: number } | null;
+  /** Turn to face a direction of this walk (yaw, pitch); nothing on a flat video. */
+  face: (yaw: number, pitch: number) => void;
 };
 
 /**
@@ -1237,6 +1254,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     // its 🔍 are drawn only in the operator's editor; the border still says WHEN the shopper is at a shelf, and
     // that shelf's photo shows in a panel above the wheel (`shelfNear`, `ShelfPhoto` below).
     let shelfMarks = false;
+    /** The pastry redesign's tour (`setKit`): no lights, and a tap is stop / walk on. */
+    let kitOn = false;
+    let onPlainTap: (() => void) | null = null;
+    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }>; cur: string | null; onChange: (id: string | null) => void } | null = null;
     let itemPreview: WalkItem | null = null;
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
@@ -1363,7 +1384,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       const walk = walkOf(walksNow, current?.key);
       const t = v ? tShown() : 0;
       const flat = Boolean(current?.flat);
-      let shown = ready ? itemsAt(walk, t, !flat) : [];
+      let shown = ready && !kitOn ? itemsAt(walk, t, !flat) : [];
       if (ready && itemPreview) {
         shown = shown.filter((s) => s.item.id !== itemPreview!.id);
         const p = itemsAt({ doors: [], items: [itemPreview] }, t, !flat)[0];
@@ -1794,7 +1815,68 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       snapshot() {
         return new Promise<Blob | null>((resolve) => { snapWanted.push(resolve); });
       },
+      setKit(on, f) {
+        kitOn = on;
+        onPlainTap = on ? f : null;
+      },
+      setTray(shelves, start, onChange) {
+        tray = shelves && onChange ? { shelves, cur: start, onChange } : null;
+      },
+      shelfOnScreen(outline, quad) {
+        if (!current || busy || current.video.readyState < 1) return null;
+        const round = !current.flat;
+        const c = outlineAt({ id: "", label: { en: "" }, pins: [], outline }, tShown(), round);
+        if (!c) return null;
+        const pts: Array<[number, number]> | null = quad
+          ? quadPoints(c, [0, 1, 2, 3].map((k) => [quad[k * 2], quad[k * 2 + 1]] as [number, number]), round)
+          : [0, 1, 2, 3].map((k) => [c[k * 2], c[k * 2 + 1]] as [number, number]);
+        const poly = pts && toScreen(pts);
+        return poly ? { poly, cover: coverOf(poly, el.clientWidth, el.clientHeight) } : null;
+      },
+      face(yaw, p) {
+        if (!current || current.flat) return;
+        turnYaw += angleDiff(yaw - current.spin, heading());
+        pitch = p;
+        faceTo = null;
+        facePlan = null;
+      },
     };
+    /** Walk directions (or a flat video's fractions) on the screen, in the walk area's pixels; null if one is behind the view. */
+    const projV = new THREE.Vector3(), camDir = new THREE.Vector3();
+    function toScreen(pts: Array<[number, number]>): Array<[number, number]> | null {
+      if (!current) return null;
+      if (current.flat) {
+        const r = flatRect(current.video);
+        return pts.map(([x, y]) => [r.x + x * r.w, r.y + y * r.h]);
+      }
+      const W = el.clientWidth, H = el.clientHeight;
+      camera.updateMatrixWorld();
+      camera.getWorldDirection(camDir);
+      const out: Array<[number, number]> = [];
+      for (const [x, y] of pts) {
+        const d = dirOf(x, y);
+        if (d.dot(camDir) < 0.05) return null;
+        projV.copy(d).multiplyScalar(MARK_R).project(camera);
+        out.push([((projV.x + 1) / 2) * W, ((1 - projV.y) / 2) * H]);
+      }
+      return out;
+    }
+    /** THE TRAY'S SHELF (owner: "as the top view pass that shelf reaching the next shelf (more than 50% of screen is
+     *  already showing the next shelf) then very smoothly the tray moves"): each frame, how much of the screen each
+     *  shelf's border covers; the walk's React side is told only when the shelf changes. */
+    function updateTray() {
+      if (!tray || !current || busy || current.video.readyState < 1) return;
+      const round = !current.flat, t = tShown(), W = el.clientWidth, H = el.clientHeight;
+      const covers: Array<{ id: string; cover: number }> = [];
+      for (const s of tray.shelves) {
+        const c = outlineAt({ id: "", label: { en: "" }, pins: [], outline: s.outline }, t, round);
+        if (!c) continue;
+        const poly = toScreen([0, 1, 2, 3].map((k) => [c[k * 2], c[k * 2 + 1]] as [number, number]));
+        if (poly) covers.push({ id: s.id, cover: coverOf(poly, W, H) });
+      }
+      const next = trayShelf(tray.cur, covers);
+      if (next !== tray.cur) { tray.cur = next; tray.onChange(next); }
+    }
 
     // ── The first video: ?src, ?v, or the walk visitors start on ──────────
     void (async () => {
@@ -1940,6 +2022,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     const ndc = new THREE.Vector2();
     function onTap(x: number, y: number) {
       if (!current || busy) return;
+      // The pastry redesign: a tap anywhere on the picture stops the walk, the next walks on (owner, 2026-11-15).
+      if (kitOn && onPlainTap && !itemPick && !pick) { onPlainTap(); return; }
       if (current.flat) {
         // A flat video: only the operator's item pins are taps on the picture.
         if (!itemPick) return;
@@ -2045,6 +2129,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     window.addEventListener("keyup", onKey);
     window.addEventListener("blur", onBlur);
     window.addEventListener("resize", onResize);
+    // The walk area changes size without the window (the pastry tour's 77% / 23%).
+    const sized = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    sized?.observe(el);
 
     // ── The photographer's turns, for the wheel (`lib/splats/walkTurn.ts`) ──
     // A band round the horizon, a few times a second, compared with the last
@@ -2315,6 +2402,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       // small swings of their own. The owner's turns as filmed are smoother; the camera's gyro will tell.)
       updateDoors();
       updateItems();
+      updateTray();
       nadir.visible = nadirDeg > 0 && Boolean(current && !current.flat);
       renderer.render(scene, camera);
       // The «Share» key: the frame just drawn, read before the browser clears it.
@@ -2336,6 +2424,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       window.removeEventListener("keyup", onKey);
       window.removeEventListener("blur", onBlur);
       window.removeEventListener("resize", onResize);
+      sized?.disconnect();
       release(current);
       release(pending);
       for (const { el } of itemButtons.values()) el.remove();
@@ -2430,6 +2519,102 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   }
   const ownerRef = useRef(owner);
   ownerRef.current = owner;
+
+  // ── THE PASTRY REDESIGN: the store's shelf kit (owner, 2026-11-15) ──────────────────────────────────────────────
+  // "We bring in solid e-commerce features that are in place for 30 years, the bridge between the two is our lower
+  // 23% of the screen, the tray." A store with its shelves' photos uploaded (Type III, IV and the products) walks
+  // this way: no lights on the picture, a tap stops and walks on, the tray below, and a tap on a tray photo opens the
+  // shop for that section. A store without them keeps the walk as it was (owner: "stays the same until operator go
+  // to store page and upload TYPE III, IV & Vs"). Not in the editor.
+  const kit = useKit(slug || null);
+  const kitOn = Boolean(kit && phase !== "loading" && !editing && !spotMode && (!kit.walk || kit.walk === view.key));
+  const topRef = useRef<HTMLDivElement>(null);
+  /** The tray's shelves: those with section photos and a border on the walk, in the order the walk reaches them. */
+  const trayShelves = useMemo(() => (kit?.shelves ?? []).filter((x) => x.sections.length && x.outline.length).sort((a, b) => a.outline[0].t - b.outline[0].t), [kit]);
+  const [trayId, setTrayId] = useState<string | null>(null);
+  const [trayPaused, setTrayPaused] = useState(false);
+  const [kitLang, setKitLang] = useState<KitLang>("en");
+  const [veil, setVeil] = useState(false);
+  type Box = { left: number; top: number; width: number; height: number };
+  const [picked, setPicked] = useState<{ section: ShopSection; shelf: ShopShelf; from: Box; area: Box; panel: Box; target: Array<[number, number]> | null } | null>(null);
+  const pickedRef = useRef(picked);
+  pickedRef.current = picked;
+  const driveRef = useRef(drive);
+  driveRef.current = drive;
+  // A tap on the picture: stop; the next tap walks on (owner: "user click on anywhere on top screen only means to stop and start the move").
+  useEffect(() => {
+    engine.current?.setKit(kitOn, () => {
+      if (pickedRef.current) return;
+      if (driveRef.current) { setDrive(null); setTrayPaused(true); }
+      else { engine.current?.kick(); setDrive("on"); setTrayPaused(false); }
+    });
+    return () => engine.current?.setKit(false, null);
+  }, [kitOn, phase]);
+  useEffect(() => {
+    if (!kitOn || !trayShelves.length) { engine.current?.setTray(null, null, null); return; }
+    const first = trayShelves[0].id;
+    setTrayId((cur) => (cur && trayShelves.some((x) => x.id === cur) ? cur : first));
+    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), first, (id) => { if (id) setTrayId(id); });
+    return () => engine.current?.setTray(null, null, null);
+  }, [kitOn, trayShelves, phase]);
+  // Phones stay upright: held sideways, the walk asks to be turned back.
+  const [sideways, setSideways] = useState(false);
+  useEffect(() => {
+    const m = window.matchMedia?.("(pointer: coarse) and (orientation: landscape) and (max-height: 600px)");
+    if (!m) return;
+    const f = () => setSideways(m.matches);
+    f();
+    m.addEventListener?.("change", f);
+    return () => m.removeEventListener?.("change", f);
+  }, []);
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  /**
+   * A TAP ON A TRAY PHOTO (owner: "a) stop the move on the top and on bottom, b) the shopper is interested to buy one
+   * of the items, c) a small thin arrow connects that photo … to its exact location on the already stopped moving
+   * shelf … d) the type IV photo gets enlarged … e) a list of prices and names appear on a rectangle on the top
+   * section on the right"). A photo of a shelf no longer in view (the tray loops the last one): the walk goes back to
+   * that shelf first, through a short fade, and faces it (owner: "the free tour will smoothly move back there").
+   */
+  async function pickSection(sec: ShopSection, el: HTMLElement) {
+    const e = engine.current, top = topRef.current;
+    const shelf = kit?.shelves.find((x) => x.sections.some((y) => y.id === sec.id));
+    if (!e || !top || !shelf || pickedRef.current) return;
+    setDrive(null);
+    setTrayPaused(true);
+    const seen = e.shelfOnScreen(shelf.outline, null);
+    if (!seen || seen.cover < 0.03) {
+      const t = shelfMoment(shelf.outline);
+      if (t !== null) {
+        setVeil(true);
+        await wait(320);
+        e.seek(t);
+        const round = !e.here().flat;
+        const c = outlineAt({ id: "", label: { en: "" }, pins: [], outline: shelf.outline }, t, round);
+        if (c) { const b = quadBox(c, round); e.face(b.x, b.y); }
+        await wait(650);
+        setVeil(false);
+        await wait(320);
+      }
+    }
+    const tb = top.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const at = (sec.quad && e.shelfOnScreen(shelf.outline, sec.quad)) || null;
+    const whole = at ? null : e.shelfOnScreen(shelf.outline, null);
+    const target: Array<[number, number]> | null = at
+      ? at.poly.map(([x, y]) => [x + tb.left, y + tb.top])
+      : whole ? [[whole.poly.reduce((s, p) => s + p[0], 0) / 4 + tb.left, whole.poly.reduce((s, p) => s + p[1], 0) / 4 + tb.top]] : null;
+    // The panel: the right of the walk's part (on a phone a little more than half of it).
+    const pw = tb.width < 640 ? tb.width * 0.58 : Math.min(416, tb.width * 0.4);
+    const panel = { left: tb.left + tb.width - pw - 10, top: tb.top + 10, width: pw, height: tb.height - 20 };
+    setPicked({ section: sec, shelf, from: { left: r.left, top: r.top, width: r.width, height: r.height }, area: { left: tb.left, top: tb.top, width: tb.width, height: tb.height }, panel, target });
+    track("kit-open");
+  }
+  /** Closing the panel closes the photo and the arrow, and the walk (and the tray) go on (owner: "yes it starts again"). */
+  function closePicked() {
+    setPicked(null);
+    setTrayPaused(false);
+    engine.current?.kick();
+    setDrive("on");
+  }
   useEffect(() => {
     const needs = (p: Product | undefined) => Boolean(p && (p.priceCents === null || (!p.en && !p.fa)));
     // Green for everyone (owner, 2026-11-04: "make the light on each book green"); `needs` stays for the card.
@@ -2561,6 +2746,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   }, [walkPace]);
   return (
     <div className="fixed inset-0 bg-black">
+      {/* THE PASTRY REDESIGN (owner, 2026-11-15: "77% of the top will be assigned to the 360 recording walk … the 23%
+          of the bottom will act as a news ticker moving tray"): with the store's shelf kit, the walk is the top 77%. */}
+      <div ref={topRef} className="absolute inset-x-0 top-0" style={{ height: kitOn ? "77%" : "100%" }}>
       <div ref={host} className="absolute inset-0" />
       {doorPhoto && (
         <div
@@ -2606,8 +2794,11 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
 
       {phase === "walking" && (
         <>
+          {/* The pastry tour: the wheel, Back, Walk and the speed bar all stay, 25% smaller, in the lower right corner
+              of the walk (owner, 2026-11-15: "the whole size of all and the wheel will be reduced 25%"). */}
+          <div className={kitOn ? "pointer-events-none absolute inset-0 origin-bottom-right scale-75 [&>*]:pointer-events-auto" : "contents"}>
           <SteeringWheel
-            className="bottom-[9.25rem] right-5"
+            className={kitOn ? "bottom-[10rem] right-5" : "bottom-[9.25rem] right-5"}
             onMove={(x) => engine.current?.setMove(x, 0)}
             onZoom={(z) => engine.current?.setZoom(z)}
             follow={() => engine.current?.turn() ?? 0}
@@ -2615,7 +2806,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           {/* THE SHELF'S PHOTO, ABOVE THE WHEEL (owner, 2026-11-13: "the photo of that shelf … should appear on the
               screen, not on the video itself … just like a section on top of the wheel … as we get closer to other
               shelf, this photo will change … shopper can click on it, see a better view"). */}
-          {!editing && !spotMode && !view.busy && (() => {
+          {!editing && !spotMode && !view.busy && !kitOn && (() => {
             const z = shelfNear(walkOf(walks, view.key)?.zooms, time.now);
             if (!z?.manifest) return null;
             return (
@@ -2633,7 +2824,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
             );
           })()}
           {/* Self-drive, below the wheel: Back · Walk/Stop, then the speed bar. */}
-          <div dir="ltr" className={`absolute flex flex-col gap-1.5 bottom-[3.75rem] right-5 w-72 max-w-[calc(100vw-2.5rem)]`}>
+          <div dir="ltr" className={`absolute flex flex-col gap-1.5 ${kitOn ? "bottom-[4.5rem]" : "bottom-[3.75rem]"} right-5 w-72 max-w-[calc(100vw-2.5rem)]`}>
             <div className="flex gap-1.5">
               {([["back", "◀ عقب · Back"], ["on", "▶ برو · Walk"]] as const).map(([k, label]) => (
                 <button
@@ -2681,6 +2872,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               {/* Only the frame rate (owner, 2026-11-06: "remove the word recommended and extend the bar on its place"). */}
               <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-white/70">{fpsOf(speed)} fps</span>
             </label>
+          </div>
           </div>
 
           {/* A door in reach: step inside. */}
@@ -2738,9 +2930,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               ← Back to the street · بازگشت به خیابان
             </button>
           )}
-          {tourOf && !view.busy && !editing && (
+          {(tourOf || (kitOn && slug)) && !view.busy && !editing && (
             <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-white/25 bg-black/70 p-1 text-[14px] font-semibold text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
-              <a href={`/vca/tour?s=${tourOf}`} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
+              <a href={`/vca/tour?s=${tourOf ?? slug}`} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
               <span className="rounded-full bg-[#00B8C8] px-4 py-1.5 text-[#06131c]">👣 Free Tour</span>
             </div>
           )}
@@ -2906,6 +3098,33 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           catalogue={catalogue}
           saveCatalogue={saveCatalogue}
         />
+      )}
+      </div>
+      {kitOn && kit && (
+        <div className="absolute inset-x-0 bottom-0" style={{ height: "23%" }}>
+          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} paused={trayPaused || !drive || veil || Boolean(picked)} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
+        </div>
+      )}
+      {/* Going back to the shelf of a photo tapped in the tray: a short fade over the jump. */}
+      <div className={`pointer-events-none fixed inset-0 z-[44] bg-black transition-opacity duration-300 ${veil ? "opacity-100" : "opacity-0"}`} aria-hidden="true" />
+      {picked && kitOn && kit && (
+        <>
+          <KitBridge from={picked.from} area={picked.area} right={picked.panel.left} url={picked.section.url}
+            aspect={picked.section.w && picked.section.h ? picked.section.w / picked.section.h : picked.from.width / Math.max(1, picked.from.height)}
+            target={picked.target} onClose={closePicked} />
+          <div className="fixed z-50" style={{ left: picked.panel.left, top: picked.panel.top, width: picked.panel.width, height: picked.panel.height }}>
+            <KitPanel section={picked.section} title={picked.shelf.label} merchant={kit.merchant} href={typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined}
+              lang={kitLang} onLang={setKitLang} onClose={closePicked} className="h-full w-full" />
+          </div>
+        </>
+      )}
+      {/* Phones stay upright (owner, 2026-11-15: "phones should stay upright and not landscape for best experience"). */}
+      {kitOn && sideways && (
+        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/95 p-6 text-center text-white">
+          <span className="text-[44px]" aria-hidden="true">📱↻</span>
+          <p className="text-[17px] font-bold">Please hold your phone upright</p>
+          <p dir="rtl" className="text-[16px]">لطفاً گوشی را عمودی نگه دارید</p>
+        </div>
       )}
     </div>
   );
