@@ -371,6 +371,14 @@ plan and the Managed Agents decision are in
     funnel, and the shopping panel (`components/kit/KitPanel.tsx`) on the right: names, prices, a weight for what is
     sold by the kilo, «Add to basket», Farsi / English. No zooming into the photo: this is the e-commerce step.
     Closing the panel closes the photo and the walk goes on. Phones upright only (a notice when held sideways).
+  - **Share keys almost everywhere; the photo is never shared** (owner, 2026-11-15: *"share key should be almost
+    everywhere, on shelf (e-commerce shelf …), on shelf level (Type IV) and on products (type V) and receivers should
+    end up exactly on the same spot on walking tour and the same photo should be made open"*). `ShareKey.tsx` (the
+    phone's share sheet, else the link copied) on the Shelf Tour's whole shelf and each section, and in the panel on
+    the section and each product. The link is the store's walk (`ShopKit.link`, short when it has one) with `shelf`,
+    `section`, `product` (`kitShareLink` / `readKitShare` / `sharedSection` / `wholeShelf` in `kitRules.ts`). The
+    Free Tour opening it skips the door photo, goes to the shelf, stops facing it, and opens what a tray tap opens:
+    the section (a product lit in the panel), or for a shelf its Type III photo with all its products.
   - **Shelf Tour** (`components/kit/KitShelfTour.tsx`, from `TourPage.tsx`): no video. Each shelf opens on its whole
     photo, glides into each section in turn, a tap on a section opens the same 3× photo and panel; «Next shelf ›».
   - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.

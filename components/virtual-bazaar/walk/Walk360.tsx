@@ -70,7 +70,7 @@ import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
-import { coverOf, shelfMoment, trayShelf, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { coverOf, readKitShare, sharedSection, shelfMoment, trayShelf, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
@@ -648,9 +648,15 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   const deepItem = useRef<number | null>(null);
   /** Set once for the whole visit: the door photo is skipped on a product link (`deepItem` is cleared once used). */
   const deepLinked = useRef(false);
+  /** A share key's link (owner, 2026-11-15: "receivers should end up exactly on the same spot on walking tour and the
+   *  same photo should be made open"): `?shelf=&section=&product=`. Kept in the address, like `?p=`. */
+  const deepShare = useRef<KitShare | null>(null);
   useEffect(() => {
-    deepItem.current = productParam(new URLSearchParams(window.location.search).get("p"));
-    deepLinked.current = deepItem.current !== null;
+    const q = new URLSearchParams(window.location.search);
+    deepItem.current = productParam(q.get("p"));
+    // A shared shelf, section or product (the pastry kit's share keys) skips the door photo too.
+    deepShare.current = readKitShare(q);
+    deepLinked.current = deepItem.current !== null || deepShare.current !== null;
   }, []);
   const [time, setTime] = useState({ now: 0, total: 0 });
   /** Where the shopper's finger holds the bar (null: not holding it). The bar shows this, never the video's catching-up time. */
@@ -2536,7 +2542,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   const [kitLang, setKitLang] = useState<KitLang>("en");
   const [veil, setVeil] = useState(false);
   type Box = { left: number; top: number; width: number; height: number };
-  const [picked, setPicked] = useState<{ section: ShopSection; shelf: ShopShelf; from: Box; area: Box; panel: Box; target: Array<[number, number]> | null } | null>(null);
+  const [picked, setPicked] = useState<{ section: ShopSection; shelf: ShopShelf; from: Box; area: Box; panel: Box; target: Array<[number, number]> | null; highlight?: string } | null>(null);
   const pickedRef = useRef(picked);
   pickedRef.current = picked;
   const driveRef = useRef(drive);
@@ -2575,9 +2581,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
    * section on the right"). A photo of a shelf no longer in view (the tray loops the last one): the walk goes back to
    * that shelf first, through a short fade, and faces it (owner: "the free tour will smoothly move back there").
    */
-  async function pickSection(sec: ShopSection, el: HTMLElement) {
+  async function pickSection(sec: ShopSection, el: HTMLElement | null, opts: { shelf?: ShopShelf; highlight?: string } = {}) {
     const e = engine.current, top = topRef.current;
-    const shelf = kit?.shelves.find((x) => x.sections.some((y) => y.id === sec.id));
+    const shelf = opts.shelf ?? kit?.shelves.find((x) => x.sections.some((y) => y.id === sec.id));
     if (!e || !top || !shelf || pickedRef.current) return;
     setDrive(null);
     setTrayPaused(true);
@@ -2596,7 +2602,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         await wait(320);
       }
     }
-    const tb = top.getBoundingClientRect(), r = el.getBoundingClientRect();
+    const tb = top.getBoundingClientRect();
+    // The tray's photo it opens from (a shared whole shelf: the tray's first photo of that shelf, else the tray's middle).
+    const slot = el ?? traySlot(sec.id) ?? traySlot(null, shelf.id);
+    const r = slot?.getBoundingClientRect() ?? { left: tb.left + tb.width / 2 - 60, top: tb.bottom + 10, width: 120, height: 90 };
     const at = (sec.quad && e.shelfOnScreen(shelf.outline, sec.quad)) || null;
     const whole = at ? null : e.shelfOnScreen(shelf.outline, null);
     const target: Array<[number, number]> | null = at
@@ -2605,9 +2614,37 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     // The panel: the right of the walk's part (on a phone a little more than half of it).
     const pw = tb.width < 640 ? tb.width * 0.58 : Math.min(416, tb.width * 0.4);
     const panel = { left: tb.left + tb.width - pw - 10, top: tb.top + 10, width: pw, height: tb.height - 20 };
-    setPicked({ section: sec, shelf, from: { left: r.left, top: r.top, width: r.width, height: r.height }, area: { left: tb.left, top: tb.top, width: tb.width, height: tb.height }, panel, target });
+    setPicked({ section: sec, shelf, from: { left: r.left, top: r.top, width: r.width, height: r.height }, area: { left: tb.left, top: tb.top, width: tb.width, height: tb.height }, panel, target, ...(opts.highlight ? { highlight: opts.highlight } : {}) });
     track("kit-open");
   }
+  /** A tray photo on screen now: of that section, or (`shelf`) the first of that shelf; the one in view of its copies. */
+  function traySlot(section: string | null, shelf?: string): HTMLElement | null {
+    const all = [...document.querySelectorAll<HTMLElement>(section ? `[data-kit-section="${CSS.escape(section)}"]` : `[data-kit-shelf="${CSS.escape(shelf ?? "")}"]`)];
+    const w = window.innerWidth;
+    return all.find((b) => { const r = b.getBoundingClientRect(); return r.left >= 0 && r.right <= w; }) ?? all[0] ?? null;
+  }
+  // LANDING FROM A SHARE KEY: once the walk walks (after «Start walking», the tap the video needs, as `?p=`), the
+  // walk goes to the shared shelf, stands facing it, the tray shows it, and the same photo and panel open as a tray tap
+  // would (a whole shelf: its own photo and all its products; a product: lit in the panel).
+  useEffect(() => {
+    const to = deepShare.current;
+    if (!to || !kitOn || !kit || phase !== "walking") return;
+    const shelf = kit.shelves.find((x) => x.id === to.shelf);
+    deepShare.current = null;
+    if (!shelf) return;
+    const sec = sharedSection(shelf.sections, to) ?? wholeShelf(shelf);
+    if (!sec) return;
+    setDrive(null);
+    setTrayPaused(true);
+    if (trayShelves.some((x) => x.id === shelf.id)) {
+      setTrayId(shelf.id);
+      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), shelf.id, (id) => { if (id) setTrayId(id); });
+    }
+    // The tray slides the shelf in (under a second) before its photo is opened from it. Not cancelled by a re-render:
+    // the share is used once (`deepShare` is cleared above).
+    void wait(1000).then(() => pickSection(sec, null, { shelf, highlight: to.product }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kitOn, kit, phase, trayShelves]);
   /** Closing the panel closes the photo and the arrow, and the walk (and the tray) go on (owner: "yes it starts again"). */
   function closePicked() {
     setPicked(null);
@@ -3114,7 +3151,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
             target={picked.target} onClose={closePicked} />
           <div className="fixed z-50" style={{ left: picked.panel.left, top: picked.panel.top, width: picked.panel.width, height: picked.panel.height }}>
             <KitPanel section={picked.section} title={picked.shelf.label} merchant={kit.merchant} href={typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : undefined}
-              lang={kitLang} onLang={setKitLang} onClose={closePicked} className="h-full w-full" />
+              lang={kitLang} onLang={setKitLang} onClose={closePicked} className="h-full w-full"
+              share={{ base: kit.link, shelf: picked.shelf.id }} highlight={picked.highlight} />
           </div>
         </>
       )}

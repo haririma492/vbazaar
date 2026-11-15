@@ -57,7 +57,7 @@ function Track({ shelf, paused, picked, onPick, leaving }: {
   const list = Array.from({ length: copies }, () => shelf.sections).flat();
   const photos = (k: string) => list.map((s, i) => (
     <button
-      key={`${k}${i}-${s.id}`} type="button" data-track="tray-photo"
+      key={`${k}${i}-${s.id}`} type="button" data-track="tray-photo" data-kit-section={s.id} data-kit-shelf={shelf.id}
       onClick={(e) => { e.stopPropagation(); onPick(s, e.currentTarget); }}
       aria-label={`${shelf.label.en}, section ${s.i}`}
       className={`relative h-full shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-lg ring-1 transition-[box-shadow,opacity] ${picked === s.id ? "ring-2 ring-amber-300" : picked ? "opacity-60 ring-white/15" : "ring-white/15 hover:ring-amber-200/70"}`}
