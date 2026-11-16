@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { trayByTime, moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -137,4 +137,14 @@ test("a product photo moves to another section with its match, taking the next f
   assert.deepEqual(s2.products.map((p) => [p.id, p.match?.web]), [["z1-2-p1", undefined], ["z1-2-p2", "w"]]);
   assert.ok("error" in moveProduct(k, "z1-1-p1", 4));
   assert.ok("error" in moveProduct(k, "nope", 2));
+});
+
+test("with the operator's marks the tray takes the shelf whose mark the walk has passed", () => {
+  const sh = [{ id: "b", trayAt: 9 }, { id: "a", trayAt: 0 }, { id: "c" }];
+  assert.equal(trayByTime(sh, 0), "a");
+  assert.equal(trayByTime(sh, 8.9), "a");
+  assert.equal(trayByTime(sh, 9), "b");
+  assert.equal(trayByTime(sh, 60), "b");
+  assert.equal(trayByTime([{ id: "x", trayAt: 5 }], 1), "x");
+  assert.equal(trayByTime([{ id: "x" }], 1), null);
 });

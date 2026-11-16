@@ -59,6 +59,7 @@ import { readShelfPhotos, readShelfTitles } from "@/lib/stores/shelfTitles";
 import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refreshAll";
 import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
+import { setZoom } from "@/lib/splats/walks";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
 import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
@@ -210,6 +211,23 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     let why = "";
     await updateKit(s.slug, (k) => { const r = moveProduct(k, id, to); if ("error" in r) { why = r.error; return k; } return r.kit; });
     return why ? fail(400, why) : ok();
+  }
+  // When the tray takes a shelf (owner, 2026-11-16): `at`, the walk's seconds, or null to take the mark off.
+  if (body.action === "kitTrayAt") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.shelf ?? "");
+    const at = body.at === null ? null : Number(body.at);
+    if (!KIT_ID_RE.test(id) || (at !== null && !(Number.isFinite(at) && at >= 0 && at < 36000))) return fail(400, "Which shelf, and from which second of the walk?");
+    if (!s.out.walk) return fail(409, "This store has no walk yet.");
+    const walks = await readWalks();
+    const w = walks.walks[s.out.walk];
+    const z = w?.zooms?.find((x) => x.id === id);
+    if (!z) return fail(400, "That shelf is not marked on the walk.");
+    const { trayAt: _old, ...rest } = z;
+    void _old;
+    const saved = await writeWalks(setZoom(walks, s.out.walk, at === null ? rest : { ...rest, trayAt: Math.round(at * 100) / 100 }), walks);
+    if (saved.conflicts.length) return fail(409, `Not saved: ${saved.conflicts.join(" ")}`);
+    return ok();
   }
   if (body.action === "kitPlace") {
     if (who !== "operator") return fail(403, "The operator only.");

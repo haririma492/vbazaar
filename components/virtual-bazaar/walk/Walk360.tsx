@@ -70,7 +70,7 @@ import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
-import { coverOf, readKitShare, sharedSection, shelfMoment, trayCross, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
@@ -568,7 +568,7 @@ type Engine = {
    */
   setKit: (on: boolean, onPlainTap: (() => void) | null) => void;
   /** The shelves the tray follows (their borders), and who is told when the shelf on screen changes (`trayShelf`). */
-  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }> | null, start: string | null, onChange: ((id: string | null, dir?: 1 | -1) => void) | null) => void;
+  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }>; trayAt?: number }> | null, start: string | null, onChange: ((id: string | null, dir?: 1 | -1) => void) | null) => void;
   /** Where a shelf (or, with `quad`, a part of its photo) is on the screen now, in the walk area's pixels; null when out of view. */
   shelfOnScreen: (outline: Array<{ t: number; c: number[] }>, quad: number[] | null) => { poly: Array<[number, number]>; cover: number } | null;
   /** Turn to face a direction of this walk (yaw, pitch); nothing on a flat video. */
@@ -1263,7 +1263,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     /** The pastry redesign's tour (`setKit`): no lights, and a tap is stop / walk on. */
     let kitOn = false;
     let onPlainTap: (() => void) | null = null;
-    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }>; cur: string | null; onChange: (id: string | null, dir?: 1 | -1) => void; prev: Map<string, number> } | null = null;
+    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }>; trayAt?: number }>; cur: string | null; onChange: (id: string | null, dir?: 1 | -1) => void; prev: Map<string, number> } | null = null;
     let itemPreview: WalkItem | null = null;
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
@@ -1874,6 +1874,18 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     function updateTray() {
       if (!tray || !current || busy || current.video.readyState < 1) return;
       const round = !current.flat, t = tShown(), W = el.clientWidth;
+      // The operator's marks, when there are any (owner, 2026-11-16): the shelf whose mark the walk has passed; the new
+      // sections come in from the right going forward, from the left going back.
+      const byTime = trayByTime(tray.shelves, t);
+      if (byTime) {
+        if (byTime !== tray.cur) {
+          const order = tray.shelves.map((x) => x.id);
+          const dir: 1 | -1 = tray.cur === null || order.indexOf(byTime) > order.indexOf(tray.cur) ? -1 : 1;
+          tray.cur = byTime;
+          tray.onChange(byTime, dir);
+        }
+        return;
+      }
       const now: Array<{ id: string; x: number }> = [];
       for (const s of tray.shelves) {
         const c = outlineAt({ id: "", label: { en: "" }, pins: [], outline: s.outline }, t, round);
@@ -2540,7 +2552,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   const kitOn = Boolean(kit && phase !== "loading" && !editing && !spotMode && (!kit.walk || kit.walk === view.key));
   const topRef = useRef<HTMLDivElement>(null);
   /** The tray's shelves: those with section photos and a border on the walk, in the order the walk reaches them. */
-  const trayShelves = useMemo(() => (kit?.shelves ?? []).filter((x) => x.sections.length && x.outline.length).sort((a, b) => a.outline[0].t - b.outline[0].t), [kit]);
+  const trayShelves = useMemo(() => (kit?.shelves ?? []).filter((x) => x.sections.length && x.outline.length).sort((a, b) => (a.trayAt ?? a.outline[0].t) - (b.trayAt ?? b.outline[0].t)), [kit]);
   const [trayId, setTrayId] = useState<string | null>(null);
   /** Which way the last change of shelf moved (-1: the picture went left, so the new sections come in from the right). */
   const [trayDir, setTrayDir] = useState<1 | -1>(-1);
@@ -2566,7 +2578,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     if (!kitOn || !trayShelves.length) { engine.current?.setTray(null, null, null); return; }
     const first = trayShelves[0].id;
     setTrayId((cur) => (cur && trayShelves.some((x) => x.id === cur) ? cur : first));
-    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), null, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
+    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline, trayAt: x.trayAt })), null, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
     return () => engine.current?.setTray(null, null, null);
   }, [kitOn, trayShelves, phase]);
   // Phones stay upright: held sideways, the walk asks to be turned back.
@@ -2644,7 +2656,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     setTrayPaused(true);
     if (trayShelves.some((x) => x.id === shelf.id)) {
       setTrayId(shelf.id);
-      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), shelf.id, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
+      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline, trayAt: x.trayAt })), shelf.id, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
     }
     // The tray slides the shelf in (under a second) before its photo is opened from it. Not cancelled by a re-render:
     // the share is used once (`deepShare` is cleared above).

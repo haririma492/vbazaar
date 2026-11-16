@@ -275,7 +275,7 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
       id: sh.id, ...(n !== undefined ? { n } : {}),
       label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: n ? `Shelf ${n}` : "Shelf", fa: n ? `قفسه ${faNum(n)}` : "قفسه" },
       photo: sh.photo?.url ? { url: sh.photo.url, thumb: sh.photo.thumb ?? sh.photo.url, w: sh.photo.w ?? 0, h: sh.photo.h ?? 0 } : null,
-      sections, outline: z?.outline ?? [],
+      sections, outline: z?.outline ?? [], ...(z?.trayAt !== undefined ? { trayAt: z.trayAt } : {}),
     }];
   });
   // In walking order: when each shelf is first in view, then its number.
@@ -301,12 +301,22 @@ export async function kitForPage(s: StoreRecord) {
       : run.products.length ? `The Website Explorer read ${run.products.length} products but they are not on the store's list: open the Website Explorer and press «Put on the store's page».`
       : `The Website Explorer found no products on the site (${run.note}).`;
   }
+  // The walk's video for marking when the tray takes each shelf (its phone copy, lighter; a signed link, as players get).
+  let walkVideo: string | null = null;
+  if (s.out.walk) {
+    const { phoneKeyOf } = await import("@/lib/splats/walks");
+    const { webObjectExists } = await import("@/lib/splats/r2");
+    const { mediaPath } = await import("@/lib/splats/media");
+    const phone = phoneKeyOf(s.out.walk);
+    walkVideo = mediaPath((await webObjectExists(phone).catch(() => false)) ? phone : s.out.walk);
+  }
   return {
-    working: kitWorking(s.slug), note: kitNote(s.slug), site, siteNote,
+    working: kitWorking(s.slug), note: kitNote(s.slug), site, siteNote, walkVideo,
     shelves: ids.map((id) => {
       const z = zooms.find((x) => x.id === id);
       const sh = k.shelves.find((x) => x.id === id);
-      return { id, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
+      const o = z?.outline ?? [];
+      return { id, trayAt: z?.trayAt ?? null, border: o.length ? [o[0].t, o[o.length - 1].t] : null, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
     }),
   };
 }

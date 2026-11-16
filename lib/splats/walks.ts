@@ -334,6 +334,13 @@ export type WalkZoom = {
   outline?: ZoomFrame[];
   /** Placed by the finder, not by the operator's tap: a new run may replace it; an operator's pin is never replaced. */
   auto?: boolean;
+  /**
+   * WHEN THE TRAY TAKES THIS SHELF (owner, 2026-11-16: "the bottom tray does not move to the next shelf … on the store
+   * page there needs to be a way that operator mark where each shelf is so it can switch the bottom tray to the shelf
+   * as shopper pass in front of each"): the walk's time, in seconds, from which the tray shows this shelf's sections,
+   * until the next shelf's time. Marked on the store's page; moved by a cut like the border.
+   */
+  trayAt?: number;
 };
 export type ZoomFrame = { t: number; c: number[] };
 /** Steps further apart than this are two visits to the shelf: no border is drawn across the gap. */
@@ -847,6 +854,7 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
           ...(nameEn || nameFa ? { name: nameFa ? { en: nameEn, fa: nameFa } : { en: nameEn } } : {}),
           pins: sortItemPins(pins.map((q) => ({ t: q.t as number, x: q.x as number, y: q.y as number }))),
           ...(outline.length ? { outline } : {}), ...(x.auto === true ? { auto: true } : {}),
+          ...(finite(x.trayAt) && (x.trayAt as number) >= 0 && (x.trayAt as number) < 36000 ? { trayAt: Math.round((x.trayAt as number) * 100) / 100 } : {}),
         });
       }
       if (zooms.length) walk.zooms = zooms;

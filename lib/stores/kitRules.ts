@@ -53,6 +53,8 @@ export type ShopShelf = {
   sections: ShopSection[];
   /** The border on the walk, step by step (the walk's units). */
   outline: Array<{ t: number; c: number[] }>;
+  /** From when (the walk's seconds) the tray shows this shelf: marked by the operator on the store's page. */
+  trayAt?: number;
 };
 export type ShopKit = { store: string; walk: string | null; /** The walk's address for share links (short when the store has one). */ link: string | null; title: { en: string; fa: string } | null; merchant: string; shelves: ShopShelf[] };
 
@@ -354,4 +356,18 @@ export function moveProduct(kit: Kit, productId: string, toSection: number): { k
       })),
     },
   };
+}
+
+/**
+ * THE TRAY'S SHELF BY THE OPERATOR'S MARKS (owner, 2026-11-16: "on the store page there needs to be a way that operator
+ * mark where each shelf is so it can switch the bottom tray to the shelf as shopper pass in front of each"). Of the
+ * shelves with a mark (`trayAt`, the walk's seconds), the one whose mark the walk `t` has most recently passed; before
+ * the first mark, the first. Null when no shelf is marked (the tray then follows the picture, `trayCross`).
+ */
+export function trayByTime(shelves: Array<{ id: string; trayAt?: number }>, t: number): string | null {
+  const marked = shelves.filter((s) => typeof s.trayAt === "number").sort((a, b) => a.trayAt! - b.trayAt!);
+  if (!marked.length) return null;
+  let pick = marked[0].id;
+  for (const s of marked) if (s.trayAt! <= t + 1e-6) pick = s.id;
+  return pick;
 }

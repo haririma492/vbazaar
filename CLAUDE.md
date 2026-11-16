@@ -414,7 +414,17 @@ plan and the Managed Agents decision are in
       with the shelf dropped when any corner was behind the view: on nuttime (shelves 1 and 2 both bordered from 0 s)
       the tray never changed (owner: *"the bottom tray does not move to the next shelf sections when we walk past
       shelf 1"*). Only the shelf's middle is projected now; the first shelf is the one in view, not the first in time.
-    - **No arrow** (*"remove the white thin arrow"*): the funnel and the section's thin outline on the shelf stay.
+    - **⚠️ The operator marks WHEN the tray takes each shelf, on the store's page** (owner, 2026-11-16: *"the bottom
+      tray does not move to the next shelf, on the store page there needs to be a way that operator mark where each
+      shelf is so it can switch the bottom tray to the shelf as shopper pass in front of each"*; the picture-based rule
+      above still did not switch on nuttime). «When the tray shows each shelf» (`components/kit/TrayTimeline.tsx`, in
+      `KitCard.tsx`): the walk's video (its phone copy, the panorama as filmed) and a time bar with each shelf's
+      bordered stretch and mark; «The tray shows this shelf from here» saves the video's second as `WalkZoom.trayAt`
+      (action `kitTrayAt`, in `walks.json`, so a cut moves it: `cut.ts`; a mark in a stretch cut out goes to where the
+      next kept stretch starts). With any shelf marked, the Free Tour's tray follows the marks (`trayByTime`,
+      `kitRules.ts`, tested): from a shelf's mark to the next, that shelf; before the first mark, the first; sliding in
+      from the right going forward, from the left going back. With none marked, the picture rule (`trayCross`).
+: the funnel and the section's thin outline on the shelf stay.
     - **Every product can go in the basket, priced or not** (*"for proof of concept"*): a line with no price.
     - **No «Shopper's view | Owner's view» switch with the new layout** (no lights to name; the editor's address says
       whose tour it is). It stays for stores still on the old tour.
