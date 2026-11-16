@@ -458,6 +458,12 @@ async function stepTag(s: StoreRecord, say: (note: string) => Promise<void>): Pr
   const walkKey = s.out.walk;
   if (!walkKey) throw new Error("The walk is not made yet.");
   if (s.out.found === walkKey) return "The tags were pinned while the products were found in the video.";
+  // A store that shops from its shelf photos (the pastry redesign's kit) shows no lights: nothing to find in the video,
+  // and nothing of the store's AI budget spent on it (owner, 2026-11-16: the lights are obsolete there).
+  const { readKit } = await import("./kit");
+  const { kitReady } = await import("./kitRules");
+  const kit = await readKit(s.slug).catch(() => null);
+  if (kit && kitReady(kit)) return "Not needed: this store's shoppers buy from its shelf photos (the tray and the panel), not from lights on the video.";
   const c = await readCatalogue(sceneOf(s.slug));
   if (!c?.products.length) return "No products to tag.";
   const dir = mkdtempSync(join(tmpdir(), "tag-"));
