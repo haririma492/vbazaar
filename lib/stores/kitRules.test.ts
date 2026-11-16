@@ -100,17 +100,21 @@ test("the operator's website products on a section: in order, no repeats, only o
   assert.deepEqual(k.shelves[0].sections[0].items, []);
 });
 
-test("the tray changes shelf when the walk's middle passes the next shelf's middle, in the direction it moved", () => {
-  const prev = new Map([["a", 380], ["b", 620]]);
-  // b slides left past the middle (500): the tray takes b, coming in from the right.
-  assert.deepEqual(trayCross("a", prev, [{ id: "a", x: 260 }, { id: "b", x: 495 }], 500), { id: "b", dir: -1 });
-  // Not yet past the middle: no change.
-  assert.equal(trayCross("a", prev, [{ id: "a", x: 300 }, { id: "b", x: 560 }], 500), null);
-  // Walking back: a slides right past the middle while b is the tray's.
-  assert.deepEqual(trayCross("b", new Map([["a", 470]]), [{ id: "a", x: 530 }], 500), { id: "a", dir: 1 });
-  // The tray's shelf is gone (a jump) and another sits at the middle: that one.
-  assert.deepEqual(trayCross("a", new Map(), [{ id: "c", x: 510 }], 500), { id: "c", dir: -1 });
-  assert.equal(trayCross("a", new Map(), [{ id: "a", x: 900 }, { id: "c", x: 510 }], 500), null);
+test("the tray follows the shelf nearest the view's middle, once it is clearly nearer, coming in the way it moves", () => {
+  const W = 1000;
+  // At the start nothing is the tray's: the shelf nearest the middle.
+  assert.equal(trayCross(null, new Map(), [{ id: "a", x: 300 }, { id: "b", x: 560 }], W)?.id, "b");
+  // b is nearer than a, but not clearly (within 8% of the width): no flicker.
+  assert.equal(trayCross("a", new Map(), [{ id: "a", x: 430 }, { id: "b", x: 560 }], W), null);
+  // b clearly nearer, sliding left: in from the right.
+  assert.deepEqual(trayCross("a", new Map([["b", 620]]), [{ id: "a", x: 200 }, { id: "b", x: 540 }], W), { id: "b", dir: -1 });
+  // Walking back: a comes back from the left, moving right.
+  assert.deepEqual(trayCross("b", new Map([["a", 380]]), [{ id: "a", x: 470 }, { id: "b", x: 800 }], W), { id: "a", dir: 1 });
+  // The tray's shelf is out of view: the one in view at once, even off-middle.
+  assert.equal(trayCross("a", new Map(), [{ id: "c", x: 900 }], W)?.id, "c");
+  // Nothing in view: the tray keeps its shelf.
+  assert.equal(trayCross("a", new Map(), [], W), null);
+  assert.equal(trayCross("a", new Map(), [{ id: "c", x: 3000 }], W), null);
 });
 
 test("a section's products: the website's picked for it, and its own photos not already one of them", () => {

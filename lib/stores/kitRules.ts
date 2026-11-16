@@ -290,26 +290,27 @@ export function wholeShelf(sh: ShopShelf): ShopSection | null {
 }
 
 /**
- * THE TRAY CHANGES SHELF WHEN THE WALK'S MIDDLE PASSES THE NEXT SHELF'S MIDDLE (owner, 2026-11-16: "when center of
- * moving tour is past the center of the next shelf then the bottom tray will change to the next set of sections …
- * smooth … in the direction of move of the tour and the old set of sections will move away from the other side").
- * `prev`: each shelf's middle on the screen last frame (x, pixels); `now`: this frame's; `mid`: the screen's middle.
- * A shelf other than the tray's whose middle crossed the screen's middle since last frame becomes the tray's; so does
- * one sitting at the middle (within `near` px) while the tray's shelf is not on screen at all (a jump, a turn).
- * `dir` is which way the picture moved: -1 leftward (the new set comes in from the right, the old leaves left),
- * +1 rightward. Null: the tray keeps its shelf.
+ * THE TRAY FOLLOWS THE SHELF THE WALK IS LOOKING AT (owner, 2026-11-16: "when center of moving tour is past the center
+ * of the next shelf then the bottom tray will change to the next set of sections … in the direction of move of the
+ * tour"; then: "the bottom tray does not move to the next shelf sections when we walk past shelf 1"). The first rule
+ * waited for a shelf's middle to CROSS the screen's middle, which a walk that starts already past it, or a shelf
+ * briefly lost from view, never does. Now: of the shelves whose middle is on or near the screen (`now`: x in pixels,
+ * `w` the screen's width), the one nearest the screen's middle; the tray moves to it once it is clearly nearer than
+ * the tray's shelf (by `hold` of the width, so two shelves side by side do not flicker), or at once when the tray's
+ * shelf is not in view at all. `dir` is the way it comes in: -1 from the right (the picture moving left), +1 from the
+ * left; `prev` (last frame's x) says how it moved, else which side of the tray's shelf it is on. Null: no change.
  */
-export function trayCross(cur: string | null, prev: Map<string, number>, now: Array<{ id: string; x: number }>, mid: number, near = 40): { id: string; dir: 1 | -1 } | null {
-  for (const s of now) {
-    if (s.id === cur) continue;
-    const p = prev.get(s.id);
-    if (p !== undefined && (p - mid) * (s.x - mid) <= 0 && p !== s.x) return { id: s.id, dir: s.x < p ? -1 : 1 };
-  }
-  if (cur === null || !now.some((s) => s.id === cur)) {
-    const c = now.filter((s) => s.id !== cur && Math.abs(s.x - mid) <= near).sort((a, b) => Math.abs(a.x - mid) - Math.abs(b.x - mid))[0];
-    if (c) { const p = prev.get(c.id); return { id: c.id, dir: p !== undefined && c.x > p ? 1 : -1 }; }
-  }
-  return null;
+export function trayCross(cur: string | null, prev: Map<string, number>, now: Array<{ id: string; x: number }>, w: number, hold = 0.08): { id: string; dir: 1 | -1 } | null {
+  const mid = w / 2;
+  const seen = now.filter((s) => s.x > -0.25 * w && s.x < 1.25 * w);
+  if (!seen.length) return null;
+  const best = seen.reduce((a, b) => (Math.abs(b.x - mid) < Math.abs(a.x - mid) ? b : a));
+  if (best.id === cur) return null;
+  const mine = seen.find((s) => s.id === cur);
+  if (mine && Math.abs(best.x - mid) > Math.abs(mine.x - mid) - hold * w) return null;
+  const p = prev.get(best.id);
+  const dir: 1 | -1 = p !== undefined && Math.abs(best.x - p) > 0.5 ? (best.x < p ? -1 : 1) : mine ? (best.x > mine.x ? -1 : 1) : best.x >= mid ? -1 : 1;
+  return { id: best.id, dir };
 }
 
 /** How many products a section will list in the panel: the website products picked for it, and the photos from the

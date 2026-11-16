@@ -401,9 +401,13 @@ plan and the Managed Agents decision are in
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
       scrolls them if they do not fit), and on the dark right-hand side the shelf's NAME, large (`KitTray.tsx`).
-    - **It changes shelf when the walk's middle passes the next shelf's middle** (`trayCross`, `kitRules.ts`, tested;
-      it replaced `trayShelf`'s "more than half the screen"), sliding in over 1.1 s the way the picture moved: the new
-      sections come in from the side the walk is going to, the old ones leave by the other.
+    - **It follows the shelf the walk is looking at** (`trayCross`, `kitRules.ts`, tested): the shelf whose MIDDLE is
+      nearest the view's middle, once clearly nearer than the tray's (8% of the width, so two side by side do not
+      flicker), or at once when the tray's shelf is out of view; sliding in over 1.1 s the way the picture moved, the
+      old set leaving by the other side. ⚠️ First built (same day) as "a shelf's middle CROSSES the screen's middle",
+      with the shelf dropped when any corner was behind the view: on nuttime (shelves 1 and 2 both bordered from 0 s)
+      the tray never changed (owner: *"the bottom tray does not move to the next shelf sections when we walk past
+      shelf 1"*). Only the shelf's middle is projected now; the first shelf is the one in view, not the first in time.
     - **No arrow** (*"remove the white thin arrow"*): the funnel and the section's thin outline on the shelf stay.
     - **Every product can go in the basket, priced or not** (*"for proof of concept"*): a line with no price.
     - **No «Shopper's view | Owner's view» switch with the new layout** (no lights to name; the editor's address says

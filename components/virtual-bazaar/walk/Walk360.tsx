@@ -1878,10 +1878,12 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       for (const s of tray.shelves) {
         const c = outlineAt({ id: "", label: { en: "" }, pins: [], outline: s.outline }, t, round);
         if (!c) continue;
-        const poly = toScreen([0, 1, 2, 3].map((k) => [c[k * 2], c[k * 2 + 1]] as [number, number]));
-        if (poly) now.push({ id: s.id, x: (poly[0][0] + poly[1][0] + poly[2][0] + poly[3][0]) / 4 });
+        // The shelf's middle only (a corner behind the view no longer hides the whole shelf).
+        const m = quadPoints(c, [[0.5, 0.5]], round);
+        const at = m && toScreen(m);
+        if (at) now.push({ id: s.id, x: at[0][0] });
       }
-      const next = trayCross(tray.cur, tray.prev, now, W / 2);
+      const next = trayCross(tray.cur, tray.prev, now, W);
       tray.prev = new Map(now.map((s) => [s.id, s.x]));
       if (next) { tray.cur = next.id; tray.onChange(next.id, next.dir); }
     }
@@ -2564,7 +2566,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     if (!kitOn || !trayShelves.length) { engine.current?.setTray(null, null, null); return; }
     const first = trayShelves[0].id;
     setTrayId((cur) => (cur && trayShelves.some((x) => x.id === cur) ? cur : first));
-    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), first, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
+    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), null, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
     return () => engine.current?.setTray(null, null, null);
   }, [kitOn, trayShelves, phase]);
   // Phones stay upright: held sideways, the walk asks to be turned back.
