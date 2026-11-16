@@ -588,7 +588,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     // the camera's gyro and picture, owner 2026-11-05). Reads only; nothing changes.
     if (who !== "operator") return fail(403, "The operator only.");
     const raw = s.files.raw ?? [];
-    return ok({ raw: await Promise.all(raw.map(async (f) => ({ ...f, url: await presignGet(f.key, "master", 6 * 3600) }))) });
+    // The video upload too (2026-11-16: to read a new upload's size and codec when the Video agent cannot make it).
+    const video = s.files.video ? { ...s.files.video, url: await presignGet(s.files.video.key, "master", 6 * 3600) } : null;
+    return ok({ raw: await Promise.all(raw.map(async (f) => ({ ...f, url: await presignGet(f.key, "master", 6 * 3600) }))), video });
   }
   if (body.action === "titles") {
     // The titles read so far (owner or operator).
