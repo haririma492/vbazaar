@@ -26,6 +26,7 @@ import { thin } from "@/lib/stores/gigapanRules";
 import { followShelf } from "./followProduct";
 import type { ItemEngine } from "./WalkItems";
 import { uploadInParts } from "@/components/stores/upload";
+import ShelfProducts from "@/components/kit/ShelfProducts";
 import { MAX_SECTIONS, kitFileName, nextFree, parseKitName } from "@/lib/stores/kitRules";
 
 type Ready = { id: string; label: { en: string; fa: string }; manifest: string; thumb: string | null; mp: number };
@@ -276,9 +277,8 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
           <button className={key} disabled={Boolean(sending)} onClick={() => pickMany.current?.click()}>📷 Choose the section photos</button>
         </>)}
         {at.step === "next" && (<>
-          <p className="font-semibold">Products and prices: next, on the store&apos;s page</p>
-          <p className="text-white/70">There: each section&apos;s product photos (<b>{kitFileName(cur?.n ?? 3, 2, 1)}</b>, …) and the website&apos;s products matched to them, with their prices.</p>
-          <a className={`${key} inline-block`} href={`/stores/${slug}#kit`} target="_blank" rel="noreferrer">Open the store&apos;s page ↗</a>
+          {/* Each section's products, here and now (owner, 2026-11-16): the website's, and photos from this computer. */}
+          <ShelfProducts slug={slug} shelfId={at.id} />
         </>)}
         {sending && (
           <div>
@@ -315,12 +315,13 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
                 {o?.length ? `🟩 Border ${mmss(o[0].t)}–${mmss(o[o.length - 1].t)}${z.auto ? " (found by the finder)" : ""}` : `🔍 only, ${mmss(z.pins[0].t)}–${mmss(z.pins[z.pins.length - 1].t)}: no border yet`}
                 {o?.length === 1 ? " — one moment only: «Draw again»" : ""}
               </p>
-              <p className="text-white/60">📷 Its quality photo and sections: «📷 Photos»; products and prices on the store&apos;s page.</p>
+              <p className="text-white/60">📷 Its quality photo and sections: «📷 Photos»; each section&apos;s products: «🛍 Products».</p>
               <div className="flex flex-wrap gap-1">
                 <button className={btn} onClick={() => engine.current?.seek((o?.length ? o[o.length >> 1] : z.pins[z.pins.length >> 1]).t)}>Go to</button>
                 <button className={btn} onClick={() => { setText(z.n !== undefined ? String(z.n) : ""); setAt({ step: "n", id: z.id }); }}>Number and name</button>
                 <button className={btn} disabled={Boolean(following)} onClick={() => setAt({ step: "tap", id: z.id, taps: [] })}>Draw again</button>
                 <button className={btn} onClick={() => { setStatus(null); setAt({ step: "photo", id: z.id }); }}>📷 Photos</button>
+                <button className={btn} onClick={() => { setStatus(null); setAt({ step: "next", id: z.id }); }}>🛍 Products</button>
                 {viewKey && <button className={btn} onClick={() => {
                   if (!confirm(`Take «${z.label.en}» off the walk?${z.manifest ? " Its photos stay on the store's page." : ""}`)) return;
                   if (following?.id === z.id && run.current) { run.current.cancelled = true; setFollowing(null); }

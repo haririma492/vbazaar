@@ -378,7 +378,10 @@ plan and the Managed Agents decision are in
     into the section's next product slot and tied to that website product (`kitMatch`), so the panel shows it FIRST,
     in that product's place, with the website's photos after it (`shopKit`).
   - **Uploads:** after the 4 corners in `?edit=1`, the editor asks for the Type III, then the Type IV photos
-    (`WalkShelves.tsx`); products and the website matches are on the store's page («Shelf photos for shopping»,
+    (`WalkShelves.tsx`), then EACH SECTION'S PRODUCTS right there, one section at a time (owner, 2026-11-16: the card
+    that sent them to the store's page was not what was wanted; `components/kit/ShelfProducts.tsx`, the same
+    `SectionItems` box as the store's page: website products, photos from this computer, «📷 My own photo»; «🛍
+    Products» on a shelf reopens it); everything is also on the store's page («Shelf photos for shopping»,
     `KitCard.tsx`, also «Drop all the photos» by name). Actions `upload {kind:"kit", shelf, section?, product?}`,
     `kit`, `kitRun`, `kitMatch`, `kitPlace`, `kitRemove`; shoppers' copy `/api/kit/<slug>` (`shopKit`, prices read now).
   - **Free Tour** (`Walk360.tsx`, `components/kit/KitTray.tsx`, `KitBridge.tsx`): walk on the top 77%, no lights; wheel,
