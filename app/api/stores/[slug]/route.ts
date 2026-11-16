@@ -212,20 +212,27 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     await updateKit(s.slug, (k) => { const r = moveProduct(k, id, to); if ("error" in r) { why = r.error; return k; } return r.kit; });
     return why ? fail(400, why) : ok();
   }
-  // When the tray takes a shelf (owner, 2026-11-16): `at`, the walk's seconds, or null to take the mark off.
+  // When the tray takes a shelf, and when it leaves it (owner, 2026-11-16): `at` (its start) and/or `end`, the walk's
+  // seconds, each null to take it off. A field not sent is left as it is.
   if (body.action === "kitTrayAt") {
     if (who !== "operator") return fail(403, "The operator only.");
     const id = String(body.shelf ?? "");
-    const at = body.at === null ? null : Number(body.at);
-    if (!KIT_ID_RE.test(id) || (at !== null && !(Number.isFinite(at) && at >= 0 && at < 36000))) return fail(400, "Which shelf, and from which second of the walk?");
+    const sec = (v: unknown) => (v === null ? null : Number(v));
+    const ok2 = (v: number | null) => v === null || (Number.isFinite(v) && v >= 0 && v < 36000);
+    const hasAt = "at" in body, hasEnd = "end" in body;
+    const at = hasAt ? sec(body.at) : null, end = hasEnd ? sec(body.end) : null;
+    if (!KIT_ID_RE.test(id) || (!hasAt && !hasEnd) || !ok2(at) || !ok2(end)) return fail(400, "Which shelf, and which second of the walk?");
     if (!s.out.walk) return fail(409, "This store has no walk yet.");
     const walks = await readWalks();
     const w = walks.walks[s.out.walk];
     const z = w?.zooms?.find((x) => x.id === id);
     if (!z) return fail(400, "That shelf is not marked on the walk.");
-    const { trayAt: _old, ...rest } = z;
-    void _old;
-    const saved = await writeWalks(setZoom(walks, s.out.walk, at === null ? rest : { ...rest, trayAt: Math.round(at * 100) / 100 }), walks);
+    const startAt = hasAt ? at : z.trayAt ?? null, endAt = hasEnd ? end : z.trayEnd ?? null;
+    if (startAt !== null && endAt !== null && endAt <= startAt) return fail(400, "The shelf must end after it starts: play on past its start, then press «ends here».");
+    const { trayAt: _old, trayEnd: _oldEnd, ...rest } = z;
+    void _old; void _oldEnd;
+    const next = { ...rest, ...(startAt !== null ? { trayAt: Math.round(startAt * 100) / 100 } : {}), ...(endAt !== null ? { trayEnd: Math.round(endAt * 100) / 100 } : {}) };
+    const saved = await writeWalks(setZoom(walks, s.out.walk, next), walks);
     if (saved.conflicts.length) return fail(409, `Not saved: ${saved.conflicts.join(" ")}`);
     return ok();
   }
@@ -273,6 +280,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     let next = await updateStore(s.slug, (x) => addUpload(x, kind, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }, set));
     // The logo goes straight onto the store's walk (both tours show it at the top left).
     if (kind === "logo" && next) { await prepareLogo(next).catch((e) => console.error("[logo]", s.slug, e)); next = (await readStore(s.slug)) ?? next; }
+    // The door photo too (the Placer that did it is retired, 2026-11-16), once the walk is there.
+    if (kind === "door" && next?.out.walk) { await prepareDoorPhoto(next).catch((e) => console.error("[door]", s.slug, e)); next = (await readStore(s.slug)) ?? next; }
     kick();
     return ok({ store: next ? forPage(next) : null });
   }

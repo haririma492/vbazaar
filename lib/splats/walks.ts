@@ -341,6 +341,12 @@ export type WalkZoom = {
    * until the next shelf's time. Marked on the store's page; moved by a cut like the border.
    */
   trayAt?: number;
+  /**
+   * WHERE THE SHELF ENDS for the tray (owner, 2026-11-16: "all we need is to lock that when a shelf / section start and
+   * when ends"): the walk's second at which the shelf leaves the shopper's view. From `trayAt` to here the tray shows
+   * this shelf; past it, the tray keeps it until the next shelf starts. Moved by a cut like `trayAt`.
+   */
+  trayEnd?: number;
 };
 export type ZoomFrame = { t: number; c: number[] };
 /** Steps further apart than this are two visits to the shelf: no border is drawn across the gap. */
@@ -855,6 +861,7 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
           pins: sortItemPins(pins.map((q) => ({ t: q.t as number, x: q.x as number, y: q.y as number }))),
           ...(outline.length ? { outline } : {}), ...(x.auto === true ? { auto: true } : {}),
           ...(finite(x.trayAt) && (x.trayAt as number) >= 0 && (x.trayAt as number) < 36000 ? { trayAt: Math.round((x.trayAt as number) * 100) / 100 } : {}),
+          ...(finite(x.trayEnd) && (x.trayEnd as number) >= 0 && (x.trayEnd as number) < 36000 ? { trayEnd: Math.round((x.trayEnd as number) * 100) / 100 } : {}),
         });
       }
       if (zooms.length) walk.zooms = zooms;

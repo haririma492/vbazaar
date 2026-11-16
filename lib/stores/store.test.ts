@@ -41,7 +41,7 @@ test("the raw .insv is refused with what to do; the Studio .mp4 is taken", () =>
   assert.ok(!isUploadKeyOf("other", uploadKey("alis-market", "photo", "a.jpg", now)));
 });
 
-test("the crew runs in order: nothing before the uploads, the video and the list first, the report last", () => {
+test("the crew runs in order: nothing before the uploads, the list, the website, the video and the lock; the retired steps never", () => {
   let s = newStore("alis-market", intake, "scrypt$x$y", now);
   assert.equal(s.website, "https://www.instagram.com/alismarket/");
   assert.equal(nextStep(s), null, "no uploads yet");
@@ -51,9 +51,7 @@ test("the crew runs in order: nothing before the uploads, the video and the list
   s = setStep(s, "catalogue", "done", "", now);
   assert.equal(nextStep(s), "website", "the store's website onto the list, once the list is made");
   s = setStep(s, "website", "done", "", now);
-  assert.equal(nextStep(s), "photos");
-  s = setStep(s, "photos", "done", "", now);
-  assert.equal(nextStep(s), null, "the tagger waits for the video");
+  assert.equal(nextStep(s), null, "the Photo matcher is retired (2026-11-16)");
   s = addUpload(s, "video", file("walk.mp4"));
   assert.equal(nextStep(s), "video");
   s = setStep(s, "video", "failed", "ffmpeg stopped", now);
@@ -63,16 +61,23 @@ test("the crew runs in order: nothing before the uploads, the video and the list
   assert.equal(nextStep(s), null, "three tries, then it waits for a person");
   assert.equal(statusOf(s).tone, "you");
   s = addUpload(s, "video", file("walk-2.mp4"));
-  for (const n of ["video", "lock", "tag", "place"] as const) {
+  for (const n of ["video", "lock"] as const) {
     assert.equal(nextStep(s), n);
     s = setStep(s, n, "done", "", now);
   }
-  assert.equal(nextStep(s), "check");
-  s = setStep(s, "check", "done", "", now);
-  assert.equal(nextStep(s), null);
+  assert.equal(nextStep(s), null, "no Tagger, Placer or Checker");
   assert.equal(statusOf(s).tone, "ready", "a new store waits for «Publish»");
-  s = addUpload(s, "photo", file("112.jpg"));
-  assert.deepEqual([s.steps.photos.state, s.steps.tag.state, s.steps.video.state], ["todo", "todo", "done"], "a new photo redoes only what it touches");
+});
+
+test("without a merchant's sheet the product list is not made from the video: the website gives the products", () => {
+  let s = newStore("alis-market", intake, "scrypt$x$y", now);
+  s = addUpload(s, "video", file("walk.mp4"));
+  for (const n of ["video", "lock", "website"] as const) {
+    assert.equal(nextStep(s), n);
+    s = setStep(s, n, "done", "", now);
+  }
+  assert.equal(nextStep(s), null);
+  assert.equal(statusOf(s).tone, "ready");
 });
 
 test("details are changed on the page and checked; the record reads back", () => {

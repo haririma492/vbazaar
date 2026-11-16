@@ -275,7 +275,7 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
       id: sh.id, ...(n !== undefined ? { n } : {}),
       label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: n ? `Shelf ${n}` : "Shelf", fa: n ? `قفسه ${faNum(n)}` : "قفسه" },
       photo: sh.photo?.url ? { url: sh.photo.url, thumb: sh.photo.thumb ?? sh.photo.url, w: sh.photo.w ?? 0, h: sh.photo.h ?? 0 } : null,
-      sections, outline: z?.outline ?? [], ...(z?.trayAt !== undefined ? { trayAt: z.trayAt } : {}),
+      sections, outline: z?.outline ?? [], ...(z?.trayAt !== undefined ? { trayAt: z.trayAt } : {}), ...(z?.trayEnd !== undefined ? { trayEnd: z.trayEnd } : {}),
     }];
   });
   // In walking order: when each shelf is first in view, then its number.
@@ -317,7 +317,7 @@ export async function kitForPage(s: StoreRecord) {
       const z = zooms.find((x) => x.id === id);
       const sh = k.shelves.find((x) => x.id === id);
       const o = z?.outline ?? [];
-      return { id, trayAt: z?.trayAt ?? null, border: o.length ? [o[0].t, o[o.length - 1].t] : null, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
+      return { id, trayAt: z?.trayAt ?? null, trayEnd: z?.trayEnd ?? null, border: o.length ? [o[0].t, o[o.length - 1].t] : null, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
     }),
   };
 }

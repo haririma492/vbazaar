@@ -212,6 +212,10 @@ async function stepVideo(s: StoreRecord, say: (note: string) => Promise<void>): 
   await writeWalks(next, walks);
   await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, walk: key } }));
   const kept = carried.note ? ` ${carried.note}` : "";
+  // The door photo (both tours open on it) and the logo go on the new walk here: the Placer, which did it, is retired.
+  const fresh = (await readStore(s.slug)) ?? s;
+  await prepareDoorPhoto(fresh).catch((e) => console.error("[door]", s.slug, e));
+  await prepareLogo(fresh).catch((e) => console.error("[logo]", s.slug, e));
   if (lens) return `The walk is ready: ${Math.round(seconds)} s, a flat video (${width}×${height}, not 360°), web and phone copies.${kept} If this was meant to be a 360° walk, export it from Insta360 Studio as 360 Video (2:1) and upload it again.`;
   return `The walk is ready: ${Math.round(seconds)} s, web and phone copies.${kept}`;
 }
@@ -611,7 +615,9 @@ async function readPhotoQueue(): Promise<string[]> {
   try { const t = await readMastersText(PHOTOS_PENDING); const v = t ? JSON.parse(t) : []; return Array.isArray(v) ? v.filter((k) => typeof k === "string") : []; } catch { return []; }
 }
 export async function queuePhotos(slugs: string[]): Promise<void> {
-  if (!slugs.length) return;
+  // ⚠️ Retired (owner, 2026-11-16: "Photo improver … obsolete"): the product photos it made were for the green lights.
+  // Nothing is queued; `drainPhotos` still finishes a queue left from before.
+  if (slugs.length) return;
   await writeMastersJson(PHOTOS_PENDING, [...new Set([...(await readPhotoQueue()), ...slugs])]);
   void drainPhotos();
 }

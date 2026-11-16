@@ -55,6 +55,7 @@ export type ShopShelf = {
   outline: Array<{ t: number; c: number[] }>;
   /** From when (the walk's seconds) the tray shows this shelf: marked by the operator on the store's page. */
   trayAt?: number;
+  trayEnd?: number;
 };
 export type ShopKit = { store: string; walk: string | null; /** The walk's address for share links (short when the store has one). */ link: string | null; title: { en: string; fa: string } | null; merchant: string; shelves: ShopShelf[] };
 
@@ -364,9 +365,14 @@ export function moveProduct(kit: Kit, productId: string, toSection: number): { k
  * shelves with a mark (`trayAt`, the walk's seconds), the one whose mark the walk `t` has most recently passed; before
  * the first mark, the first. Null when no shelf is marked (the tray then follows the picture, `trayCross`).
  */
-export function trayByTime(shelves: Array<{ id: string; trayAt?: number }>, t: number): string | null {
+export function trayByTime(shelves: Array<{ id: string; trayAt?: number; trayEnd?: number }>, t: number): string | null {
   const marked = shelves.filter((s) => typeof s.trayAt === "number").sort((a, b) => a.trayAt! - b.trayAt!);
   if (!marked.length) return null;
+  // Inside a shelf's start–end (2026-11-16: the operator marks both): that shelf; of two overlapping, the later start.
+  let inside: string | null = null;
+  for (const s of marked) if (s.trayAt! <= t + 1e-6 && typeof s.trayEnd === "number" && t <= s.trayEnd + 1e-6) inside = s.id;
+  if (inside) return inside;
+  // Between shelves: the last one started (the tray never empties); before the first, the first.
   let pick = marked[0].id;
   for (const s of marked) if (s.trayAt! <= t + 1e-6) pick = s.id;
   return pick;

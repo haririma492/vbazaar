@@ -21,14 +21,13 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { BUDGET_CENTS, STEPS, STEP_SAY, isBookStore, type StoreRecord } from "@/lib/stores/store";
+import { ACTIVE_STEPS, BUDGET_CENTS, STEPS, STEP_SAY, isBookStore, type StoreRecord } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
 import { formatCents } from "@/lib/splats/catalogue";
 import { getJson, postJson, uploadInParts } from "./upload";
 import { UPLOAD_CARDS } from "./Intake";
 import Products from "./Products";
 import RouteCard from "./RouteCard";
-import PhotosCard from "./PhotosCard";
 import TourCard from "./TourCard";
 import MapCard from "./MapCard";
 import TitlesCard from "./TitlesCard";
@@ -227,10 +226,12 @@ export default function StorePage({ slug }: { slug: string }) {
 
       {op && <Card>
         <Bi fa="کار تیم ساخت" en="What the crew is doing" className="mb-3 text-[15px] font-bold text-amber-100" />
-        <Steps steps={[...STEPS.map((n) => [n, s.steps[n]] as [string, StepView]), ...agentRows]} say={{ ...STEP_SAY, ...AGENT_SAY }} />
+        {/* Only the steps the crew still runs (owner, 2026-11-16: the Photo matcher, Tagger, Placer, Checker and Photo
+            improver are obsolete); the product list only when a merchant's sheet was uploaded. */}
+        <Steps steps={[...ACTIVE_STEPS.filter((n) => n !== "catalogue" || s.files.sheet).map((n) => [n, s.steps[n]] as [string, StepView]), ...agentRows.filter(([k]) => k !== "photosImprover")]} say={{ ...STEP_SAY, ...AGENT_SAY }} />
         {op && (
           <div className="mt-3 flex flex-wrap gap-2">
-            {STEPS.filter((n) => s.steps[n].state === "failed" || s.steps[n].state === "needs-you" || s.steps[n].state === "done").slice(0, 6).map((n) => (
+            {ACTIVE_STEPS.filter((n) => s.steps[n].state === "failed" || s.steps[n].state === "needs-you" || s.steps[n].state === "done").slice(0, 6).map((n) => (
               <button key={n} type="button" className="text-[12px] text-amber-200/80 underline" onClick={() => void act({ action: "redo", step: n })}>Run «{n}» again</button>
             ))}
           </div>
@@ -278,7 +279,7 @@ export default function StorePage({ slug }: { slug: string }) {
         )}
       </Card>}
 
-      {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
+      {/* The Photo improver's card is off the page (retired, owner 2026-11-16). `PhotosCard.tsx` stays, unused. */}
       {/* A shelf's three phone photos, stitched: shoppers zoom in until the labels can be read (owner, 2026-11-11). */}
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}

@@ -1215,6 +1215,20 @@ quality and choice to break away and enter in a shop. (period)"*
   and the logo always, and the shelves (borders, tray marks), dots, covers, `faceAt`, `tagsFrom` when the new video is
   the SAME footage (as long as the walk before to 0.3 s, both 360° or both flat); otherwise the step's note says the
   shelves must be marked again. The operator's `rawLinks` now also gives a private link to the video upload, to read it.
+- **⚠️ THE CREW IS NOW: Video → Lock → (product list, only with a merchant's sheet) → Website** (owner, 2026-11-16, of
+  «What the crew is doing»: *"These are obsolete: … Photo matcher … Tagger … Placer … Checker … Photo improver"*).
+  `RETIRED` in `store.ts` (photos, tag, place, check): never run, not shown, not waited for (`nextStep`, `allDone`,
+  `statusOf` use `ACTIVE_STEPS`); the Photo improver queues nothing (`queuePhotos`) and its card is off the page. The
+  product list is no longer found in the video by AI: without a sheet the step is skipped and the Website Explorer
+  gives the products (it waits for the video). The door photo and the logo, which the Placer put on the walk, go on in
+  the Video step and on their upload. A store is «Ready — waiting for Publish» once these are done. The code stays.
+- **⚠️ «Where each shelf starts and ends» on the store's page replaced the tray marks' screen** (owner, 2026-11-16:
+  *"this UI is unintuitive and does not work properly, redesign it in a much easier way all we need is to lock that when
+  a shelf / section start and when ends"*). `TrayTimeline.tsx`: the walk, one big slider, and ONE key at a time: «Shelf 1
+  starts here», then «Shelf 1 ends here», then the next shelf by itself; below, each shelf's start → end, «▶ Watch it»,
+  «Mark again». `WalkZoom.trayEnd` beside `trayAt` (action `kitTrayAt {shelf, at?, end?}`, an end before the start is
+  refused; a cut moves both). `trayByTime`: inside a shelf's start–end, that shelf (overlap: the later start); between
+  shelves, the last one started.
 - **A step of «Refresh all agents» can be skipped, before or during the run** (owner, 2026-11-13: *"allow operator
   to skip a step … even in the middle of execution or before"*). Before: the card lists the seven steps with a
   tick each; unticked ones go as `skip` with `refreshAll`. During: every step not finished has «Skip» (action

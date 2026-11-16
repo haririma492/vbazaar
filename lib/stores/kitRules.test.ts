@@ -148,3 +148,13 @@ test("with the operator's marks the tray takes the shelf whose mark the walk has
   assert.equal(trayByTime([{ id: "x", trayAt: 5 }], 1), "x");
   assert.equal(trayByTime([{ id: "x" }], 1), null);
 });
+
+test("with a start and an end per shelf, the tray takes the shelf the walk is inside; between shelves it keeps the last", () => {
+  const sh = [{ id: "a", trayAt: 2, trayEnd: 16 }, { id: "b", trayAt: 12, trayEnd: 30 }, { id: "c", trayAt: 40, trayEnd: 50 }];
+  assert.equal(trayByTime(sh, 0), "a");
+  assert.equal(trayByTime(sh, 10), "a");
+  assert.equal(trayByTime(sh, 13), "b"); // overlap: the later start
+  assert.equal(trayByTime(sh, 35), "b"); // between b's end and c's start: b stays
+  assert.equal(trayByTime(sh, 45), "c");
+  assert.equal(trayByTime(sh, 99), "c");
+});

@@ -59,6 +59,15 @@ export const MAX_ZOOM_PHOTOS = 6;
 
 export type StepName = "video" | "lock" | "catalogue" | "website" | "photos" | "tag" | "place" | "check";
 export const STEPS: StepName[] = ["video", "lock", "catalogue", "website", "photos", "tag", "place", "check"];
+/**
+ * ⚠️ RETIRED STEPS (owner, 2026-11-16, of «What the crew is doing»: "These are obsolete: … Photo matcher … Tagger …
+ * Placer … Checker … Photo improver"). They served the green lights on the video and the hallway's doors; shoppers now
+ * buy from the shelf photos (the kit). Never run, not shown, not waited for (`nextStep`, `allDone`). Their code stays.
+ * The door photo and the logo, which the Placer used to put on the walk, are put there by the Video step and on upload.
+ */
+export const RETIRED: StepName[] = ["photos", "tag", "place", "check"];
+/** The steps the crew still runs, in order. */
+export const ACTIVE_STEPS: StepName[] = STEPS.filter((n) => !RETIRED.includes(n));
 export type StepState = "todo" | "working" | "done" | "failed" | "needs-you";
 export type Step = { state: StepState; tries: number; note: string; at: string | null };
 
@@ -286,8 +295,8 @@ export function applyEdits(s: StoreRecord, edits: Partial<Record<Editable, strin
 /** Whether the inputs a step works from are there. */
 export function hasInputs(s: StoreRecord, step: StepName): boolean {
   if (step === "video") return Boolean(s.files.video);
-  // No sheet: the products are found in the store's video, once its walk is made.
-  if (step === "catalogue") return Boolean(s.files.sheet) || s.steps.video.state === "done";
+  // Only a merchant's sheet (2026-11-16: products are no longer looked for in the video; the website gives them).
+  if (step === "catalogue") return Boolean(s.files.sheet);
   return true;
 }
 
@@ -298,12 +307,13 @@ export function hasInputs(s: StoreRecord, step: StepName): boolean {
  * runs again.
  */
 export function nextStep(s: StoreRecord): StepName | null {
-  for (const name of STEPS) {
+  for (const name of ACTIVE_STEPS) {
     const st = s.steps[name];
     const runnable = st.state === "todo" || st.state === "working" || (st.state === "failed" && st.tries < MAX_TRIES);
     if (!runnable) continue;
     if (!hasInputs(s, name)) continue;
-    if (NEEDS[name].every((n) => s.steps[n].state === "done")) return name;
+    // A step after the product list waits for the sheet's list, or, with no sheet, for the video (nothing before uploads).
+    if (NEEDS[name].every((n) => RETIRED.includes(n) || (n === "catalogue" && !s.files.sheet && Boolean(s.files.video)) || s.steps[n].state === "done")) return name;
   }
   return null;
 }
@@ -322,14 +332,14 @@ export function setStep(s: StoreRecord, name: StepName, state: StepState, note: 
 }
 
 /** Whether every step is done. */
-export const allDone = (s: StoreRecord) => STEPS.every((n) => s.steps[n].state === "done");
+export const allDone = (s: StoreRecord) => ACTIVE_STEPS.every((n) => s.steps[n].state === "done" || (n === "catalogue" && !s.files.sheet));
 
 /** What the store's page says about it, in one line. */
 export function statusOf(s: StoreRecord): { en: string; fa: string; tone: "work" | "you" | "ready" | "live" } {
-  if (STEPS.some((n) => s.steps[n].state === "needs-you" || (s.steps[n].state === "failed" && s.steps[n].tries >= MAX_TRIES))) {
+  if (ACTIVE_STEPS.some((n) => !(n === "catalogue" && !s.files.sheet) && (s.steps[n].state === "needs-you" || (s.steps[n].state === "failed" && s.steps[n].tries >= MAX_TRIES)))) {
     return { en: "Needs you", fa: "منتظر شما", tone: "you" };
   }
-  if (!s.files.video || !s.files.sheet) return { en: "Waiting for uploads", fa: "منتظر فایل‌ها", tone: "you" };
+  if (!s.files.video) return { en: "Waiting for uploads", fa: "منتظر فایل‌ها", tone: "you" };
   if (!allDone(s)) return { en: "The crew is working", fa: "در حال ساخت", tone: "work" };
   return s.live ? { en: "Live in the bazaar", fa: "در بازار", tone: "live" } : { en: "Ready — waiting for «Publish»", fa: "آماده — منتظر «انتشار»", tone: "ready" };
 }

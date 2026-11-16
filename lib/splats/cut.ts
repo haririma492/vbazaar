@@ -176,8 +176,9 @@ export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: 
     const movedOutline = z.outline?.flatMap((f) => { const pt = back(f.t); return pt === null ? [] : [{ ...f, t: pt }]; });
     const outline = movedOutline?.length ? movedOutline : old?.outline;
     const trayAt = z.trayAt === undefined ? null : back(z.trayAt);
-    const { outline: _o, trayAt: _ta, ...zr } = z;
-    return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}) }] : [];
+    const trayEnd = z.trayEnd === undefined ? null : back(z.trayEnd);
+    const { outline: _o, trayAt: _ta, trayEnd: _te, ...zr } = z;
+    return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}), ...(trayEnd !== null ? { trayEnd } : {}) }] : [];
   });
   // The zone, the turn and where tags begin: moved back only when the cut that made them moved them (a record of
   // version 2); before, a cut left them on the original's times, so they are already there.
@@ -223,8 +224,10 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
     const outline = z.outline?.flatMap((f) => { const pt = mapTime(f.t, parts); return pt === null ? [] : [{ ...f, t: pt }]; }).sort((a, b) => a.t - b.t);
     // The tray's moment moves too; one in a stretch cut out goes to where the next kept stretch starts.
     const trayAt = z.trayAt === undefined ? null : mapTime(z.trayAt, parts) ?? mapTime(Math.min(...parts.map((p) => p.from).filter((f) => f >= z.trayAt!), Infinity), parts);
-    const { outline: _o, trayAt: _ta, ...zr } = z;
-    return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}) }] : [];
+    // Its end, cut out: where the last kept stretch before it ends.
+    const trayEnd = z.trayEnd === undefined ? null : mapTime(z.trayEnd, parts) ?? mapTime(Math.max(...parts.map((p) => p.to).filter((f) => f <= z.trayEnd!), -Infinity), parts);
+    const { outline: _o, trayAt: _ta, trayEnd: _te, ...zr } = z;
+    return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}), ...(trayEnd !== null ? { trayEnd } : {}) }] : [];
   });
   const hide = moveHide(walk.hide, (t) => mapTime(t, parts));
   const faceAt = moveMoment(walk.faceAt, parts), tagsFrom = moveMoment(walk.tagsFrom, parts);
