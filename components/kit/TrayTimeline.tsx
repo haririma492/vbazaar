@@ -87,9 +87,9 @@ export default function TrayTimeline({ api, video, flat, shelves, onSaved }: { a
           <button type="button" onClick={toggle} disabled={!el} className="h-10 w-24 shrink-0 rounded-full bg-white/15 text-[14px] font-bold disabled:opacity-40">{playing ? "❚❚ Pause" : "▶ Play"}</button>
           <input type="range" min={0} max={dur || 1} step={0.1} value={Math.min(t, dur || 1)} onChange={(e) => go(Number(e.target.value))} disabled={!el || !dur}
             aria-label="Where along the walk" className="h-10 min-w-0 flex-1 accent-sky-400" />
-          <span className="w-24 shrink-0 text-right font-mono text-[13px] tabular-nums">{say(t)} / {say(dur)}</span>
+          <span className="shrink-0 whitespace-nowrap text-right font-mono text-[13px] tabular-nums">{say(t)} / {say(dur)}</span>
         </div>
-        <div className="relative mx-[6.5rem] h-3 rounded bg-white/10">
+        <div className="relative ml-[6.5rem] mr-[8.5rem] h-3 rounded bg-white/10">
           {shelves.map((s, i) => { const x = marks.get(s.id); return x?.at != null && (
             <div key={s.id} className="absolute top-0 h-3 rounded" title={s.label.en}
               style={{ left: pct(x.at), width: x.end != null ? `calc(${pct(x.end)} - ${pct(x.at)})` : "3px", background: color(i), opacity: 0.85 }} />
