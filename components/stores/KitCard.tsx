@@ -17,7 +17,8 @@ import { postJson, uploadInParts, type Progress } from "./upload";
 import { Bi, Card, KEY, QUIET, Said } from "./ui";
 import { MAX_KIT_PRODUCTS, MAX_SECTIONS, emptySections, kitFileName, nextFree, parseKitName, type KitPhoto, type KitSection, type KitSlot } from "@/lib/stores/kitRules";
 import { formatCents } from "@/lib/splats/catalogue";
-import SectionItems, { type SiteItem } from "@/components/kit/SectionItems";
+import { type SiteItem } from "@/components/kit/SectionItems";
+import ShelfProducts from "@/components/kit/ShelfProducts";
 
 type Shelf = { id: string; n: number | null; label: { en: string; fa: string }; onWalk: boolean; photo: KitPhoto | null; sections: KitSection[] };
 type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; shelves: Shelf[] };
@@ -25,42 +26,11 @@ type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: stri
 const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
 const ACCEPT = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
 
-/** Four taps on the shelf's photo: a section's place, drawn by hand when the finder could not see it. */
-function PlaceScreen({ shelf, section, onSave, onClose }: { shelf: string; section: KitSection; onSave: (q: number[]) => void; onClose: () => void }) {
-  const [taps, setTaps] = useState<Array<[number, number]>>([]);
-  return (
-    <div dir="ltr" className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-black/90 p-4 text-left text-white">
-      <p className="text-[15px] font-bold">Where is section {section.i}? · جای بخش {section.i}</p>
-      <p className="text-[13px] text-white/70">Tap its 4 corners on the shelf&apos;s photo: top-left, top-right, bottom-right, bottom-left. ({taps.length} of 4)</p>
-      <div className="flex max-h-[70vh] max-w-full items-start gap-3">
-        <div className="relative max-h-[70vh] select-none" onClick={(e) => {
-          if (taps.length >= 4) return;
-          const r = e.currentTarget.getBoundingClientRect();
-          setTaps((t) => [...t, [Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)), Math.min(1, Math.max(0, (e.clientY - r.top) / r.height))]]);
-        }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={shelf} alt="" draggable={false} className="block max-h-[70vh] max-w-[70vw]" />
-          <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none">
-            {taps.length > 1 && <polyline points={taps.map((p) => p.join(",")).join(" ") + (taps.length === 4 ? ` ${taps[0].join(",")}` : "")} fill="none" stroke="#6ee7b7" strokeWidth={0.004} />}
-            {taps.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r={0.008} fill="#6ee7b7" />)}
-          </svg>
-        </div>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        {section.photo.thumb && <img src={section.photo.thumb} alt="" className="w-40 rounded border border-white/20" />}
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className={QUIET} onClick={() => (taps.length ? setTaps((t) => t.slice(0, -1)) : onClose())}>← Back</button>
-        <button type="button" className={KEY} disabled={taps.length !== 4} onClick={() => onSave(taps.flat())}>✓ Save its place · ذخیره</button>
-      </div>
-    </div>
-  );
-}
-
 export default function KitCard({ api, operator, editUrl }: { api: string; operator: boolean; editUrl: string | null }) {
+  const slug = api.split("/").pop() ?? "";
   const [st, setSt] = useState<State | null>(null);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<{ name: string; p: Progress; i: number; of: number } | null>(null);
-  const [placing, setPlacing] = useState<{ shelf: string; section: KitSection } | null>(null);
   const input = useRef<HTMLInputElement>(null);
   /** Where the next chosen files go: a slot builder (by order), or "names" (by their names). */
   const into = useRef<"names" | ((i: number) => KitSlot | null)>("names");
@@ -153,112 +123,19 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
       </div>
       {st && !shelves.length && <p dir="ltr" className="mt-2 text-left text-[13px] text-amber-200">No shelf is marked on the walk yet: open the editor, «Shelves», «＋ Mark a shelf», and tap its 4 corners.</p>}
 
+      {/* Each shelf, whole: the same screen as the walk's editor (owner, 2026-11-16: "all that we can do … in the &edit=1
+          mode … ALSO need to be readily and conveniently available in store page"). */}
       <ol dir="ltr" className="mt-3 space-y-3 text-left">
-        {shelves.map((sh) => {
-          const free = nextFree(sh.sections.map((x) => x.i), MAX_SECTIONS);
-          return (
-            <li key={sh.id} className="rounded-lg border border-white/10 bg-black/25 p-3 text-[13px]">
-              <div className="flex flex-wrap items-start gap-3">
-                {sh.photo?.thumb
-                  // eslint-disable-next-line @next/next/no-img-element
-                  ? <a href={sh.photo.url} target="_blank" rel="noreferrer"><img src={sh.photo.thumb} alt="" className="h-28 w-auto max-w-[12rem] rounded object-contain" /></a>
-                  : <div className="flex h-28 w-24 items-center justify-center rounded bg-white/5 text-[22px]">{sh.photo ? "⏳" : "🟩"}</div>}
-                <div className="min-w-0 flex-1 space-y-1">
-                  <p className="font-bold">{sh.label.fa} · {sh.label.en}{sh.n !== null ? ` (shelf ${sh.n})` : ""}</p>
-                  {!sh.onWalk && <p className="text-amber-200">Not bordered on the walk: the tray cannot follow it.</p>}
-                  {sh.sections.length > 0 && (emptySections(sh.sections).length
-                    ? <p className="text-amber-200">⚠ Section{emptySections(sh.sections).length > 1 ? "s" : ""} {emptySections(sh.sections).join(", ")}: no products yet (pick them from the website or upload their photos below).</p>
-                    : <p className="text-emerald-200">✓ Every section has products.</p>)}
-                  <p className={sh.photo ? "text-emerald-200" : "text-amber-200"}>{sh.photo ? `✓ Quality photo: ${sh.photo.name} (${mb(sh.photo.size)})${sh.photo.w ? `, ${sh.photo.w}×${sh.photo.h}` : ""}` : "1) Its quality photo (Type III) is next."}</p>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => pick((i) => (i === 0 ? { shelf: sh.id } : null))}>{sh.photo ? "Replace the quality photo" : "＋ Quality photo (Type III)"}</button>
-                    {sh.photo && free !== null && <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => pick((i) => {
-                      const used = sh.sections.map((x) => x.i);
-                      let k = 0, slot: number | null = null;
-                      for (let j = 1; j <= MAX_SECTIONS; j++) if (!used.includes(j)) { if (k === i) { slot = j; break; } k++; }
-                      return slot ? { shelf: sh.id, section: slot } : null;
-                    })}>＋ Sections (Type IV), {MAX_SECTIONS - sh.sections.length} more</button>}
-                    {(sh.photo || sh.sections.length > 0) && <button type="button" className={QUIET} onClick={() => { if (confirm(`Take away every photo of «${sh.label.en}»? The border stays on the walk.`)) void act({ action: "kitRemove", shelf: sh.id }, "✓ Taken away"); }}>Remove all</button>}
-                  </div>
-                </div>
-              </div>
-
-              {sh.sections.length > 0 && (
-                <ul className="mt-3 space-y-2">
-                  {sh.sections.map((x) => {
-                    const pfree = nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS);
-                    return (
-                      <li key={x.id} className="rounded-md border border-white/10 bg-black/30 p-2">
-                        <div className="flex flex-wrap items-start gap-3">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          {x.photo.thumb ? <a href={x.photo.url} target="_blank" rel="noreferrer"><img src={x.photo.thumb} alt="" className="h-20 w-auto max-w-[9rem] rounded object-contain" /></a> : <div className="flex h-20 w-20 items-center justify-center rounded bg-white/5">⏳</div>}
-                          <div className="min-w-0 flex-1 space-y-1">
-                            <p className="font-bold">Section {x.i} · بخش {x.i} <span className="font-normal text-white/50">({x.photo.name})</span></p>
-                            <p className={x.place?.quad ? "text-emerald-200" : x.place ? "text-amber-200" : "text-white/55"}>
-                              {x.place?.quad ? `✓ Placed in the shelf's photo (${x.place.by === "hand" ? "drawn by hand" : x.place.note})` : x.place ? `Not found in the shelf's photo: ${x.place.note}. Draw its place.` : "Being placed in the shelf's photo…"}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {sh.photo?.url && <button type="button" className={QUIET} onClick={() => setPlacing({ shelf: sh.photo!.url!, section: x })}>{x.place?.quad ? "Draw its place again" : "Draw its place"}</button>}
-                              {x.place?.by === "hand" && <button type="button" className={QUIET} onClick={() => void act({ action: "kitPlace", section: x.id, quad: null }, "Looking for it again…")}>Find it by itself</button>}
-                              <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => pick(() => ({ shelf: sh.id, section: x.i }))}>Replace photo</button>
-
-                              <button type="button" className={QUIET} onClick={() => { if (confirm(`Take section ${x.i} and its products away?`)) void act({ action: "kitRemove", shelf: sh.id, section: x.i }, "✓ Taken away"); }}>Remove</button>
-                            </div>
-                          </div>
-                        </div>
-                        <SectionItems section={x} site={site} siteNote={st?.siteNote} uploading={Boolean(busy)}
-                          onUploadLocal={pfree === null ? null : () => pick((i) => {
-                            const used = x.products.map((p) => p.i);
-                            let k = 0;
-                            for (let j = 1; j <= MAX_KIT_PRODUCTS; j++) if (!used.includes(j)) { if (k === i) return { shelf: sh.id, section: x.i, product: j }; k++; }
-                            return null;
-                          })}
-                          onOwnPhoto={pfree === null && !x.products.length ? null : (web) => {
-                            // Its own photo goes in the slot it had, else the next free one; then it is tied to the website product.
-                            const j = x.products.find((p) => p.match?.web === web)?.i ?? pfree;
-                            if (j === null) { setSaid({ ok: false, text: `This section has its ${MAX_KIT_PRODUCTS} product photos: remove one first.` }); return; }
-                            pick((i) => (i === 0 ? { shelf: sh.id, section: x.i, product: j } : null),
-                              async () => { await postJson(api, { action: "kitMatch", product: `${x.id}-p${j}`, web }); });
-                          }}
-                          onSave={async (webs) => {
-                          try { await postJson(api, { action: "kitItems", section: x.id, webs }); setSaid({ ok: true, text: "✓ Saved · ذخیره شد" }); await load(); return true; }
-                          catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }
-                        }} />
-                        {x.products.length > 0 && (
-                          <ul className="mt-2 grid gap-2 sm:grid-cols-2">
-                            {x.products.map((p) => {
-                              const m = siteOf(p.match?.web);
-                              return (
-                                <li key={p.id} className="flex gap-2 rounded bg-white/[0.04] p-2">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  {p.photo.thumb ? <img src={p.photo.thumb} alt="" className="h-16 w-16 rounded bg-white object-contain" /> : <div className="flex h-16 w-16 items-center justify-center rounded bg-white/5">⏳</div>}
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  {m?.photo && <img src={m.photo} alt="" className="h-16 w-16 rounded bg-white object-contain" />}
-                                  <div className="min-w-0 flex-1 space-y-1">
-                                    <p className={m ? "text-emerald-200" : p.match ? "text-amber-200" : "text-white/55"}>
-                                      {m ? `✓ ${m.en || m.fa}${m.priceCents !== null ? ` · ${formatCents(m.priceCents)} / ${m.unit}` : ""}${p.match?.by === "auto" ? ` (matched, ${Math.round((p.match.confidence ?? 0) * 100)}%)` : " (chosen)"}`
-                                        : p.match ? `Not on the website${p.match.by === "auto" ? `: ${p.match.why}` : ""}. Shoppers see the photo, no price yet.` : "Matching…"}
-                                    </p>
-                                    <select value={p.match?.web ?? ""} onChange={(e) => void act({ action: "kitMatch", product: p.id, web: e.target.value || null }, "✓ Saved · ذخیره شد")}
-                                      className="w-full rounded border border-white/20 bg-black/60 px-1 py-1 text-[12px] text-white">
-                                      <option value="">— Not on the website (no price yet) —</option>
-                                      {site.map((w) => <option key={w.web} value={w.web}>{w.en || w.fa}{w.priceCents !== null ? ` · ${formatCents(w.priceCents)}` : ""}</option>)}
-                                    </select>
-                                    <button type="button" className="text-[12px] text-white/45 underline" onClick={() => void act({ action: "kitRemove", shelf: sh.id, section: x.i, product: p.i }, "✓ Taken away")}>Remove</button>
-                                  </div>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </li>
-          );
-        })}
+        {shelves.map((sh) => (
+          <li key={sh.id} className="rounded-lg border border-white/10 bg-black/25 p-3 text-[13px]">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <p className="text-[15px] font-bold text-amber-100">{sh.label.fa} · {sh.label.en}{sh.n !== null ? ` (shelf ${sh.n})` : ""}</p>
+              {!sh.onWalk && <span className="text-amber-200">Not bordered on the walk: the tray cannot follow it.</span>}
+              {(sh.photo || sh.sections.length > 0) && <button type="button" className="ml-auto text-[12px] text-rose-200 underline" onClick={() => { if (confirm(`Take away every photo of «${sh.label.en}»? The border stays on the walk.`)) void act({ action: "kitRemove", shelf: sh.id }, "✓ Taken away"); }}>Remove all its photos</button>}
+            </div>
+            <ShelfProducts slug={slug} shelfId={sh.id} onChanged={load} />
+          </li>
+        ))}
       </ol>
       {busy && (
         <div className="mt-3" dir="ltr">
@@ -267,11 +144,7 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
         </div>
       )}
       {said && <Said ok={said.ok} text={said.text} />}
-      {placing && <PlaceScreen shelf={placing.shelf} section={placing.section} onClose={() => setPlacing(null)} onSave={(q) => {
-        const id = placing.section.id;
-        setPlacing(null);
-        void act({ action: "kitPlace", section: id, quad: q }, "✓ Its place is saved · ذخیره شد");
-      }} />}
+
     </Card>
   );
 }

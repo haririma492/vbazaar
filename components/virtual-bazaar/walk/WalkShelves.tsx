@@ -280,7 +280,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
         </>)}
         {at.step === "next" && (<>
           {/* Each section's products, here and now (owner, 2026-11-16): the website's, and photos from this computer. */}
-          <ShelfProducts slug={slug} shelfId={at.id} onEmpty={setEmptySecs} />
+          <ShelfProducts slug={slug} shelfId={at.id} onEmpty={setEmptySecs} inEditor />
         </>)}
         {sending && (
           <div>

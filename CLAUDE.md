@@ -423,6 +423,16 @@ plan and the Managed Agents decision are in
       «Adding products for SECTION n of N» over that section's photo, the upload key names the section, and «Done»
       asks before leaving with sections still empty (`emptySections`, `sectionProductCount`); the store's page says
       the same per shelf.
+  - **The store's page does everything the editor does, shelf by shelf** (owner, 2026-11-16: *"all that we can do in a
+    canvas fashion answering questions in the &edit=1 mode … ALSO need to be readily and conveniently available in
+    store page … so operator can change each type (III, IV & Vs) and connect them properly (which section IV has which
+    products Vs)"*). «Shelf photos for shopping» (`KitCard.tsx`) now sits right under the store's details and shows each
+    shelf as ONE screen, `components/kit/ShelfProducts.tsx`, the very one the editor shows after a shelf's photos:
+    the shelf's photo (replace); a strip of its sections with their counts and «＋ Add sections»; the open section's
+    photo (replace, draw its place, find it by itself, remove); its products: website picks (`SectionItems`), photos
+    from this computer, «📷 My own photo», and every photo from the computer listed with its website product (dropdown),
+    «Move to section…» (action `kitMove`, `moveProduct` in `kitRules.ts`, tested: the photo keeps its match and takes
+    the next free number there; a website pick of that product moves with it) and «Remove». `PlaceScreen.tsx` is shared.
   - **Share keys almost everywhere; the photo is never shared** (owner, 2026-11-15: *"share key should be almost
     everywhere, on shelf (e-commerce shelf …), on shelf level (Type IV) and on products (type V) and receivers should
     end up exactly on the same spot on walking tour and the same photo should be made open"*). `ShareKey.tsx` (the

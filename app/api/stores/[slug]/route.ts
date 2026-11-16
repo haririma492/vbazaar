@@ -60,7 +60,7 @@ import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refr
 import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
-import { KIT_ID_RE, checkKitName, emptyKit, putPhoto, removeFromKit, setItems, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
+import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
@@ -201,6 +201,15 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const next = await updateKit(s.slug, (k) => setItems(k, id, (body.webs as unknown[]).map(String), known));
     const sec = next.shelves.flatMap((x) => x.sections).find((x) => x.id === id);
     return ok({ items: sec?.items ?? [] });
+  }
+  // A product photo moved to another section of its shelf (owner, 2026-11-16: "which section IV has which products Vs").
+  if (body.action === "kitMove") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.product ?? ""), to = Number(body.section);
+    if (!KIT_ID_RE.test(id) || !Number.isInteger(to)) return fail(400, "Which product photo, and to which section?");
+    let why = "";
+    await updateKit(s.slug, (k) => { const r = moveProduct(k, id, to); if ("error" in r) { why = r.error; return k; } return r.kit; });
+    return why ? fail(400, why) : ok();
   }
   if (body.action === "kitPlace") {
     if (who !== "operator") return fail(403, "The operator only.");

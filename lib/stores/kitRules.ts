@@ -323,3 +323,35 @@ export function sectionProductCount(x: { items?: string[]; products: Array<{ mat
  *  (owner, 2026-11-16: "ensure all sections do have products loaded or identified from web"). */
 export const emptySections = (sections: Array<{ i: number; items?: string[]; products: Array<{ match?: { web: string | null } }> }>) =>
   sections.filter((x) => sectionProductCount(x) === 0).map((x) => x.i);
+
+/**
+ * A PRODUCT PHOTO MOVED TO ANOTHER SECTION OF ITS SHELF (owner, 2026-11-16: the store's page must let the operator
+ * "change each type (III, IV & Vs) and connect them properly (which section IV has which products Vs)"). It keeps its
+ * photo and its website match, takes the next free product number there (its id follows), and the website product it
+ * is goes with it from the old section's picks to the new one's. Null with why when it cannot.
+ */
+export function moveProduct(kit: Kit, productId: string, toSection: number): { kit: Kit } | { error: string } {
+  const shelf = kit.shelves.find((s) => s.sections.some((x) => x.products.some((p) => p.id === productId)));
+  if (!shelf) return { error: "No such product photo." };
+  const from = shelf.sections.find((x) => x.products.some((p) => p.id === productId))!;
+  const to = shelf.sections.find((x) => x.i === toSection);
+  if (!to) return { error: `Section ${toSection} has no photo yet.` };
+  if (to.id === from.id) return { kit };
+  const j = nextFree(to.products.map((p) => p.i), MAX_KIT_PRODUCTS);
+  if (j === null) return { error: `Section ${toSection} has its ${MAX_KIT_PRODUCTS} product photos.` };
+  const p = from.products.find((x) => x.id === productId)!;
+  const web = p.match?.web ?? null;
+  const moved: KitProduct = { ...p, id: `${to.id}-p${j}`, i: j };
+  return {
+    kit: {
+      ...kit, updated: new Date().toISOString(),
+      shelves: kit.shelves.map((s) => (s.id !== shelf.id ? s : {
+        ...s, sections: s.sections.map((x) => {
+          if (x.id === from.id) return { ...x, products: x.products.filter((q) => q.id !== productId), ...(web && x.items?.includes(web) ? { items: x.items.filter((w) => w !== web) } : {}) };
+          if (x.id === to.id) return { ...x, products: [...x.products, moved].sort((a, b) => a.i - b.i), ...(web && x.items && !x.items.includes(web) && from.items?.includes(web) ? { items: [...x.items, web] } : {}) };
+          return x;
+        }),
+      })),
+    },
+  };
+}

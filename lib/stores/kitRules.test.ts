@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -121,4 +121,20 @@ test("a section's products: the website's picked for it, and its own photos not 
   const web = (w: string | null) => ({ match: { web: w } });
   assert.equal(sectionProductCount({ items: ["a", "b"], products: [web("a"), web(null), {}] }), 4);
   assert.deepEqual(emptySections([{ i: 1, items: ["a"], products: [] }, { i: 2, products: [] }, { i: 3, items: [], products: [{}] }]), [2]);
+});
+
+test("a product photo moves to another section with its match, taking the next free number there", () => {
+  let k = put(put(put(emptyKit("s"), { shelf: "z1" }, "III"), { shelf: "z1", section: 1 }, "IV-1"), { shelf: "z1", section: 2 }, "IV-2");
+  k = put(k, { shelf: "z1", section: 1, product: 1 }, "p1");
+  k = put(k, { shelf: "z1", section: 2, product: 1 }, "q1");
+  k = setMatch(k, "z1-1-p1", "w");
+  k = setItems(k, "z1-1", ["w", "x"], new Set(["w", "x"]));
+  const r = moveProduct(k, "z1-1-p1", 2);
+  assert.ok("kit" in r);
+  const [s1, s2] = r.kit.shelves[0].sections;
+  assert.deepEqual(s1.products, []);
+  assert.deepEqual(s1.items, ["x"]);
+  assert.deepEqual(s2.products.map((p) => [p.id, p.match?.web]), [["z1-2-p1", undefined], ["z1-2-p2", "w"]]);
+  assert.ok("error" in moveProduct(k, "z1-1-p1", 4));
+  assert.ok("error" in moveProduct(k, "nope", 2));
 });

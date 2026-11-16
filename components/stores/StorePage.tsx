@@ -192,6 +192,8 @@ export default function StorePage({ slug }: { slug: string }) {
       {!op && page.walkUrl && <WalkFrame url={page.walkUrl} />}
 
       <Card><Details page={page} save={async (edits) => { await act({ action: "edit", edits }); }} /></Card>
+      {/* The shelves (III), their sections (IV) and products (V): near the top, the operator's main work now (owner, 2026-11-16). */}
+      <KitCard api={api} operator={op} editUrl={page.editUrl ?? null} />
 
       {op && <Card>
         <div className="flex flex-wrap items-center gap-2">
@@ -278,7 +280,6 @@ export default function StorePage({ slug }: { slug: string }) {
 
       {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
       {/* A shelf's three phone photos, stitched: shoppers zoom in until the labels can be read (owner, 2026-11-11). */}
-      <KitCard api={api} operator={op} editUrl={page.editUrl ?? null} />
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <MapCard api={api} operator={page.who === "operator"} />}
