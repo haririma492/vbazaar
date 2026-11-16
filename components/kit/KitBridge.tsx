@@ -87,7 +87,7 @@ export default function KitBridge({ from, area, right, url, aspect, target, onCl
         onClick={(ev) => ev.stopPropagation()}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img {...noSave} src={url} alt="" className="h-full w-full select-none object-contain" />
-        <Watermark size="lg" />
+        <Watermark size="lg" address={false} />
       </div>
     </div>
   );

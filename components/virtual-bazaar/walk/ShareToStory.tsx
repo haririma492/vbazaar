@@ -106,9 +106,10 @@ export default function ShareToStory({ snapshot, title, link, className = "" }: 
   };
   return (
     <div dir="ltr" className={`flex flex-col items-end gap-1 ${className}`}>
-      <button type="button" onClick={() => void share()} disabled={busy}
-        className="rounded-full border border-pink-300/70 bg-gradient-to-r from-fuchsia-500/40 to-amber-400/40 px-4 py-2 text-[14px] font-semibold text-white disabled:opacity-50">
-        {busy ? "…" : "📸 Share to Story"}
+      {/* The camera alone: no «Share to Story» words (owner, 2026-11-16: "remove the label 'Share to Story'"). */}
+      <button type="button" onClick={() => void share()} disabled={busy} aria-label="Share to Story" title="Share to Story"
+        className="grid h-10 w-10 place-items-center rounded-full border border-pink-300/70 bg-gradient-to-r from-fuchsia-500/40 to-amber-400/40 text-[18px] text-white disabled:opacity-50">
+        {busy ? "…" : "📸"}
       </button>
       {said && <span className="max-w-[16rem] rounded-lg bg-black/70 px-2 py-1 text-right text-[12px] text-white/85">{said}</span>}
     </div>

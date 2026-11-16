@@ -29,7 +29,9 @@ const SIZES = {
   xs: { tile: 120, badge: "bottom-0.5 right-0.5 rounded px-0.5 py-0.5", arch: 10 },
 } as const;
 
-export default function Watermark({ size = "lg", className = "" }: { size?: keyof typeof SIZES; className?: string }) {
+// The address is not written in the corner of a section's photo (Type IV): the tray and the 3× photo (owner, 2026-11-16:
+// "remove vbazaar.app from the corner of type IV photos"). The arch stays there, and the faint tile keeps the address.
+export default function Watermark({ size = "lg", className = "", address = size === "lg" }: { size?: keyof typeof SIZES; className?: string; address?: boolean }) {
   const z = SIZES[size];
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 select-none overflow-hidden ${className}`}>
@@ -39,7 +41,7 @@ export default function Watermark({ size = "lg", className = "" }: { size?: keyo
           <path fill={GREEN} fillRule="evenodd" d={ARCH} />
           <path d="M4 28 H40" stroke={GREEN} strokeWidth="1.8" strokeLinecap="round" />
         </svg>
-        {size !== "xs" && <span>vbazaar.app</span>}
+        {address && <span>vbazaar.app</span>}
       </div>
     </div>
   );

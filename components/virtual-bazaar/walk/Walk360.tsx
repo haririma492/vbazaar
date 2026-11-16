@@ -71,6 +71,8 @@ import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
 import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { noSave } from "@/components/kit/noSave";
+import Watermark from "@/components/kit/Watermark";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
@@ -2599,14 +2601,18 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
    * section on the right"). A photo of a shelf no longer in view (the tray loops the last one): the walk goes back to
    * that shelf first, through a short fade, and faces it (owner: "the free tour will smoothly move back there").
    */
-  async function pickSection(sec: ShopSection, el: HTMLElement | null, opts: { shelf?: ShopShelf; highlight?: string } = {}) {
+  async function pickSection(sec: ShopSection, el: HTMLElement | null, opts: { shelf?: ShopShelf; highlight?: string; jump?: boolean } = {}) {
     const e = engine.current, top = topRef.current;
     const shelf = opts.shelf ?? kit?.shelves.find((x) => x.sections.some((y) => y.id === sec.id));
     if (!e || !top || !shelf || pickedRef.current) return;
     setDrive(null);
     setTrayPaused(true);
+    // ⚠️ The tray's own shelf is where the shopper is (the operator's marks say so): no jump back to where its border
+    // was drawn, and so no fade to black (owner, 2026-11-16: "when pressing on type IV photos during the walk why
+    // screen gets dark momentarily"). Only a share link, landing from elsewhere, goes to the shelf first.
     const seen = e.shelfOnScreen(shelf.outline, null);
-    if (!seen || seen.cover < 0.03) {
+    const mayJump = opts.jump ?? shelf.id !== trayId;
+    if (mayJump && (!seen || seen.cover < 0.03)) {
       const t = shelfMoment(shelf.outline);
       if (t !== null) {
         setVeil(true);
@@ -2660,7 +2666,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     }
     // The tray slides the shelf in (under a second) before its photo is opened from it. Not cancelled by a re-render:
     // the share is used once (`deepShare` is cleared above).
-    void wait(1000).then(() => pickSection(sec, null, { shelf, highlight: to.product }));
+    void wait(1000).then(() => pickSection(sec, null, { shelf, highlight: to.product, jump: true }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kitOn, kit, phase, trayShelves]);
   /** Closing the panel closes the photo and the arrow, and the walk (and the tray) go on (owner: "yes it starts again"). */
@@ -2853,7 +2859,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               of the walk (owner, 2026-11-15: "the whole size of all and the wheel will be reduced 25%"). */}
           <div className={kitOn ? "pointer-events-none absolute inset-0 origin-bottom-right scale-75 [&>*]:pointer-events-auto" : "contents"}>
           <SteeringWheel
-            className={kitOn ? "bottom-[10rem] right-5" : "bottom-[9.25rem] right-5"}
+            className={kitOn ? "bottom-[12.75rem] right-5" : "bottom-[9.25rem] right-5"}
             onMove={(x) => engine.current?.setMove(x, 0)}
             onZoom={(z) => engine.current?.setZoom(z)}
             follow={() => engine.current?.turn() ?? 0}
@@ -2927,6 +2933,14 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               {/* Only the frame rate (owner, 2026-11-06: "remove the word recommended and extend the bar on its place"). */}
               <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-white/70">{fpsOf(speed)} fps</span>
             </label>
+            {/* «Shelf Tour | Free Tour» under the speed bar, in the same 25%-smaller group (owner, 2026-11-16: "make the
+                Shelf Tour/Free Tour 25% smaller and being the switch under the speed bar"). */}
+            {kitOn && slug && !view.busy && !editing && (
+              <div className="flex h-9 items-center rounded-full border border-white/25 bg-black/70 p-0.5 text-[13px] font-semibold text-white">
+                <a href={`/vca/tour?s=${tourOf ?? slug}`} className="flex-1 rounded-full py-1.5 text-center text-white/80">🛒 Shelf Tour</a>
+                <span className="flex-1 rounded-full bg-[#00B8C8] py-1.5 text-center text-[#06131c]">👣 Free Tour</span>
+              </div>
+            )}
           </div>
           </div>
 
@@ -2985,7 +2999,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               ← Back to the street · بازگشت به خیابان
             </button>
           )}
-          {(tourOf || (kitOn && slug)) && !view.busy && !editing && (
+          {tourOf && !kitOn && !view.busy && !editing && (
             <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-white/25 bg-black/70 p-1 text-[14px] font-semibold text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
               <a href={`/vca/tour?s=${tourOf ?? slug}`} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
               <span className="rounded-full bg-[#00B8C8] px-4 py-1.5 text-[#06131c]">👣 Free Tour</span>
@@ -3099,8 +3113,28 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       )}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
+      {/* THE SHELF'S WHOLE PHOTO (Type III) under the store's logo, a sixth of the screen wide, the same shelf as the tray:
+          it changes as the shopper walks from shelf to shelf (owner, 2026-11-16: "under the store logo on the left of
+          the top section bring the photo of the shelf (Type III) that takes 1/6 of the width of the screen from left
+          edge … when walk move on the Type III photo … also need to switch"). A tap opens it with all its products. */}
+      {kitOn && kit && phase === "walking" && !editing && (() => {
+        const sh = kit.shelves.find((x) => x.id === trayId);
+        const all = sh ? wholeShelf(sh) : null;
+        if (!sh?.photo || !all) return null;
+        return (
+          <button type="button" key={sh.id} data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
+            className={`absolute left-3 z-20 overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg ${logoOf(walks, view.key) ? "top-[4.6rem] sm:top-[5.1rem]" : "top-3"}`}
+            style={{ width: "16.667%", aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
+            aria-label={`${sh.label.en} · ${sh.label.fa}`}>
+            <img src={sh.photo.thumb} alt="" data-nosave {...noSave} className="block h-full w-full object-cover" />
+            <Watermark size="xs" />
+          </button>
+        );
+      })()}
       {phase !== "loading" && (
-        <WalkSound audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={walkOf(walks, view.key)?.radio ?? null}
+        // The sound key at the top right, left of the bazaar's arch, and no «nikoo.tv live music» label (owner,
+        // 2026-11-16: "remove the nikoo.tv live label, move the speaker sign up to the left of arch logo of vbazaar").
+        <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={walkOf(walks, view.key)?.radio ?? null}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 

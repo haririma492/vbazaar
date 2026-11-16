@@ -425,6 +425,14 @@ plan and the Managed Agents decision are in
       `kitRules.ts`, tested): from a shelf's mark to the next, that shelf; before the first mark, the first; sliding in
       from the right going forward, from the left going back. With none marked, the picture rule (`trayCross`).
 : the funnel and the section's thin outline on the shelf stay.
+    - **The top of the Free Tour, tidied** (owner, 2026-11-16): the sound key at the top right, left of the bazaar's
+      arch, with no «nikoo.tv live music» label; the store's logo 15% smaller (`StoreLogo`); under it the tray shelf's
+      WHOLE photo (Type III), a sixth of the screen wide, changing with the tray as the shopper walks (a tap opens it with
+      all its products); «Shelf Tour | Free Tour» under the speed bar, in the controls' 25%-smaller group; «📸» alone,
+      no «Share to Story» words; no «vbazaar.app» in the corner of a section's photo (Type IV: tray, 3× photo, Shelf
+      Tour's opened section; `Watermark address`, the arch and the faint tile stay). ⚠️ A tap on a tray photo no longer
+      fades to black: it jumped back to where the shelf's border was drawn whenever that border was not on screen,
+      which with the operator's tray marks was most of the time. Now only a share link jumps (`pickSection jump`).
     - **Every product can go in the basket, priced or not** (*"for proof of concept"*): a line with no price.
     - **No «Shopper's view | Owner's view» switch with the new layout** (no lights to name; the editor's address says
       whose tour it is). It stays for stores still on the old tour.

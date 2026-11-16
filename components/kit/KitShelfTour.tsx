@@ -243,7 +243,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }} />
             <div className="pointer-events-none absolute overflow-hidden rounded-lg"
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }}>
-              <Watermark size="lg" />
+              <Watermark size="lg" address={false} />
             </div>
             <KitPanel share={{ base: kit.link, shelf: shelf.id }} section={open.section} title={shelf.label} merchant={kit.merchant || name} href={`/vca/tour?s=${encodeURIComponent(slug)}`}
               lang={lang} onLang={setLang} onClose={close}
