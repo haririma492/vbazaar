@@ -10,13 +10,17 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { postJson, uploadInParts } from "@/components/stores/upload";
-import { MAX_KIT_PRODUCTS, nextFree, type KitPhoto, type KitSection } from "@/lib/stores/kitRules";
+import { MAX_KIT_PRODUCTS, emptySections, nextFree, sectionProductCount, type KitPhoto, type KitSection } from "@/lib/stores/kitRules";
 import SectionItems, { type SiteItem } from "./SectionItems";
 
 type Shelf = { id: string; label: { en: string; fa: string }; photo: KitPhoto | null; sections: KitSection[] };
 type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; shelves: Shelf[] };
 
-export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId: string }) {
+export default function ShelfProducts({ slug, shelfId, onEmpty }: {
+  slug: string; shelfId: string;
+  /** Told which sections still have no products (their numbers), so the editor can say so before «Done». */
+  onEmpty?: (sections: number[]) => void;
+}) {
   const api = `/api/stores/${slug}`;
   const [st, setSt] = useState<State | null>(null);
   const [k, setK] = useState(0);
@@ -67,6 +71,9 @@ export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId
     input.click();
   };
 
+  const empty = shelf ? emptySections(shelf.sections) : [];
+  const emptyKey = empty.join(",");
+  useEffect(() => { if (st && shelf) onEmpty?.(emptyKey ? emptyKey.split(",").map(Number) : []); }, [emptyKey, st, shelf, onEmpty]);
   if (!st) return <p className="text-white/60">Reading the store&apos;s products…</p>;
   if (!shelf?.sections.length) return <p className="text-amber-200">This shelf has no section photos yet: «← Back» and add them first.</p>;
   const sections = shelf.sections;
@@ -79,10 +86,27 @@ export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId
 
   return (
     <div className="space-y-2">
-      <p className="font-semibold">Section {x.i} of {sections.length}: its products · محصولات بخش {x.i}</p>
+      {/* Every section of the shelf, with how many products it has: which one is open, and which still need some
+          (owner, 2026-11-16: "make it clear that these are for which section … and ensure all sections do have products"). */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {sections.map((s, j) => {
+          const n = sectionProductCount(s);
+          return (
+            <button key={s.id} type="button" onClick={() => { setK(j); setSaid(null); }}
+              className={`flex shrink-0 flex-col items-center gap-0.5 rounded-lg p-1 ${j === k ? "bg-emerald-400/25 ring-2 ring-emerald-300" : "bg-white/5 ring-1 ring-white/15"}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {s.photo.thumb ? <img src={s.photo.thumb} alt="" className="h-10 w-14 rounded object-cover" /> : <span className="flex h-10 w-14 items-center justify-center">⏳</span>}
+              <span className="text-[11px] font-bold">Section {s.i}</span>
+              <span className={`text-[11px] ${n ? "text-emerald-300" : "text-amber-300"}`}>{n ? `✓ ${n} product${n > 1 ? "s" : ""}` : "⚠ none yet"}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[15px] font-bold text-emerald-100">Adding products for SECTION {x.i} of {sections.length} · افزودن محصولات بخش {x.i}</p>
+      <p className="text-white/60">These go in the shopping panel when a shopper taps this section&apos;s photo:</p>
       {x.photo.thumb
         // eslint-disable-next-line @next/next/no-img-element
-        ? <img src={x.photo.thumb} alt="" className="max-h-40 rounded border border-white/15 object-contain" />
+        ? <img src={x.photo.thumb} alt="" className="max-h-40 rounded border-2 border-emerald-300/70 object-contain" />
         : <p className="text-white/60"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-300" />The photo is being put up…</p>}
       <SectionItems section={x} site={st.site} siteNote={st.siteNote} uploading={Boolean(busy)}
         onSave={async (webs) => {
@@ -98,6 +122,9 @@ export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId
       {x.products.length > 0 && <p className="text-[12px] text-white/50">{x.products.length} product photo{x.products.length > 1 ? "s" : ""} from this computer on this section (their website match can be changed on the store&apos;s page).</p>}
       {busy && <p className="text-white/70"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-300" />Uploading {busy}</p>}
       {said && <p className={said.ok ? "text-emerald-300" : "text-rose-300"}>{said.text}</p>}
+      {empty.length > 0
+        ? <p className="text-amber-200">⚠ Section{empty.length > 1 ? "s" : ""} {empty.join(", ")} {empty.length > 1 ? "have" : "has"} no products yet: shoppers tapping {empty.length > 1 ? "them" : "it"} would find an empty list.</p>
+        : <p className="text-emerald-300">✓ Every section of this shelf has products.</p>}
       <div className="flex flex-wrap gap-1">
         {k > 0 && <button type="button" className="rounded-full border border-white/20 px-3 py-1" onClick={() => { setK(k - 1); setSaid(null); }}>← Previous section</button>}
         {k < sections.length - 1 && <button type="button" className="rounded-full bg-emerald-400 px-3 py-1 font-semibold text-black" onClick={() => { setK(k + 1); setSaid(null); }}>Next section →</button>}

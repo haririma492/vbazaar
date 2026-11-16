@@ -398,6 +398,21 @@ plan and the Managed Agents decision are in
     funnel, and the shopping panel (`components/kit/KitPanel.tsx`) on the right: names, prices, a weight for what is
     sold by the kilo, «Add to basket», Farsi / English. No zooming into the photo: this is the e-commerce step.
     Closing the panel closes the photo and the walk goes on. Phones upright only (a notice when held sideways).
+  - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
+    - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
+      scrolls them if they do not fit), and on the dark right-hand side the shelf's NAME, large (`KitTray.tsx`).
+    - **It changes shelf when the walk's middle passes the next shelf's middle** (`trayCross`, `kitRules.ts`, tested;
+      it replaced `trayShelf`'s "more than half the screen"), sliding in over 1.1 s the way the picture moved: the new
+      sections come in from the side the walk is going to, the old ones leave by the other.
+    - **No arrow** (*"remove the white thin arrow"*): the funnel and the section's thin outline on the shelf stay.
+    - **Every product can go in the basket, priced or not** (*"for proof of concept"*): a line with no price.
+    - **No «Shopper's view | Owner's view» switch with the new layout** (no lights to name; the editor's address says
+      whose tour it is). It stays for stores still on the old tour.
+    - **Which section, and none left empty** (*"make it clear that these are for which section … and ensure all
+      sections do have products"*): the editor's products step shows every section with its count (✓ n / ⚠ none),
+      «Adding products for SECTION n of N» over that section's photo, the upload key names the section, and «Done»
+      asks before leaving with sections still empty (`emptySections`, `sectionProductCount`); the store's page says
+      the same per shelf.
   - **Share keys almost everywhere; the photo is never shared** (owner, 2026-11-15: *"share key should be almost
     everywhere, on shelf (e-commerce shelf …), on shelf level (Type IV) and on products (type V) and receivers should
     end up exactly on the same spot on walking tour and the same photo should be made open"*). `ShareKey.tsx` (the

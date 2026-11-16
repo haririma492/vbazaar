@@ -50,10 +50,10 @@ export default function SectionItems({ section, site, siteNote, onSave, onOwnPho
   );
   return (
     <div className="mt-2 rounded-md border border-emerald-300/20 bg-emerald-300/[0.04] p-2">
-      <p className="font-bold text-emerald-100">Products shoppers see for this section · محصولات این بخش ({chosen.length})</p>
+      <p className="font-bold text-emerald-100">Products of section {section.i} · محصولات بخش {section.i} — {chosen.length} from the website</p>
       <p className="text-[12px] text-white/50">Two ways, both fine: pick them from the store&apos;s website below, or upload their photos (Type V) from this computer. A website product can also take your own photo («📷»): it is shown first, the website&apos;s after it.</p>
       {onUploadLocal && <button type="button" className="mt-1 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
-        onClick={onUploadLocal}>＋ Upload product photos from this computer (Type V) · از رایانه</button>}
+        onClick={onUploadLocal}>＋ Upload product photos for section {section.i} from this computer (Type V) · از رایانه</button>}
       {!site.length && <p className="text-amber-200">{siteNote || "No website products yet: run the Website Explorer first."}</p>}
       {chosen.length > 0 && (
         <ol className="mt-1 space-y-1">

@@ -288,3 +288,37 @@ export function wholeShelf(sh: ShopShelf): ShopSection | null {
   if (!sh.photo) return null;
   return { id: `${sh.id}-all`, i: 0, url: sh.photo.url, thumb: sh.photo.thumb, w: sh.photo.w, h: sh.photo.h, quad: null, products: sh.sections.flatMap((x) => x.products) };
 }
+
+/**
+ * THE TRAY CHANGES SHELF WHEN THE WALK'S MIDDLE PASSES THE NEXT SHELF'S MIDDLE (owner, 2026-11-16: "when center of
+ * moving tour is past the center of the next shelf then the bottom tray will change to the next set of sections …
+ * smooth … in the direction of move of the tour and the old set of sections will move away from the other side").
+ * `prev`: each shelf's middle on the screen last frame (x, pixels); `now`: this frame's; `mid`: the screen's middle.
+ * A shelf other than the tray's whose middle crossed the screen's middle since last frame becomes the tray's; so does
+ * one sitting at the middle (within `near` px) while the tray's shelf is not on screen at all (a jump, a turn).
+ * `dir` is which way the picture moved: -1 leftward (the new set comes in from the right, the old leaves left),
+ * +1 rightward. Null: the tray keeps its shelf.
+ */
+export function trayCross(cur: string | null, prev: Map<string, number>, now: Array<{ id: string; x: number }>, mid: number, near = 40): { id: string; dir: 1 | -1 } | null {
+  for (const s of now) {
+    if (s.id === cur) continue;
+    const p = prev.get(s.id);
+    if (p !== undefined && (p - mid) * (s.x - mid) <= 0 && p !== s.x) return { id: s.id, dir: s.x < p ? -1 : 1 };
+  }
+  if (cur === null || !now.some((s) => s.id === cur)) {
+    const c = now.filter((s) => s.id !== cur && Math.abs(s.x - mid) <= near).sort((a, b) => Math.abs(a.x - mid) - Math.abs(b.x - mid))[0];
+    if (c) { const p = prev.get(c.id); return { id: c.id, dir: p !== undefined && c.x > p ? 1 : -1 }; }
+  }
+  return null;
+}
+
+/** How many products a section will list in the panel: the website products picked for it, and the photos from the
+ *  operator's computer that are not one of those. */
+export function sectionProductCount(x: { items?: string[]; products: Array<{ match?: { web: string | null } }> }): number {
+  const items = x.items ?? [];
+  return items.length + x.products.filter((p) => !(p.match?.web && items.includes(p.match.web))).length;
+}
+/** The sections of a shelf with no products yet (their numbers): shoppers tapping one would see an empty list
+ *  (owner, 2026-11-16: "ensure all sections do have products loaded or identified from web"). */
+export const emptySections = (sections: Array<{ i: number; items?: string[]; products: Array<{ match?: { web: string | null } }> }>) =>
+  sections.filter((x) => sectionProductCount(x) === 0).map((x) => x.i);

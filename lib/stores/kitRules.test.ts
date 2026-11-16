@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -98,4 +98,23 @@ test("the operator's website products on a section: in order, no repeats, only o
   assert.deepEqual(k.shelves[0].sections[0].items, ["b", "a"]);
   k = setItems(k, "z1-1", [], new Set(["a"]));
   assert.deepEqual(k.shelves[0].sections[0].items, []);
+});
+
+test("the tray changes shelf when the walk's middle passes the next shelf's middle, in the direction it moved", () => {
+  const prev = new Map([["a", 380], ["b", 620]]);
+  // b slides left past the middle (500): the tray takes b, coming in from the right.
+  assert.deepEqual(trayCross("a", prev, [{ id: "a", x: 260 }, { id: "b", x: 495 }], 500), { id: "b", dir: -1 });
+  // Not yet past the middle: no change.
+  assert.equal(trayCross("a", prev, [{ id: "a", x: 300 }, { id: "b", x: 560 }], 500), null);
+  // Walking back: a slides right past the middle while b is the tray's.
+  assert.deepEqual(trayCross("b", new Map([["a", 470]]), [{ id: "a", x: 530 }], 500), { id: "a", dir: 1 });
+  // The tray's shelf is gone (a jump) and another sits at the middle: that one.
+  assert.deepEqual(trayCross("a", new Map(), [{ id: "c", x: 510 }], 500), { id: "c", dir: -1 });
+  assert.equal(trayCross("a", new Map(), [{ id: "a", x: 900 }, { id: "c", x: 510 }], 500), null);
+});
+
+test("a section's products: the website's picked for it, and its own photos not already one of them", () => {
+  const web = (w: string | null) => ({ match: { web: w } });
+  assert.equal(sectionProductCount({ items: ["a", "b"], products: [web("a"), web(null), {}] }), 4);
+  assert.deepEqual(emptySections([{ i: 1, items: ["a"], products: [] }, { i: 2, products: [] }, { i: 3, items: [], products: [{}] }]), [2]);
 });

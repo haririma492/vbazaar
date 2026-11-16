@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { postJson, uploadInParts, type Progress } from "./upload";
 import { Bi, Card, KEY, QUIET, Said } from "./ui";
-import { MAX_KIT_PRODUCTS, MAX_SECTIONS, kitFileName, nextFree, parseKitName, type KitPhoto, type KitSection, type KitSlot } from "@/lib/stores/kitRules";
+import { MAX_KIT_PRODUCTS, MAX_SECTIONS, emptySections, kitFileName, nextFree, parseKitName, type KitPhoto, type KitSection, type KitSlot } from "@/lib/stores/kitRules";
 import { formatCents } from "@/lib/splats/catalogue";
 import SectionItems, { type SiteItem } from "@/components/kit/SectionItems";
 
@@ -166,6 +166,9 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="font-bold">{sh.label.fa} · {sh.label.en}{sh.n !== null ? ` (shelf ${sh.n})` : ""}</p>
                   {!sh.onWalk && <p className="text-amber-200">Not bordered on the walk: the tray cannot follow it.</p>}
+                  {sh.sections.length > 0 && (emptySections(sh.sections).length
+                    ? <p className="text-amber-200">⚠ Section{emptySections(sh.sections).length > 1 ? "s" : ""} {emptySections(sh.sections).join(", ")}: no products yet (pick them from the website or upload their photos below).</p>
+                    : <p className="text-emerald-200">✓ Every section has products.</p>)}
                   <p className={sh.photo ? "text-emerald-200" : "text-amber-200"}>{sh.photo ? `✓ Quality photo: ${sh.photo.name} (${mb(sh.photo.size)})${sh.photo.w ? `, ${sh.photo.w}×${sh.photo.h}` : ""}` : "1) Its quality photo (Type III) is next."}</p>
                   <div className="flex flex-wrap gap-2 pt-1">
                     <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => pick((i) => (i === 0 ? { shelf: sh.id } : null))}>{sh.photo ? "Replace the quality photo" : "＋ Quality photo (Type III)"}</button>

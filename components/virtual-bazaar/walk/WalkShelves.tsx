@@ -50,6 +50,8 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   change: (w: Walks) => void;
   setStatus: (s: { tone: "ok" | "warn" | "bad"; text: string } | null) => void;
 }) {
+  /** The sections of the shelf being filled that still have no products (`ShelfProducts`). */
+  const [emptySecs, setEmptySecs] = useState<number[]>([]);
   const slug = storeSlugOf(viewKey);
   const [ready, setReady] = useState<Ready[]>([]);
   const [at, setAt] = useState<Step | null>(null);
@@ -278,7 +280,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
         </>)}
         {at.step === "next" && (<>
           {/* Each section's products, here and now (owner, 2026-11-16): the website's, and photos from this computer. */}
-          <ShelfProducts slug={slug} shelfId={at.id} />
+          <ShelfProducts slug={slug} shelfId={at.id} onEmpty={setEmptySecs} />
         </>)}
         {sending && (
           <div>
@@ -292,7 +294,11 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
           {(at.step === "n" || at.step === "en" || at.step === "fa") && <button className={key} onClick={() => answer()}>Next →</button>}
           {(at.step === "n" || at.step === "en" || at.step === "fa") && <button className={btn} onClick={() => answer(true)}>Skip</button>}
           {(at.step === "photo" || at.step === "sections") && <button className={btn} disabled={Boolean(sending)} onClick={() => setAt({ step: at.step === "photo" ? "sections" : "next", id: at.id })}>Skip</button>}
-          {at.step === "next" && <button className={key} onClick={() => { setAt(null); setStatus(null); }}>Done</button>}
+          {at.step === "next" && <button className={key} onClick={() => {
+            // Every section should have products (owner, 2026-11-16): said before leaving, not after.
+            if (emptySecs.length && !confirm(`Section${emptySecs.length > 1 ? "s" : ""} ${emptySecs.join(", ")} still ${emptySecs.length > 1 ? "have" : "has"} no products: shoppers tapping ${emptySecs.length > 1 ? "them" : "it"} would find an empty list. Finish anyway?`)) return;
+            setAt(null); setStatus(null);
+          }}>Done</button>}
         </div>
         {progress}
       </div>

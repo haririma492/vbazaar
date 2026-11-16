@@ -65,15 +65,8 @@ export default function KitBridge({ from, area, right, url, aspect, target, onCl
     [from.left, from.top], [from.left + from.width, from.top],
     [cur.left + cur.width, cur.top + cur.height], [cur.left, cur.top + cur.height],
   ].map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ");
-  // The arrow: from the tray photo's top middle to the middle of the section on the shelf.
-  const mid = target?.length ? [target.reduce((s, p) => s + p[0], 0) / target.length, target.reduce((s, p) => s + p[1], 0) / target.length] : null;
-  const ax = from.left + from.width / 2, ay = from.top;
-  let head = "";
-  if (mid) {
-    const dx = mid[0] - ax, dy = mid[1] - ay, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
-    const b = [mid[0] - ux * 10, mid[1] - uy * 10];
-    head = `${mid[0]},${mid[1]} ${b[0] - uy * 4.5},${b[1] + ux * 4.5} ${b[0] + uy * 4.5},${b[1] - ux * 4.5}`;
-  }
+  // No arrow (owner, 2026-11-16: "remove the white thin arrow, we do not need it"): the section's thin outline on the
+  // shelf and the funnel say where the photo is.
   return (
     <div className="fixed inset-0 z-[45]" onClick={onClose} onPointerDown={(ev) => ev.stopPropagation()}>
       <svg className="pointer-events-none absolute inset-0 h-full w-full" style={{ opacity: Math.min(1, k * 1.6) }}>
@@ -87,12 +80,6 @@ export default function KitBridge({ from, area, right, url, aspect, target, onCl
         {target && target.length === 4 && (
           <polygon points={target.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ")} fill="rgba(255,255,255,0.06)" stroke="white" strokeWidth="1.5" strokeLinejoin="round"
             style={{ filter: "drop-shadow(0 0 1.5px rgba(0,0,0,0.9))" }} />
-        )}
-        {mid && (
-          <g style={{ filter: "drop-shadow(0 0 1.5px rgba(0,0,0,0.95))" }}>
-            <line x1={ax} y1={ay} x2={mid[0]} y2={mid[1]} stroke="white" strokeWidth="1.5" strokeDasharray={`${Math.hypot(mid[0] - ax, mid[1] - ay) * e} 99999`} />
-            {k >= 1 && <polygon points={head} fill="white" />}
-          </g>
         )}
       </svg>
       <div className="absolute overflow-hidden rounded-xl bg-black shadow-2xl ring-2 ring-amber-200/80"

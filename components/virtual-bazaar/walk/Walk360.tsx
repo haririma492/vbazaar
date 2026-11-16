@@ -70,7 +70,7 @@ import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
-import { coverOf, readKitShare, sharedSection, shelfMoment, trayShelf, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { coverOf, readKitShare, sharedSection, shelfMoment, trayCross, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
@@ -568,7 +568,7 @@ type Engine = {
    */
   setKit: (on: boolean, onPlainTap: (() => void) | null) => void;
   /** The shelves the tray follows (their borders), and who is told when the shelf on screen changes (`trayShelf`). */
-  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }> | null, start: string | null, onChange: ((id: string | null) => void) | null) => void;
+  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }> | null, start: string | null, onChange: ((id: string | null, dir?: 1 | -1) => void) | null) => void;
   /** Where a shelf (or, with `quad`, a part of its photo) is on the screen now, in the walk area's pixels; null when out of view. */
   shelfOnScreen: (outline: Array<{ t: number; c: number[] }>, quad: number[] | null) => { poly: Array<[number, number]>; cover: number } | null;
   /** Turn to face a direction of this walk (yaw, pitch); nothing on a flat video. */
@@ -1263,7 +1263,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     /** The pastry redesign's tour (`setKit`): no lights, and a tap is stop / walk on. */
     let kitOn = false;
     let onPlainTap: (() => void) | null = null;
-    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }>; cur: string | null; onChange: (id: string | null) => void } | null = null;
+    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }> }>; cur: string | null; onChange: (id: string | null, dir?: 1 | -1) => void; prev: Map<string, number> } | null = null;
     let itemPreview: WalkItem | null = null;
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
@@ -1826,7 +1826,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         onPlainTap = on ? f : null;
       },
       setTray(shelves, start, onChange) {
-        tray = shelves && onChange ? { shelves, cur: start, onChange } : null;
+        tray = shelves && onChange ? { shelves, cur: start, onChange, prev: new Map() } : null;
       },
       shelfOnScreen(outline, quad) {
         if (!current || busy || current.video.readyState < 1) return null;
@@ -1867,21 +1867,23 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       }
       return out;
     }
-    /** THE TRAY'S SHELF (owner: "as the top view pass that shelf reaching the next shelf (more than 50% of screen is
-     *  already showing the next shelf) then very smoothly the tray moves"): each frame, how much of the screen each
-     *  shelf's border covers; the walk's React side is told only when the shelf changes. */
+    /** THE TRAY'S SHELF (owner, 2026-11-16: "when center of moving tour is past the center of the next shelf then the
+     *  bottom tray will change to the next set of sections … in the direction of move of the tour"): each frame, where
+     *  each shelf's middle is on the screen; when another shelf's middle crosses the screen's middle, the tray takes it
+     *  (`trayCross`), and is told which way the picture moved. The walk's React side hears only of a change. */
     function updateTray() {
       if (!tray || !current || busy || current.video.readyState < 1) return;
-      const round = !current.flat, t = tShown(), W = el.clientWidth, H = el.clientHeight;
-      const covers: Array<{ id: string; cover: number }> = [];
+      const round = !current.flat, t = tShown(), W = el.clientWidth;
+      const now: Array<{ id: string; x: number }> = [];
       for (const s of tray.shelves) {
         const c = outlineAt({ id: "", label: { en: "" }, pins: [], outline: s.outline }, t, round);
         if (!c) continue;
         const poly = toScreen([0, 1, 2, 3].map((k) => [c[k * 2], c[k * 2 + 1]] as [number, number]));
-        if (poly) covers.push({ id: s.id, cover: coverOf(poly, W, H) });
+        if (poly) now.push({ id: s.id, x: (poly[0][0] + poly[1][0] + poly[2][0] + poly[3][0]) / 4 });
       }
-      const next = trayShelf(tray.cur, covers);
-      if (next !== tray.cur) { tray.cur = next; tray.onChange(next); }
+      const next = trayCross(tray.cur, tray.prev, now, W / 2);
+      tray.prev = new Map(now.map((s) => [s.id, s.x]));
+      if (next) { tray.cur = next.id; tray.onChange(next.id, next.dir); }
     }
 
     // ── The first video: ?src, ?v, or the walk visitors start on ──────────
@@ -2538,6 +2540,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   /** The tray's shelves: those with section photos and a border on the walk, in the order the walk reaches them. */
   const trayShelves = useMemo(() => (kit?.shelves ?? []).filter((x) => x.sections.length && x.outline.length).sort((a, b) => a.outline[0].t - b.outline[0].t), [kit]);
   const [trayId, setTrayId] = useState<string | null>(null);
+  /** Which way the last change of shelf moved (-1: the picture went left, so the new sections come in from the right). */
+  const [trayDir, setTrayDir] = useState<1 | -1>(-1);
   const [trayPaused, setTrayPaused] = useState(false);
   const [kitLang, setKitLang] = useState<KitLang>("en");
   const [veil, setVeil] = useState(false);
@@ -2560,7 +2564,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     if (!kitOn || !trayShelves.length) { engine.current?.setTray(null, null, null); return; }
     const first = trayShelves[0].id;
     setTrayId((cur) => (cur && trayShelves.some((x) => x.id === cur) ? cur : first));
-    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), first, (id) => { if (id) setTrayId(id); });
+    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), first, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
     return () => engine.current?.setTray(null, null, null);
   }, [kitOn, trayShelves, phase]);
   // Phones stay upright: held sideways, the walk asks to be turned back.
@@ -2638,7 +2642,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     setTrayPaused(true);
     if (trayShelves.some((x) => x.id === shelf.id)) {
       setTrayId(shelf.id);
-      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), shelf.id, (id) => { if (id) setTrayId(id); });
+      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline })), shelf.id, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
     }
     // The tray slides the shelf in (under a second) before its photo is opened from it. Not cancelled by a re-render:
     // the share is used once (`deepShare` is cleared above).
@@ -3093,7 +3097,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           lens={view.flat ? walkOf(walks, view.key)?.lens ?? null : null} className="absolute left-3 top-[7.75rem] z-20" />
       )}
       {/* Only the store's owner or the operator sees this: which card a tap on a product opens for them. */}
-      {owner && phase === "walking" && !editing && !spotMode && (
+      {/* Not with the new layout (owner, 2026-11-16: there are no lights to name, and the editor's address already says
+          whose tour it is). */}
+      {owner && phase === "walking" && !editing && !spotMode && !kitOn && (
         <div dir="ltr" className="absolute left-3 top-[5.5rem] z-20 flex overflow-hidden rounded-full border border-white/25 bg-black/60 text-[12px] font-bold backdrop-blur">
           {([[true, "👁 Shopper's view · نمای خریدار"], [false, "✎ Owner's view · نمای صاحب فروشگاه"]] as const).map(([shopper, say]) => (
             <button key={String(shopper)} type="button" aria-pressed={asShopper === shopper}
@@ -3139,7 +3145,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       </div>
       {kitOn && kit && (
         <div className="absolute inset-x-0 bottom-0" style={{ height: "23%" }}>
-          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} paused={trayPaused || !drive || veil || Boolean(picked)} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
+          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
         </div>
       )}
       {/* Going back to the shelf of a photo tapped in the tray: a short fade over the jump. */}

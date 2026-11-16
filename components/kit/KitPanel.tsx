@@ -42,14 +42,15 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
   const priced = p.priceCents !== null;
   const unitSay = p.unit === "piece" ? (lang === "fa" ? "عدد" : "each") : UNIT_SAY[p.unit][lang];
   const total = priced ? Math.round(p.priceCents! * (weighed ? amount : 1)) * qty : null;
+  // Every product can go in the basket, priced or not (owner, 2026-11-16: "let all products to be able to be added …
+  // even those with no price (for proof of concept)"); the basket line then has no price.
   const add = () => {
-    if (!priced) return;
     addToBasket({
       id: `kit:${p.id}${weighed ? `:${amount}` : ""}`,
       label: p.en || p.fa || "Product",
       sub: [p.fa && p.fa !== p.en ? p.fa : "", weighed ? amountSay(amount, p.unit, "en") : ""].filter(Boolean).join(" · ") || undefined,
       merchant,
-      price: formatCents(Math.round(p.priceCents! * (weighed ? amount : 1))),
+      ...(priced ? { price: formatCents(Math.round(p.priceCents! * (weighed ? amount : 1))) } : {}),
       imageUrl: p.thumb || p.photo,
       href,
     }, qty);
@@ -85,7 +86,7 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
           : <p className="mt-0.5 text-[13px] font-semibold text-neutral-500">{lang === "fa" ? "قیمت به‌زودی" : "Price coming soon"}</p>}
         {share && <ShareKey base={share.base} to={{ shelf: share.shelf, product: p.id }} title={name} lang={lang} className="mt-1" />}
         {p.note && <p dir="auto" className="mt-1 line-clamp-2 text-[12px] leading-snug text-neutral-600">{p.note}</p>}
-        {priced && (
+        {(
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {weighed && (
               <select value={amount} onChange={(e) => setAmount(Number(e.target.value))} aria-label={lang === "fa" ? "مقدار" : "Amount"}
