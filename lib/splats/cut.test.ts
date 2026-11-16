@@ -113,3 +113,19 @@ test("a part's soft edges (the Route optimizer's dips at rough joins) are kept a
   assert.ok(partArgs("in.mp4", parts[0], "out.mp4").includes("fade=t=out:st=3.700:d=0.3"));
   assert.ok(MAX_PARTS >= 40, "room for a careful route");
 });
+
+test("a shelf's border and tray mark go back to the original's times, as they stand now", () => {
+  // The cut kept 10–20 s and 40–50 s of the original; the cut video is 20 s long.
+  const parts = [{ from: 10, to: 20 }, { from: 40, to: 50 }];
+  const c = [0, 0, 1, 0, 1, 1, 0, 1];
+  const before: Walk = { doors: [], zooms: [{ id: "z1", label: { en: "Shelf 1" }, pins: [{ t: 12, x: 0, y: 0 }], outline: [{ t: 12, c }] }] };
+  // After the cut the operator redrew shelf 1 (3–15 s on the cut video) and marked the tray at 12 s.
+  const now: Walk = { doors: [], zooms: [{ id: "z1", label: { en: "Shelf 1" }, pins: [{ t: 2, x: 0, y: 0 }], outline: [{ t: 3, c }, { t: 15, c }], trayAt: 12 }] };
+  const z = originalWalk({ walk: before, parts }, now).walk.zooms![0];
+  assert.deepEqual(z.outline!.map((f) => f.t), [13, 45]);
+  assert.equal(z.trayAt, 42);
+  // A record of the whole video (after «Put the original back»): times stay as they are.
+  const same = originalWalk({ walk: now, parts: [{ from: 0, to: 60 }] }, now).walk.zooms![0];
+  assert.deepEqual(same.outline!.map((f) => f.t), [3, 15]);
+  assert.equal(same.trayAt, 12);
+});

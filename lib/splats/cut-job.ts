@@ -200,15 +200,30 @@ export function startRestoreJob(key: string): CutJob {
       for (const f of [key, phoneKeyOf(key)]) {
         if (await webObjectExists(originalKeyOf(f))) await copyWebObject(originalKeyOf(f), f, "video/mp4");
       }
-      job.step = "putting the doors and dots back";
-      const before = readCutRecord(JSON.parse((await readMastersText(backupKeyOf(key))) ?? "null"))?.walk ?? null;
-      // The walk as it was, but what was set since (its sound, its projection) stays.
-      await saveWalk(key, (w) => ({
-        ...w, ...(before ? { doors: before.doors, ...(before.items ? { items: before.items } : {}) } : {}), rev: (w.rev ?? 0) + 1,
-      }));
+      job.step = "putting the doors, dots and shelves back";
+      const record = readCutRecord(JSON.parse((await readMastersText(backupKeyOf(key))) ?? "null"));
+      // Everything that sits on the video's times goes back to the original's: doors, dots, covers, the shelves'
+      // borders and tray marks (2026-11-16: only doors and dots were, so nuttime's shelves would have stayed on the
+      // cut's times). What was set since that has no time (its sound, its projection) stays.
+      let restored: Walk | null = null;
+      await saveWalk(key, (w) => { restored = record ? originalWalk(record, w).walk : w; return { ...restored, rev: (w.rev ?? 0) + 1 }; });
+      // The cut is undone: the record now holds the walk as restored, and ONE part, the whole video, so anything
+      // marked from here on is on the original's times when a later cut moves it.
+      if (restored) {
+        const whole = await durationOf(await presignGetAny(key, SIGNED_SECONDS)).catch(() => 0);
+        await writeMastersJson(backupKeyOf(key), { walk: restored, ...(whole > 0 ? { parts: [{ from: 0, to: whole }] } : {}) } satisfies CutRecord);
+      }
       void import("@/lib/stores/reverse").then((m) => m.queueReverse([key])).catch((e) => console.error("[cut] reverse", e));
       // Its motion is measured again on the cut walk (the Route optimizer's smoothness, `routeJob.ts`).
       void import("@/lib/stores/routeJob").then((m) => m.queueSmooth([key])).catch((e) => console.error("[cut] smooth", e));
+      // A store's photos are made again on the whole walk (its lights moved back), as after a cut.
+      const storeSlug = /^scenes\/store-([a-z0-9-]+)\//.exec(key)?.[1];
+      if (storeSlug) {
+        void (async () => {
+          await writeMastersJson(`stores/${storeSlug}/photos-done.json`, { version: "restore", done: [] });
+          (await import("@/lib/stores/crew")).queuePhotos([storeSlug]);
+        })().catch((e) => console.error("[cut] photos", e));
+      }
       Object.assign(job, { state: "done", step: "done", percent: 100, finishedAt: Date.now() });
     } catch (e) {
       Object.assign(job, { state: "failed", error: (e as Error).message, finishedAt: Date.now() });

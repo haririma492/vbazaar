@@ -145,9 +145,12 @@ export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: 
   const keptZooms = new Map((record.walk.zooms ?? []).map((z) => [z.id, z]));
   const zooms = (now.zooms ?? []).flatMap((z) => {
     const old = keptZooms.get(z.id);
-    if (old) return [{ ...z, pins: old.pins }];
-    const pins = z.pins.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
-    const outline = z.outline?.flatMap((f) => { const pt = back(f.t); return pt === null ? [] : [{ ...f, t: pt }]; });
+    // Its border and tray mark as they stand now (maybe redrawn or marked since the cut), moved back; a border that
+    // cannot be moved back falls to the one kept before the cut.
+    const movedPins = z.pins.flatMap((p) => { const pt = back(p.t); return pt === null ? [] : [{ ...p, t: pt }]; });
+    const pins = old ? old.pins : movedPins;
+    const movedOutline = z.outline?.flatMap((f) => { const pt = back(f.t); return pt === null ? [] : [{ ...f, t: pt }]; });
+    const outline = movedOutline?.length ? movedOutline : old?.outline;
     const trayAt = z.trayAt === undefined ? null : back(z.trayAt);
     const { outline: _o, trayAt: _ta, ...zr } = z;
     return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}) }] : [];
