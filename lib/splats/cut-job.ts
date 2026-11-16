@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { copyWebObject, presignGetAny, readMastersText, readWalks, uploadFile, webObjectExists, writeMastersJson, writeWalks } from "./r2";
 import {
-  checkParts, concatList, keptSeconds, originalKeyOf, originalWalk, partArgs, readCutRecord, remapWalk, sayTime, stitchArgs, type CutRecord, type Part,
+  CUT_RECORD_V, checkParts, concatList, keptSeconds, originalKeyOf, originalWalk, partArgs, readCutRecord, remapWalk, sayTime, stitchArgs, type CutRecord, type Part,
 } from "./cut";
 import { isWalkKey, parseWalks, phoneKeyOf, walkOf, type Walk } from "./walks";
 
@@ -145,7 +145,7 @@ export function startCutJob(key: string, rawParts: unknown): CutJob {
         dropped = [...lost, ...r.dropped];
         return { ...r.walk, rev: (w.rev ?? 0) + 1 };
       });
-      await writeMastersJson(backupKeyOf(key), { walk: record.walk, parts } satisfies CutRecord);
+      await writeMastersJson(backupKeyOf(key), { walk: record.walk, parts, v: CUT_RECORD_V } satisfies CutRecord);
       // The reversed copy «Back» plays must match the new length (`lib/stores/reverse.ts`).
       void import("@/lib/stores/reverse").then((m) => m.queueReverse([key])).catch((e) => console.error("[cut] reverse", e));
       // Its motion is measured again on the cut walk (the Route optimizer's smoothness, `routeJob.ts`).
@@ -211,7 +211,7 @@ export function startRestoreJob(key: string): CutJob {
       // marked from here on is on the original's times when a later cut moves it.
       if (restored) {
         const whole = await durationOf(await presignGetAny(key, SIGNED_SECONDS)).catch(() => 0);
-        await writeMastersJson(backupKeyOf(key), { walk: restored, ...(whole > 0 ? { parts: [{ from: 0, to: whole }] } : {}) } satisfies CutRecord);
+        await writeMastersJson(backupKeyOf(key), { walk: restored, ...(whole > 0 ? { parts: [{ from: 0, to: whole }] } : {}), v: CUT_RECORD_V } satisfies CutRecord);
       }
       void import("@/lib/stores/reverse").then((m) => m.queueReverse([key])).catch((e) => console.error("[cut] reverse", e));
       // Its motion is measured again on the cut walk (the Route optimizer's smoothness, `routeJob.ts`).

@@ -134,7 +134,8 @@ async function runStep(slug: string, step: StepName) {
     // refreshAll imports this file.
     // A new product list: the website's facts go on it again (the Website step).
     if (step === "catalogue") await updateStore(slug, (x) => (x.steps.website.state === "working" ? null : redo(x, ["website"])));
-    if (step === "tag") void import("./refreshAll").then((m) => m.queueRefresh([slug])).catch((e) => console.error("[refresh] queue", slug, e));
+    // «Refresh all agents» is no longer queued after «tag» (owner, 2026-11-16: obsolete since the pastry redesign; it
+    // spent the store's AI budget on lights and the filmed Shelf Tour).
   } catch (e) {
     const err = e as Error;
     console.error(`[crew] ${slug} ${step}`, err);

@@ -129,3 +129,23 @@ test("a shelf's border and tray mark go back to the original's times, as they st
   assert.deepEqual(same.outline!.map((f) => f.t), [3, 15]);
   assert.equal(same.trayAt, 12);
 });
+
+test("the Lock zone, the turn to the shelves and where tags begin move with the picture, and back", () => {
+  const parts = [{ from: 10, to: 20 }, { from: 40, to: 50 }];
+  const hide = { yaw: 0, width: 1, top: 0, auto: true, at: [{ t: 5, yaw: 0 }, { t: 15, yaw: 1 }, { t: 30, yaw: 2 }, { t: 45, yaw: 3 }] };
+  const walk: Walk = { doors: [], hide, faceAt: 30, tagsFrom: 12 };
+  const cut = remapWalk(walk, parts).walk;
+  // 15 s → 5 s, 45 s → 15 s; 5 s and 30 s were cut out.
+  assert.deepEqual(cut.hide!.at!.map((p) => [p.t, p.yaw]), [[5, 1], [15, 3]]);
+  assert.equal(cut.faceAt, 10); // cut out: where the next kept stretch (40 s) starts
+  assert.equal(cut.tagsFrom, 2);
+  // Back, with a record made by a cut that moves them.
+  const back = originalWalk({ walk, parts, v: 2 }, cut).walk;
+  assert.deepEqual(back.hide!.at!.map((p) => p.t), [15, 45]);
+  assert.equal(back.faceAt, 20); // the join between two kept stretches reads back as the end of the first
+  assert.equal(back.tagsFrom, 12);
+  // An older record: its cut left them on the original's times, so they stay.
+  const old = originalWalk({ walk, parts }, walk).walk;
+  assert.deepEqual(old.hide!.at!.map((p) => p.t), [5, 15, 30, 45]);
+  assert.equal(old.faceAt, 30);
+});

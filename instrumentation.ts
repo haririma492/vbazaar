@@ -28,8 +28,8 @@ export async function register() {
     setTimeout(() => void walksToSmooth().then(queueSmooth).catch((e) => console.error("[smooth] resume", e)), 45_000);
     // Every store's agents run on their own (`lib/stores/refreshAll.ts`): the queue a restart cut off, and stores
     // tagged but never refreshed (no Shelf Tour yet).
-    const { queueRefresh, storesToRefresh, drainRefresh } = await import("./lib/stores/refreshAll");
-    setTimeout(() => void storesToRefresh().then(async (s) => { if (s.length) await queueRefresh(s); else await drainRefresh(); }).catch((e) => console.error("[refresh] resume", e)), 60_000);
+    // ⚠️ No more (owner, 2026-11-16: "Refresh all agents" is obsolete since the pastry redesign): nothing is queued
+    // or carried on at start.
     // A Website Explorer read a restart cut off carries on, and its products reach the store's list (`website.ts`).
     const { resumeWebsite } = await import("./lib/stores/website");
     setTimeout(() => void resumeWebsite().catch((e) => console.error("[website] resume", e)), 55_000);

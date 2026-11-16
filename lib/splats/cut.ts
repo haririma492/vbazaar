@@ -18,7 +18,7 @@
  *   `rev` changes with every cut and the player asks for `<file>?r=<rev>`.
  */
 
-import type { Walk } from "./walks";
+import type { Walk, WalkHide } from "./walks";
 
 /**
  * A part to keep. `soft` (the Route optimizer, 2026-11-04): where two parts
@@ -104,6 +104,30 @@ export function unmapTime(t: number, parts: Part[]): number | null {
 }
 
 /**
+ * THE MOMENTS OF THE WALK THAT ARE NOT PINS move with the picture too (2026-11-16, nuttime: the Route optimizer's cut
+ * left the Lock zone, which turns the view away from the camera operator, on the original's 0–141 s while the video
+ * was 118 s long, so the view turned away from where the operator had stood seconds later in the uncut film; the
+ * owner: "the route is completely messed up … the cut has made it even worse"). The zone's steps and locks, the turn
+ * to the shelves (`faceAt`), where tags begin (`tagsFrom`). `f` moves one moment; null: cut out.
+ */
+export function moveHide(h: WalkHide | undefined, f: (t: number) => number | null): WalkHide | undefined {
+  if (!h) return h;
+  const move = <P extends { t: number }>(ps?: P[]) => ps?.flatMap((p) => { const t = f(p.t); return t === null ? [] : [{ ...p, t }]; }).sort((a, b) => a.t - b.t);
+  const at = move(h.at), locks = move(h.locks);
+  const { at: _a, locks: _l, ...rest } = h;
+  return { ...rest, ...(at?.length ? { at } : {}), ...(locks?.length ? { locks } : {}) };
+}
+
+/** A moment that is not a pin: moved, or, cut out, to where the next kept stretch starts (else dropped). */
+function moveMoment(t: number | undefined, parts: Part[]): number | undefined {
+  if (t === undefined) return undefined;
+  return mapTime(t, parts) ?? mapTime(Math.min(...parts.map((p) => p.from).filter((f) => f >= t), Infinity), parts) ?? undefined;
+}
+
+/** The record's version: from 2, a cut moved the walk's moments (`moveHide`), so they are moved back. */
+export const CUT_RECORD_V = 2;
+
+/**
  * The walk on the ORIGINAL's times, ready to be cut again: the record's
  * doors and dots, plus any added since the last cut, moved back to the
  * original by that cut's parts (without them, they cannot be placed: said).
@@ -155,8 +179,19 @@ export function originalWalk(record: CutRecord, now: Walk): { walk: Walk; lost: 
     const { outline: _o, trayAt: _ta, ...zr } = z;
     return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}) }] : [];
   });
+  // The zone, the turn and where tags begin: moved back only when the cut that made them moved them (a record of
+  // version 2); before, a cut left them on the original's times, so they are already there.
+  const moments: Partial<Walk> = {};
+  if ((record.v ?? 1) >= CUT_RECORD_V) {
+    const h = moveHide(now.hide, back);
+    moments.hide = h && (h.at?.length || !now.hide?.at?.length) ? h : record.walk.hide;
+    moments.faceAt = now.faceAt === undefined ? undefined : back(now.faceAt) ?? record.walk.faceAt;
+    moments.tagsFrom = now.tagsFrom === undefined ? undefined : back(now.tagsFrom) ?? record.walk.tagsFrom;
+  }
   const { zooms: _z, ...nowRest } = now;
-  return { walk: { ...nowRest, doors, ...(items.length ? { items } : {}), ...(covers.length ? { covers } : {}), ...(zooms.length ? { zooms } : {}) }, lost };
+  const out: Walk = { ...nowRest, ...moments, doors, ...(items.length ? { items } : {}), ...(covers.length ? { covers } : {}), ...(zooms.length ? { zooms } : {}) };
+  for (const k of ["hide", "faceAt", "tagsFrom"] as const) if (out[k] === undefined) delete out[k];
+  return { walk: out, lost };
 }
 
 /** The walk's doors and dots moved to the new video's times (see the head of this file). */
@@ -191,8 +226,10 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
     const { outline: _o, trayAt: _ta, ...zr } = z;
     return pins.length ? [{ ...zr, pins, ...(outline?.length ? { outline } : {}), ...(trayAt !== null ? { trayAt } : {}) }] : [];
   });
-  const { zooms: _z, ...walkRest } = walk;
-  return { walk: { ...walkRest, doors, ...(items ? { items } : {}), ...(covers ? { covers } : {}), ...(zooms?.length ? { zooms } : {}) }, dropped };
+  const hide = moveHide(walk.hide, (t) => mapTime(t, parts));
+  const faceAt = moveMoment(walk.faceAt, parts), tagsFrom = moveMoment(walk.tagsFrom, parts);
+  const { zooms: _z, hide: _h, faceAt: _f, tagsFrom: _tf, ...walkRest } = walk;
+  return { walk: { ...walkRest, doors, ...(hide ? { hide } : {}), ...(faceAt !== undefined ? { faceAt } : {}), ...(tagsFrom !== undefined ? { tagsFrom } : {}), ...(items ? { items } : {}), ...(covers ? { covers } : {}), ...(zooms?.length ? { zooms } : {}) }, dropped };
 }
 
 /** Where the original is kept by the first cut. */
@@ -239,7 +276,7 @@ export const concatList = (files: string[]) => files.map((f) => `file '${f.repla
  * it was before the first cut (its doors and dots on the original's times)
  * and the parts of the latest cut, so the next cut starts from them.
  */
-export type CutRecord = { walk: Walk; parts?: Part[] };
+export type CutRecord = { walk: Walk; parts?: Part[]; v?: number };
 
 /** The record as stored; the first cuts stored the walk alone. */
 export function readCutRecord(raw: unknown): CutRecord | null {
@@ -248,5 +285,5 @@ export function readCutRecord(raw: unknown): CutRecord | null {
   if (Array.isArray(o.doors)) return { walk: o as unknown as Walk };
   if (!o.walk || typeof o.walk !== "object") return null;
   const parts = Array.isArray(o.parts) ? checkParts(o.parts, 0).parts : undefined;
-  return { walk: o.walk as Walk, ...(parts?.length ? { parts } : {}) };
+  return { walk: o.walk as Walk, ...(parts?.length ? { parts } : {}), ...(typeof o.v === "number" ? { v: o.v } : {}) };
 }

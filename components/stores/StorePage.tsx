@@ -33,7 +33,6 @@ import TourCard from "./TourCard";
 import MapCard from "./MapCard";
 import TitlesCard from "./TitlesCard";
 import KitCard from "./KitCard";
-import RefreshAllCard from "./RefreshAllCard";
 import DemoCard from "./DemoCard";
 import TidyCard from "./TidyCard";
 import WalkFrame from "./WalkFrame";
@@ -222,7 +221,8 @@ export default function StorePage({ slug }: { slug: string }) {
         </Card>
       )}
       {page.walkUrl && <InstagramCard api={api} name={page.store.name.en || page.store.name.fa} />}
-      {op && page.walkUrl && <RefreshAllCard api={api} spentCents={s.spentCents} budgetCents={BUDGET_CENTS} editUrl={page.editUrl ?? null} />}
+      {/* «Refresh all agents» is off the page (owner, 2026-11-16: after the pastry redesign "number of these steps are
+          obsolete"): its steps served the green lights and the filmed Shelf Tour. `RefreshAllCard.tsx` stays, unused. */}
       {op && page.walkUrl && page.products.length > 0 && <DemoCard api={api} onChange={load} />}
 
       {op && <Card>

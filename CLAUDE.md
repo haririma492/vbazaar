@@ -1184,6 +1184,21 @@ quality and choice to break away and enter in a shop. (period)"*
   Lights pinned before 2026-11-04 carry no box size; `tourInputs` gives them `LIGHT_SIZE`, so old stores tour too. The queue lives in R2
   (`stores/refresh-pending.json`), one store at a time, after any run the operator started by hand. The AI comes
   out of the store's own $15 budget, which stops it. The «Refresh all agents» key still runs it by hand.
+- **⚠️ «REFRESH ALL AGENTS» IS OFF** (owner, 2026-11-16: *"after the new modernization (switching from all in a walk and
+  select a product by green light TO a semi tour semi conventional e-commerce with Type IV and V photos and new basket;
+  then number of these steps are obsolete"*). Its card is off the store's page, it is no longer queued after «tag» nor at
+  server start (it spent each store's AI budget on lights and the filmed Shelf Tour). The door photo is still made by
+  the crew's Place step (and the `doorPhoto` action). `refreshAll.ts`, `refreshSteps.ts`, `RefreshAllCard.tsx` stay in
+  the repo, unused; the two notes below are history. Don't bring it back without a new decision.
+- **⚠️ A cut moves the walk's moments too; «Put the original back» puts EVERYTHING back** (owner, 2026-11-16, nuttime:
+  *"the route is completely messed up and running the optimizer and cutting it (replacing) has made it even worse"*).
+  The Route optimizer's cut moved doors, dots, covers and shelves but NOT the Lock zone (`hide`, the view turned away
+  from the camera operator), `faceAt` or `tagsFrom`: on nuttime the zone stayed on 0–141 s of a 118 s video, so the
+  view turned away from where the operator had stood seconds later in the uncut film. Now `remapWalk` moves them
+  (`moveHide`) and the record says so (`CutRecord.v` = 2; an older record's walk has them on the original's times, so
+  `originalWalk` leaves them). «Put the original back» used to restore only doors and dots; it now runs `originalWalk`
+  (shelves' borders and tray marks too) and leaves a record of the whole video. nuttime was put back to its original
+  (141 s) the same day. The .insv was not the cause: nothing in the route reads it (`files.raw` is kept for tests).
 - **A step of «Refresh all agents» can be skipped, before or during the run** (owner, 2026-11-13: *"allow operator
   to skip a step … even in the middle of execution or before"*). Before: the card lists the seven steps with a
   tick each; unticked ones go as `skip` with `refreshAll`. During: every step not finished has «Skip» (action
