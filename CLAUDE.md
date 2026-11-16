@@ -421,7 +421,7 @@ plan and the Managed Agents decision are in
       `KitCard.tsx`): the walk's video (its phone copy, the panorama as filmed) and a time bar with each shelf's
       bordered stretch and mark; «The tray shows this shelf from here» saves the video's second as `WalkZoom.trayAt`
       (action `kitTrayAt`, in `walks.json`, so a cut moves it: `cut.ts`; a mark in a stretch cut out goes to where the
-      next kept stretch starts). With any shelf marked, the Free Tour's tray follows the marks (`trayByTime`,
+      next kept stretch starts). The video is shown as a shopper sees it (owner, 2026-11-16: *"show the .mp4 normally rather than an odd looking sphere shape video"*): a 360° walk in `components/kit/PanoView.tsx` (three.js sphere, the signed link, drag to look, wheel / pinch to zoom, opening to the right at the shelves), a flat walk as itself; «▶ Play», «−1 s», «+1 s». With any shelf marked, the Free Tour's tray follows the marks (`trayByTime`,
       `kitRules.ts`, tested): from a shelf's mark to the next, that shelf; before the first mark, the first; sliding in
       from the right going forward, from the left going back. With none marked, the picture rule (`trayCross`).
 : the funnel and the section's thin outline on the shelf stay.

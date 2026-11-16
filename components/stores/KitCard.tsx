@@ -22,7 +22,7 @@ import ShelfProducts from "@/components/kit/ShelfProducts";
 import TrayTimeline from "@/components/kit/TrayTimeline";
 
 type Shelf = { id: string; trayAt: number | null; border: [number, number] | null; n: number | null; label: { en: string; fa: string }; onWalk: boolean; photo: KitPhoto | null; sections: KitSection[] };
-type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; walkVideo?: string | null; shelves: Shelf[] };
+type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; walkVideo?: string | null; walkFlat?: boolean; shelves: Shelf[] };
 
 const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
 const ACCEPT = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
@@ -125,7 +125,7 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
       {st && !shelves.length && <p dir="ltr" className="mt-2 text-left text-[13px] text-amber-200">No shelf is marked on the walk yet: open the editor, «Shelves», «＋ Mark a shelf», and tap its 4 corners.</p>}
 
       {st?.walkVideo && shelves.some((x) => x.onWalk) && (
-        <TrayTimeline api={api} video={st.walkVideo} shelves={shelves.filter((x) => x.onWalk).map((x) => ({ id: x.id, label: x.label, trayAt: x.trayAt, border: x.border }))} onSaved={() => void load()} />
+        <TrayTimeline api={api} video={st.walkVideo} flat={Boolean(st.walkFlat)} shelves={shelves.filter((x) => x.onWalk).map((x) => ({ id: x.id, label: x.label, trayAt: x.trayAt, border: x.border }))} onSaved={() => void load()} />
       )}
       {/* Each shelf, whole: the same screen as the walk's editor (owner, 2026-11-16: "all that we can do … in the &edit=1
           mode … ALSO need to be readily and conveniently available in store page"). */}
