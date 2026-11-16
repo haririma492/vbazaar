@@ -32,7 +32,6 @@ import PhotosCard from "./PhotosCard";
 import TourCard from "./TourCard";
 import MapCard from "./MapCard";
 import TitlesCard from "./TitlesCard";
-import ZoomCard from "./ZoomCard";
 import KitCard from "./KitCard";
 import RefreshAllCard from "./RefreshAllCard";
 import DemoCard from "./DemoCard";
@@ -280,7 +279,6 @@ export default function StorePage({ slug }: { slug: string }) {
       {page.walkUrl && page.products.length > 0 && <PhotosCard api={api} operator={page.who === "operator"} />}
       {/* A shelf's three phone photos, stitched: shoppers zoom in until the labels can be read (owner, 2026-11-11). */}
       <KitCard api={api} operator={op} editUrl={page.editUrl ?? null} />
-      <ZoomCard api={api} operator={op} editUrl={page.editUrl ?? null} />
       {page.walkUrl && <RouteCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <TourCard api={api} operator={page.who === "operator"} />}
       {page.walkUrl && <MapCard api={api} operator={page.who === "operator"} />}

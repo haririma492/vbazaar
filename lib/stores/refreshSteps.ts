@@ -1,7 +1,9 @@
 // «Refresh all agents»: the steps' names, in order, and which of them a run leaves out (owner, 2026-11-13: "allow
 // operator to skip a step in Refresh all agents even in the middle of execution or before"). Pure: the card and
 // the run (`refreshAll.ts`) both read it. Tested.
-export const REFRESH_STEPS = ["Door photo", "Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader", "Zoom photos"] as const;
+// «Zoom photos» (the stitcher) left the list (owner, 2026-11-16: "this is obsolete, we do not sew or join photos"):
+// a shelf now takes ONE finished photo and its sections (`kit.ts`).
+export const REFRESH_STEPS = ["Door photo", "Shelf finder (new shelves)", "Store map", "Shelf Tour", "Title reader", "Spine reader"] as const;
 export type RefreshStepName = (typeof REFRESH_STEPS)[number];
 export const SKIPPED_NOTE = "Skipped by the operator.";
 /** What the operator asked to leave out, as step names the run knows (anything else is dropped). */

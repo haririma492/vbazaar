@@ -213,6 +213,12 @@ plan and the Managed Agents decision are in
   improver, title reader, basket. 360° only for now, each saying so (`flatNotYet`): Lock (skipped), Shelf finder,
   store map, Shelf Tour, Route optimizer, Tidy, Reel, Shadow. Areas (outside, lobby, hallway) stay
   360°. Table in `agents/store-builder/README.md`.
+- **⚠️ STITCHING SHELF PHOTOS IS NO LONGER PART OF THE STRATEGY** (owner, 2026-11-16: *"this is obsolete, we do not
+  sow or join photos"*; *"stitching shelves photos are no longer part of our strategy"*). A shelf takes ONE finished
+  photo (Type III) and its section photos (Type IV): the pastry redesign's kit, below. The «Shelf zoom photos» card is
+  off the store's page and «Zoom photos» is out of «Refresh all agents» (`REFRESH_STEPS`). The stitcher's code
+  (`gigapan.ts`, `scripts/stitch/stack.py`, `locate.py`, `ZoomCard.tsx`) stays in the repo, unused, with the history
+  below; shelves stitched before keep their tiles. Don't bring it back without a new decision.
 - **A shelf's zoom photo** (owner, 2026-11-11: *"we are struggling with free tour quality and low pixels of shelf,
   to resolve this we are going to take 3 Gigapan style photo of a shelf and you need to stich them together so user
   (once switch its focus on this shelf) to be able to zoom in and out and read labels"*; the owner's brief: a
