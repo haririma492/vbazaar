@@ -30,6 +30,12 @@ export async function register() {
     // tagged but never refreshed (no Shelf Tour yet).
     const { queueRefresh, storesToRefresh, drainRefresh } = await import("./lib/stores/refreshAll");
     setTimeout(() => void storesToRefresh().then(async (s) => { if (s.length) await queueRefresh(s); else await drainRefresh(); }).catch((e) => console.error("[refresh] resume", e)), 60_000);
+    // A Website Explorer read a restart cut off carries on, and its products reach the store's list (`website.ts`).
+    const { resumeWebsite } = await import("./lib/stores/website");
+    setTimeout(() => void resumeWebsite().catch((e) => console.error("[website] resume", e)), 55_000);
+    // A shelf kit run a restart cut off (photos to put up, sections to place, products to match: `kit.ts`).
+    const { resumeKits } = await import("./lib/stores/kit");
+    setTimeout(() => void resumeKits().catch((e) => console.error("[kit] resume", e)), 65_000);
     // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
     const { drainReverse } = await import("./lib/stores/reverse");
     setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);

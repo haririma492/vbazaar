@@ -18,8 +18,10 @@ const hit = (w: SiteItem, q: string) => { const hay = norm(`${w.en} ${w.fa}`); r
  * website products by name (English or Farsi), «＋» to add, «✕» to take off, ↑ to move up. Each change saves itself;
  * the panel lists them in this order.
  */
-export default function SectionItems({ section, site, onSave, onOwnPhoto, onUploadLocal, uploading }: {
-  section: KitSection; site: SiteItem[]; onSave: (webs: string[]) => Promise<boolean>;
+export default function SectionItems({ section, site, siteNote, onSave, onOwnPhoto, onUploadLocal, uploading }: {
+  section: KitSection; site: SiteItem[];
+  /** Why the website's list is empty, when it is (`kitForPage`). */
+  siteNote?: string; onSave: (webs: string[]) => Promise<boolean>;
   /** Upload the operator's own photo of a website product (from this computer); null when the section is full. */
   onOwnPhoto: ((web: string) => void) | null;
   /** Upload product photos from this computer, not picked from the website (matched to it by itself, or chosen below). */
@@ -52,7 +54,7 @@ export default function SectionItems({ section, site, onSave, onOwnPhoto, onUplo
       <p className="text-[12px] text-white/50">Two ways, both fine: pick them from the store&apos;s website below, or upload their photos (Type V) from this computer. A website product can also take your own photo («📷»): it is shown first, the website&apos;s after it.</p>
       {onUploadLocal && <button type="button" className="mt-1 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
         onClick={onUploadLocal}>＋ Upload product photos from this computer (Type V) · از رایانه</button>}
-      {!site.length && <p className="text-amber-200">No website products yet: run the Website Explorer first.</p>}
+      {!site.length && <p className="text-amber-200">{siteNote || "No website products yet: run the Website Explorer first."}</p>}
       {chosen.length > 0 && (
         <ol className="mt-1 space-y-1">
           {chosen.map((w, k) => (

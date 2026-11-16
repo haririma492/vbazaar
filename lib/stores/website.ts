@@ -227,6 +227,8 @@ export async function integrate(run: WebsiteRun, say: (note: string) => Promise<
     const key = photoKey(slug, url);
     try { if (await copyPhoto(url, key)) { photos[url] = `${base}/${key}`; copied++; } else failed++; }
     catch (e) { console.error("[website] photo", url, e); failed++; }
+    // Kept as it goes (owner, 2026-11-16: a run a deploy cut off at «101 of 171» had kept none of them).
+    if (copied && copied % 10 === 0) await writeMastersJson(websiteKey(slug), { ...run, photos }).catch(() => undefined);
     await sleep(150);
   }
   run.photos = photos;
@@ -361,4 +363,21 @@ async function readProduct(origin: string, page: SitemapEntry, endpoint: string,
   }
   const out = withSitemapImages(p, page.images);
   return draft ? { ...out, unlisted: true, name: { en: "", fa: "" }, priceCents: null } : out;
+}
+
+/**
+ * A READ A RESTART CUT OFF CARRIES ON (owner, 2026-11-16: "web already explored but not appeared here": the run had
+ * read all 181 products and was copying their photos when a deploy restarted the server; it stayed «running» for good
+ * and its products never reached the store's list). At server start, every store whose last run is still marked
+ * running is read again from where it stopped (the pages and photos already done are kept), one after another.
+ */
+export async function resumeWebsite(): Promise<void> {
+  const { readIndex } = await import("./bucket");
+  for (const e of await readIndex()) {
+    const run = await readWebsite(e.slug).catch(() => null);
+    if (!run?.running) continue;
+    console.log("[website] carrying on", e.slug);
+    const done = await exploreNow(e.slug, {}).catch((err) => { console.error("[website] resume", e.slug, err); return null; });
+    if (done && !done.ask) await updateStore(e.slug, (x) => (x.steps.website?.state === "working" ? null : setStep(x, "website", "done", done.note, new Date()))).catch(() => undefined);
+  }
 }

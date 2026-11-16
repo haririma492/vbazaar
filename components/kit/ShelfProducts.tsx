@@ -14,7 +14,7 @@ import { MAX_KIT_PRODUCTS, nextFree, type KitPhoto, type KitSection } from "@/li
 import SectionItems, { type SiteItem } from "./SectionItems";
 
 type Shelf = { id: string; label: { en: string; fa: string }; photo: KitPhoto | null; sections: KitSection[] };
-type State = { working: boolean; note: string; site: SiteItem[]; shelves: Shelf[] };
+type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; shelves: Shelf[] };
 
 export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId: string }) {
   const api = `/api/stores/${slug}`;
@@ -29,7 +29,9 @@ export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId
   useEffect(() => { void load(); }, [load]);
   // While the photos are being put up (their small copies come a little after the upload), the box follows.
   const shelf = st?.shelves.find((s) => s.id === shelfId);
-  const waiting = Boolean(st?.working || shelf?.sections.some((x) => !x.photo.thumb || x.products.some((p) => !p.photo.thumb)));
+  const waiting = Boolean(st?.working || shelf?.sections.some((x) => !x.photo.thumb || x.products.some((p) => !p.photo.thumb))
+    // …and while the Website Explorer is still putting the site's products on the list.
+    || (st && !st.site.length && /still putting/.test(st.siteNote ?? "")));
   useEffect(() => {
     if (!waiting) return;
     const id = setInterval(load, 4000);
@@ -82,7 +84,7 @@ export default function ShelfProducts({ slug, shelfId }: { slug: string; shelfId
         // eslint-disable-next-line @next/next/no-img-element
         ? <img src={x.photo.thumb} alt="" className="max-h-40 rounded border border-white/15 object-contain" />
         : <p className="text-white/60"><span className="mr-2 inline-block h-2 w-2 animate-pulse rounded-full bg-amber-300" />The photo is being put up…</p>}
-      <SectionItems section={x} site={st.site} uploading={Boolean(busy)}
+      <SectionItems section={x} site={st.site} siteNote={st.siteNote} uploading={Boolean(busy)}
         onSave={async (webs) => {
           try { await postJson(api, { action: "kitItems", section: x.id, webs }); setSaid({ ok: true, text: "✓ Saved · ذخیره شد" }); await load(); return true; }
           catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }

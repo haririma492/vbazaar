@@ -93,6 +93,11 @@ plan and the Managed Agents decision are in
   never over a field the owner changed, never removing one; copies each main photo to our bucket; runs the Tagger
   again. Both tours' product card shows the extra photos. A later merchant sheet replaces the list (as before);
   run «Put on the store's page again» to add the site's products back. `lib/stores/website*.ts`.
+  **⚠️ A read a restart cut off carries on** (owner, 2026-11-16: *"web already explored but not appeared here"*: 181
+  products read, the run cut off by a deploy at «Copying photos: 101 of 171», still «running» for good, so nothing
+  reached the list and the kit's picker was empty). At server start `resumeWebsite` carries on every run still marked
+  running; the copied photos are kept every 10 as it goes. The kit's picker says which it is (`siteNote`: none read /
+  still putting them on the list / read but not on the list). Kit runs carry on too (`resumeKits`).
   **It is a crew step, «website», for every store, existing and new** (owner, 2026-11-06: *"for any new store or
   when re-doing it all add the website info synergy to virtual store"*): after the Catalogue agent, and again after
   every new product list. Its last part matches each product found in the video to its website product (Haiku

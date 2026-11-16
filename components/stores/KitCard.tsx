@@ -20,7 +20,7 @@ import { formatCents } from "@/lib/splats/catalogue";
 import SectionItems, { type SiteItem } from "@/components/kit/SectionItems";
 
 type Shelf = { id: string; n: number | null; label: { en: string; fa: string }; onWalk: boolean; photo: KitPhoto | null; sections: KitSection[] };
-type State = { working: boolean; note: string; site: SiteItem[]; shelves: Shelf[] };
+type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; shelves: Shelf[] };
 
 const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
 const ACCEPT = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
@@ -203,7 +203,7 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
                             </div>
                           </div>
                         </div>
-                        <SectionItems section={x} site={site} uploading={Boolean(busy)}
+                        <SectionItems section={x} site={site} siteNote={st?.siteNote} uploading={Boolean(busy)}
                           onUploadLocal={pfree === null ? null : () => pick((i) => {
                             const used = x.products.map((p) => p.i);
                             let k = 0;

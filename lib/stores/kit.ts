@@ -291,8 +291,18 @@ export async function kitForPage(s: StoreRecord) {
   const k = await signedKit(kit ?? emptyKit(s.slug));
   const site = (c?.products ?? []).filter((p) => p.web).map((p) => ({ web: p.web!, en: p.en ?? "", fa: p.fa ?? "", priceCents: p.priceCents, unit: p.unit, photo: p.photo ?? null }));
   const ids = [...new Set([...marked.map((z) => z.id), ...k.shelves.map((x) => x.id)])];
+  // Why there are none yet, said plainly: the explorer may have read the site and not finished putting it on the list.
+  let siteNote = "";
+  if (!site.length) {
+    const { readWebsite } = await import("./website");
+    const run = await readWebsite(s.slug).catch(() => null);
+    siteNote = !run ? "No website products yet: run the Website Explorer on the store's page first."
+      : run.running ? `The Website Explorer has read ${run.products.length} products and is still putting them on the store's list (${run.note}). They appear here when it finishes.`
+      : run.products.length ? `The Website Explorer read ${run.products.length} products but they are not on the store's list: open the Website Explorer and press «Put on the store's page».`
+      : `The Website Explorer found no products on the site (${run.note}).`;
+  }
   return {
-    working: kitWorking(s.slug), note: kitNote(s.slug), site,
+    working: kitWorking(s.slug), note: kitNote(s.slug), site, siteNote,
     shelves: ids.map((id) => {
       const z = zooms.find((x) => x.id === id);
       const sh = k.shelves.find((x) => x.id === id);
@@ -301,3 +311,14 @@ export async function kitForPage(s: StoreRecord) {
   };
 }
 
+
+/** At server start: a store whose kit has photos not yet put up, sections not yet placed or products not yet matched
+ *  (a run a restart cut off) is run again. */
+export async function resumeKits(): Promise<void> {
+  const { readIndex } = await import("./bucket");
+  for (const e of await readIndex()) {
+    const k = await readKit(e.slug).catch(() => null);
+    if (!k) continue;
+    if (photosOf(k).some((p) => !p.url || /^https?:/.test(p.url)) || toPlace(k).length || toMatch(k).length) startKit(e.slug);
+  }
+}
