@@ -516,7 +516,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "tour") {
     const r = await readTour(s.slug);
     const job = await readJob("tour");
-    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    // Working only while the planner is heard from: it writes its state as it goes (every 5 preview
+    // slices), so a state 45 minutes old is a plan a restart cut off (resumed at server start, `resumeRoute`).
+    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 45 * 60_000);
     return ok({
       tour: r ? { made: r.made, seconds: r.seconds, shelves: r.clips.length, products: r.items.length, video: r.video, walk: r.walk } : null,
       working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
@@ -593,7 +595,9 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "route") {
     const r = await readRoute(s.slug);
     const job = await readJob("route");
-    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
+    // Working only while the planner is heard from: it writes its state as it goes (every 5 preview
+    // slices), so a state 45 minutes old is a plan a restart cut off (resumed at server start, `resumeRoute`).
+    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 45 * 60_000);
     // ⚠️ APPLIED (owner, 2026-11-05: "why after 20 hours still … says waiting for me"): once the walk is cut to
     // this proposal, nothing waits for the owner. Known by the walk's cut record matching the proposal's parts.
     let applied = false, cutting = false;

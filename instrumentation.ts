@@ -36,6 +36,9 @@ export async function register() {
     // A shelf kit run a restart cut off (photos to put up, sections to place, products to match: `kit.ts`).
     const { resumeKits } = await import("./lib/stores/kit");
     setTimeout(() => void resumeKits().catch((e) => console.error("[kit] resume", e)), 65_000);
+    // A route plan a restart cut off is planned again (`routeJob.ts`).
+    const { resumeRoute } = await import("./lib/stores/routeJob");
+    setTimeout(() => void resumeRoute().catch((e) => console.error("[route] resume", e)), 70_000);
     // Walks still waiting for their reversed copy (`lib/stores/reverse.ts`).
     const { drainReverse } = await import("./lib/stores/reverse");
     setTimeout(() => void drainReverse().catch((e) => console.error("[reverse] resume", e)), 30_000);

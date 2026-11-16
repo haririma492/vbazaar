@@ -194,7 +194,7 @@ export async function planStoreRoute(slug: string): Promise<string> {
             const f = join(dir, `s${String(k).padStart(4, "0")}.mp4`);
             await run("ffmpeg", ["-v", "error", "-y", "-ss", sl.from.toFixed(3), "-t", len.toFixed(3), "-i", src, "-vf", vf.join(","), "-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-pix_fmt", "yuv420p", "-r", "25", "-threads", "2", f]);
             files.push(f);
-            if (k % 25 === 0) await setJob("route", { busy: true, key: walkKey, note: `making the preview: ${k + 1} of ${slices.length} slices` });
+            if (k % 5 === 0) await setJob("route", { busy: true, key: walkKey, note: `making the preview: ${k + 1} of ${slices.length} slices` });
           }
           const list = join(dir, "list.txt");
           writeFileSync(list, files.map((f) => `file '${f}'`).join("\n") + "\n");
@@ -295,4 +295,21 @@ export async function drainSmooth(): Promise<void> {
   } finally {
     smoothing = false;
   }
+}
+
+/**
+ * A ROUTE PLAN A RESTART CUT OFF STARTS AGAIN (owner, 2026-11-16: "it is not even completed after 40 min … What is
+ * wrong": a deploy restarted the server while the plan was making its preview, at 201 of 301 slices; the job's state
+ * stayed «busy» and the card said «working» for nothing). At server start, a job still marked busy was cut off: its
+ * store's route is planned again from the start (the plan is free, no AI).
+ */
+export async function resumeRoute(): Promise<void> {
+  const { readJob, setJob } = await import("./jobState");
+  const job = await readJob("route");
+  if (!job?.busy || !job.key) return;
+  const slug = /^scenes\/store-([a-z0-9-]+)\//.exec(job.key)?.[1];
+  await setJob("route", { busy: false, key: null, note: "cut off by a restart" });
+  if (!slug) return;
+  console.log("[route] planning again after a restart", slug);
+  await planStoreRoute(slug).then((n) => console.log("[route]", slug, n)).catch((e) => console.error("[route] resume", slug, e));
 }

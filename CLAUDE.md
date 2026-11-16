@@ -939,6 +939,10 @@ quality and choice to break away and enter in a shop. (period)"*
   the lights stay on their books. The proposal and a preview are on the
   store's page («Route optimizer»); nothing is cut until the owner says yes
   («Cut the walk to this route…»), and the original is kept.
+  **⚠️ A plan a restart cut off starts again** (owner, 2026-11-16: *"it is not even completed after 40 min … What is
+  wrong"*: a deploy restarted the server while nuttime's plan made its preview, at 201 of 301 slices; `jobs/route.json`
+  stayed busy and the card said «working» for nothing). At server start `resumeRoute` plans that store again; the card
+  says «working» only while the planner has been heard from in the last 45 min (it writes every 5 preview slices).
 - **The ride plays as filmed, at one steady rate** (owner, 2026-11-05: *"lot
   of jerk moves … not smooth, even worse than what I did … I moved much
   smoother"*). "Even speed" (the rate from the pace measured each moment) and
