@@ -61,6 +61,27 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
 
+## ⚠️ OLGOO AND NIKOO ARE NEVER NAMED ON EACH OTHER'S SITES (owner, 2026-11-16)
+
+*"I don't want any occurrence, any appearance of Nikoo or Nikoo TV in Farsi or
+نیکو in English in olgoo.com or in vbazaar.app. Also I do not want any
+occurrence of visible Olgoo in Nikoo.tv — it is ok in the code."*
+
+- **olgoo.com and vbazaar.app show no "Nikoo", "Nikoo TV", "nikoo.tv" or
+  «نیکو»** — not in page text, titles, descriptions, JSON-LD, llms.txt, link
+  text, links a visitor can follow, or framed previews. The TV case study is
+  described without a name («یک شبکهٔ تلویزیون فارسی‌زبان» / "a Persian-language
+  TV network"). The Narrata embed is framed with `&credit=0`, which drops its
+  "by nikoo.tv" line.
+- **nikoo.tv shows no "Olgoo" / «اولگو»** to a viewer: page text, defaults,
+  on-air graphics, burned-in watermarks, links.
+- **Code is fine**: identifiers, env names, table names, a fetch to the other
+  site's API, an iframe `src`, comments.
+- **Every agent obeys this** — the GEO engine's "identity statement", the SEO
+  Fixer, the reel agents. A benchmark scoring "Nikoo named" in an answer about
+  Olgoo is NOT a reason to add Nikoo to an olgoo.com page, and nikoo.tv's
+  identity never mentions who runs it.
+
 ## The Store Builder crew — how stores come into the bazaar now (owner, 2026-10-30)
 
 *"Every new store that we scan … will be uploaded … we select one hallway …

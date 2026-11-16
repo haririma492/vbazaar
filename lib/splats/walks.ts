@@ -695,7 +695,7 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
       else {
         const src = radioSourceOf(r.radio);
         if (src) walk.radio = src;
-        else problems.push(`${key}: «radio» is a Nikoo.tv channel or a category of its music.`);
+        else problems.push(`${key}: «radio» is a music channel or a category of its music.`);
       }
     }
     if (r.audio !== undefined && r.audio !== null) {

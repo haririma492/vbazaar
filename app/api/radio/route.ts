@@ -20,7 +20,7 @@ export async function GET(req: Request) {
     try {
       return NextResponse.json({ ok: true, catalogue: await radioCatalogue() }, { headers: { "cache-control": "public, max-age=300" } });
     } catch (e) {
-      return NextResponse.json({ ok: false, error: `nikoo.tv's list could not be read (${(e as Error).message}).` }, { status: 502, headers: NO_STORE });
+      return NextResponse.json({ ok: false, error: `The music list could not be read (${(e as Error).message}).` }, { status: 502, headers: NO_STORE });
     }
   }
   const member = q.get("m");
@@ -38,7 +38,7 @@ export async function GET(req: Request) {
   }
   const chRaw = q.get("ch");
   const ch = chRaw === "4" || chRaw === "3" ? MAIN_CHANNEL : chRaw;
-  if (!isRadioId(ch)) return NextResponse.json({ ok: false, error: "A Nikoo.tv channel." }, { status: 400, headers: NO_STORE });
+  if (!isRadioId(ch)) return NextResponse.json({ ok: false, error: "A music channel." }, { status: 400, headers: NO_STORE });
   const raw = await channelState(ch);
   const radio = raw.reason ? { ...readChannelState(ch, null, raw.at), reason: raw.reason } : readChannelState(ch, raw.json, raw.at);
   const afterRaw = q.get("after");

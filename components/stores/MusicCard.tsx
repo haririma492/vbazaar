@@ -48,22 +48,22 @@ function Heard({ source }: { source: RadioSource }) {
       if (j.radio) {
         const r = j.radio;
         const title = r.now?.en || r.now?.fa;
-        if (r.kind === "none") setText({ ok: false, text: `This channel cannot be played in a walk right now (${r.reason ?? "nothing on air"}): shoppers hear the store's own tracks instead, or nikoo.tv's channel 4 if there are none.` });
+        if (r.kind === "none") setText({ ok: false, text: `This channel cannot be played in a walk right now (${r.reason ?? "nothing on air"}): shoppers hear the store's own tracks instead, or the main music channel if there are none.` });
         else setText({ ok: true, text: `On air now${title ? `: ${title}` : ""}. ${r.kind === "file"
           ? "Plays on computers and phones."
-          : "This programme is a YouTube video: it plays on computers; a phone plays the store's own tracks meanwhile, or nikoo.tv's channel 4 if there are none."}` });
+          : "This programme is a YouTube video: it plays on computers; a phone plays the store's own tracks meanwhile, or the main music channel if there are none."}` });
       } else {
         const t = j.tracks ?? [];
         const files = t.filter((x) => x.kind === "file").length;
-        if (!t.length) setText({ ok: false, text: `Nothing to play here (${j.reason ?? "no tracks"}): shoppers hear the store's own tracks instead, or nikoo.tv's channel 4 if there are none.` });
+        if (!t.length) setText({ ok: false, text: `Nothing to play here (${j.reason ?? "no tracks"}): shoppers hear the store's own tracks instead, or the main music channel if there are none.` });
         else setText({ ok: true, text: `${t.length} tracks, one after another. ${files === t.length ? "They play on computers and phones."
           : files ? `All play on computers; ${files} of them play on phones.`
-          : "They are YouTube videos: they play on computers; a phone plays the store's own tracks instead, or nikoo.tv's channel 4 if there are none."}` });
+          : "They are YouTube videos: they play on computers; a phone plays the store's own tracks instead, or the main music channel if there are none."}` });
       }
-    }).catch(() => { if (!gone) setText({ ok: false, text: "nikoo.tv could not be asked what this plays. The choice is saved." }); });
+    }).catch(() => { if (!gone) setText({ ok: false, text: "The music service could not be asked what this plays. The choice is saved." }); });
     return () => { gone = true; };
   }, [q]);
-  return <p dir="ltr" className={`text-left text-[12px] ${text && !text.ok ? "text-rose-200" : "text-white/60"}`}>{text ? text.text : "Asking nikoo.tv what this plays… (a whole group can take half a minute the first time)"}</p>;
+  return <p dir="ltr" className={`text-left text-[12px] ${text && !text.ok ? "text-rose-200" : "text-white/60"}`}>{text ? text.text : "Asking what this plays… (a whole group can take half a minute the first time)"}</p>;
 }
 
 export default function MusicCard({ api, tracks, radio, reload }: {
@@ -90,8 +90,8 @@ export default function MusicCard({ api, tracks, radio, reload }: {
     void fetch("/api/radio?catalogue=1").then((r) => r.json()).then((j: { ok?: boolean; catalogue?: RadioCatalogue; error?: string }) => {
       if (gone) return;
       if (j.ok && j.catalogue) setCat(j.catalogue);
-      else setCatErr(j.error || "nikoo.tv's list could not be read.");
-    }).catch(() => { if (!gone) setCatErr("nikoo.tv's list could not be read. Check the connection and choose again."); });
+      else setCatErr(j.error || "The music list could not be read.");
+    }).catch(() => { if (!gone) setCatErr("The music list could not be read. Check the connection and choose again."); });
     return () => { gone = true; };
   }, [wantCat, cat]);
 
@@ -131,19 +131,19 @@ export default function MusicCard({ api, tracks, radio, reload }: {
       <div className="space-y-2">
         <Bi fa="چه چیزی پخش شود؟" en="What the walk plays" className="text-[13px] font-bold text-white/85" />
         <div dir="ltr" className="flex flex-wrap gap-2">
-          {([["own", "The store's own tracks (below)", ""], ["channel", "A Nikoo.tv live channel", "کانال زنده نیکو"],
+          {([["own", "The store's own tracks (below)", ""], ["channel", "A live music channel", "کانال زنده"],
             ["iranmusic", "Iranian Music", "موسیقی ایرانی"], ["worldmusic", "World Music", "موسیقی جهان"]] as Array<[Mode, string, string]>).map(([m, en, fa]) => (
             <button key={m} type="button" disabled={busy} className={choice(mode === m)} onClick={() => pickMode(m)}>
               {mode === m ? "● " : "○ "}{en}{fa && <> · <span dir="rtl">{fa}</span></>}
             </button>
           ))}
         </div>
-        {mode !== "own" && !cat && <p dir="ltr" className={`text-left text-[13px] ${catErr ? "text-rose-200" : "text-white/60"}`}>{catErr ?? "Reading nikoo.tv's list…"}</p>}
+        {mode !== "own" && !cat && <p dir="ltr" className={`text-left text-[13px] ${catErr ? "text-rose-200" : "text-white/60"}`}>{catErr ?? "Reading the music list…"}</p>}
         {mode === "channel" && cat && (
           <label className="block space-y-1">
             <Bi fa="کدام کانال؟" en="Which channel? (saved as soon as you choose)" className="text-[13px] text-white/75" />
             <select dir="ltr" className={SELECT} disabled={busy} value={radio?.kind === "channel" ? radio.id : ""}
-              onChange={(e) => { const c = cat.channels.find((x) => x.id === e.target.value); if (c) void save({ kind: "channel", id: c.id }, `Nikoo.tv ${c.en} live`); }}>
+              onChange={(e) => { const c = cat.channels.find((x) => x.id === e.target.value); if (c) void save({ kind: "channel", id: c.id }, `${c.en} live`); }}>
               <option value="" disabled>Choose a channel…</option>
               {cat.channels.map((c) => <option key={c.id} value={c.id}>{c.n ? `${c.n} · ` : ""}{both(c)}</option>)}
             </select>
@@ -177,7 +177,7 @@ export default function MusicCard({ api, tracks, radio, reload }: {
         )}
         {radio && modeOf(radio) === mode && (
           <div className="space-y-1 rounded-lg border border-white/10 p-3">
-            <p dir="ltr" className="text-left text-[13px] font-bold text-white/85">Now chosen: {radio.kind === "channel" ? "Nikoo.tv channel, live" : radio.member === "iranmusic" ? "Iranian Music" : "World Music"} · {both(radio)}</p>
+            <p dir="ltr" className="text-left text-[13px] font-bold text-white/85">Now chosen: {radio.kind === "channel" ? "A live channel" : radio.member === "iranmusic" ? "Iranian Music" : "World Music"} · {both(radio)}</p>
             <Heard source={radio} />
           </div>
         )}

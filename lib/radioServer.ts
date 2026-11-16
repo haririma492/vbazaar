@@ -14,7 +14,7 @@ async function getJson(path: string, ms = 12_000): Promise<unknown> {
   const res = await fetch(`${NIKOO}${path}`, { cache: "no-store", signal: AbortSignal.timeout(ms) });
   // nikoo.tv answers "not a YouTube source" with JSON on a 200 and "no such category" on a 404: both are read.
   const json = await res.json().catch(() => null);
-  if (json === null) throw new Error(`nikoo.tv answered ${res.status}`);
+  if (json === null) throw new Error(`the music service answered ${res.status}`);
   return json;
 }
 
@@ -45,7 +45,7 @@ export function radioCatalogue(): Promise<RadioCatalogue> {
   return catalogueOnce("all", async () => {
     const [channels, music] = await Promise.all([getJson("/api/channels"), getJson("/api/home-sections-type-3/list", 20_000)]);
     const cat = readCatalogue(channels, music);
-    if (cat.channels.length < 2 && !cat.sections.length) throw new Error("nikoo.tv's list came back empty");
+    if (cat.channels.length < 2 && !cat.sections.length) throw new Error("the music list came back empty");
     return cat;
   });
 }
@@ -60,12 +60,12 @@ export async function channelState(id: string): Promise<RawState> {
     return await stateOnce(id, async () => {
       const at = Date.now();
       const res = await fetch(`${NIKOO}${path}`, { cache: "no-store", signal: AbortSignal.timeout(8000) });
-      if (!res.ok) throw new Error(res.status === 404 ? "nikoo.tv has no such channel" : `nikoo.tv answered ${res.status}`);
+      if (!res.ok) throw new Error(res.status === 404 ? "no such channel" : `the music service answered ${res.status}`);
       return { at, json: await res.json() };
     });
   } catch (e) {
     const m = (e as Error).message;
-    return { at: Date.now(), json: null, reason: /nikoo\.tv/.test(m) ? m : `nikoo.tv could not be reached (${m})` };
+    return { at: Date.now(), json: null, reason: /music service|no such channel/.test(m) ? m : `the music service could not be reached (${m})` };
   }
 }
 
@@ -87,7 +87,7 @@ const tracksOnce = remembered<RadioTrack[]>(6 * HOUR, 60);
 export function musicTracks(member: MusicMember, id: string): Promise<RadioTrack[]> {
   return tracksOnce(`${member}/${id}`, async () => {
     const cats = categoriesOf(await radioCatalogue(), member, id);
-    if (!cats.length) throw new Error("nikoo.tv has no such category");
+    if (!cats.length) throw new Error("no such music category");
     if (cats.length === 1) {
       const one = (await categoryTracks(member, cats[0])).slice(0, MAX_TRACKS);
       if (!one.length) throw new Error("this category has nothing a walk can play");

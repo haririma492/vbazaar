@@ -345,7 +345,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
       {yt && on && tapped && (
         <iframe
           key={yt.youtubeId}
-          title="nikoo.tv live music"
+          title="live music"
           aria-hidden="true"
           tabIndex={-1}
           width={1}
@@ -362,7 +362,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {on ? ((waiting && !yt) || (yt && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
         </button>
-        {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv live music</span>}
+        {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">live music</span>}
       </div>
     </>
   );
@@ -523,7 +523,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
         <iframe
           key={`${pos.turn}:${ytId}`}
           ref={frame}
-          title="nikoo.tv music"
+          title="music"
           aria-hidden="true"
           tabIndex={-1}
           width={1}
@@ -538,7 +538,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {on ? ((waiting && fileUrl) || (ytId && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
         </button>
-        {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">nikoo.tv music</span>}
+        {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">music</span>}
       </div>
     </>
   );

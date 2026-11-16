@@ -329,11 +329,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (body.source && typeof body.source === "object") {
       const src = body.source as Record<string, unknown>;
       let cat;
-      try { cat = await radioCatalogue(); } catch (e) { return fail(502, `Not changed: nikoo.tv's list could not be read (${(e as Error).message}). Try again.`); }
+      try { cat = await radioCatalogue(); } catch (e) { return fail(502, `Not changed: the music list could not be read (${(e as Error).message}). Try again.`); }
       radio = sourceInCatalogue(cat, src.kind, src.id, src.member) ?? undefined;
-      if (!radio) return fail(400, "nikoo.tv has no such channel or category.");
+      if (!radio) return fail(400, "No such music channel or category.");
     } else radio = body.channel === null ? null : body.channel === 4 ? 4 : undefined;
-    if (radio === undefined) return fail(400, "A Nikoo.tv channel or music category, or null for the store's own tracks.");
+    if (radio === undefined) return fail(400, "A music channel or category, or null for the store's own tracks.");
     const walks = await readWalks();
     await writeWalks(setRadio(walks, s.out.walk, radio), walks);
     return ok();
