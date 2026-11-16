@@ -27,7 +27,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { downloadToFile, presignGet, putSignImage, r2Config, readCatalogue, readMastersText, readWalks, uploadFile, webObjectExists, writeCatalogue, writeMastersJson, writeWalks } from "@/lib/splats/r2";
-import { phoneKeyOf, looksFlat, lensOf, MAX_ITEMS, type WalkItem, type Walks } from "@/lib/splats/walks";
+import { phoneKeyOf, looksFlat, lensOf, MAX_ITEMS, carryWalk, walkFps, type WalkItem, type Walks } from "@/lib/splats/walks";
 import { flatLens, type FlatLens } from "@/lib/splats/lens";
 import { MAX_NUMBER, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { BUDGET_CENTS, BUDGET_SAY, addToThread, allDone, nextStep, redo, sceneOf, setStep, type StepName, type StoreRecord } from "./store";
@@ -184,8 +184,10 @@ async function makeWalk(masterKey: string, scene: string, say: (note: string) =>
     }
     const key = `scenes/${scene}/walk-${stamp()}.mp4`;
     const web = join(dir, "web.mp4"), phone = join(dir, "phone.mp4");
-    await encode(src, web, 5760, 18, info.seconds, (p) => void say(`Making the web copy… ${p}%`));
-    await encode(src, phone, 3840, 21, info.seconds, (p) => void say(`Making the phone copy… ${p}%`));
+    const fps = walkFps(info.fps);
+    const at = fps ? ` (${Math.round(info.fps)} fps made ${fps})` : "";
+    await encode(src, web, 5760, 18, info.seconds, (p) => void say(`Making the web copy${at}… ${p}%`), fps);
+    await encode(src, phone, 3840, 21, info.seconds, (p) => void say(`Making the phone copy${at}… ${p}%`), fps);
     rmSync(src, { force: true });
     await say("Saving the copies…");
     await uploadFile(key, web, "video/mp4");
@@ -200,12 +202,18 @@ async function makeWalk(masterKey: string, scene: string, say: (note: string) =>
 
 async function stepVideo(s: StoreRecord, say: (note: string) => Promise<void>): Promise<string> {
   const { key, seconds, lens, width, height } = await makeWalk(s.files.video!.key, sceneOf(s.slug), say, true);
+  // The walk before this one: how long it is, to know whether the new upload is the same footage.
+  const prevKey = s.out.walk && s.out.walk !== key ? s.out.walk : null;
+  const prevSeconds = prevKey ? await presignGet(prevKey, "master", 600).then((u) => probe(u)).then((p) => p.seconds).catch(() => 0) : 0;
   const walks = await readWalks();
-  const next: Walks = { ...walks, walks: { ...walks.walks, [key]: { title: { en: s.name.en, fa: s.name.fa }, doors: [], ...(lens ? { projection: "flat" as const, lens } : {}) } } };
+  const prev = prevKey ? walks.walks[prevKey] : undefined;
+  const carried = carryWalk(prev, { seconds, prevSeconds, flat: Boolean(lens) });
+  const next: Walks = { ...walks, walks: { ...walks.walks, [key]: { ...carried.walk, title: { en: s.name.en, fa: s.name.fa }, doors: [], ...(lens ? { projection: "flat" as const, lens } : {}) } } };
   await writeWalks(next, walks);
   await updateStore(s.slug, (x) => ({ ...x, out: { ...x.out, walk: key } }));
-  if (lens) return `The walk is ready: ${Math.round(seconds)} s, a flat video (${width}×${height}, not 360°), web and phone copies. If this was meant to be a 360° walk, export it from Insta360 Studio as 360 Video (2:1) and upload it again.`;
-  return `The walk is ready: ${Math.round(seconds)} s, web and phone copies.`;
+  const kept = carried.note ? ` ${carried.note}` : "";
+  if (lens) return `The walk is ready: ${Math.round(seconds)} s, a flat video (${width}×${height}, not 360°), web and phone copies.${kept} If this was meant to be a 360° walk, export it from Insta360 Studio as 360 Video (2:1) and upload it again.`;
+  return `The walk is ready: ${Math.round(seconds)} s, web and phone copies.${kept}`;
 }
 
 // ── Lock agent ──────────────────────────────────────────────────────────────

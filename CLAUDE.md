@@ -1199,6 +1199,14 @@ quality and choice to break away and enter in a shop. (period)"*
   `originalWalk` leaves them). «Put the original back» used to restore only doors and dots; it now runs `originalWalk`
   (shelves' borders and tray marks too) and leaves a record of the whole video. nuttime was put back to its original
   (141 s) the same day. The .insv was not the cause: nothing in the route reads it (`files.raw` is kept for tests).
+- **⚠️ A walk's copies are made at 30 fps at most; a store's new video keeps what belongs to it** (owner, 2026-11-16,
+  nuttime: the walk re-exported at 8K H.265 **50 fps**, 174 Mbit/s, the same 141.18 s; the Video agent failed three
+  times with «ffmpeg stopped (null)», killed for memory). `walkFps` (`walks.ts`, tested): an upload above 30 fps is
+  halved until it is not (50 → 25, 60 → 30); `encode` decodes on 4 threads and runs x264 on 6 with a 20-frame
+  look-ahead. A new video is a new walk, and it used to start bare: `carryWalk` (`walks.ts`, tested) keeps the music
+  and the logo always, and the shelves (borders, tray marks), dots, covers, `faceAt`, `tagsFrom` when the new video is
+  the SAME footage (as long as the walk before to 0.3 s, both 360° or both flat); otherwise the step's note says the
+  shelves must be marked again. The operator's `rawLinks` now also gives a private link to the video upload, to read it.
 - **A step of «Refresh all agents» can be skipped, before or during the run** (owner, 2026-11-13: *"allow operator
   to skip a step … even in the middle of execution or before"*). Before: the card lists the seven steps with a
   tick each; unticked ones go as `skip` with `refreshAll`. During: every step not finished has «Skip» (action

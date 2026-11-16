@@ -41,20 +41,24 @@ export function run(bin: string, args: string[], opts: { input?: Uint8Array; onL
   });
 }
 
-export type Probe = { width: number; height: number; seconds: number; codec: string };
+export type Probe = { width: number; height: number; seconds: number; codec: string; fps: number };
 
 export async function probe(path: string): Promise<Probe> {
-  const out = JSON.parse((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name:format=duration", "-of", "json", path])).toString());
+  const out = JSON.parse((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,codec_name,avg_frame_rate:format=duration", "-of", "json", path])).toString());
   const s = out.streams?.[0] ?? {};
-  return { width: Number(s.width) || 0, height: Number(s.height) || 0, seconds: Number(out.format?.duration) || 0, codec: String(s.codec_name ?? "") };
+  const [a, b] = String(s.avg_frame_rate ?? "0/1").split("/").map(Number);
+  return { width: Number(s.width) || 0, height: Number(s.height) || 0, seconds: Number(out.format?.duration) || 0, codec: String(s.codec_name ?? ""), fps: b ? a / b : 0 };
 }
 
+
 /** One H.264 copy of a walk, at most `width` across, with ffmpeg's progress as 0–100. */
-export function encode(input: string, output: string, width: number, crf: number, seconds: number, onPercent: (p: number) => void): Promise<Buffer> {
+export function encode(input: string, output: string, width: number, crf: number, seconds: number, onPercent: (p: number) => void, fps: number | null = null): Promise<Buffer> {
   return run("ffmpeg", [
-    "-v", "error", "-y", "-i", input,
-    "-vf", `scale='min(${width},iw)':-2:flags=lanczos`,
-    "-c:v", "libx264", "-preset", "medium", "-crf", String(crf), "-g", "10", "-pix_fmt", "yuv420p",
+    // Memory: an 8K HEVC upload decoded on 4 threads, x264 on 6 with a shorter look-ahead (the defaults, one thread a
+    // core and 40 frames of 5760 px, were killed for memory on 2026-11-16).
+    "-v", "error", "-y", "-threads", "4", "-i", input,
+    "-vf", `${fps ? `fps=${fps},` : ""}scale='min(${width},iw)':-2:flags=lanczos`,
+    "-c:v", "libx264", "-preset", "medium", "-threads", "6", "-x264-params", "rc-lookahead=20", "-crf", String(crf), "-g", "10", "-pix_fmt", "yuv420p",
     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
     "-an", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats", output,
   ], {

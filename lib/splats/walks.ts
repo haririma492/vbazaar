@@ -1564,3 +1564,38 @@ export function mergeConflicts(base: Walks, mine: Walks, theirs: Walks): string[
   }
   return out;
 }
+
+/**
+ * WHAT A STORE'S NEW VIDEO KEEPS FROM ITS WALK BEFORE (owner, 2026-11-16, nuttime: the same walk exported again at 8K
+ * 50 fps, 141.18 s like the one before). A new upload is a new walk, and it started bare: no music, no logo, and none
+ * of the shelves the operator bordered, so the kit's tray had nothing to follow. Always kept: the music (own tracks,
+ * the channel) and the logo, which belong to the store. Kept only when it is the SAME footage (as long, to 0.3 s, and
+ * the same kind, 360° or flat): what sits on the video's times and directions: the shelves (borders, tray marks), the
+ * products' dots, the covers, the turn into the store and where tags start. The Lock agent runs again on the new walk.
+ * Pure.
+ */
+export function carryWalk(prev: Walk | undefined, o: { seconds: number; prevSeconds: number; flat: boolean }): { walk: Partial<Walk>; note: string } {
+  if (!prev) return { walk: {}, note: "" };
+  const walk: Partial<Walk> = {};
+  for (const k of ["logo", "radio", "playlist", "audio"] as const) if (prev[k] !== undefined) (walk as Record<string, unknown>)[k] = prev[k];
+  const same = o.prevSeconds > 0 && Math.abs(o.seconds - o.prevSeconds) <= 0.3 && Boolean(lensOf(prev)) === o.flat;
+  if (!same) {
+    const shelves = prev.zooms?.length ?? 0;
+    return { walk, note: shelves ? `Its music and logo are kept. It is not the same footage as the walk before (${Math.round(o.prevSeconds)} s), so its ${shelves} shelf border${shelves > 1 ? "s" : ""} must be marked again on the walk.` : "" };
+  }
+  for (const k of ["zooms", "items", "covers", "faceAt", "tagsFrom"] as const) if (prev[k] !== undefined) (walk as Record<string, unknown>)[k] = prev[k];
+  const n = prev.zooms?.length ?? 0;
+  return { walk, note: `The same footage as before: its music, logo${n ? `, and its ${n} shelf border${n > 1 ? "s" : ""} with their tray marks,` : ""} are kept.` };
+}
+
+/**
+ * The frame rate a walk's copies are made at: the upload's own up to 30, else half of it (owner's 8K 50 fps export,
+ * nuttime, 2026-11-16: the web copy ran the server out of memory, "ffmpeg stopped (null)", three times). A walk is
+ * walked slowly; 50 fps doubles the work for every copy and every agent, and no phone plays 4K at 50. Pure.
+ */
+export function walkFps(fps: number): number | null {
+  if (!(fps > 30)) return null;
+  let f = fps;
+  while (f > 30) f /= 2;
+  return Math.round(f * 1000) / 1000;
+}

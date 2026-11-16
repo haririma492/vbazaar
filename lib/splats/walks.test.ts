@@ -646,3 +646,28 @@ test("shelves merge one by one: a shelf marked here and a photo the stitcher put
   assert.deepEqual(z.map((x) => x.id), ["gaaaa1", "gbbbb2"]);
   assert.equal(z[0].manifest, "https://cdn.example/z/manifest.json");
 });
+
+test("a walk's copies: up to 30 fps as uploaded, else halved", async () => {
+  const { walkFps } = await import("./walks.ts");
+  assert.equal(walkFps(25), null);
+  assert.equal(walkFps(29.97), null);
+  assert.equal(walkFps(50), 25);
+  assert.equal(walkFps(59.94), 29.97);
+  assert.equal(walkFps(120), 30);
+  assert.equal(walkFps(0), null);
+});
+
+test("a store's new video keeps the music and logo, and the shelves only for the same footage", async () => {
+  const { carryWalk } = await import("./walks.ts");
+  const prev = { doors: [], logo: "L", radio: 4, faceAt: 33, zooms: [{ id: "z", label: { en: "Shelf 1" }, pins: [], trayAt: 3.7 }] } as never;
+  const same = carryWalk(prev, { seconds: 141.18, prevSeconds: 141.18, flat: false });
+  assert.equal(same.walk.logo, "L");
+  assert.equal(same.walk.zooms?.[0].trayAt, 3.7);
+  assert.equal(same.walk.faceAt, 33);
+  const other = carryWalk(prev, { seconds: 95, prevSeconds: 141.18, flat: false });
+  assert.equal(other.walk.radio, 4);
+  assert.equal(other.walk.zooms, undefined);
+  assert.match(other.note, /marked again/);
+  assert.equal(carryWalk(prev, { seconds: 141.18, prevSeconds: 141.18, flat: true }).walk.zooms, undefined);
+  assert.deepEqual(carryWalk(undefined, { seconds: 1, prevSeconds: 0, flat: false }), { walk: {}, note: "" });
+});
