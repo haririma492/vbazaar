@@ -60,7 +60,7 @@ import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refr
 import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
-import { KIT_ID_RE, checkKitName, emptyKit, putPhoto, removeFromKit, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
+import { KIT_ID_RE, checkKitName, emptyKit, putPhoto, removeFromKit, setItems, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
@@ -190,6 +190,17 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (!KIT_ID_RE.test(id) || (web !== null && !web)) return fail(400, "Which product, and which website product (or null for none)?");
     await updateKit(s.slug, (k) => setMatch(k, id, web));
     return ok();
+  }
+  // The store's website products assigned to a section (owner, 2026-11-16): `webs`, their keys in the order chosen.
+  if (body.action === "kitItems") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.section ?? "");
+    if (!KIT_ID_RE.test(id) || !Array.isArray(body.webs)) return fail(400, "Which section, and which website products?");
+    const c = await readCatalogue(sceneOf(s.slug)).catch(() => null);
+    const known = new Set<string>((c?.products ?? []).map((p) => p.web).filter((w): w is string => Boolean(w)));
+    const next = await updateKit(s.slug, (k) => setItems(k, id, (body.webs as unknown[]).map(String), known));
+    const sec = next.shelves.flatMap((x) => x.sections).find((x) => x.id === id);
+    return ok({ items: sec?.items ?? [] });
   }
   if (body.action === "kitPlace") {
     if (who !== "operator") return fail(403, "The operator only.");

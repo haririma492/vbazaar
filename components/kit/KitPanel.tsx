@@ -60,8 +60,10 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
       <div className="w-20 shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <div className="relative h-20 w-20 overflow-hidden rounded-lg">
-          <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
-          <Watermark size="xs" />
+          {photos.length
+            ? <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
+            : <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-neutral-100 text-[28px]">🛍️</div>}
+          {photos.length > 0 && <Watermark size="xs" />}
         </div>
         {photos.length > 1 && (
           <div className="mt-1 flex gap-1">

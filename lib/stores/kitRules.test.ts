@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -90,4 +90,12 @@ test("a share link says the shelf, the section and the product, and reads back t
   assert.equal(sharedSection(secs, { shelf: "z", product: "b" })?.i, 2);
   assert.equal(sharedSection(secs, { shelf: "z", section: 1 })?.i, 1);
   assert.equal(sharedSection(secs, { shelf: "z" }), null);
+});
+
+test("the operator's website products on a section: in order, no repeats, only ones the store has", () => {
+  let k = put(put(emptyKit("s"), { shelf: "z1" }, "III"), { shelf: "z1", section: 1 }, "IV-1");
+  k = setItems(k, "z1-1", ["b", "a", "b", "", "ghost"], new Set(["a", "b"]));
+  assert.deepEqual(k.shelves[0].sections[0].items, ["b", "a"]);
+  k = setItems(k, "z1-1", [], new Set(["a"]));
+  assert.deepEqual(k.shelves[0].sections[0].items, []);
 });

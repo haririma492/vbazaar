@@ -21,6 +21,8 @@ import type { Unit } from "@/lib/splats/catalogue";
 
 export const MAX_SECTIONS = 5;
 export const MAX_KIT_PRODUCTS = 24;
+/** Website products one section may list. */
+export const MAX_SECTION_ITEMS = 60;
 export const KIT_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 
 /** A photo as uploaded (private, `key`) and its public copy, byte for byte (`url`), with a small one for lists. */
@@ -30,7 +32,9 @@ export type KitMatch = { web: string | null; confidence: number; why: string; by
 export type KitProduct = { id: string; i: number; photo: KitPhoto; match?: KitMatch };
 /** Where the section is in the shelf's photo: four corners (TL TR BR BL) as fractions of it; `sig` what was matched. */
 export type KitPlace = { quad: number[] | null; by: "auto" | "hand"; note: string; sig: string };
-export type KitSection = { id: string; i: number; photo: KitPhoto; place?: KitPlace; products: KitProduct[] };
+/** `items`: the store's website products the operator assigned to this section (their `web` keys, in the order chosen;
+ *  owner, 2026-11-16): what the shopping panel lists when a shopper taps the section. */
+export type KitSection = { id: string; i: number; photo: KitPhoto; place?: KitPlace; products: KitProduct[]; items?: string[] };
 /** `id` is the shelf's id on the walk (its `WalkZoom`); `n` its number then. */
 export type KitShelf = { id: string; n?: number; photo?: KitPhoto; sections: KitSection[] };
 export type Kit = { store: string; shelves: KitShelf[]; updated: string };
@@ -145,6 +149,21 @@ export function setMatch(kit: Kit, productId: string, web: string | null, now = 
         ...x, products: x.products.map((p) => (p.id === productId ? { ...p, match: { web, confidence: 1, why: "chosen by the operator", by: "operator" as const, at: now.toISOString() } } : p)),
       })),
     })),
+  };
+}
+
+/**
+ * THE WEBSITE'S PRODUCTS ON A SECTION (owner, 2026-11-16: "after uploading type IV for a shelf, let the operator search
+ * in all DB of items pulled from web site and assign one or few to that shelf level so as soon as user click on that
+ * shelf level the e-commerce product list panel on the right will be populated with the right set of products ready to
+ * be added to basket"). `webs`: the website products' keys, in order; repeats and empty ones dropped, at most
+ * `MAX_SECTION_ITEMS`. `known`: the keys the store's list holds (an unknown one is left out).
+ */
+export function setItems(kit: Kit, sectionId: string, webs: string[], known: Set<string>): Kit {
+  const clean = [...new Set(webs.map((w) => String(w).trim()).filter((w) => w && known.has(w)))].slice(0, MAX_SECTION_ITEMS);
+  return {
+    ...kit, updated: new Date().toISOString(),
+    shelves: kit.shelves.map((s) => ({ ...s, sections: s.sections.map((x) => (x.id === sectionId ? { ...x, items: clean } : x)) })),
   };
 }
 

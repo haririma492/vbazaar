@@ -242,14 +242,25 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
     const z = walk?.zooms?.find((x) => x.id === sh.id);
     const sections = sh.sections.filter((x) => x.photo.url).map((x) => ({
       id: x.id, i: x.i, url: x.photo.url!, thumb: x.photo.thumb ?? x.photo.url!, w: x.photo.w ?? 0, h: x.photo.h ?? 0, quad: x.place?.quad ?? null,
-      products: x.products.filter((p) => p.photo.url).map((p): ShopProduct => {
+      products: [
+        // The website products the operator assigned to the section, in the order chosen (owner, 2026-11-16).
+        ...(x.items ?? []).flatMap((w): ShopProduct[] => {
+          const site = byWeb.get(w);
+          if (!site || x.products.some((p) => p.match?.web === w)) return [];
+          const photos = [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u));
+          return [{
+            id: `${x.id}-w${site.n}`, photo: photos[0] ?? "", thumb: photos[0] ?? "", more: photos.slice(1, 4),
+            en: site.en ?? "", fa: site.fa ?? "", priceCents: site.priceCents, unit: site.unit, ...(site.note ? { note: site.note.slice(0, 300) } : {}),
+          }];
+        }),
+        ...x.products.filter((p) => p.photo.url).map((p): ShopProduct => {
         const site = p.match?.web ? byWeb.get(p.match.web) : undefined;
         return {
           id: p.id, photo: p.photo.url!, thumb: p.photo.thumb ?? p.photo.url!,
           more: site ? [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u)).slice(0, 3) : [],
           en: site?.en ?? "", fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
         };
-      }),
+      })],
     }));
     if (!sections.length && !sh.photo?.url) return [];
     const n = z?.n ?? sh.n;

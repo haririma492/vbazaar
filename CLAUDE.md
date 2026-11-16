@@ -363,6 +363,14 @@ plan and the Managed Agents decision are in
   - **Each section is placed in its shelf's photo by itself** (`scripts/stitch/section.py`: SIFT + MAGSAC, free;
     measured on a synthetic shelf: corners within 0.001); the shelf's photo IS the border, so `quadPoints`
     (`shelves.ts`, a homography) puts it on the walk. Not found: the operator taps its 4 corners on the store's page.
+  - **⚠️ A section's products are CHOSEN from the website's, by the operator** (owner, 2026-11-16: *"after uploading
+    type IV for a shelf, let the operator search in all DB of items pulled from web site and assign one or few to that
+    shelf level so as soon as user click on that shelf level the e-commerce product list panel on the right will be
+    populated with the right set of products ready to be added to basket"*). Under each section on the store's page
+    (`SectionItems` in `KitCard.tsx`): search the store's website products by English or Farsi name, «＋ Add», «✕»,
+    «↑»; each change saves itself (action `kitItems {section, webs}`, `setItems`; `KitSection.items`, the `web` keys in
+    order). The panel lists them first, in that order (id `<section>-w<n>`), with the site's photos, name, price and
+    unit; the product photos uploaded per section (optional now) follow, a matched one not listed twice.
   - **Uploads:** after the 4 corners in `?edit=1`, the editor asks for the Type III, then the Type IV photos
     (`WalkShelves.tsx`); products and the website matches are on the store's page («Shelf photos for shopping»,
     `KitCard.tsx`, also «Drop all the photos» by name). Actions `upload {kind:"kit", shelf, section?, product?}`,

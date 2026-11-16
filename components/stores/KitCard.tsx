@@ -56,6 +56,70 @@ function PlaceScreen({ shelf, section, onSave, onClose }: { shelf: string; secti
   );
 }
 
+/** Every word typed is in the product's English or Farsi name (case and Persian / Arabic digits aside). */
+const norm = (t: string) => t.toLowerCase().replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/ي/g, "ی").replace(/ك/g, "ک");
+const hit = (w: SiteItem, q: string) => { const hay = norm(`${w.en} ${w.fa}`); return norm(q).split(/\s+/).filter(Boolean).every((t) => hay.includes(t)); };
+
+/**
+ * WHICH OF THE WEBSITE'S PRODUCTS ARE ON THIS SECTION (owner, 2026-11-16: "after uploading type IV for a shelf, let the
+ * operator search in all DB of items pulled from web site and assign one or few to that shelf level so as soon as user
+ * click on that shelf level the e-commerce product list panel on the right will be populated"). Search the store's
+ * website products by name (English or Farsi), «＋» to add, «✕» to take off, ↑ to move up. Each change saves itself;
+ * the panel lists them in this order.
+ */
+function SectionItems({ section, site, onSave }: { section: KitSection; site: SiteItem[]; onSave: (webs: string[]) => Promise<boolean> }) {
+  const [q, setQ] = useState("");
+  const [busy, setBusy] = useState(false);
+  const items = section.items ?? [];
+  const chosen = items.map((w) => site.find((x) => x.web === w)).filter((x): x is SiteItem => Boolean(x));
+  const hits = site.filter((w) => !items.includes(w.web) && (!q.trim() || hit(w, q))).slice(0, 40);
+  const save = async (webs: string[]) => { setBusy(true); await onSave(webs); setBusy(false); };
+  const Row = ({ w, children }: { w: SiteItem; children: React.ReactNode }) => (
+    <li className="flex items-center gap-2 rounded bg-white/[0.04] p-1.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {w.photo ? <img src={w.photo} alt="" className="h-10 w-10 shrink-0 rounded bg-white object-contain" loading="lazy" /> : <div className="h-10 w-10 shrink-0 rounded bg-white/10" />}
+      <div className="min-w-0 flex-1 leading-tight">
+        <p className="truncate">{w.en || w.fa}</p>
+        <p className="truncate text-[12px] text-white/50">{w.en && w.fa ? `${w.fa} · ` : ""}{w.priceCents !== null ? `${formatCents(w.priceCents)} / ${w.unit}` : "no price"}</p>
+      </div>
+      {children}
+    </li>
+  );
+  return (
+    <div className="mt-2 rounded-md border border-emerald-300/20 bg-emerald-300/[0.04] p-2">
+      <p className="font-bold text-emerald-100">Products shoppers see for this section · محصولات این بخش ({chosen.length})</p>
+      {!site.length && <p className="text-amber-200">No website products yet: run the Website Explorer first.</p>}
+      {chosen.length > 0 && (
+        <ol className="mt-1 space-y-1">
+          {chosen.map((w, k) => (
+            <Row key={w.web} w={w}>
+              <button type="button" className="px-1 text-white/60 disabled:opacity-30" disabled={busy || k === 0} aria-label="Move up"
+                onClick={() => { const n = [...items]; [n[k - 1], n[k]] = [n[k], n[k - 1]]; void save(n); }}>↑</button>
+              <button type="button" className="px-1 text-rose-200 disabled:opacity-30" disabled={busy} aria-label="Take off"
+                onClick={() => void save(items.filter((x) => x !== w.web))}>✕</button>
+            </Row>
+          ))}
+        </ol>
+      )}
+      {site.length > 0 && (
+        <>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the website's products (English or Farsi)… · جست‌وجو"
+            className="mt-2 w-full rounded border border-white/20 bg-black/60 px-2 py-1.5 text-[13px] text-white" />
+          <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto">
+            {hits.map((w) => (
+              <Row key={w.web} w={w}>
+                <button type="button" className="rounded-full border border-emerald-300/50 px-2 text-emerald-100 disabled:opacity-30" disabled={busy}
+                  onClick={() => void save([...items, w.web])}>＋ Add</button>
+              </Row>
+            ))}
+            {!hits.length && <li className="p-1 text-white/50">{q ? "Nothing on the website matches that." : "Every website product is on this section."}</li>}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function KitCard({ api, operator, editUrl }: { api: string; operator: boolean; editUrl: string | null }) {
   const [st, setSt] = useState<State | null>(null);
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
@@ -133,7 +197,7 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
       <Bi fa="عکس‌های قفسه برای خرید (نوع ۳، ۴ و محصولات)" en="Shelf photos for shopping — Type III (the whole shelf), Type IV (its sections) and each section's products: the tray under the walk, the 3× photo and the shopping panel" className="text-[15px] font-bold text-amber-100" />
       <p dir="ltr" className="mt-1 text-left text-[12px] text-white/50">
         For each shelf marked on the walk (editor → «Shelves», its 4 corners): 1) its quality photo, the whole shelf square-on (straight down for a pallet or a table);
-        2) its sections, 3 to {MAX_SECTIONS} close photos, top to bottom then left to right; 3) one photo of each product in a section. Each product is then matched to the store&apos;s website by itself: check it below.
+        2) its sections, 3 to {MAX_SECTIONS} close photos, top to bottom then left to right; 3) under each section, search the store&apos;s website products and add the ones on it: those are what shoppers get in the panel when they tap the section. Optional: one photo of each product, matched to the website by itself.
         Shown to shoppers exactly as uploaded. Names that place themselves: <b>{kitFileName(3)}</b> (shelf 3), <b>{kitFileName(3, 2)}</b> (its section 2), <b>{kitFileName(3, 2, 1)}</b> (product 1 of that section).
       </p>
       {st?.working && <p dir="ltr" className="mt-2 rounded-md bg-white/10 p-2 text-left text-[13px]"><span className="mr-2 inline-block h-2.5 w-2.5 animate-pulse rounded-full bg-amber-300" />{st.note || "Working…"}</p>}
@@ -203,6 +267,10 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
                             </div>
                           </div>
                         </div>
+                        <SectionItems section={x} site={site} onSave={async (webs) => {
+                          try { await postJson(api, { action: "kitItems", section: x.id, webs }); setSaid({ ok: true, text: "✓ Saved · ذخیره شد" }); await load(); return true; }
+                          catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }
+                        }} />
                         {x.products.length > 0 && (
                           <ul className="mt-2 grid gap-2 sm:grid-cols-2">
                             {x.products.map((p) => {
