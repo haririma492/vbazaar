@@ -371,6 +371,12 @@ plan and the Managed Agents decision are in
     «↑»; each change saves itself (action `kitItems {section, webs}`, `setItems`; `KitSection.items`, the `web` keys in
     order). The panel lists them first, in that order (id `<section>-w<n>`), with the site's photos, name, price and
     unit; the product photos uploaded per section (optional now) follow, a matched one not listed twice.
+    **Both ways, side by side** (owner, 2026-11-16: *"also allow operator to upload Type V photos if they exist from
+    local drive, so both options should exists those downloaded from Web site and from local drive"*): in the same box,
+    «＋ Upload product photos from this computer (Type V)» (each matched to the website by itself, or chosen from the
+    dropdown, else no price), and on every picked website product «📷 My own photo»: the operator's photo is uploaded
+    into the section's next product slot and tied to that website product (`kitMatch`), so the panel shows it FIRST,
+    in that product's place, with the website's photos after it (`shopKit`).
   - **Uploads:** after the 4 corners in `?edit=1`, the editor asks for the Type III, then the Type IV photos
     (`WalkShelves.tsx`); products and the website matches are on the store's page («Shelf photos for shopping»,
     `KitCard.tsx`, also «Drop all the photos» by name). Actions `upload {kind:"kit", shelf, section?, product?}`,

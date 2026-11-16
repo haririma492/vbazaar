@@ -24,7 +24,7 @@ import { walkLink } from "./productLink";
 import { namesFor, OverBudget, sameProduct, type Purse } from "./ai";
 import { jpegOf, run } from "./media";
 import { MATCH_SURE } from "./websiteMatchRules";
-import { emptyKit, placeSig, toMatch, toPlace, type Kit, type KitPhoto, type ShopKit, type ShopProduct } from "./kitRules";
+import { emptyKit, placeSig, toMatch, toPlace, type Kit, type KitPhoto, type KitProduct, type ShopKit, type ShopProduct } from "./kitRules";
 
 export const kitKey = (slug: string) => `stores/${slug}/kit.json`;
 /** Where the photos shoppers see are kept: PRIVATE (masters bucket), each `<folder>/photo.<ext>` and `thumb.jpg`. */
@@ -242,25 +242,32 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
     const z = walk?.zooms?.find((x) => x.id === sh.id);
     const sections = sh.sections.filter((x) => x.photo.url).map((x) => ({
       id: x.id, i: x.i, url: x.photo.url!, thumb: x.photo.thumb ?? x.photo.url!, w: x.photo.w ?? 0, h: x.photo.h ?? 0, quad: x.place?.quad ?? null,
-      products: [
-        // The website products the operator assigned to the section, in the order chosen (owner, 2026-11-16).
-        ...(x.items ?? []).flatMap((w): ShopProduct[] => {
-          const site = byWeb.get(w);
-          if (!site || x.products.some((p) => p.match?.web === w)) return [];
-          const photos = [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u));
-          return [{
-            id: `${x.id}-w${site.n}`, photo: photos[0] ?? "", thumb: photos[0] ?? "", more: photos.slice(1, 4),
-            en: site.en ?? "", fa: site.fa ?? "", priceCents: site.priceCents, unit: site.unit, ...(site.note ? { note: site.note.slice(0, 300) } : {}),
-          }];
-        }),
-        ...x.products.filter((p) => p.photo.url).map((p): ShopProduct => {
-        const site = p.match?.web ? byWeb.get(p.match.web) : undefined;
-        return {
-          id: p.id, photo: p.photo.url!, thumb: p.photo.thumb ?? p.photo.url!,
-          more: site ? [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u)).slice(0, 3) : [],
-          en: site?.en ?? "", fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
+      products: (() => {
+        const own = (w: string) => x.products.find((p) => p.photo.url && p.match?.web === w);
+        const listed = new Set(x.items ?? []);
+        const card = (p: KitProduct | undefined, site: Product | undefined, id: string): ShopProduct => {
+          const sitePhotos = site ? [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u)) : [];
+          // The operator's own photo from their computer (owner, 2026-11-16) comes first; the website's follow.
+          const first = p?.photo.url ?? sitePhotos[0] ?? "";
+          return {
+            id, photo: first, thumb: p ? p.photo.thumb ?? p.photo.url! : first, more: (p ? sitePhotos : sitePhotos.slice(1)).slice(0, 3),
+            en: site?.en ?? "", fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
+          };
         };
-      })],
+        return [
+          // The website products the operator assigned to the section, in the order chosen (owner, 2026-11-16), each
+          // with the operator's own photo of it when one was uploaded.
+          ...(x.items ?? []).flatMap((w): ShopProduct[] => {
+            const site = byWeb.get(w);
+            if (!site) return [];
+            const p = own(w);
+            return [card(p, site, p ? p.id : `${x.id}-w${site.n}`)];
+          }),
+          // Then the product photos uploaded from the operator's computer that are not one of those.
+          ...x.products.filter((p) => p.photo.url && !(p.match?.web && listed.has(p.match.web)))
+            .map((p) => card(p, p.match?.web ? byWeb.get(p.match.web) : undefined, p.id)),
+        ];
+      })(),
     }));
     if (!sections.length && !sh.photo?.url) return [];
     const n = z?.n ?? sh.n;

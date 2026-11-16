@@ -67,15 +67,25 @@ const hit = (w: SiteItem, q: string) => { const hay = norm(`${w.en} ${w.fa}`); r
  * website products by name (English or Farsi), «＋» to add, «✕» to take off, ↑ to move up. Each change saves itself;
  * the panel lists them in this order.
  */
-function SectionItems({ section, site, onSave }: { section: KitSection; site: SiteItem[]; onSave: (webs: string[]) => Promise<boolean> }) {
+function SectionItems({ section, site, onSave, onOwnPhoto, onUploadLocal, uploading }: {
+  section: KitSection; site: SiteItem[]; onSave: (webs: string[]) => Promise<boolean>;
+  /** Upload the operator's own photo of a website product (from this computer); null when the section is full. */
+  onOwnPhoto: ((web: string) => void) | null;
+  /** Upload product photos from this computer, not picked from the website (matched to it by itself, or chosen below). */
+  onUploadLocal: (() => void) | null;
+  uploading: boolean;
+}) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const items = section.items ?? [];
   const chosen = items.map((w) => site.find((x) => x.web === w)).filter((x): x is SiteItem => Boolean(x));
   const hits = site.filter((w) => !items.includes(w.web) && (!q.trim() || hit(w, q))).slice(0, 40);
   const save = async (webs: string[]) => { setBusy(true); await onSave(webs); setBusy(false); };
-  const Row = ({ w, children }: { w: SiteItem; children: React.ReactNode }) => (
+  const ownOf = (web: string) => section.products.find((p) => p.match?.web === web && p.photo.thumb);
+  const Row = ({ w, children, mine }: { w: SiteItem; children: React.ReactNode; mine?: string }) => (
     <li className="flex items-center gap-2 rounded bg-white/[0.04] p-1.5">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {mine && <img src={mine} alt="" title="Your own photo" className="h-10 w-10 shrink-0 rounded bg-white object-contain ring-2 ring-emerald-300" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {w.photo ? <img src={w.photo} alt="" className="h-10 w-10 shrink-0 rounded bg-white object-contain" loading="lazy" /> : <div className="h-10 w-10 shrink-0 rounded bg-white/10" />}
       <div className="min-w-0 flex-1 leading-tight">
@@ -88,11 +98,17 @@ function SectionItems({ section, site, onSave }: { section: KitSection; site: Si
   return (
     <div className="mt-2 rounded-md border border-emerald-300/20 bg-emerald-300/[0.04] p-2">
       <p className="font-bold text-emerald-100">Products shoppers see for this section · محصولات این بخش ({chosen.length})</p>
+      <p className="text-[12px] text-white/50">Two ways, both fine: pick them from the store&apos;s website below, or upload their photos (Type V) from this computer. A website product can also take your own photo («📷»): it is shown first, the website&apos;s after it.</p>
+      {onUploadLocal && <button type="button" className="mt-1 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
+        onClick={onUploadLocal}>＋ Upload product photos from this computer (Type V) · از رایانه</button>}
       {!site.length && <p className="text-amber-200">No website products yet: run the Website Explorer first.</p>}
       {chosen.length > 0 && (
         <ol className="mt-1 space-y-1">
           {chosen.map((w, k) => (
-            <Row key={w.web} w={w}>
+            <Row key={w.web} w={w} mine={ownOf(w.web)?.photo.thumb}>
+              {onOwnPhoto && <button type="button" className="whitespace-nowrap rounded-full border border-white/20 px-2 text-[12px] text-white/80 disabled:opacity-30" disabled={busy || uploading}
+                title="Use your own photo of this product (from this computer); the website's photos follow it"
+                onClick={() => onOwnPhoto(w.web)}>📷 {ownOf(w.web) ? "Replace my photo" : "My own photo"}</button>}
               <button type="button" className="px-1 text-white/60 disabled:opacity-30" disabled={busy || k === 0} aria-label="Move up"
                 onClick={() => { const n = [...items]; [n[k - 1], n[k]] = [n[k], n[k - 1]]; void save(n); }}>↑</button>
               <button type="button" className="px-1 text-rose-200 disabled:opacity-30" disabled={busy} aria-label="Take off"
@@ -128,6 +144,8 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
   const input = useRef<HTMLInputElement>(null);
   /** Where the next chosen files go: a slot builder (by order), or "names" (by their names). */
   const into = useRef<"names" | ((i: number) => KitSlot | null)>("names");
+  /** What to do once the chosen files are up (an own photo: say which website product it is). */
+  const after = useRef<(() => Promise<void>) | null>(null);
 
   const load = useCallback(async () => {
     try { setSt(await postJson<State>(api, { action: "kit" })); } catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
@@ -170,6 +188,9 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
       } catch (e) { failed.push(`${f.name}: ${(e as Error).message}`); }
     }
     setBusy(null);
+    const then = after.current;
+    after.current = null;
+    if (then && sent && !failed.length) { try { await then(); } catch (e) { failed.push(`saved, but not tied to its website product: ${(e as Error).message}`); } }
     const parts = [
       sent ? `✓ ${sent} photo${sent > 1 ? "s" : ""} uploaded; putting them up, finding the sections and matching the products now. · بارگذاری شد` : "",
       skipped.length ? `Not uploaded: ${skipped.join(", ")}.` : "",
@@ -180,7 +201,7 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
     await load();
   }
 
-  const pick = (dest: "names" | ((i: number) => KitSlot | null)) => { into.current = dest; input.current?.click(); };
+  const pick = (dest: "names" | ((i: number) => KitSlot | null), then: (() => Promise<void>) | null = null) => { into.current = dest; after.current = then; input.current?.click(); };
   const act = async (body: Record<string, unknown>, okText: string) => {
     try { await postJson(api, body); setSaid({ ok: true, text: okText }); await load(); }
     catch (e) { setSaid({ ok: false, text: `Not done: ${(e as Error).message}` }); }
@@ -257,17 +278,26 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
                               {sh.photo?.url && <button type="button" className={QUIET} onClick={() => setPlacing({ shelf: sh.photo!.url!, section: x })}>{x.place?.quad ? "Draw its place again" : "Draw its place"}</button>}
                               {x.place?.by === "hand" && <button type="button" className={QUIET} onClick={() => void act({ action: "kitPlace", section: x.id, quad: null }, "Looking for it again…")}>Find it by itself</button>}
                               <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => pick(() => ({ shelf: sh.id, section: x.i }))}>Replace photo</button>
-                              {pfree !== null && <button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => pick((i) => {
-                                const used = x.products.map((p) => p.i);
-                                let k = 0;
-                                for (let j = 1; j <= MAX_KIT_PRODUCTS; j++) if (!used.includes(j)) { if (k === i) return { shelf: sh.id, section: x.i, product: j }; k++; }
-                                return null;
-                              })}>＋ Its products&apos; photos</button>}
+
                               <button type="button" className={QUIET} onClick={() => { if (confirm(`Take section ${x.i} and its products away?`)) void act({ action: "kitRemove", shelf: sh.id, section: x.i }, "✓ Taken away"); }}>Remove</button>
                             </div>
                           </div>
                         </div>
-                        <SectionItems section={x} site={site} onSave={async (webs) => {
+                        <SectionItems section={x} site={site} uploading={Boolean(busy)}
+                          onUploadLocal={pfree === null ? null : () => pick((i) => {
+                            const used = x.products.map((p) => p.i);
+                            let k = 0;
+                            for (let j = 1; j <= MAX_KIT_PRODUCTS; j++) if (!used.includes(j)) { if (k === i) return { shelf: sh.id, section: x.i, product: j }; k++; }
+                            return null;
+                          })}
+                          onOwnPhoto={pfree === null && !x.products.length ? null : (web) => {
+                            // Its own photo goes in the slot it had, else the next free one; then it is tied to the website product.
+                            const j = x.products.find((p) => p.match?.web === web)?.i ?? pfree;
+                            if (j === null) { setSaid({ ok: false, text: `This section has its ${MAX_KIT_PRODUCTS} product photos: remove one first.` }); return; }
+                            pick((i) => (i === 0 ? { shelf: sh.id, section: x.i, product: j } : null),
+                              async () => { await postJson(api, { action: "kitMatch", product: `${x.id}-p${j}`, web }); });
+                          }}
+                          onSave={async (webs) => {
                           try { await postJson(api, { action: "kitItems", section: x.id, webs }); setSaid({ ok: true, text: "✓ Saved · ذخیره شد" }); await load(); return true; }
                           catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }
                         }} />
