@@ -516,9 +516,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (body.action === "tour") {
     const r = await readTour(s.slug);
     const job = await readJob("tour");
-    // Working only while the planner is heard from: it writes its state as it goes (every 5 preview
-    // slices), so a state 45 minutes old is a plan a restart cut off (resumed at server start, `resumeRoute`).
-    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 45 * 60_000);
+    const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
     return ok({
       tour: r ? { made: r.made, seconds: r.seconds, shelves: r.clips.length, products: r.items.length, video: r.video, walk: r.walk } : null,
       working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
