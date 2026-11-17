@@ -210,6 +210,13 @@ export default function StorePage({ slug }: { slug: string }) {
             <span>Show on the stores&apos; list (<a className="underline" href="/walk" target="_blank" rel="noreferrer">vbazaar.app/walk</a>){s.onTours === true || s.live ? <> · its address: <b>vbazaar.app/walk/{s.slug}</b></> : null}</span>
           </label>
         )}
+        {op && (
+          // «Send a text to store» (owner, 2026-11-17): shoppers' texts go to the owner's number until this is on.
+          <label dir="ltr" className="mt-3 flex cursor-pointer items-center gap-2 text-left text-[13px] text-white/80">
+            <input type="checkbox" className="h-5 w-5" checked={s.texting === true} onChange={(e) => void act({ action: "textingSet", on: e.target.checked })} />
+            <span>💬 Shoppers&apos; texts go to the store&apos;s own phone{s.phone ? <> (<b>{s.phone}</b>)</> : null}. Off: they go to the bazaar owner&apos;s number. · پیامک خریداران به تلفن فروشگاه</span>
+          </label>
+        )}
         <p dir="ltr" className="mt-3 text-left text-[12px] text-white/45">AI spent on this store: ${(s.spentCents / 100).toFixed(2)} of ${(BUDGET_CENTS / 100).toFixed(2)}</p>
       </Card>}
 

@@ -29,6 +29,7 @@ import ShareKey from "./ShareKey";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import StoreLogo from "@/components/brand/StoreLogo";
+import StoreText from "@/components/brand/StoreText";
 import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
 import MusicPicker, { NO_MUSIC } from "./MusicPicker";
@@ -272,6 +273,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
+        <StoreText slug={kit.store} name={kit.name ?? kit.title} />
         {/* No «name · نام · Shelf Tour» line (owner, 2026-11-17: "remove this label … from Shelf Tour"); the logo says whose. */}
         <div className="me-auto" />
         <div className="flex shrink-0 items-center gap-2 text-[13px]">

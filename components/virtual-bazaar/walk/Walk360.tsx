@@ -77,6 +77,9 @@ import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
 import MusicPicker, { NO_MUSIC } from "@/components/kit/MusicPicker";
+import StoreText from "@/components/brand/StoreText";
+/** A store's slug from its walk's key (`scenes/store-<slug>/…`). */
+const storeSlugOf = (key: string | null | undefined) => (key && /^scenes\/store-([a-z0-9-]+)\//.exec(key)?.[1]) || null;
 import { radioSourceOf, type RadioSource } from "@/lib/radio";
 import KitBridge from "@/components/kit/KitBridge";
 import DeepZoom from "@/components/zoom/DeepZoom";
@@ -3141,7 +3144,13 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {/* «📸 Share to Story» was REMOVED from the walk (owner, 2026-11-17: "remove the camera with text share to story");
           ShareToStory.tsx stays in the repo, unused. Share keys on shelves, sections and products remain. */}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
-      {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" site={kitOn ? kit?.site : null} name={kit?.name ?? kit?.title} />}
+      {phase !== "loading" && !editing && (logoOf(walks, view.key) || storeSlugOf(view.key)) && (
+        // The logo, and «Send a text to store» on its right (owner, 2026-11-17).
+        <div className="absolute left-3 top-3 z-20 flex items-start gap-2">
+          {logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} site={kitOn ? kit?.site : null} name={kit?.name ?? kit?.title} />}
+          {storeSlugOf(view.key) && <StoreText slug={storeSlugOf(view.key)!} name={kit?.name ?? walkOf(walks, view.key)?.title ?? null} className="mt-1" />}
+        </div>
+      )}
       {/* THE SHELF'S WHOLE PHOTO (Type III) under the store's logo, a sixth of the screen wide, the same shelf as the tray:
           it changes as the shopper walks from shelf to shelf (owner, 2026-11-16: "under the store logo on the left of
           the top section bring the photo of the shelf (Type III) that takes 1/6 of the width of the screen from left

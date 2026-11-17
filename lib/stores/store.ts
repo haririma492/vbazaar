@@ -173,6 +173,8 @@ export type StoreRecord = {
   /** Shown on vbazaar.app/tours, with its short address /walk/<slug>, without being published into the bazaar: the
    *  operator's switch (owner, 2026-11-10: "I am going to demo these ready stores to new prospects"). */
   onTours?: boolean;
+  /** Shoppers' texts go to the store's own phone (the operator's switch, 2026-11-17); off: to the owner's (`textRules`). */
+  texting?: boolean;
   thread: ThreadEntry[];
   report?: Report;
 };

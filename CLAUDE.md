@@ -147,6 +147,23 @@ plan and the Managed Agents decision are in
   after `renderer.render`) on a 9:16 card with the store's name and vbazaar.app, to the phone's share sheet (or saved);
   the link (the walk, or the open product) is copied for Instagram's link sticker. Not built yet: «comment WALK →
   automatic DM» (needs a Meta app, its review and each store's Business account).
+- **«Send a text to store»** (owner, 2026-11-17: *"on the right hand side of the store logo add a field "Send a text to
+  store" a small modal will open and both answer and response will appear … for now send it to my number … until in
+  store page operator turns on texting then send and receive to store number"*; Twilio chosen). Right of the store's
+  logo in both tours (`components/brand/StoreText.tsx`; «💬» alone on a phone): a box with the conversation, the
+  shopper's texts on one side and the store's answers on the other, a field and «Send»; asked again every 5 s while
+  open (30 s closed, a red dot for a new answer); the conversation id is on the device (`vb.text.<slug>`).
+  - **Server** (`lib/stores/texts.ts`, rules `textRules.ts`, tested): `/api/text/<slug>` GET `?conv=` (enabled +
+    messages) and POST `{conv, text}` (≤500 characters, at most 8 a conversation in 10 min); the text goes by Twilio's
+    REST API to the store's phone when the operator ticks «💬 Shoppers' texts go to the store's own phone» on the
+    store's page (`StoreRecord.texting`, action `textingSet`; refused without a valid phone), else to the owner's
+    number (`TEXT_OWNER`). It reads «<store> · vbazaar.app shopper #CODE: …»; the reply from that phone comes to
+    `/api/sms/inbound` (Twilio's webhook, signature checked against `https://vbazaar.app/api/sms/inbound`) and goes to
+    the conversation its «#CODE» names, else the one that last texted that phone (`texts/last.json`). Conversations:
+    `texts/conv/<id>.json` (masters bucket, private).
+  - **Needs on Railway:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (the Twilio number, +1…); in Twilio,
+    the number's «A message comes in» webhook = `https://vbazaar.app/api/sms/inbound` (HTTP POST). Without them the key
+    is not shown to anyone.
 - **Visitor statistics, with AAA** (owner, 2026-11-11: *"add statistics collection to vbazaar.app with admin mode
   (AAA + admin token) exactly similar to olgoo.com"*). A port of olgoo.com's `visitor-stats.js`, `api/visitors.js`,
   `api/visitors-stats.js` and their two stores. `components/common/VisitorStats.tsx` is in the root layout: every

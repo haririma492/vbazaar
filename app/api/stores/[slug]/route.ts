@@ -36,6 +36,7 @@ import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, 
 import { UNITS, formatCents, readPrice, type Unit } from "@/lib/splats/catalogue";
 import { MAX_RADIOS, MAX_TRACKS, musicOf, radiosOf, setRadio, setRadios, setTrack } from "@/lib/splats/walks";
 import { radioSourceOf, sourceInCatalogue } from "@/lib/radio";
+import { e164 } from "@/lib/stores/textRules";
 import { radioCatalogue } from "@/lib/radioServer";
 import { soundOnly } from "@/lib/stores/music";
 import {
@@ -148,6 +149,14 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     return ok({ started: true });
   }
   // «Show on the tours page» (owner, 2026-11-10): the store on vbazaar.app/tours with its short address, published or not.
+  if (body.action === "textingSet") {
+    // Shoppers' texts to the store's own phone, or (off) to the owner's (owner, 2026-11-17).
+    if (who !== "operator") return fail(403, "The operator only.");
+    if (body.on === true && !e164(s.phone)) return fail(400, "The store's phone number is not one a text can go to. Correct it in the store's details first.");
+    const next = await updateStore(s.slug, (x) => ({ ...x, texting: body.on === true }));
+    return ok({ texting: next?.texting === true, store: next ? forPage(next) : null });
+  }
+
   if (body.action === "toursShow") {
     if (who !== "operator") return fail(403, "The operator only.");
     if (body.on === true && !s.out.walk) return fail(400, "This store has no walk yet.");
