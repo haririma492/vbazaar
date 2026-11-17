@@ -35,10 +35,11 @@ export default function MusicPicker({ channels, current, onPick, lang }: {
         <option value={NO_MUSIC}>🔇 {fa ? "بدون موسیقی" : "No music"}</option>
       </select>
       {!off && (
-        <span dir="ltr" className="flex items-center gap-1.5 px-1 text-[12px] text-white/70">
+        <span dir="ltr" className="flex items-center gap-1.5 px-1 text-[12px] text-white/80">
+          <span className="shrink-0 font-semibold">{fa ? "صدا" : "Volume"}</span>
           <span aria-hidden>🔈</span>
           <input type="range" min={0} max={1} step={0.01} value={vol} onChange={(e) => setVol(Number(e.target.value))}
-            aria-label={fa ? "صدا" : "Volume"} className="h-4 min-w-0 flex-1 cursor-pointer accent-amber-300" />
+            aria-label={fa ? "صدا" : "Volume"} className="h-5 min-w-0 flex-1 cursor-pointer accent-amber-300" />
           <span aria-hidden>🔊</span>
         </span>
       )}

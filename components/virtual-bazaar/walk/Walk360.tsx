@@ -3155,7 +3155,21 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           </div>
         );
       })()}
-      {/* «No music» in the tray (owner, 2026-11-17: "so it stops them all"): no player at all, nothing plays. */}
+      {/* THE MUSIC, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
+          (both tours)"): channel or «No music», and the volume. */}
+      {kitOn && kit && phase === "walking" && !editing && (() => {
+        const el = (() => {
+              const w = walkOf(walks, view.key);
+              if (!w || (!w.radio && !musicOf(w).length)) return null;
+              const chans = radiosOf(w);
+              const p = picked4(view.key);
+              const cur = p?.radio === NO_MUSIC ? NO_MUSIC : (p?.radio ?? radioSourceOf(w.radio))?.id ?? null;
+              return <MusicPicker channels={chans.length ? chans : w.radio ? [radioSourceOf(w.radio)].filter((x): x is RadioSource => Boolean(x)) : []} current={chans.length || w.radio ? cur : null} lang={kitLang}
+                onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
+            })();
+        return el ? <div className="absolute left-1/2 top-3 z-30 w-[min(16rem,44vw)] -translate-x-1/2 rounded-2xl bg-black/60 p-1">{el}</div> : null;
+      })()}
+      {/* «No music» in the music dropdown (owner, 2026-11-17: "so it stops them all"): no player at all, nothing plays. */}
       {phase !== "loading" && picked4(view.key)?.radio !== NO_MUSIC && (
         // The sound key at the top right, left of the bazaar's arch, and no «nikoo.tv live music» label (owner,
         // 2026-11-16: "remove the nikoo.tv live label, move the speaker sign up to the left of arch logo of vbazaar").
@@ -3218,16 +3232,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       </div>
       {kitOn && kit && (
         <div className="absolute inset-x-0 bottom-0" style={{ height: "23%" }}>
-          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang}
-            music={(() => {
-              const w = walkOf(walks, view.key);
-              if (!w || (!w.radio && !musicOf(w).length)) return null;
-              const chans = radiosOf(w);
-              const p = picked4(view.key);
-              const cur = p?.radio === NO_MUSIC ? NO_MUSIC : (p?.radio ?? radioSourceOf(w.radio))?.id ?? null;
-              return <MusicPicker channels={chans.length ? chans : w.radio ? [radioSourceOf(w.radio)].filter((x): x is RadioSource => Boolean(x)) : []} current={chans.length || w.radio ? cur : null} lang={kitLang}
-                onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
-            })()} />
+          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
         </div>
       )}
       {/* Going back to the shelf of a photo tapped in the tray: a short fade over the jump. */}

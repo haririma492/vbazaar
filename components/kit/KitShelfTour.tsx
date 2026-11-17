@@ -31,6 +31,8 @@ import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import StoreLogo from "@/components/brand/StoreLogo";
 import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
+import MusicPicker, { NO_MUSIC } from "./MusicPicker";
+import { radioSourceOf, type RadioSource } from "@/lib/radio";
 import { faShelfOrdinal, sectionLabel, type ShopKit, type ShopProduct, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { formatCents } from "@/lib/splats/catalogue";
 
@@ -106,6 +108,14 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   const [si, setSi] = useState(0);
   const [paused, setPaused] = useState(false);
   const [lang, setLang] = useState<Lang>("en");
+  // The shopper's music choice for this visit, as in the Free Tour's tray (owner, 2026-11-17: "in the shelf tour add
+  // the same music choice dropdown and volume as well"); null: the walk's default.
+  const [music, setMusic] = useState<RadioSource | typeof NO_MUSIC | null>(null);
+  const channels = useMemo(() => {
+    const list = (kit.sound?.radios ?? []).map(radioSourceOf).filter((x): x is RadioSource => Boolean(x));
+    const def = radioSourceOf(kit.sound?.radio);
+    return list.length ? list : def ? [def] : [];
+  }, [kit]);
   const [open, setOpen] = useState<{ section: ShopSection; from: Rect; highlight?: string } | null>(null);
   const [grown, setGrown] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
@@ -262,7 +272,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} /> : null}
-        <div className="me-auto min-w-0 flex-1 truncate"><b>{name}</b>{kit.title?.fa ? <span className="text-white/60"> · {kit.title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
+        <div className="me-auto min-w-0 max-w-[calc(50%-12rem)] flex-1 truncate"><b>{name}</b>{kit.title?.fa ? <span className="text-white/60"> · {kit.title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
         <div className="flex shrink-0 items-center gap-3">
           <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
             <span className="rounded-full bg-[#00B8C8] px-3 py-1 text-[#06131c]">🛒 Shelf Tour</span>
@@ -270,10 +280,18 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
           </span>
           <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
         </div>
+        {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
+            (both tours)"). */}
+        {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
+          <div className="absolute left-1/2 top-2 z-30 w-[min(16rem,40vw)] -translate-x-1/2 rounded-2xl bg-black/70 p-1">
+            <MusicPicker channels={channels} lang={lang} onPick={setMusic}
+              current={music === NO_MUSIC ? NO_MUSIC : (music ?? radioSourceOf(kit.sound?.radio))?.id ?? null} />
+          </div>
+        )}
         <TourBazaarLink overlay className="absolute right-3 top-2 z-40" />
         {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
-        <WalkSound place="right-[5.5rem] top-3" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
-          radio={(kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />
+{music !== NO_MUSIC && <WalkSound place="right-[5.5rem] top-3" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
+          radio={(music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
       </div>
 
       <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden"
