@@ -3155,7 +3155,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         // shelf) write قفسه دوم or قفسه اول and so on in larger text"): by the shelf's number, else its place in the walk.
         const nth = sh.n ?? (trayShelves.findIndex((x) => x.id === sh.id) + 1 || 1);
         return (
-          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[6rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: "16.667%" }}>
+          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[9.4rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: "16.667%" }}>
             <button type="button" data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
               className="relative block w-full cursor-pointer overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg transition-transform duration-200 hover:-translate-y-1 hover:scale-[1.04] hover:border-amber-200/80 hover:shadow-2xl"
               style={{ aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
@@ -3182,7 +3182,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           background … lets call them from now on header and footer"): a band behind the logo, the text key, the music,
           the tour switch, the sound key and the arch; the same colour as the footer (the tray) and as the Shelf Tour's. */}
       {kitOn && kit && phase === "walking" && !editing && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-[15] h-[5.4rem] border-b border-white/10 bg-[#1c1610]" aria-hidden="true" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[15] h-[8.6rem] border-b border-white/10 bg-[#1c1610] sm:h-[5.4rem]" aria-hidden="true" />
       )}
       {/* THE MUSIC, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
           (both tours)"): channel or «No music», and the volume. */}
@@ -3196,7 +3196,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               return <MusicPicker channels={chans.length ? chans : w.radio ? [radioSourceOf(w.radio)].filter((x): x is RadioSource => Boolean(x)) : []} current={chans.length || w.radio ? cur : null} lang={kitLang}
                 onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
             })();
-        return el ? <div className="absolute left-1/2 top-3 z-30 w-[min(16rem,44vw)] -translate-x-1/2 rounded-2xl bg-black/60 p-1">{el}</div> : null;
+        return el ? <div className="absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/60 p-1 sm:left-1/2 sm:top-3 sm:w-[16rem] sm:-translate-x-1/2">{el}</div> : null;
       })()}
       {/* «No music» in the music dropdown (owner, 2026-11-17: "so it stops them all"): no player at all, nothing plays. */}
       {phase !== "loading" && picked4(view.key)?.radio !== NO_MUSIC && (
