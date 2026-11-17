@@ -3,7 +3,7 @@
 import { NextRequest } from "next/server";
 import { isOperator } from "@/lib/stores/auth";
 import { fail, ok } from "@/lib/stores/http";
-import { readInboundLog, textingConfigured, twilioNumberInfo } from "@/lib/stores/texts";
+import { readInboundLog, setTwilioSmsUrl, textingConfigured, twilioNumberInfo } from "@/lib/stores/texts";
 import { e164 } from "@/lib/stores/textRules";
 
 export const runtime = "nodejs";
@@ -22,4 +22,14 @@ export async function GET(req: NextRequest) {
     inbound: await readInboundLog(),
     twilio: textingConfigured() ? await twilioNumberInfo() : null,
   });
+}
+
+// POST { action: "setWebhook" } — point the Twilio number's incoming texts at this site (operator; owner's yes, 2026-11-17).
+export async function POST(req: NextRequest) {
+  if (!isOperator(req)) return fail(403, "The operator only.");
+  if (!textingConfigured()) return fail(409, "Texting is not set up.");
+  const body = await req.json().catch(() => ({})) as { action?: string };
+  if (body.action !== "setWebhook") return fail(400, "Unknown action.");
+  try { return ok({ smsUrl: await setTwilioSmsUrl("https://vbazaar.app/api/sms/inbound") }); }
+  catch (e) { return fail(502, (e as Error).message); }
 }

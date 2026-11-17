@@ -108,3 +108,17 @@ export async function twilioNumberInfo(): Promise<{ account: string | null; smsU
       ...(num ? {} : { error: n.message || a.message || "the number is not in this Twilio account" }) };
   } catch (e) { return { account: null, smsUrl: null, smsMethod: null, numberName: null, error: (e as Error).message }; }
 }
+
+/** Point our Twilio number's incoming texts at `url` (the operator's yes, 2026-11-17: it was empty). */
+export async function setTwilioSmsUrl(url: string): Promise<string> {
+  const sid = process.env.TWILIO_ACCOUNT_SID!, token = process.env.TWILIO_AUTH_TOKEN!, from = fromNumber();
+  const headers = { authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`, "content-type": "application/x-www-form-urlencoded" };
+  const base = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}`;
+  const list = await (await fetch(`${base}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(from ?? "")}`, { headers })).json() as { incoming_phone_numbers?: Array<{ sid: string }> };
+  const num = list.incoming_phone_numbers?.[0];
+  if (!num) throw new Error("the number is not in this Twilio account");
+  const r = await fetch(`${base}/IncomingPhoneNumbers/${num.sid}.json`, { method: "POST", headers, body: new URLSearchParams({ SmsUrl: url, SmsMethod: "POST" }).toString() });
+  const j = await r.json() as { sms_url?: string; message?: string };
+  if (!r.ok) throw new Error(j.message || `Twilio answered ${r.status}`);
+  return j.sms_url ?? "";
+}
