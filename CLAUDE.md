@@ -161,6 +161,12 @@ plan and the Managed Agents decision are in
     `/api/sms/inbound` (Twilio's webhook, signature checked against `https://vbazaar.app/api/sms/inbound`) and goes to
     the conversation its «#CODE» names, else the one that last texted that phone (`texts/last.json`). Conversations:
     `texts/conv/<id>.json` (masters bucket, private).
+  - **The box is a floating window** (owner, 2026-11-17: *"make modal a movable window"*): no dark sheet over the tour,
+    dragged by its title bar, kept on screen; × closes it. The logo stays LEFT of the key (`dir="ltr"` on their row; the
+    Farsi page had put the key first). **Every call to the reply webhook is logged** (`texts/inbound-log.json`, the last
+    50: time, signature matched or not, matched a conversation or not, the phone's last 4 digits; no text), shown by
+    `/api/operator/texting` (owner, same day: *"message from shoppers came in but my message did not appear"*); the
+    signature is accepted for vbazaar.app or www, with or without a trailing slash.
   - **Needs on Railway:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` or `TWILIO_FROM_NUMBER` (the Twilio number, +1…; the owner's other project's names work as they are); in Twilio,
     the number's «A message comes in» webhook = `https://vbazaar.app/api/sms/inbound` (HTTP POST). Without them the key
     is not shown to anyone.

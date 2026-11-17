@@ -3146,7 +3146,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && (logoOf(walks, view.key) || storeSlugOf(view.key)) && (
         // The logo, and «Send a text to store» on its right (owner, 2026-11-17).
-        <div className="absolute left-3 top-3 z-20 flex items-start gap-2">
+        // dir="ltr": the logo on the LEFT of the message key whatever the page's language (owner, 2026-11-17).
+        <div dir="ltr" className="absolute left-3 top-3 z-20 flex items-start gap-2">
           {logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} site={kitOn ? kit?.site : null} name={kit?.name ?? kit?.title} />}
           {storeSlugOf(view.key) && <StoreText slug={storeSlugOf(view.key)!} name={kit?.name ?? walkOf(walks, view.key)?.title ?? null} className="mt-1" />}
         </div>

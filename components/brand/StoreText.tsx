@@ -7,7 +7,7 @@
  * on one side, the store's answers on the other), a field and «Send». The conversation is kept on this device
  * (`vb.text.<slug>`), asked for again every 5 s while the box is open, every 30 s while closed (a dot says an answer came).
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 type Msg = { from: "shopper" | "store"; text: string; at: string };
 
@@ -36,6 +36,26 @@ export default function StoreText({ slug, name, className = "" }: { slug: string
   const [seen, setSeen] = useState(0); // store answers seen
   const id = useRef<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
+  // Where the window stands (its top-left, in pixels); placed below the key the first time it opens.
+  const [pos, setPos] = useState({ x: 12, y: 80 });
+  const placed = useRef(false);
+  useEffect(() => {
+    if (!open || placed.current) return;
+    placed.current = true;
+    const w = Math.min(384, window.innerWidth - 16);
+    setPos({ x: Math.max(8, Math.min(window.innerWidth - w - 8, 140)), y: Math.min(90, Math.max(8, window.innerHeight - 520)) });
+  }, [open]);
+  const startDrag = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    const sx = e.clientX, sy = e.clientY, ox = pos.x, oy = pos.y;
+    const move = (ev: PointerEvent) => {
+      const w = Math.min(384, window.innerWidth - 16);
+      setPos({ x: Math.max(0, Math.min(window.innerWidth - w, ox + ev.clientX - sx)), y: Math.max(0, Math.min(window.innerHeight - 60, oy + ev.clientY - sy)) });
+    };
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
 
   const load = useCallback(async () => {
     id.current ??= convId(slug);
@@ -78,15 +98,18 @@ export default function StoreText({ slug, name, className = "" }: { slug: string
         {answers > seen && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-rose-500 ring-2 ring-black" aria-label="New answer" />}
       </button>
       {open && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/55 p-3" onClick={(e) => { e.stopPropagation(); setOpen(false); }}
-          onPointerDown={(e) => e.stopPropagation()}>
-          <div role="dialog" aria-modal="true" className="flex max-h-[80vh] w-full max-w-sm flex-col rounded-2xl bg-white text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+        // A floating window, not a sheet over the tour (owner, 2026-11-17: "make modal a movable window"): dragged by its
+        // title bar, the store still in view behind it; × closes it.
+        <div role="dialog" aria-label={`Message ${en}`} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}
+          className="fixed z-[90] flex max-h-[80vh] w-[min(24rem,calc(100vw-1rem))] flex-col rounded-2xl bg-white text-neutral-900 shadow-2xl ring-1 ring-black/10"
+          style={{ left: pos.x, top: pos.y }}>
+            <div className="flex cursor-move touch-none select-none items-center justify-between border-b border-neutral-200 px-4 py-3"
+              onPointerDown={startDrag} title="Drag to move">
               <div>
-                <p className="text-[15px] font-bold">💬 {en}</p>
+                <p className="text-[15px] font-bold">💬 {en} <span className="text-[11px] font-normal text-neutral-400">⠿ drag</span></p>
                 <p dir="rtl" className="text-[12px] text-neutral-500">پیام به {fa}</p>
               </div>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="rounded-full px-2 text-[22px] leading-none text-neutral-500">×</button>
+              <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => setOpen(false)} aria-label="Close" className="rounded-full px-2 text-[22px] leading-none text-neutral-500">×</button>
             </div>
             <div ref={list} className="min-h-[10rem] flex-1 space-y-2 overflow-y-auto bg-neutral-50 px-3 py-3">
               {!msgs.length && <p className="px-2 pt-6 text-center text-[13px] text-neutral-500">Ask the store anything: a product, a price, opening hours. Their answer appears here.<br /><span dir="rtl">هر سؤالی دارید از فروشگاه بپرسید؛ پاسخ همین‌جا می‌آید.</span></p>}
@@ -108,7 +131,6 @@ export default function StoreText({ slug, name, className = "" }: { slug: string
               <button type="submit" disabled={busy || !draft.trim()} className="rounded-xl bg-emerald-600 px-4 py-2 text-[14px] font-bold text-white disabled:opacity-40">{busy ? "…" : "Send"}</button>
             </form>
             {err && <p className="px-3 pb-3 text-[12px] text-rose-600">{err}</p>}
-          </div>
         </div>
       )}
     </>

@@ -79,3 +79,15 @@ export async function convForReply(phone: string, code: string | null): Promise<
   if (!last) return null;
   return (code && last.codes[code]) || last.conv;
 }
+
+/** The last 50 calls to the inbound webhook, newest first (no message text; the phone's last 4 digits only). */
+export type InboundLog = { at: string; ok: boolean; why: string; from: string; host: string };
+export async function logInbound(e: Omit<InboundLog, "at">): Promise<void> {
+  const t = await readMastersText("texts/inbound-log.json").catch(() => null);
+  const list = (t ? JSON.parse(t) : []) as InboundLog[];
+  await writeMastersJson("texts/inbound-log.json", [{ at: new Date().toISOString(), ...e }, ...list].slice(0, 50));
+}
+export async function readInboundLog(): Promise<InboundLog[]> {
+  const t = await readMastersText("texts/inbound-log.json").catch(() => null);
+  return t ? (JSON.parse(t) as InboundLog[]) : [];
+}
