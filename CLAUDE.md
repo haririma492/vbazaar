@@ -454,6 +454,10 @@ plan and the Managed Agents decision are in
       Tour's opened section; `Watermark address`, the arch and the faint tile stay). ⚠️ A tap on a tray photo no longer
       fades to black: it jumped back to where the shelf's border was drawn whenever that border was not on screen,
       which with the operator's tray marks was most of the time. Now only a share link jumps (`pickSection jump`).
+    - **A product's photo in the shopping panel enlarges on a tap** (owner, 2026-11-17: *"in the basket list on the right
+      side allow shoppers to click on the photo of the item and enlarge that photo"*): `BigPhoto` in `KitPanel.tsx`, over
+      the whole screen, the watermark on it, ‹ › (and the arrow keys) through the product's photos, «×» / Escape / a tap
+      outside to close; nothing reaches the walk. Free Tour and Shelf Tour alike.
     - **Every product can go in the basket, priced or not** (*"for proof of concept"*): a line with no price.
     - **No «Shopper's view | Owner's view» switch with the new layout** (no lights to name; the editor's address says
       whose tour it is). It stays for stores still on the old tour.

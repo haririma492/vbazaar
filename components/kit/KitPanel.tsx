@@ -7,7 +7,7 @@
  * The products of ONE section (Type IV): each with its own photo (the operator's) and, when matched to the store's
  * website, the site's photo, name and price; a weight to choose for what is sold by the kilo; «Add to basket».
  * A product not matched yet shows its photo with «Price coming soon» and cannot be added. Farsi or English.
- * No zooming, no wheel: an ordinary shop's list. Placed by the screen that opens it (`className`).
+ * No zooming into the shelf, no wheel: an ordinary shop's list; a product's photo enlarges on a tap (`BigPhoto`). Placed by the screen that opens it (`className`).
  */
 import { noSave } from "./noSave";
 import Watermark from "./Watermark";
@@ -36,6 +36,7 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
   const [qty, setQty] = useState(1);
   const [added, setAdded] = useState(0);
   const [shown, setShown] = useState(0);
+  const [big, setBig] = useState<number | null>(null);
   const photos = [p.photo, ...p.more].filter(Boolean);
   const name = (lang === "fa" ? p.fa || p.en : p.en || p.fa) || (lang === "fa" ? "محصول" : "Product");
   const other = lang === "fa" ? p.en : p.fa;
@@ -62,7 +63,13 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <div className="relative h-20 w-20 overflow-hidden rounded-lg">
           {photos.length
-            ? <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
+            ? (
+              // A tap enlarges it (owner, 2026-11-17: "allow shoppers to click on the photo of the item and enlarge that photo").
+              <button type="button" onClick={() => setBig(Math.min(shown, photos.length - 1))} aria-label={lang === "fa" ? "بزرگ‌تر" : "Enlarge the photo"} className="block cursor-zoom-in">
+                <img {...noSave} src={photos[Math.min(shown, photos.length - 1)]} alt="" className="h-20 w-20 rounded-lg bg-white object-contain ring-1 ring-black/10" />
+                <span className="pointer-events-none absolute left-0.5 top-0.5 rounded bg-white/85 px-0.5 text-[11px] leading-none shadow">🔍</span>
+              </button>
+            )
             : <div className="flex h-20 w-20 items-center justify-center rounded-lg bg-neutral-100 text-[28px]">🛍️</div>}
           {photos.length > 0 && <Watermark size="xs" />}
         </div>
@@ -78,6 +85,7 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
           </div>
         )}
       </div>
+      {big !== null && <BigPhoto photos={photos} at={big} onAt={setBig} name={name} lang={lang} onClose={() => setBig(null)} />}
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-bold leading-snug text-neutral-900">{name}</p>
         {other && other !== name && <p className="text-[12px] text-neutral-500">{other}</p>}
@@ -107,6 +115,45 @@ function Row({ p, lang, merchant, href, share, lit }: { p: ShopProduct; lang: La
         )}
       </div>
     </li>
+  );
+}
+
+/**
+ * A PRODUCT'S PHOTO, LARGE, over the whole screen: as large as the screen allows (never past the photo's own size),
+ * the watermark over it, ‹ › and the arrow keys through its photos, «×», Escape or a tap outside to close. Taps stop
+ * here: nothing reaches the walk underneath.
+ */
+function BigPhoto({ photos, at, onAt, name, lang, onClose }: { photos: string[]; at: number; onAt: (i: number) => void; name: string; lang: Lang; onClose: () => void }) {
+  const n = photos.length;
+  const step = (d: number) => onAt((at + d + n) % n);
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (n > 1 && e.key === "ArrowRight") step(1);
+      else if (n > 1 && e.key === "ArrowLeft") step(-1);
+    };
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  });
+  return (
+    <div dir="ltr" role="dialog" aria-label={name} onClick={(e) => { e.stopPropagation(); onClose(); }} onPointerDown={(e) => e.stopPropagation()}
+      className="fixed inset-0 z-[80] flex cursor-zoom-out items-center justify-center bg-black/85 p-4">
+      <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+        <img {...noSave} src={photos[at]} alt="" className="block max-h-[85vh] max-w-[92vw] rounded-xl bg-white object-contain shadow-2xl" />
+        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"><Watermark size="lg" /></div>
+        <p dir="auto" className="mt-2 text-center text-[15px] font-bold text-white">{name}{n > 1 ? ` · ${at + 1} / ${n}` : ""}</p>
+      </div>
+      {n > 1 && (
+        <>
+          <button type="button" aria-label={lang === "fa" ? "قبلی" : "Previous photo"} onClick={(e) => { e.stopPropagation(); step(-1); }}
+            className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 px-3 py-2 text-[24px] font-bold leading-none text-neutral-900 shadow">‹</button>
+          <button type="button" aria-label={lang === "fa" ? "بعدی" : "Next photo"} onClick={(e) => { e.stopPropagation(); step(1); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-white/90 px-3 py-2 text-[24px] font-bold leading-none text-neutral-900 shadow">›</button>
+        </>
+      )}
+      <button type="button" aria-label={lang === "fa" ? "بستن" : "Close"} onClick={(e) => { e.stopPropagation(); onClose(); }}
+        className="absolute right-3 top-3 rounded-full bg-white/90 px-3 py-1 text-[24px] leading-none text-neutral-900 shadow">×</button>
+    </div>
   );
 }
 
