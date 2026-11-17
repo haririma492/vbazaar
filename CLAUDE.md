@@ -961,6 +961,11 @@ quality and choice to break away and enter in a shop. (period)"*
   turned in again, was pushed again, for ever. `facingBack` now turns on only within 1.5 s of the visitor's own
   turn (stick or keys sideways, a drag, the phone's motion): `ownTurnAt` in `Walk360.tsx`. Not tried in a browser
   (the build session's browser cannot play the video).
+- **Tried and rolled back: smoothing the photographer's zone** (owner, 2026-11-17, of the Free Tour's small back-and-forth
+  turns; then of the result: *"it was so shaky and un-natural as if a kid has assembled an old roll of movie"*, «rollback
+  now»). `1e91ad2` smoothed the Lock zone over ±1.5 s, left 4° into it alone and eased the view out a part of the way
+  each frame; it was reverted the same day (`8d9868c`). Don't bring it back as it was. Not yet measured: how much of
+  the shake is the zone at all (walking nuttime with the zone off would tell).
 - **A speed bar, not Slow and Fast** (owner, 2026-11-04, on the Saraye
   Bamdad bookshop: *"Slow and Fast is not good enough, the slow end of this
   bar should be really slow"*): under the wheel, «◀ Back» · «▶ Walk», then a
