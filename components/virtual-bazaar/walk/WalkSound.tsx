@@ -21,11 +21,16 @@ import { MAIN_CHANNEL, positionAt, radioSourceOf, sourceQuery, type RadioFile, t
 
 const MUTE_KEY = "walk-sound";
 
+/**
+ * Sound is OFF until the shopper turns it on (owner, 2026-11-17: "keep music speaker sign off by default, let shopper
+ * look for it and turn on if they are really interested"): only a stored "on" (the 🔇 key pressed, or a channel picked
+ * in the music dropdown) plays.
+ */
 function readOn(): boolean {
   try {
-    return window.localStorage.getItem(MUTE_KEY) !== "off";
+    return window.localStorage.getItem(MUTE_KEY) === "on";
   } catch {
-    return true;
+    return false;
   }
 }
 
@@ -36,6 +41,8 @@ function readOn(): boolean {
 const WALK_MUSIC_VOLUME = 0.2;
 
 export const soundOn = () => typeof window !== "undefined" && readOn();
+/** The shopper chose music (a channel from the dropdown): sound on, for this pick and after. */
+export const turnSoundOn = () => { if (typeof window !== "undefined") writeOn(true); };
 
 /**
  * Whether the shopper has tapped this page yet, for the whole visit (owner, 2026-11-17: "after selecting a music from
@@ -142,7 +149,7 @@ export function WalkSound({ audioKeys, srcOf, specials = false, radio = null, pl
 }
 
 function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string }) {
-  const [on, setOn] = useState(true);
+  const [on, setOn] = useState(false);
   const [waiting, setWaiting] = useState(false); // the browser wants a tap first
   const audio = useRef<HTMLAudioElement | null>(null);
 
@@ -249,7 +256,7 @@ const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14p
 function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
   ch: string; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean;
 }) {
-  const [on, setOn] = useState(true);
+  const [on, setOn] = useState(false);
   const [now, setNow] = useState<RadioNow | null>(null);
   const [waiting, setWaiting] = useState(false);
   const [tick, setTick] = useState(0); // bumped to ask nikoo.tv again (a programme ended, a file failed)
@@ -444,7 +451,7 @@ const FAILS_IN_A_ROW = 12;
 function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
   source: RadioSource; audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean;
 }) {
-  const [on, setOn] = useState(true);
+  const [on, setOn] = useState(false);
   const [tracks, setTracks] = useState<RadioTrack[] | null>(null); // null: still asking
   const [pos, setPos] = useState({ i: 0, turn: 0 }); // `turn` moves on every change, so one track alone plays again
   const [dead, setDead] = useState(false);

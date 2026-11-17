@@ -1264,6 +1264,10 @@ quality and choice to break away and enter in a shop. (period)"*
     (`CONTINUOUS` in `MusicCard.tsx`: World Music's group `grp-hauser-rieu` and singer `cat-mw7k942j-p43p0`), sent as
     `m:<member>:<id>`; either may be the default. `Walk.radios` takes music picks too; shoppers read nikoo.tv's own
     names, which are the titles asked for. Played like any music pick (one track after another, `ListSound`).
+  - **⚠️ Sound starts OFF** (owner, 2026-11-17: *"keep music speaker sign off by default, let shopper look for it and turn
+    on if they are really interested"*): the speaker shows 🔇 until the shopper presses it; only a stored «on»
+    (`walk-sound` = "on", `readOn` in `WalkSound.tsx`) plays. Picking a channel in the music dropdown turns it on
+    (`turnSoundOn`). A shopper who had pressed 🔊 before keeps it on.
   - **A new pick plays at once** (owner, 2026-11-17: *"after selecting a music from dropdown it takes a min to start
     playing"*). The server answers in 0.1–0.9 s; the wait was the page: each player kept its own «tapped», so the player
     made for a new pick waited for the shopper's NEXT tap before making its YouTube player. Now one flag for the visit
