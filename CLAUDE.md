@@ -1244,7 +1244,7 @@ quality and choice to break away and enter in a shop. (period)"*
     dropdown right there, nothing opening over the walk (owner: *"let music choice drop down to be right there where the
     key is do not open another window on top also add an option "No Music" so it stops them all"*;
     `components/kit/MusicPicker.tsx`): the ticked channels and «🔇 No music» (no player at all; the choice lasts the
-    visit), and under it a volume bar for every player on the page (`setMusicVolume` in `WalkSound.tsx`, kept on the device as `vb.walk.volume`; YouTube players
+    visit), and under it a volume bar for every player on the page (`setMusicVolume` in `WalkSound.tsx`, kept on the device as `vb.walk.volume`; it starts at 20%, owner, 2026-11-17: *"this position of bar should be the default volume for music"*; YouTube players
     told by message). The Shelf Tour has the same (owner: *"in the shelf tour add the same music choice dropdown and volume
     as well"*), from `ShopKit.sound.radios`.
   - **Continuous music beside the channels** (owner, 2026-11-17: *"on the music choices that operator can turn on … add:

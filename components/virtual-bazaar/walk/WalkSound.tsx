@@ -30,8 +30,10 @@ function readOn(): boolean {
 }
 
 /** Whether the shopper has sound on (the 🔊 / 🔇 key): the walk's loop and the specials' voice. */
-/** The walk's background music, by default. Was 0.6; owner asked for 25% less. */
-const WALK_MUSIC_VOLUME = 0.45;
+/** The walk's background music, by default. Was 0.6; owner asked for 25% less (0.45); then 0.2, the owner showing the
+ *  volume bar where it should start (2026-11-17: "this position of bar should be the default volume for music"). A
+ *  shopper's own setting (`vb.walk.volume`) still wins. */
+const WALK_MUSIC_VOLUME = 0.2;
 
 export const soundOn = () => typeof window !== "undefined" && readOn();
 
