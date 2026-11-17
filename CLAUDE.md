@@ -167,6 +167,10 @@ plan and the Managed Agents decision are in
     50: time, signature matched or not, matched a conversation or not, the phone's last 4 digits; no text), shown by
     `/api/operator/texting` (owner, same day: *"message from shoppers came in but my message did not appear"*); the
     signature is accepted for vbazaar.app or www, with or without a trailing slash.
+  - **The Twilio number is (647) 424-3423** («My First Twilio Account»); its «A message comes in» address was EMPTY
+    (replies went nowhere). Set by our server with the owner's yes, 2026-11-17 (the owner could not find the Twilio
+    login): operator `POST /api/operator/texting {action:"setWebhook"}` → `https://vbazaar.app/api/sms/inbound`;
+    `GET /api/operator/texting` reads it back (`twilio.smsUrl`, read only).
   - **Needs on Railway:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` or `TWILIO_FROM_NUMBER` (the Twilio number, +1…; the owner's other project's names work as they are); in Twilio,
     the number's «A message comes in» webhook = `https://vbazaar.app/api/sms/inbound` (HTTP POST). Without them the key
     is not shown to anyone.
