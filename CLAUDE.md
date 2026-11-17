@@ -537,7 +537,7 @@ plan and the Managed Agents decision are in
     starts at 100° (the zoom's widest; it was 67.4°), once, when the kit comes on (`setKit`). **The tray's shelf name**:
     one line, the Farsi name without its number then the English in round brackets, both at one size (owner, 2026-11-17:
     *"make english and farsi the same font size, english in round bracket in front"*), no sections' count; under it, in
-    the black area, «برای خرید روی تصویر طبقات اینجا یا روی تصویر قفسه در بالا سمت چپ قفسه کلیک کنید». Under the Type III
+    the black area, «برای خرید روی تصویر طبقات در اینجا یا روی تصویر قفسه در بالا سمت چپ کلیک کنید». Under the Type III
     photo at the top left, the shelf in Farsi words, large: «قفسه اول», «قفسه دوم»… (`faShelfOrdinal`, by the shelf's
     number, tested).
   - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.

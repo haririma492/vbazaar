@@ -94,7 +94,7 @@ export default function KitTray({ shelf, dir, picked, onPick, lang }: {
             </p>
             {/* How to buy (owner, 2026-11-17: on the black area of the lower panel). */}
             <p dir="rtl" className="mt-1.5 text-[clamp(10px,2.3vw,13px)] leading-snug text-white/70">
-              برای خرید روی تصویر طبقات اینجا یا روی تصویر قفسه در بالا سمت چپ قفسه کلیک کنید
+              برای خرید روی تصویر طبقات در اینجا یا روی تصویر قفسه در بالا سمت چپ کلیک کنید
             </p>
           </div>
         ))}
