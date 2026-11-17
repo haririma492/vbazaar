@@ -154,12 +154,14 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
       const i = stepAt(steps, clock.current);
       setStep((cur) => (cur === i ? cur : i));
       if (bar.current) bar.current.style.width = `${total ? (clock.current / total) * 100 : 0}%`;
-      if (clock.current >= total) { setPaused(true); return; }
+      // The shelf done: on to the next by itself, after the last the first again (owner, 2026-11-17: "automatically go
+      // to the next shelf do not wait for shopper").
+      if (clock.current >= total) { setSi((i) => (i + 1 < shelves.length ? i + 1 : 0)); return; }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [paused, open, shelf, sections.length, steps, total]);
+  }, [paused, open, shelf, sections.length, steps, total, shelves.length]);
 
   // The shelf photo fitted in the stage, and the glide into the section in view.
   const fit = useMemo(() => {
@@ -239,7 +241,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
       </div>
 
       <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden"
-        onClick={() => { if (open) return; if (sec && at.show) openSection(sec); else setPaused((p) => !p); }}>
+        onClick={() => { if (open) return; setPaused((p) => !p); }}>
         {/* The whole shelf, gliding into the section in view. */}
         <div className="absolute origin-top-left"
           style={{
@@ -255,8 +257,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             {sections.map((x) => x.quad && (
               <polygon key={x.id} points={[0, 1, 2, 3].map((k) => `${x.quad![k * 2]},${x.quad![k * 2 + 1]}`).join(" ")}
                 fill={open?.section.id === x.id ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.001)"} stroke="rgba(255,255,255,0.85)" strokeWidth={1.5}
-                vectorEffect="non-scaling-stroke" className="cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); if (!open) openSection(x); }} />
+                vectorEffect="non-scaling-stroke" />
             ))}
           </svg>
         </div>
@@ -264,21 +265,38 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {sections.map((x) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img {...noSave} key={x.id} src={x.url} alt=""
-            className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
-            style={{ opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms" }} />
+            className="pointer-events-none absolute left-0 top-0 select-none object-contain"
+            style={{
+              opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms, width 500ms, height 500ms",
+              // A product on show: the section keeps the left of the screen (above it on a phone), the product the rest.
+              width: product && !narrow ? "66%" : "100%", height: product && narrow ? "58%" : "100%",
+            }} />
         ))}
         {/* One product at a time (Type V), over its section's photo, in the section's order. */}
+        {/* The product on the right (under the section on a phone), the section's photo still in view (owner,
+            2026-11-17: "move the item (type V) to the right side, keep the shelf section view visible"). */}
         {product && (
-          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/55 p-4" key={product.id}>
-            <div className="flex max-h-full max-w-[min(90%,34rem)] flex-col items-center gap-2 rounded-2xl bg-white p-3 text-neutral-900 shadow-2xl">
+          <div className={`absolute flex items-center justify-center p-3 ${narrow ? "inset-x-0 bottom-0 h-[42%]" : "inset-y-0 right-0 w-[34%]"}`} key={product.id}>
+            <div className="flex max-h-full w-full flex-col items-center gap-2 rounded-2xl bg-white p-3 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               {product.photo
                 // eslint-disable-next-line @next/next/no-img-element
-                ? <div className="relative"><img {...noSave} src={product.photo} alt="" className="max-h-[45vh] max-w-full rounded-lg object-contain" /><Watermark size="sm" address={false} sparse /></div>
+                ? <div className="relative"><img {...noSave} src={product.photo} alt="" className={`${narrow ? "max-h-[18vh]" : "max-h-[46vh]"} max-w-full rounded-lg object-contain`} /><Watermark size="sm" address={false} sparse /></div>
                 : <div className="flex h-40 w-40 items-center justify-center text-[48px]">🛍️</div>}
               <p className="text-center text-[17px] font-bold leading-snug">{(lang === "fa" ? product.fa || product.en : product.en || product.fa) || "Product"}</p>
               {product.priceCents !== null && product.priceCents > 0 && <p className="text-[16px] font-extrabold text-emerald-700">{formatCents(product.priceCents)}</p>}
-              <p className="text-[12px] text-neutral-500">{lang === "fa" ? "برای خرید روی آن بزنید" : "Tap to buy"}</p>
+              <button type="button" onClick={() => sec && openSection(sec)} className="rounded-md bg-emerald-600 px-3 py-1.5 text-[13px] font-bold text-white shadow">🛒 {lang === "fa" ? "خرید" : "Buy"}</button>
             </div>
+          </div>
+        )}
+        {sec && at.show && !product && sec.products.length > 0 && (
+          <button type="button" onClick={(e) => { e.stopPropagation(); openSection(sec); }}
+            className="absolute bottom-3 right-3 z-10 rounded-full bg-emerald-600 px-4 py-2 text-[14px] font-bold text-white shadow-lg">
+            🛒 {lang === "fa" ? "خرید از این بخش" : "Shop this section"}
+          </button>
+        )}
+        {paused && !open && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
+            <span className="rounded-full bg-black/60 px-4 py-2 text-[15px] font-semibold text-white">❚❚ {lang === "fa" ? "برای ادامه بزنید" : "Tap to go on"}</span>
           </div>
         )}
         {/* Where the tour is, in words: the shelf, the section, the product. */}

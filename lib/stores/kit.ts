@@ -243,7 +243,12 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
     const sections = sh.sections.filter((x) => x.photo.url).map((x) => ({
       id: x.id, i: x.i, ...(x.name ? { name: { en: x.name.en, fa: x.name.fa ?? x.name.en } } : {}), url: x.photo.url!, thumb: x.photo.thumb ?? x.photo.url!, w: x.photo.w ?? 0, h: x.photo.h ?? 0, quad: x.place?.quad ?? null,
       products: (() => {
-        const own = (w: string) => x.products.find((p) => p.photo.url && p.match?.web === w);
+        // ⚠️ A photo from the operator's computer reaches shoppers ONLY when the operator tied it to a website product
+        // themselves (owner, 2026-11-17: "you are using the wrong OLD type V photos where labels were made up": nuttime's 79
+        // uploads of 16 Nov were generated concept pictures, «…_CONCEPT_UNVERIFIED.png», labels invented). One the matcher
+        // tied by itself shows the website's photo instead; one tied to nothing is not shown. The store's page lists them all.
+        const chosen = (p: KitProduct) => Boolean(p.photo.url && p.match?.web && p.match.by === "operator");
+        const own = (w: string) => x.products.find((p) => chosen(p) && p.match?.web === w);
         const listed = new Set(x.items ?? []);
         const card = (p: KitProduct | undefined, site: Product | undefined, id: string): ShopProduct => {
           const sitePhotos = site ? [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u)) : [];
@@ -263,9 +268,11 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
             const p = own(w);
             return [card(p, site, p ? p.id : `${x.id}-w${site.n}`)];
           }),
-          // Then the product photos uploaded from the operator's computer that are not one of those.
-          ...x.products.filter((p) => p.photo.url && !(p.match?.web && listed.has(p.match.web)))
-            .map((p) => card(p, p.match?.web ? byWeb.get(p.match.web) : undefined, p.id)),
+          // Then the website products the uploads were tied to and the operator did not pick: the operator's own photo
+          // when they tied it, else the website's; each website product once. An upload tied to nothing is left out.
+          ...x.products.filter((p) => p.photo.url && p.match?.web && !listed.has(p.match.web) && byWeb.has(p.match.web))
+            .filter((p, i, a) => a.findIndex((q) => q.match!.web === p.match!.web) === i)
+            .map((p) => card(chosen(p) ? p : undefined, byWeb.get(p.match!.web!), p.id)),
         ];
       })(),
     }));

@@ -514,6 +514,18 @@ plan and the Managed Agents decision are in
     with it (a tick at each section; a tap seeks). The store's logo at the top left, the arch at the top right and the
     sound key left of it, playing the walk's own music source (`ShopKit.logo`, `ShopKit.sound`); the watermark's tile
     is `sparse` here (three times as far apart, half as strong); «Free Tour» goes to the store's own page.
+    **Changes of 2026-11-17, later** (owner: *"automatically go to the next shelf do not wait for shopper"*; *"stop moving
+    when shopper click anywhere"*; *"move the item (type V) to the right side, keep the shelf section view visible"*):
+    at a shelf's end the tour goes on to the next (after the last, the first); a tap anywhere stops it, another goes on
+    («Tap to go on»); the product card stands on the right third (under the section on a phone) with the section's photo
+    beside it; buying is the card's «🛒 Buy» or «🛒 Shop this section» while a section shows (taps on the shelf's
+    outlines no longer open the panel).
+  - **⚠️ Photos from the operator's computer reach shoppers only when the operator tied them to a website product**
+    (owner, 2026-11-17: *"you are using the wrong OLD type V photos where labels were made up"*). nuttime's 79 product
+    uploads of 2026-11-16 were generated concept pictures («…_CONCEPT_UNVERIFIED.png», invented labels); 75 were tied to
+    nothing, 4 tied by the matcher (`match.by: "auto"`). `shopKit`: an upload shows only with `match.by: "operator"`
+    («📷 My own photo» or the dropdown); an auto-tied one gives its website product with the website's photo; an untied
+    one is left out. The store's page still lists them all, to remove. Free Tour and Shelf Tour alike.
   - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
