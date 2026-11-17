@@ -220,7 +220,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   return (
     // Left to right whatever the page's language: the logo at the top left, «‹ Previous» on the left (the panel sets its own).
     <div dir="ltr" className="fixed inset-0 flex flex-col bg-black text-white">
-      <div className="relative flex items-center justify-between gap-2 px-3 py-2 pr-[9.5rem] text-[14px]">
+      <div className="relative flex flex-wrap items-center justify-between gap-2 px-3 py-2 pr-[15.5rem] text-[14px]">
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} /> : null}
