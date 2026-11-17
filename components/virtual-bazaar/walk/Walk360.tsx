@@ -83,7 +83,7 @@ import DeepZoom from "@/components/zoom/DeepZoom";
 import { track } from "@/lib/visitors/track";
 import { EAC_GLSL, type Projection } from "@/lib/splats/projection";
 import { isPrivateVideoKey, mediaPath, toMediaUrl } from "@/lib/splats/media";
-import { directMediaUrl } from "@/lib/splats/directMedia";
+import { directMediaUrl, forgetDirectMedia } from "@/lib/splats/directMedia";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
 import { DEFAULT_FPS, SPEED_DEFAULT, driveRate, placeOf, speedAt, speedForFps } from "@/lib/splats/pace";
@@ -843,8 +843,11 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       const host = (() => { try { return new URL(src).host; } catch { return src; } })();
       const site = window.location.origin;
       try {
-        const res = await fetch(src, { method: "HEAD", mode: "cors", cache: "no-store" });
+        // A GET of one byte, never a HEAD: the link is signed for GET, and a HEAD is refused (403, with no CORS
+        // headers), which read here as "the bucket does not let this site load its videos" (owner, 2026-11-17).
+        const res = await fetch(src, { headers: { Range: "bytes=0-0" }, mode: "cors", cache: "no-store" });
         if (res.status === 404) return `The video is not in the bucket this site reads (${host}): 404 for ${src}. Upload it there, or point this site at the bucket that has it.`;
+        if (res.status === 403) return "The video's link has run out. Reload the page.";
         if (!res.ok) return `The bucket (${host}) answered ${res.status} for the video.`;
         return "The video was found, but this browser cannot play it. An .mp4 in H.264 plays everywhere.";
       } catch {
@@ -874,6 +877,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         key: opts.key, video, forcedFlat, flat: forcedFlat || projection === "flat", spin: 0, texture: null, material: null, mesh: null,
         ready: Promise.resolve(), fail: () => {}, released: false, purpose: opts.purpose, projection,
       };
+      let viaPath: string | null = null; // the /api/media path the signed link came from (to sign again)
       layer.ready = new Promise<void>((resolve, reject) => {
         let settled = false;
         const timers: number[] = [];
@@ -895,7 +899,15 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           check();
         });
         for (const ev of ["loadeddata", "canplay", "seeked"]) video.addEventListener(ev, check);
+        let retried = false;
         video.addEventListener("error", () => {
+          // A signed link that failed (run out, or the file replaced by a cut): once, a freshly signed one.
+          if (!retried && !settled && !layer.released && viaPath) {
+            retried = true;
+            forgetDirectMedia(viaPath);
+            void directMediaUrl(viaPath).then((fresh) => { if (!layer.released) { video.src = fresh; video.load(); } });
+            return;
+          }
           // The walk's own video: find out WHY, and say it (staging, 2026-10-12, got
           // only "is the bucket's CORS set" — which of the causes it was, nobody could tell).
           if (layer.purpose === "main" && video.currentSrc && !/\.mov$/i.test(layer.key ?? "")) void diagnose(video.currentSrc).then((why) => finish(why));
@@ -916,6 +928,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         const via = opts.src !== undefined ? (opts.src && toMediaUrl(opts.src)) : opts.key ? await srcFor(opts.key, walkOf(walksNow, opts.key)?.rev) : null;
         // ⚠️ A SPHERE'S VIDEO MUST NOT ARRIVE BY A CROSS-ORIGIN REDIRECT (iOS Safari taints it): the signed link itself.
         const src = via && !phoneVideo ? await directMediaUrl(via) : via;
+        if (via && !phoneVideo && via.startsWith("/api/media/")) viaPath = via;
         if (layer.released) return;
         if (!src) return layer.fail("No address for the video: is NEXT_PUBLIC_SPLAT_BASE_URL set?");
         video.src = src;

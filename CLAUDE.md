@@ -603,6 +603,13 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
   video is tainted and the sphere stays black on every iPhone. `directMediaUrl` (`lib/splats/directMedia.ts`)
   asks `/api/media/<key>?link=1` and sets that as the src. A plain `<video>` (Shelf Tour, flat shop video) is
   fine through the redirect.
+  **⚠️ «The bucket does not let this site load its videos» was a false alarm** (owner, 2026-11-17, seeing that message):
+  the bucket's CORS DOES allow vbazaar.app (checked: every store walk, its phone and reverse copies, 206 with
+  `Access-Control-Allow-Origin: https://vbazaar.app`). The walk's diagnosis asked with a HEAD, which a link signed for GET
+  is refused (403, no CORS headers), so any failed load read as CORS. Now: a failed signed link is signed afresh once
+  (`forgetDirectMedia`), and the diagnosis asks for one byte with GET (403 → «the link has run out, reload»). The bucket
+  is still named «sarekooche-masters»: R2 cannot rename a bucket; it is the app's first home, visible only in the
+  video's link.
 - **The Tidy agent** (owner, 2026-11-06: *"identify ugly unfitted junk or object and replace them with some products
   that are on a software made place or th original table where the stuff was so they are not hanging in the air at
   the end of store page there has to be a list of photos of those removed objects"*). Operator starts it on the

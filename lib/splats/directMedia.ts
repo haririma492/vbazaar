@@ -29,3 +29,8 @@ export function directMediaUrl(path: string): Promise<string> {
   }
   return p;
 }
+
+/** Forget a cached link (it failed: expired, or the file was replaced), so the next ask signs a fresh one. */
+export function forgetDirectMedia(path: string) {
+  if (typeof path === "string") links.delete(path.split(/[?#]/)[0]);
+}
