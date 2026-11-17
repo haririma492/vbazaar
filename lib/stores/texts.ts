@@ -91,3 +91,20 @@ export async function readInboundLog(): Promise<InboundLog[]> {
   const t = await readMastersText("texts/inbound-log.json").catch(() => null);
   return t ? (JSON.parse(t) as InboundLog[]) : [];
 }
+
+/** Read only: what Twilio holds for our number (where its incoming texts go) and the account's name. */
+export async function twilioNumberInfo(): Promise<{ account: string | null; smsUrl: string | null; smsMethod: string | null; numberName: string | null; error?: string }> {
+  const sid = process.env.TWILIO_ACCOUNT_SID!, token = process.env.TWILIO_AUTH_TOKEN!, from = fromNumber();
+  const auth = { authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}` };
+  const base = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}`;
+  try {
+    const [a, n] = await Promise.all([
+      fetch(`${base}.json`, { headers: auth }).then((r) => r.json() as Promise<{ friendly_name?: string; message?: string }>),
+      fetch(`${base}/IncomingPhoneNumbers.json?PhoneNumber=${encodeURIComponent(from ?? "")}`, { headers: auth })
+        .then((r) => r.json() as Promise<{ incoming_phone_numbers?: Array<{ sms_url?: string; sms_method?: string; friendly_name?: string }>; message?: string }>),
+    ]);
+    const num = n.incoming_phone_numbers?.[0];
+    return { account: a.friendly_name ?? null, smsUrl: num?.sms_url ?? null, smsMethod: num?.sms_method ?? null, numberName: num?.friendly_name ?? null,
+      ...(num ? {} : { error: n.message || a.message || "the number is not in this Twilio account" }) };
+  } catch (e) { return { account: null, smsUrl: null, smsMethod: null, numberName: null, error: (e as Error).message }; }
+}
