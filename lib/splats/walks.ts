@@ -514,6 +514,28 @@ export function hideAt(h: WalkHide, t: number): { yaw: number; width: number } {
   return { yaw: last.yaw, width: w(last) };
 }
 
+/**
+ * THE PHOTOGRAPHER'S ZONE, SMOOTHED (owner, 2026-11-17: "Is there a way to remove so many small back and forth movements
+ * of the camera in the free tour? … I never ever did this non-sense turns when filming"). The Lock agent's zone is read
+ * every third of a second and its middle wobbles up to ~17° between readings; the player kept the view out of it every
+ * frame, so each wobble shoved the view sideways and back. Each point becomes the average of the points within
+ * `window` seconds either side (directions averaged as directions, across the ±180° seam). Pure.
+ */
+export function smoothHide(h: WalkHide, window = 1.5): WalkHide {
+  const at = h.at ?? [];
+  if (at.length < 3) return h;
+  const w = (p: { width?: number }) => p.width ?? h.width;
+  const out = at.map((p) => {
+    let sx = 0, sy = 0, sw = 0, n = 0;
+    for (const q of at) {
+      if (Math.abs(q.t - p.t) > window) continue;
+      sx += Math.cos(q.yaw); sy += Math.sin(q.yaw); sw += w(q); n++;
+    }
+    return { t: p.t, yaw: Math.atan2(sy, sx), width: sw / n };
+  });
+  return { ...h, yaw: out[0].yaw, at: out };
+}
+
 /** The locked zone's middle at moment `t`. */
 export const hideYawAt = (h: WalkHide, t: number) => hideAt(h, t).yaw;
 

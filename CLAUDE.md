@@ -961,6 +961,15 @@ quality and choice to break away and enter in a shop. (period)"*
   turned in again, was pushed again, for ever. `facingBack` now turns on only within 1.5 s of the visitor's own
   turn (stick or keys sideways, a drag, the phone's motion): `ownTurnAt` in `Walk360.tsx`. Not tried in a browser
   (the build session's browser cannot play the video).
+- **⚠️ The view is no longer shoved side to side by the photographer's zone** (owner, 2026-11-17: *"Is there a way to
+  remove so many small back and forth movements of the camera in the free tour? … I never ever did this non-sense turns
+  when filming"*). Cause, measured on nuttime: the Lock zone is ~178° wide, its middle read every ⅓ s wobbling up to
+  ~17° between readings, and the player put the view's middle `width/2 + half the screen` clear of it EVERY frame; zoomed
+  out to 100° that left ~50° of freedom, so each wobble pushed the view sideways and back. Now the zone is smoothed over
+  ±1.5 s (`smoothHide`, `walks.ts`, tested; nuttime: biggest steps 12° → 3.5°, sideways travel over the walk 1,438° →
+  560°), 4° into it is left alone (`HIDE_SLACK`), and beyond that the view is eased out (a part of the way each frame),
+  not snapped (`Walk360.tsx`). No change to the video, its quality or its frame rate. The trade-off accepted: a quick
+  turn can show the photographer's edge for a moment. Rollback point: `170a976`.
 - **A speed bar, not Slow and Fast** (owner, 2026-11-04, on the Saraye
   Bamdad bookshop: *"Slow and Fast is not good enough, the slow end of this
   bar should be really slow"*): under the wheel, «◀ Back» · «▶ Walk», then a

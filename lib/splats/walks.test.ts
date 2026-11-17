@@ -690,3 +690,15 @@ test("setRadios / radiosOf: several live channels, one the default; parsed back"
   assert.equal(one.walks.a.radios, undefined);
   assert.deepEqual(radiosOf(one.walks.a), []);
 });
+
+test("smoothHide: a wobbling zone is steadied, across the ±180° seam", async () => {
+  const { smoothHide, hideAt } = await import("./walks.ts");
+  const at = Array.from({ length: 30 }, (_, i) => ({ t: i / 3, yaw: Math.PI - 0.1 + (i % 2 ? 0.3 : -0.3) }));
+  const h = { yaw: at[0].yaw, width: 3, top: 0, at: at.map((p) => ({ ...p, yaw: Math.atan2(Math.sin(p.yaw), Math.cos(p.yaw)) })) };
+  const s = smoothHide(h);
+  const yaws = s.at!.slice(5, 25).map((p) => p.yaw);
+  const spread = Math.max(...yaws.map((y) => Math.abs(Math.atan2(Math.sin(y - (Math.PI - 0.1)), Math.cos(y - (Math.PI - 0.1))))));
+  assert.ok(spread < 0.05, `steadied to within 0.05 rad, got ${spread}`);
+  assert.equal(hideAt(s, 5).width, 3);
+  assert.equal(smoothHide({ yaw: 1, width: 2, top: 0 }).yaw, 1);
+});
