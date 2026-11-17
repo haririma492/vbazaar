@@ -34,6 +34,8 @@ import KitPanel, { type Lang } from "./KitPanel";
 import { faShelfOrdinal, sectionLabel, type ShopKit, type ShopProduct, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { formatCents } from "@/lib/splats/catalogue";
 
+/** Room under the shelf's photo for its title. */
+const TITLE_H = 64;
 const WHOLE_MS = 2500, SECTION_MS = 3000, PRODUCT_MS = 2400, GROW_MS = 450;
 /** At most this many products a section are shown one by one (the panel lists them all). */
 const MAX_SHOWN = 8;
@@ -192,7 +194,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   }, []);
   const fit = useMemo(() => {
     const pw = shelf?.photo?.w || 4, ph = shelf?.photo?.h || 3;
-    const s = Math.min(lsize.w / pw, lsize.h / ph) || 0;
+    const s = Math.min(lsize.w / pw, Math.max(0, lsize.h - TITLE_H) / ph) || 0;
     return { fw: pw * s, fh: ph * s };
   }, [shelf, lsize]);
   const sec = at.k >= 0 ? sections[at.k] : null;
@@ -261,14 +263,10 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         <div className="absolute inset-0 flex">
           {/* LEFT: the shelf (Type III), always; «قفسه دوم · its name» on top; the section in view outlined. */}
           <div className="flex w-1/2 min-w-0 flex-col border-r border-white/10 p-2">
-            <div className="mb-1.5 text-center">
-              <p dir="rtl" className="text-[clamp(17px,2.6vw,26px)] font-extrabold leading-tight text-amber-100">
-                {faShelfOrdinal(shelf.n ?? si + 1)}{faName ? ` · ${faName}` : ""}
-              </p>
-              <p className="text-[clamp(11px,1.4vw,14px)] text-white/60">{shelf.label.en}</p>
-            </div>
             <div ref={left} className="relative min-h-0 flex-1">
-              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: fit.fw, height: fit.fh }}>
+              {/* The photo at the top, its title right under it (owner, 2026-11-17: "bring the type III photo higher and
+                  bring the title to be underneath the photo"). */}
+              <div className="absolute left-1/2 top-0 -translate-x-1/2" style={{ width: fit.fw, height: fit.fh }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img {...noSave} src={shelf.photo!.url} alt={label} className="absolute inset-0 h-full w-full select-none rounded"
                   style={{ backgroundImage: shelf.photo?.thumb ? `url(${shelf.photo.thumb})` : undefined, backgroundSize: "100% 100%" }} />
@@ -281,6 +279,12 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
                   ))}
                 </svg>
                 <Watermark size="sm" sparse />
+              </div>
+              <div className="absolute inset-x-0 text-center" style={{ top: fit.fh + 6 }}>
+                <p dir="rtl" className="text-[clamp(17px,2.6vw,26px)] font-extrabold leading-tight text-amber-100">
+                  {faShelfOrdinal(shelf.n ?? si + 1)}{faName ? ` · ${faName}` : ""}
+                </p>
+                <p className="text-[clamp(11px,1.4vw,14px)] text-white/60">{shelf.label.en}</p>
               </div>
             </div>
           </div>

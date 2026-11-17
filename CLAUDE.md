@@ -523,7 +523,7 @@ plan and the Managed Agents decision are in
   - **The Shelf Tour's screen in two** (owner, 2026-11-17: *"divide the screen to two vertical section on the left always
     keep photo of the shelf (type III) on the right make two parts the shelf level on top and the product (item)
     below"*; *"add the قفسه دوم with the name on top of the type III photo"*): left half, the shelf's photo always, with
-    «قفسه دوم · سرو» large above it (`faShelfOrdinal`) and the section in view outlined in cyan; right half, the
+    «قفسه دوم · سرو» large right under it (the photo at the top; owner, 2026-11-17) (`faShelfOrdinal`) and the section in view outlined in cyan; right half, the
     section's photo (IV) on top, the product card (V) below. No glide into the shelf photo any more; the same order and
     clock (`plan()`), the grown photo and panel open from the section's photo. **‹ ›** on both sides of the level's
     photo and of the product (owner, 2026-11-17: *"put < and > on both side of photos so shoppers can go back one
