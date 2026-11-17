@@ -520,6 +520,12 @@ plan and the Managed Agents decision are in
     («Tap to go on»); the product card stands on the right third (under the section on a phone) with the section's photo
     beside it; buying is the card's «🛒 Buy» or «🛒 Shop this section» while a section shows (taps on the shelf's
     outlines no longer open the panel).
+  - **The Shelf Tour's screen in two** (owner, 2026-11-17: *"divide the screen to two vertical section on the left always
+    keep photo of the shelf (type III) on the right make two parts the shelf level on top and the product (item)
+    below"*; *"add the قفسه دوم with the name on top of the type III photo"*): left half, the shelf's photo always, with
+    «قفسه دوم · سرو» large above it (`faShelfOrdinal`) and the section in view outlined in cyan; right half, the
+    section's photo (IV) on top, the product card (V) below. No glide into the shelf photo any more; the same order and
+    clock (`plan()`), the grown photo and panel open from the section's photo.
   - **Every product photo the operator uploads is shown to shoppers** (owner, 2026-11-17: *"Why later shelves do not
     show products in the basket section I have uploaded all Type Vs"*). The same day, on a misreading of *"you are using
     the wrong OLD type V photos where labels were made up"*, uploads not tied to a website product by hand were hidden;

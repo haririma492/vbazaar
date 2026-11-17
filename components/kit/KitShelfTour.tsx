@@ -16,7 +16,11 @@
  *      the panel closes the photo and the tour goes on;
  *   4  «‹ Previous shelf» / «Next shelf ›», a dot per section, pause / play.
  *
- * A section whose place in the shelf photo was not found is shown by its own photo fading in, without the glide.
+ * ⚠️ THE SCREEN IN TWO (owner, 2026-11-17: "divide the screen to two vertical section on the left always keep photo of
+ * the shelf (type III) on the right make two parts the shelf level on top and the product (item) below"; "add the قفسه
+ * دوم with the name on top of the type III photo"): the left half is the shelf's photo, always, «قفسه دوم · its name»
+ * above it and the section in view outlined in it (no glide any more); the right half is the section's photo (IV) on
+ * top and the product (V) below.
  * Phones are held upright: sideways, the screen says so.
  */
 import { noSave } from "./noSave";
@@ -27,10 +31,10 @@ import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import StoreLogo from "@/components/brand/StoreLogo";
 import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
-import { sectionLabel, type ShopKit, type ShopProduct, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { faShelfOrdinal, sectionLabel, type ShopKit, type ShopProduct, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { formatCents } from "@/lib/splats/catalogue";
 
-const WHOLE_MS = 2500, GLIDE_MS = 1600, SECTION_MS = 3000, PRODUCT_MS = 2400, GROW_MS = 450;
+const WHOLE_MS = 2500, SECTION_MS = 3000, PRODUCT_MS = 2400, GROW_MS = 450;
 /** At most this many products a section are shown one by one (the panel lists them all). */
 const MAX_SHOWN = 8;
 type Rect = { x: number; y: number; w: number; h: number };
@@ -43,7 +47,6 @@ function plan(sections: ShopSection[]): { steps: Step[]; total: number } {
   const add = (kind: Step["kind"], k: number, j: number, ms: number) => { steps.push({ kind, k, j, from: t, ms }); t += ms; };
   add("shelf", -1, -1, WHOLE_MS);
   sections.forEach((x, k) => {
-    if (x.quad) add("glide", k, -1, GLIDE_MS);
     add("section", k, -1, SECTION_MS);
     x.products.slice(0, MAX_SHOWN).forEach((_, j) => add("product", k, j, PRODUCT_MS));
   });
@@ -61,12 +64,6 @@ async function soundSrc(key: string): Promise<string | null> {
   const b = await soundBase;
   return b ? `${b}/${key}` : null;
 }
-
-const boxOf = (q: number[]) => {
-  const xs = [q[0], q[2], q[4], q[6]], ys = [q[1], q[3], q[5], q[7]];
-  const x0 = Math.max(0, Math.min(...xs)), y0 = Math.max(0, Math.min(...ys)), x1 = Math.min(1, Math.max(...xs)), y1 = Math.min(1, Math.max(...ys));
-  return { x: x0, y: y0, w: Math.max(0.01, x1 - x0), h: Math.max(0.01, y1 - y0) };
-};
 
 /** The convex hull of some points (the funnel between the place tapped and the grown photo). */
 function hull(pts: Array<[number, number]>): Array<[number, number]> {
@@ -163,36 +160,37 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
     return () => cancelAnimationFrame(raf);
   }, [paused, open, shelf, sections.length, steps, total, shelves.length]);
 
-  // The shelf photo fitted in the stage, and the glide into the section in view.
+  // The shelf photo (Type III) fitted in the left half (owner, 2026-11-17: "divide the screen to two vertical section on
+  // the left always keep photo of the shelf (type III) on the right make two parts the shelf level on top and the
+  // product (item) below").
+  const left = useRef<HTMLDivElement>(null);
+  const [lsize, setLsize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = left.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setLsize({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setLsize({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
   const fit = useMemo(() => {
     const pw = shelf?.photo?.w || 4, ph = shelf?.photo?.h || 3;
-    const s = Math.min(size.w / pw, size.h / ph) || 0;
-    const fw = pw * s, fh = ph * s;
-    return { fw, fh, ox: (size.w - fw) / 2, oy: (size.h - fh) / 2 };
-  }, [shelf, size]);
-  // The glide holds through the section's photo and its products (the place in the shelf stays the same).
+    const s = Math.min(lsize.w / pw, lsize.h / ph) || 0;
+    return { fw: pw * s, fh: ph * s };
+  }, [shelf, lsize]);
   const sec = at.k >= 0 ? sections[at.k] : null;
-  const zoom = useMemo(() => {
-    if (!sec?.quad || !fit.fw) return { s: 1, tx: 0, ty: 0 };
-    const b = boxOf(sec.quad);
-    const s = Math.max(1, Math.min(size.w / (b.w * fit.fw), size.h / (b.h * fit.fh)) * 0.94);
-    const cx = (b.x + b.w / 2) * fit.fw, cy = (b.y + b.h / 2) * fit.fh;
-    return { s, tx: size.w / 2 - fit.ox - s * cx, ty: size.h / 2 - fit.oy - s * cy };
-  }, [sec, fit, size]);
-
-  /** A section's place on screen now (stage pixels): in the whole view, its outline's box; in its own view, the photo. */
-  const rectOf = useCallback((x: ShopSection): Rect => {
-    if (sec && x.id === sec.id && at.show) {
-      const a = (x.w || 4) / (x.h || 3), s = Math.min(size.w / a, size.h);
-      return { x: (size.w - s * a) / 2, y: (size.h - s) / 2, w: s * a, h: s };
-    }
-    if (!x.quad) return { x: size.w * 0.3, y: size.h * 0.3, w: size.w * 0.4, h: size.h * 0.4 };
-    const b = boxOf(x.quad);
-    return { x: fit.ox + zoom.tx + zoom.s * b.x * fit.fw, y: fit.oy + zoom.ty + zoom.s * b.y * fit.fh, w: zoom.s * b.w * fit.fw, h: zoom.s * b.h * fit.fh };
-  }, [sec, at.show, size, fit, zoom]);
+  // Before the first section, the right shows section 1 faintly (the shelf on the left is what is on show).
+  const shownSec = sec ?? sections[0] ?? null;
+  const secBox = useRef<HTMLDivElement>(null);
+  /** The section photo's place on screen (stage pixels), where the grown photo starts from. */
+  const rectOf = useCallback((): Rect => {
+    const st = stage.current?.getBoundingClientRect(), r = secBox.current?.getBoundingClientRect();
+    if (!st || !r) return { x: size.w * 0.5, y: 0, w: size.w * 0.5, h: size.h * 0.5 };
+    return { x: r.left - st.left, y: r.top - st.top, w: r.width, h: r.height };
+  }, [size]);
 
   const openSection = (x: ShopSection) => {
-    setOpen({ section: x, from: rectOf(x), ...(product && sec?.id === x.id ? { highlight: product.id } : {}) });
+    setOpen({ section: x, from: rectOf(), ...(product && sec?.id === x.id ? { highlight: product.id } : {}) });
     setGrown(false);
     requestAnimationFrame(() => requestAnimationFrame(() => setGrown(true)));
   };
@@ -215,6 +213,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   if (!shelf) return <div className="fixed inset-0 flex items-center justify-center bg-black text-white/70">This store&apos;s shelves are not ready yet.</div>;
   const name = kit.title?.en ?? kit.merchant ?? slug;
   const label = lang === "fa" ? shelf.label.fa : shelf.label.en;
+  const faName = shelf.label.fa.replace(/^[\d۰-۹]+\s*·\s*/, "").trim();
   // The store's own page (vbazaar.app/<store>), not the long walk address.
   const walkHref = kit.link ?? (kit.walk ? `/vca/walk?v=${encodeURIComponent(kit.walk)}` : null);
   const btn = "rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[13px] font-semibold hover:bg-white/20 disabled:opacity-30";
@@ -242,72 +241,78 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
 
       <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden"
         onClick={() => { if (open) return; setPaused((p) => !p); }}>
-        {/* The whole shelf, gliding into the section in view. */}
-        <div className="absolute origin-top-left"
-          style={{
-            left: fit.ox, top: fit.oy, width: fit.fw, height: fit.fh,
-            transform: `translate(${zoom.tx}px, ${zoom.ty}px) scale(${zoom.s})`,
-            transition: `transform ${GLIDE_MS}ms cubic-bezier(.45,.05,.35,1)`,
-            backgroundImage: shelf.photo?.thumb ? `url(${shelf.photo.thumb})` : undefined, backgroundSize: "100% 100%",
-          }}>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img {...noSave} src={shelf.photo!.url} alt={label} className="absolute inset-0 h-full w-full select-none" />
-          <svg className="absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none"
-            style={{ opacity: at.k < 0 ? 1 : 0.35, transition: "opacity 600ms" }}>
-            {sections.map((x) => x.quad && (
-              <polygon key={x.id} points={[0, 1, 2, 3].map((k) => `${x.quad![k * 2]},${x.quad![k * 2 + 1]}`).join(" ")}
-                fill={open?.section.id === x.id ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.001)"} stroke="rgba(255,255,255,0.85)" strokeWidth={1.5}
-                vectorEffect="non-scaling-stroke" />
-            ))}
-          </svg>
-        </div>
-        {/* The section's own photo, as uploaded, faded in once the glide has arrived. */}
-        {sections.map((x) => (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img {...noSave} key={x.id} src={x.url} alt=""
-            className={`pointer-events-none absolute left-0 top-0 select-none object-contain ${product ? "bg-black" : ""}`}
-            style={{
-              opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms, width 500ms, height 500ms",
-              // A product on show: the section keeps the left of the screen (above it on a phone), the product the rest.
-              width: product && !narrow ? "66%" : "100%", height: product && narrow ? "58%" : "100%",
-            }} />
-        ))}
-        {/* One product at a time (Type V), over its section's photo, in the section's order. */}
-        {/* The product on the right (under the section on a phone), the section's photo still in view (owner,
-            2026-11-17: "move the item (type V) to the right side, keep the shelf section view visible"). */}
-        {product && (
-          <div className={`absolute flex items-center justify-center bg-black p-3 ${narrow ? "inset-x-0 bottom-0 h-[42%]" : "inset-y-0 right-0 w-[34%]"}`} key={product.id}>
-            <div className="flex max-h-full w-full flex-col items-center gap-2 rounded-2xl bg-white p-3 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              {product.photo
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <div className="relative"><img {...noSave} src={product.photo} alt="" className={`${narrow ? "max-h-[18vh]" : "max-h-[46vh]"} max-w-full rounded-lg object-contain`} /><Watermark size="sm" address={false} sparse /></div>
-                : <div className="flex h-40 w-40 items-center justify-center text-[48px]">🛍️</div>}
-              <p className="text-center text-[17px] font-bold leading-snug">{(lang === "fa" ? product.fa || product.en : product.en || product.fa) || "Product"}</p>
-              {product.priceCents !== null && product.priceCents > 0 && <p className="text-[16px] font-extrabold text-emerald-700">{formatCents(product.priceCents)}</p>}
-              <button type="button" onClick={() => sec && openSection(sec)} className="rounded-md bg-emerald-600 px-3 py-1.5 text-[13px] font-bold text-white shadow">🛒 {lang === "fa" ? "خرید" : "Buy"}</button>
+        <div className="absolute inset-0 flex">
+          {/* LEFT: the shelf (Type III), always; «قفسه دوم · its name» on top; the section in view outlined. */}
+          <div className="flex w-1/2 min-w-0 flex-col border-r border-white/10 p-2">
+            <div className="mb-1.5 text-center">
+              <p dir="rtl" className="text-[clamp(17px,2.6vw,26px)] font-extrabold leading-tight text-amber-100">
+                {faShelfOrdinal(shelf.n ?? si + 1)}{faName ? ` · ${faName}` : ""}
+              </p>
+              <p className="text-[clamp(11px,1.4vw,14px)] text-white/60">{shelf.label.en}</p>
+            </div>
+            <div ref={left} className="relative min-h-0 flex-1">
+              <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2" style={{ width: fit.fw, height: fit.fh }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img {...noSave} src={shelf.photo!.url} alt={label} className="absolute inset-0 h-full w-full select-none rounded"
+                  style={{ backgroundImage: shelf.photo?.thumb ? `url(${shelf.photo.thumb})` : undefined, backgroundSize: "100% 100%" }} />
+                <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox="0 0 1 1" preserveAspectRatio="none">
+                  {sections.map((x) => x.quad && (
+                    <polygon key={x.id} points={[0, 1, 2, 3].map((k) => `${x.quad![k * 2]},${x.quad![k * 2 + 1]}`).join(" ")}
+                      fill={sec?.id === x.id ? "rgba(0,184,200,0.18)" : "rgba(255,255,255,0.001)"}
+                      stroke={sec?.id === x.id ? "#00B8C8" : "rgba(255,255,255,0.55)"} strokeWidth={sec?.id === x.id ? 3 : 1}
+                      vectorEffect="non-scaling-stroke" style={{ transition: "all 400ms" }} />
+                  ))}
+                </svg>
+                <Watermark size="sm" sparse />
+              </div>
             </div>
           </div>
-        )}
-        {sec && at.show && !product && sec.products.length > 0 && (
-          <button type="button" onClick={(e) => { e.stopPropagation(); openSection(sec); }}
-            className="absolute bottom-3 right-3 z-10 rounded-full bg-emerald-600 px-4 py-2 text-[14px] font-bold text-white shadow-lg">
-            🛒 {lang === "fa" ? "خرید از این بخش" : "Shop this section"}
-          </button>
-        )}
+
+          {/* RIGHT: the shelf level (Type IV) on top, the product (Type V) below. */}
+          <div className="flex w-1/2 min-w-0 flex-col">
+            <div className="relative min-h-0 flex-1 border-b border-white/10 p-2">
+              <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-black/65 px-3 py-1 text-[13px] font-semibold text-white">
+                {at.k < 0
+                  ? (lang === "fa" ? "کل قفسه" : "The whole shelf")
+                  : `${sections[at.k].name ? `${sectionLabel(sections[at.k], lang)} · ` : ""}${lang === "fa" ? "بخش" : "Section"} ${at.k + 1} ${lang === "fa" ? "از" : "of"} ${sections.length}${product ? ` · ${lang === "fa" ? "محصول" : "Product"} ${step.j + 1} ${lang === "fa" ? "از" : "of"} ${Math.min(MAX_SHOWN, sections[at.k].products.length)}` : ""}`}
+              </div>
+              <div ref={secBox} className="relative h-full w-full">
+                {sections.map((x) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img {...noSave} key={x.id} src={x.url} alt=""
+                    className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
+                    style={{ opacity: shownSec?.id === x.id ? (sec ? 1 : 0.35) : 0, transition: "opacity 500ms" }} />
+                ))}
+                <Watermark size="sm" address={false} sparse />
+              </div>
+            </div>
+            <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
+              {product ? (
+                <div key={product.id} className="flex max-h-full w-full max-w-[420px] flex-col items-center gap-1.5 rounded-2xl bg-white p-2.5 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                  {product.photo
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <div className="relative min-h-0"><img {...noSave} src={product.photo} alt="" className="max-h-[22vh] max-w-full rounded-lg object-contain" /><Watermark size="sm" address={false} sparse /></div>
+                    : <div className="flex h-24 w-24 items-center justify-center text-[40px]">🛍️</div>}
+                  <p className="text-center text-[clamp(13px,1.6vw,17px)] font-bold leading-snug">{(lang === "fa" ? product.fa || product.en : product.en || product.fa) || "Product"}</p>
+                  {product.priceCents !== null && product.priceCents > 0 && <p className="text-[15px] font-extrabold text-emerald-700">{formatCents(product.priceCents)}</p>}
+                  <button type="button" onClick={() => sec && openSection(sec)} className="rounded-md bg-emerald-600 px-3 py-1.5 text-[13px] font-bold text-white shadow">🛒 {lang === "fa" ? "خرید" : "Buy"}</button>
+                </div>
+              ) : sec && sec.products.length > 0 ? (
+                <button type="button" onClick={(e) => { e.stopPropagation(); openSection(sec); }}
+                  className="rounded-full bg-emerald-600 px-4 py-2 text-[14px] font-bold text-white shadow-lg">
+                  🛒 {lang === "fa" ? "خرید از این بخش" : "Shop this section"} · {sec.products.length}
+                </button>
+              ) : (
+                <p className="text-center text-[13px] text-white/50">{lang === "fa" ? "محصولات هر بخش اینجا می‌آیند" : "Each section's products show here"}</p>
+              )}
+            </div>
+          </div>
+        </div>
         {paused && !open && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
             <span className="rounded-full bg-black/60 px-4 py-2 text-[15px] font-semibold text-white">❚❚ {lang === "fa" ? "برای ادامه بزنید" : "Tap to go on"}</span>
           </div>
         )}
-        {/* Where the tour is, in words: the shelf, the section, the product. */}
-        <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-black/65 px-3 py-1 text-[13px] font-semibold text-white">
-          {at.k < 0
-            ? (lang === "fa" ? "کل قفسه" : "The whole shelf")
-            : `${sections[at.k].name ? `${sectionLabel(sections[at.k], lang)} · ` : ""}${lang === "fa" ? "بخش" : "Section"} ${at.k + 1} ${lang === "fa" ? "از" : "of"} ${sections.length}${product ? ` · ${lang === "fa" ? "محصول" : "Product"} ${step.j + 1} ${lang === "fa" ? "از" : "of"} ${Math.min(MAX_SHOWN, sections[at.k].products.length)}` : ""}`}
-        </div>
-        {/* The bazaar's mark over whatever photo is showing (it stays put while the shelf glides): sparse here. */}
-        <Watermark size="lg" sparse />
-
         {/* Share (owner, 2026-11-15): the whole shelf, or the section in view; the receiver lands there in the Free Tour.
             In the corner, never over the photo's middle; a tap on it neither pauses nor opens the panel. */}
         {!open && (
@@ -350,7 +355,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={total ? Math.round((clock.current / total) * 100) : 0}
         onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * total); setPaused(false); }}>
         <div ref={bar} className="absolute inset-y-0 left-0 rounded-full bg-[#00B8C8]" style={{ width: 0 }} />
-        {steps.filter((q) => q.kind === "section" || (q.kind === "glide")).filter((q, i, a) => a.findIndex((r) => r.k === q.k) === i).map((q) => (
+        {steps.filter((q) => q.kind === "section").filter((q, i, a) => a.findIndex((r) => r.k === q.k) === i).map((q) => (
           <div key={q.k} className="absolute inset-y-0 w-0.5 bg-white/60" style={{ left: `${total ? (q.from / total) * 100 : 0}%` }} />
         ))}
       </div>
