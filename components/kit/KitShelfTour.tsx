@@ -265,7 +265,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {sections.map((x) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img {...noSave} key={x.id} src={x.url} alt=""
-            className="pointer-events-none absolute left-0 top-0 select-none object-contain"
+            className={`pointer-events-none absolute left-0 top-0 select-none object-contain ${product ? "bg-black" : ""}`}
             style={{
               opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms, width 500ms, height 500ms",
               // A product on show: the section keeps the left of the screen (above it on a phone), the product the rest.
@@ -276,7 +276,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The product on the right (under the section on a phone), the section's photo still in view (owner,
             2026-11-17: "move the item (type V) to the right side, keep the shelf section view visible"). */}
         {product && (
-          <div className={`absolute flex items-center justify-center p-3 ${narrow ? "inset-x-0 bottom-0 h-[42%]" : "inset-y-0 right-0 w-[34%]"}`} key={product.id}>
+          <div className={`absolute flex items-center justify-center bg-black p-3 ${narrow ? "inset-x-0 bottom-0 h-[42%]" : "inset-y-0 right-0 w-[34%]"}`} key={product.id}>
             <div className="flex max-h-full w-full flex-col items-center gap-2 rounded-2xl bg-white p-3 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
               {product.photo
                 // eslint-disable-next-line @next/next/no-img-element
