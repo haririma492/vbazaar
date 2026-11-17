@@ -125,6 +125,23 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
     if (bar.current) bar.current.style.width = `${total ? (clock.current / total) * 100 : 0}%`;
   }, [steps, total]);
 
+  // ‹ › on the level (IV) and the product (V) (owner, 2026-11-17: "put < and > on both side of photos so shoppers can go
+  // back one product or one level back or forth"): to the step's start; past the shelf's end, the next shelf.
+  const nextShelf = () => setSi((i) => (i + 1 < shelves.length ? i + 1 : 0));
+  const goSection = (d: 1 | -1) => {
+    const k = (steps[si2]?.k ?? -1) < 0 ? (d > 0 ? 0 : -1) : steps[si2].k + d;
+    if (k >= sections.length) return nextShelf();
+    if (k < 0) return seek(0);
+    seek(steps.find((q) => q.kind === "section" && q.k === k)?.from ?? 0);
+  };
+  const goProduct = (d: 1 | -1) => {
+    let i = si2 + d;
+    while (i >= 0 && i < steps.length && steps[i].kind !== "product") i += d;
+    if (i >= steps.length || i < 0) return d > 0 ? nextShelf() : seek(0);
+    seek(steps[i].from);
+  };
+  const arrow = "absolute top-1/2 z-10 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-[26px] font-bold leading-none text-white shadow ring-1 ring-white/30 hover:bg-black/80";
+
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
@@ -285,8 +302,12 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
                 ))}
                 <Watermark size="sm" address={false} sparse />
               </div>
+              <button type="button" aria-label="Previous level" className={`${arrow} left-1`} onClick={(e) => { e.stopPropagation(); goSection(-1); }}>‹</button>
+              <button type="button" aria-label="Next level" className={`${arrow} right-1`} onClick={(e) => { e.stopPropagation(); goSection(1); }}>›</button>
             </div>
-            <div className="relative flex min-h-0 flex-1 items-center justify-center p-2">
+            <div className="relative flex min-h-0 flex-1 items-center justify-center px-12 py-2">
+              <button type="button" aria-label="Previous product" className={`${arrow} left-1`} onClick={(e) => { e.stopPropagation(); goProduct(-1); }}>‹</button>
+              <button type="button" aria-label="Next product" className={`${arrow} right-1`} onClick={(e) => { e.stopPropagation(); goProduct(1); }}>›</button>
               {product ? (
                 <div key={product.id} className="flex max-h-full w-full max-w-[420px] flex-col items-center gap-1.5 rounded-2xl bg-white p-2.5 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   {product.photo

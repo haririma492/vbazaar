@@ -525,7 +525,14 @@ plan and the Managed Agents decision are in
     below"*; *"add the قفسه دوم with the name on top of the type III photo"*): left half, the shelf's photo always, with
     «قفسه دوم · سرو» large above it (`faShelfOrdinal`) and the section in view outlined in cyan; right half, the
     section's photo (IV) on top, the product card (V) below. No glide into the shelf photo any more; the same order and
-    clock (`plan()`), the grown photo and panel open from the section's photo.
+    clock (`plan()`), the grown photo and panel open from the section's photo. **‹ ›** on both sides of the level's
+    photo and of the product (owner, 2026-11-17: *"put < and > on both side of photos so shoppers can go back one
+    product or one level back or forth"*): to that level's or product's start on the clock (`goSection`, `goProduct`);
+    past the last, the next shelf; before the first, the whole shelf.
+  - **nuttime's SADAF jars removed** (owner, 2026-11-17: *"some photos still have old wrong labels, there is no SADAAF
+    product in this store"*): the four uploads of shelf 2 level 2 (made-up «سادف SADAF» labels) taken off by `kitRemove`;
+    the level shows the website's five jams (Quince Jam added to its picks). The other uploads are generated pictures
+    too; their labels (Casta, TOP, MAHMOOD, TUNA, Royal, BADR…) were not checked against the store.
   - **Every product photo the operator uploads is shown to shoppers** (owner, 2026-11-17: *"Why later shelves do not
     show products in the basket section I have uploaded all Type Vs"*). The same day, on a misreading of *"you are using
     the wrong OLD type V photos where labels were made up"*, uploads not tied to a website product by hand were hidden;
