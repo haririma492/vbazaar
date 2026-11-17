@@ -280,7 +280,11 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
   });
   // In walking order: when each shelf is first in view, then its number.
   shelves.sort((a, b) => (a.outline[0]?.t ?? 1e9) - (b.outline[0]?.t ?? 1e9) || (a.n ?? 1e9) - (b.n ?? 1e9));
-  return { store: s.slug, walk: s.out.walk ?? null, link: s.out.walk ? walkLink(s.out.walk, undefined, s.slug) : null, title: walk?.title ? { en: walk.title.en, fa: walk.title.fa ?? walk.title.en } : null, merchant: s.name.en || s.name.fa || s.slug, shelves };
+  const { musicOf } = await import("@/lib/splats/walks");
+  return {
+    store: s.slug, walk: s.out.walk ?? null, link: s.out.walk ? walkLink(s.out.walk, undefined, s.slug) : null, title: walk?.title ? { en: walk.title.en, fa: walk.title.fa ?? walk.title.en } : null, merchant: s.name.en || s.name.fa || s.slug, shelves,
+    logo: walk?.logo ?? null, sound: { keys: musicOf(walk), radio: walk?.radio ?? null },
+  };
 }
 
 /** What the store's page shows the operator: every shelf on the walk and its kit, the website products to choose from. */

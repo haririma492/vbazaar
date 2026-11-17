@@ -5,9 +5,12 @@
  * on quality photos of Type IV & type V"; "No video right"). For a store with a shelf kit (`lib/stores/kitRules.ts`):
  *
  *   1  each shelf opens on its whole quality photo (Type III), its sections outlined thinly;
- *   2  after 2 s the view glides into section 1 (its place in the shelf photo), and the section's own photo (Type IV,
- *      as uploaded) fades in over it; 4 s later it glides on to the next section; after the last, back to the whole
- *      shelf, and it waits (it never moves to the next shelf by itself);
+ *   2  ⚠️ ONE ORDER, ALWAYS (owner, 2026-11-17: "the transition between type III, IV & V is not straight forward and it
+ *      is arbitrary there has to be some sensible order in that"): the shelf (III) → section 1: the glide into its place,
+ *      its own photo (IV) → each of section 1's products (V), one card at a time → section 2 … → the whole shelf again,
+ *      and it waits (it never moves to the next shelf by itself). A chip says where it is («Section 2 of 4 · Product
+ *      3 of 5»). A clock per shelf (`plan`) drives it, and a bar under the picture shows it moving (owner: "let a video
+ *      bar below so viewers know that things are moving"); a tap on the bar goes there;
  *   3  a tap on a section (or on the section in view) stops it: the section's photo grows out of where it was, with a
  *      funnel from that place, to the bottom left, and the shopping panel (`KitPanel`) opens on the right. Closing
  *      the panel closes the photo and the tour goes on;
@@ -21,13 +24,43 @@ import Watermark from "./Watermark";
 import ShareKey from "./ShareKey";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
+import StoreLogo from "@/components/brand/StoreLogo";
+import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
-import type { ShopKit, ShopSection, ShopShelf } from "@/lib/stores/kitRules";
+import type { ShopKit, ShopProduct, ShopSection, ShopShelf } from "@/lib/stores/kitRules";
+import { formatCents } from "@/lib/splats/catalogue";
 
-const WHOLE_MS = 2000, GLIDE_MS = 1600, HOLD_MS = 4000, GROW_MS = 450;
+const WHOLE_MS = 2500, GLIDE_MS = 1600, SECTION_MS = 3000, PRODUCT_MS = 2400, GROW_MS = 450;
+/** At most this many products a section are shown one by one (the panel lists them all). */
+const MAX_SHOWN = 8;
 type Rect = { x: number; y: number; w: number; h: number };
+/** One step of a shelf's tour: the whole shelf, the glide into a section, its photo, one of its products, the end. */
+type Step = { kind: "shelf" | "glide" | "section" | "product" | "end"; k: number; j: number; from: number; ms: number };
+/** The shelf's steps in their one order, each with its start on the shelf's clock (ms). */
+function plan(sections: ShopSection[]): { steps: Step[]; total: number } {
+  const steps: Step[] = [];
+  let t = 0;
+  const add = (kind: Step["kind"], k: number, j: number, ms: number) => { steps.push({ kind, k, j, from: t, ms }); t += ms; };
+  add("shelf", -1, -1, WHOLE_MS);
+  sections.forEach((x, k) => {
+    if (x.quad) add("glide", k, -1, GLIDE_MS);
+    add("section", k, -1, SECTION_MS);
+    x.products.slice(0, MAX_SHOWN).forEach((_, j) => add("product", k, j, PRODUCT_MS));
+  });
+  add("end", -1, -1, 0);
+  return { steps, total: t };
+}
+const stepAt = (steps: Step[], t: number) => { let i = 0; while (i + 1 < steps.length && steps[i + 1].from <= t) i++; return i; };
 /** Where the tour is: `k` the section in view (-1: the whole shelf), `show` its own photo faded in. */
 type At = { k: number; show: boolean };
+let soundBase: Promise<string | null> | null = null;
+/** The music's address (the walk's own tracks, in the public bucket), as the Free Tour finds it. */
+async function soundSrc(key: string): Promise<string | null> {
+  soundBase ??= fetch("/api/splats/config", { cache: "no-store" }).then((r) => r.json() as Promise<{ base: string | null }>)
+    .then(({ base }) => (base ? base.replace(/\/+$/, "") : null)).catch(() => null);
+  const b = await soundBase;
+  return b ? `${b}/${key}` : null;
+}
 
 const boxOf = (q: number[]) => {
   const xs = [q[0], q[2], q[4], q[6]], ys = [q[1], q[3], q[5], q[7]];
@@ -72,18 +105,28 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   const shelves = useMemo<ShopShelf[]>(() => kit.shelves.filter((s) => s.photo).sort((a, b) =>
     (a.outline[0]?.t ?? Infinity) - (b.outline[0]?.t ?? Infinity) || (a.n ?? 1000) - (b.n ?? 1000)), [kit]);
   const [si, setSi] = useState(0);
-  const [at, setAt] = useState<At>({ k: -1, show: false });
   const [paused, setPaused] = useState(false);
   const [lang, setLang] = useState<Lang>("en");
-  const [open, setOpen] = useState<{ section: ShopSection; from: Rect } | null>(null);
+  const [open, setOpen] = useState<{ section: ShopSection; from: Rect; highlight?: string } | null>(null);
   const [grown, setGrown] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const sideways = useUpright();
-  /** The last section has been shown: back on the whole shelf, the tour waits. */
-  const finished = useRef(false);
   const shelf = shelves[Math.min(si, shelves.length - 1)];
-  const sections = shelf?.sections ?? [];
+  const sections = useMemo(() => [...(shelf?.sections ?? [])].sort((a, b) => a.i - b.i), [shelf]);
+  const { steps, total } = useMemo(() => plan(sections), [sections]);
+  /** The shelf's clock (ms), moved by the frames while playing; the step on screen follows it. */
+  const clock = useRef(0);
+  const [si2, setStep] = useState(0);
+  const step = steps[Math.min(si2, steps.length - 1)];
+  const at: At = { k: step?.k ?? -1, show: step?.kind === "section" || step?.kind === "product" };
+  const product: ShopProduct | null = step?.kind === "product" ? sections[step.k]?.products[step.j] ?? null : null;
+  const bar = useRef<HTMLDivElement>(null);
+  const seek = useCallback((t: number) => {
+    clock.current = Math.max(0, Math.min(total, t));
+    setStep(stepAt(steps, clock.current));
+    if (bar.current) bar.current.style.width = `${total ? (clock.current / total) * 100 : 0}%`;
+  }, [steps, total]);
 
   useEffect(() => {
     const el = stage.current;
@@ -94,27 +137,29 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
     return () => ro.disconnect();
   }, []);
 
-  // A new shelf starts on its whole photo; its section photos are fetched ahead.
+  // A new shelf starts on its whole photo; its section and product photos are fetched ahead.
   useEffect(() => {
-    setAt({ k: -1, show: false });
+    seek(0);
     setPaused(false);
-    finished.current = false;
-    for (const x of shelf?.sections ?? []) { const im = new Image(); im.src = x.url; }
-  }, [shelf]);
+    for (const x of sections) { const im = new Image(); im.src = x.url; for (const p of x.products.slice(0, MAX_SHOWN)) if (p.photo) { const q = new Image(); q.src = p.photo; } }
+  }, [sections, seek]);
 
-  // The tour's clock: whole shelf → glide into a section → its photo → the next … → the whole shelf, then wait.
+  // The clock runs while playing (not while the panel is open); at the end of the shelf it stops on the whole shelf.
   useEffect(() => {
     if (paused || open || !shelf || !sections.length) return;
-    const ms = at.k < 0 ? WHOLE_MS : at.show ? HOLD_MS : GLIDE_MS;
-    if (at.k < 0 && finished.current) { finished.current = false; setPaused(true); return; }
-    const id = setTimeout(() => {
-      if (at.k < 0) setAt({ k: 0, show: false });
-      else if (!at.show) setAt({ k: at.k, show: true });
-      else if (at.k + 1 < sections.length) setAt({ k: at.k + 1, show: false });
-      else { finished.current = true; setAt({ k: -1, show: false }); }
-    }, ms);
-    return () => clearTimeout(id);
-  }, [at, paused, open, shelf, sections.length]);
+    let last = performance.now(), raf = 0;
+    const tick = (now: number) => {
+      clock.current = Math.min(total, clock.current + (now - last));
+      last = now;
+      const i = stepAt(steps, clock.current);
+      setStep((cur) => (cur === i ? cur : i));
+      if (bar.current) bar.current.style.width = `${total ? (clock.current / total) * 100 : 0}%`;
+      if (clock.current >= total) { setPaused(true); return; }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [paused, open, shelf, sections.length, steps, total]);
 
   // The shelf photo fitted in the stage, and the glide into the section in view.
   const fit = useMemo(() => {
@@ -123,6 +168,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
     const fw = pw * s, fh = ph * s;
     return { fw, fh, ox: (size.w - fw) / 2, oy: (size.h - fh) / 2 };
   }, [shelf, size]);
+  // The glide holds through the section's photo and its products (the place in the shelf stays the same).
   const sec = at.k >= 0 ? sections[at.k] : null;
   const zoom = useMemo(() => {
     if (!sec?.quad || !fit.fw) return { s: 1, tx: 0, ty: 0 };
@@ -144,7 +190,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   }, [sec, at.show, size, fit, zoom]);
 
   const openSection = (x: ShopSection) => {
-    setOpen({ section: x, from: rectOf(x) });
+    setOpen({ section: x, from: rectOf(x), ...(product && sec?.id === x.id ? { highlight: product.id } : {}) });
     setGrown(false);
     requestAnimationFrame(() => requestAnimationFrame(() => setGrown(true)));
   };
@@ -167,13 +213,16 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   if (!shelf) return <div className="fixed inset-0 flex items-center justify-center bg-black text-white/70">This store&apos;s shelves are not ready yet.</div>;
   const name = kit.title?.en ?? kit.merchant ?? slug;
   const label = lang === "fa" ? shelf.label.fa : shelf.label.en;
-  const walkHref = kit.walk ? `/vca/walk?v=${encodeURIComponent(kit.walk)}` : null;
+  // The store's own page (vbazaar.app/<store>), not the long walk address.
+  const walkHref = kit.link ?? (kit.walk ? `/vca/walk?v=${encodeURIComponent(kit.walk)}` : null);
   const btn = "rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-[13px] font-semibold hover:bg-white/20 disabled:opacity-30";
 
   return (
     <div className="fixed inset-0 flex flex-col bg-black text-white">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 text-[14px]">
-        <TourBazaarLink />
+      <div className="relative flex items-center justify-between gap-2 px-3 py-2 pr-[9.5rem] text-[14px]">
+        {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
+            left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
+        {kit.logo ? <StoreLogo src={kit.logo} /> : null}
         <div className="me-auto min-w-0 flex-1 truncate"><b>{name}</b>{kit.title?.fa ? <span className="text-white/60"> · {kit.title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
         <div className="flex shrink-0 items-center gap-3">
           <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
@@ -182,6 +231,10 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
           </span>
           <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
         </div>
+        <TourBazaarLink overlay className="absolute right-3 top-2 z-40" />
+        {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
+        <WalkSound place="right-[5.5rem] top-3" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
+          radio={(kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />
       </div>
 
       <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden"
@@ -213,8 +266,28 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain"
             style={{ opacity: sec?.id === x.id && at.show ? 1 : 0, transition: "opacity 500ms" }} />
         ))}
-        {/* The bazaar's mark over whatever photo is showing (it stays put while the shelf glides). */}
-        <Watermark size="lg" />
+        {/* One product at a time (Type V), over its section's photo, in the section's order. */}
+        {product && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/55 p-4" key={product.id}>
+            <div className="flex max-h-full max-w-[min(90%,34rem)] flex-col items-center gap-2 rounded-2xl bg-white p-3 text-neutral-900 shadow-2xl">
+              {product.photo
+                // eslint-disable-next-line @next/next/no-img-element
+                ? <div className="relative"><img {...noSave} src={product.photo} alt="" className="max-h-[45vh] max-w-full rounded-lg object-contain" /><Watermark size="sm" address={false} sparse /></div>
+                : <div className="flex h-40 w-40 items-center justify-center text-[48px]">🛍️</div>}
+              <p className="text-center text-[17px] font-bold leading-snug">{(lang === "fa" ? product.fa || product.en : product.en || product.fa) || "Product"}</p>
+              {product.priceCents !== null && product.priceCents > 0 && <p className="text-[16px] font-extrabold text-emerald-700">{formatCents(product.priceCents)}</p>}
+              <p className="text-[12px] text-neutral-500">{lang === "fa" ? "برای خرید روی آن بزنید" : "Tap to buy"}</p>
+            </div>
+          </div>
+        )}
+        {/* Where the tour is, in words: the shelf, the section, the product. */}
+        <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-black/65 px-3 py-1 text-[13px] font-semibold text-white">
+          {at.k < 0
+            ? (lang === "fa" ? "کل قفسه" : "The whole shelf")
+            : `${lang === "fa" ? "بخش" : "Section"} ${at.k + 1} ${lang === "fa" ? "از" : "of"} ${sections.length}${product ? ` · ${lang === "fa" ? "محصول" : "Product"} ${step.j + 1} ${lang === "fa" ? "از" : "of"} ${Math.min(MAX_SHOWN, sections[at.k].products.length)}` : ""}`}
+        </div>
+        {/* The bazaar's mark over whatever photo is showing (it stays put while the shelf glides): sparse here. */}
+        <Watermark size="lg" sparse />
 
         {/* Share (owner, 2026-11-15): the whole shelf, or the section in view; the receiver lands there in the Free Tour.
             In the corner, never over the photo's middle; a tap on it neither pauses nor opens the panel. */}
@@ -243,24 +316,33 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }} />
             <div className="pointer-events-none absolute overflow-hidden rounded-lg"
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }}>
-              <Watermark size="lg" address={false} />
+              <Watermark size="lg" address={false} sparse />
             </div>
             <KitPanel share={{ base: kit.link, shelf: shelf.id }} section={open.section} title={shelf.label} merchant={kit.merchant || name} href={`/vca/tour?s=${encodeURIComponent(slug)}`}
-              lang={lang} onLang={setLang} onClose={close}
+              lang={lang} onLang={setLang} onClose={close} highlight={open.highlight}
               className={narrow ? "absolute inset-x-2 bottom-2 top-[44%]" : "absolute bottom-3 right-3 top-3 w-[400px] max-w-[42%]"}
             />
           </div>
         )}
       </div>
 
+      {/* The tour's bar: it fills as the shelf's tour plays; a section's start is a tick; a tap goes there. */}
+      <div className="relative mx-3 mt-1 h-2.5 cursor-pointer rounded-full bg-white/15" role="slider" aria-label="Where the shelf's tour is"
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={total ? Math.round((clock.current / total) * 100) : 0}
+        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); seek(((e.clientX - r.left) / r.width) * total); setPaused(false); }}>
+        <div ref={bar} className="absolute inset-y-0 left-0 rounded-full bg-[#00B8C8]" style={{ width: 0 }} />
+        {steps.filter((q) => q.kind === "section" || (q.kind === "glide")).filter((q, i, a) => a.findIndex((r) => r.k === q.k) === i).map((q) => (
+          <div key={q.k} className="absolute inset-y-0 w-0.5 bg-white/60" style={{ left: `${total ? (q.from / total) * 100 : 0}%` }} />
+        ))}
+      </div>
       <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-2">
         <button type="button" className={btn} disabled={si === 0} onClick={() => { setOpen(null); setSi((i) => Math.max(0, i - 1)); }}>‹ {lang === "fa" ? "قفسه قبلی" : "Previous shelf"}</button>
-        <button type="button" className={btn} onClick={() => setPaused((p) => !p)} aria-label={paused ? "Play" : "Pause"}>{paused ? "▶" : "❚❚"}</button>
+        <button type="button" className={btn} onClick={() => { if (paused && clock.current >= total) seek(0); setPaused((p) => !p); }} aria-label={paused ? "Play" : "Pause"}>{paused ? "▶" : "❚❚"}</button>
         <div className="flex items-center gap-1.5 px-1" aria-label="Sections">
-          <button type="button" aria-label="The whole shelf" onClick={() => { setAt({ k: -1, show: false }); finished.current = false; }}
+          <button type="button" aria-label="The whole shelf" onClick={() => seek(0)}
             className={`h-2.5 w-4 rounded-full ${at.k < 0 ? "bg-white" : "bg-white/30"}`} />
           {sections.map((x, k) => (
-            <button key={x.id} type="button" aria-label={`Section ${x.i}`} onClick={() => { setPaused(false); setAt({ k, show: false }); }}
+            <button key={x.id} type="button" aria-label={`Section ${x.i}`} onClick={() => { setPaused(false); seek(steps.find((q) => q.k === k)?.from ?? 0); }}
               className={`h-2.5 w-2.5 rounded-full ${at.k === k ? "bg-[#00B8C8]" : "bg-white/30"}`} />
           ))}
         </div>

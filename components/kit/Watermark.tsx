@@ -31,11 +31,14 @@ const SIZES = {
 
 // The address is not written in the corner of a section's photo (Type IV): the tray and the 3× photo (owner, 2026-11-16:
 // "remove vbazaar.app from the corner of type IV photos"). The arch stays there, and the faint tile keeps the address.
-export default function Watermark({ size = "lg", className = "", address = size === "lg" }: { size?: keyof typeof SIZES; className?: string; address?: boolean }) {
+// `sparse` (owner, 2026-11-17, of the Shelf Tour: "there are too many vbazaar.app watermark it is annoying"): the tile
+// three times as far apart and half as strong, still across the whole photo so a crop cannot cut it all away.
+export default function Watermark({ size = "lg", className = "", address = size === "lg", sparse = false }: { size?: keyof typeof SIZES; className?: string; address?: boolean; sparse?: boolean }) {
   const z = SIZES[size];
+  const tile = sparse ? z.tile * 3 : z.tile;
   return (
     <div aria-hidden className={`pointer-events-none absolute inset-0 select-none overflow-hidden ${className}`}>
-      <div className="absolute inset-0" style={{ backgroundImage: TILE, backgroundSize: `${z.tile}px ${Math.round(z.tile * 170 / 300)}px`, backgroundRepeat: "repeat" }} />
+      <div className="absolute inset-0" style={{ backgroundImage: TILE, backgroundSize: `${tile}px ${Math.round(tile * 170 / 300)}px`, backgroundRepeat: "repeat", opacity: sparse ? 0.5 : 1 }} />
       <div dir="ltr" className={`absolute flex items-center bg-[#FFF9EE]/85 font-bold leading-none shadow ${z.badge}`} style={{ color: GREEN }}>
         <svg width={z.arch} height={Math.round(z.arch * 30 / 44)} viewBox="0 0 44 30">
           <path fill={GREEN} fillRule="evenodd" d={ARCH} />

@@ -497,6 +497,16 @@ plan and the Managed Agents decision are in
     the section (a product lit in the panel), or for a shelf its Type III photo with all its products.
   - **Shelf Tour** (`components/kit/KitShelfTour.tsx`, from `TourPage.tsx`): no video. Each shelf opens on its whole
     photo, glides into each section in turn, a tap on a section opens the same 3× photo and panel; «Next shelf ›».
+    **Changes of 2026-11-17** (owner: logo missing; *"too many vbazaar.app watermark it is annoying"*; *"let a video bar
+    below so viewers know that things are moving"*; *"the transition between type III, IV & V is not straight forward
+    and it is arbitrary there has to be some sensible order"*; *"same music source and a speaker on top same place"*):
+    ONE order per shelf, `plan()`: the shelf (III, 2.5 s) → for each section in its number's order: the glide into its
+    place, its photo (IV, 3 s), then each of its products (V, 2.4 s each, at most 8; a card over the section's photo,
+    name and price; a tap opens the panel with that product lit) → the whole shelf, and it waits. A chip at the top left
+    says where it is («Section 2 of 4 · Product 3 of 5»). A clock per shelf drives it and a bar under the picture fills
+    with it (a tick at each section; a tap seeks). The store's logo at the top left, the arch at the top right and the
+    sound key left of it, playing the walk's own music source (`ShopKit.logo`, `ShopKit.sound`); the watermark's tile
+    is `sparse` here (three times as far apart, half as strong); «Free Tour» goes to the store's own page.
   - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,
