@@ -568,9 +568,9 @@ plan and the Managed Agents decision are in
   - **The Free Tour opens zoomed out** (owner, 2026-11-17: *"during free tour make the view zoomed out by default if
     shoppers need they zoom in … we already have high quality photos of type IV and V and III"*): a store with its kit
     starts at 100° (the zoom's widest; it was 67.4°), once, when the kit comes on (`setKit`). **The tray's shelf name**:
-    one line, the Farsi name without its number then the English in round brackets, both at one size (owner, 2026-11-17:
-    *"make english and farsi the same font size, english in round bracket in front"*), no sections' count; under it, in
-    the black area, «برای خرید روی تصویر طبقات در اینجا یا روی تصویر قفسه در بالا سمت چپ کلیک کنید». Over the Type III
+    ⚠️ no longer in the tray (owner, 2026-11-17: *"remove shelf names from lower panel … add them to the label below shelf
+    photo (Type III) in this format in the round bracket (farsi - english)"*): under the Type III photo, «قفسه ششم
+    (کهن - Oldies)»; a shelf with only a number shows the ordinal alone. The tray's dark side keeps, in «برای خرید روی تصویر طبقات در اینجا یا روی تصویر قفسه در بالا سمت چپ کلیک کنید». Over the Type III
     photo at the top left and each tray photo, a mouse shows the hand and the photo lifts a little (owner, 2026-11-17:
     *"change the mouse icon to a standard active clickable and move the photo a bit"*). Under the Type III
     photo at the top left, the shelf in Farsi words, large: «قفسه اول», «قفسه دوم»… (`faShelfOrdinal`, by the shelf's
