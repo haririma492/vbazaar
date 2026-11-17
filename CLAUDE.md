@@ -487,7 +487,13 @@ plan and the Managed Agents decision are in
     pointer, ≤600 px high) gets the walk on the left 72% at full height and the tray as a column on the right
     (`KitTray vertical`: the sections one under another, the how-to-buy line at its foot); the Shelf Tour shows as it is.
     **The shelf photo at the top left is larger on a phone** (owner, same day: *"it's very small"*): 36% of an upright
-    phone's width, 18% sideways, a sixth on a computer.
+    phone's width, 18% sideways, a sixth on a computer. **The Shelf Tour sideways is compact** (owner, same day: *"photos do not fill the available
+    space … stay very, very small"*): a one-row header (small logo, the music and volume in one row: `MusicPicker
+    compact`, `StoreLogo small`), the shelf's names on one line, a thin footer, so the photos get the height.
+  - **The speaker is drawn, not an emoji** (owner, 2026-11-17: *"the speaker sign … is unrecognizable, unclickable … put
+    a standard speaker sign … a line going across like a stop sign when it is not open … when they click on it, that line
+    disappears"*): `SpeakerIcon` in `WalkSound.tsx`, a plain white speaker, waves when playing, one line struck across
+    when off; the same on every phone and computer (an iPhone drew 🔇 as a red no-entry circle).
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
       scrolls them if they do not fit), and on the dark right-hand side the shelf's NAME, large (`KitTray.tsx`).

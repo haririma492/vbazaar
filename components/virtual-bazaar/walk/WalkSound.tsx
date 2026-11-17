@@ -236,12 +236,31 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
       // Bottom left, above the time bar, 20% larger (owner, 2026-11-06: "move the audio sign to bottom left make it 20% larger").
       className={`absolute ${place} z-20 ${SOUND_KEY_CLASS}`}
     >
-      {on ? (waiting && audioKey ? "🔊 tap to hear" : "🔊") : "🔇"}
+      {speakerLabel(on, Boolean(waiting && audioKey))}
     </button>
   );
 }
 
-const SOUND_KEY_CLASS = "rounded-full border border-white/30 bg-black/60 px-[14px] py-[7px] text-[18px] text-white";
+
+/**
+ * THE SPEAKER, DRAWN (owner, 2026-11-17: "the speaker sign … is unrecognizable … put a standard speaker sign … a line
+ * going across like a stop sign when it is not open … when they click on it, that line disappears"). The emoji 🔊/🔇
+ * look different on every phone (an iPhone draws a red no-entry circle); this is the same plain white speaker everywhere,
+ * sound waves when playing, one line struck across it when off.
+ */
+function SpeakerIcon({ on }: { on: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="block">
+      <path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" />
+      {on ? (<><path d="M15.5 9a4 4 0 0 1 0 6" /><path d="M18 6.5a7.5 7.5 0 0 1 0 11" /></>) : <path d="M3 3l18 18" strokeWidth="2.4" />}
+    </svg>
+  );
+}
+const speakerLabel = (on: boolean, tap: boolean) => (
+  <span className="flex items-center gap-1.5"><SpeakerIcon on={on} />{on && tap ? <span className="text-[14px]">tap to hear</span> : null}</span>
+);
+
+const SOUND_KEY_CLASS = "flex h-10 min-w-10 items-center justify-center rounded-full border border-white/30 bg-black/60 px-[9px] text-white hover:bg-black/80";
 /**
  * NIKOO.TV CHANNEL 4 LIVE IN THE WALK (owner, 2026-11-06): the walk tuned in joins what the channel is airing THIS
  * minute, at the second it has reached, like a radio, and asks again when the programme ends. The 🔊 key and one
@@ -422,7 +441,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
       )}
       <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
-          {on ? ((waiting && !yt) || (yt && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
+          {speakerLabel(on, Boolean((waiting && !yt) || (yt && !tapped)))}
         </button>
         {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">live music</span>}
       </div>
@@ -598,7 +617,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
       )}
       <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
-          {on ? ((waiting && fileUrl) || (ytId && !tapped) ? "🔊 tap to hear" : "🔊") : "🔇"}
+          {speakerLabel(on, Boolean((waiting && fileUrl) || (ytId && !tapped)))}
         </button>
         {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">music</span>}
       </div>

@@ -211,9 +211,9 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   }, []);
   const fit = useMemo(() => {
     const pw = shelf?.photo?.w || 4, ph = shelf?.photo?.h || 3;
-    const s = Math.min(lsize.w / pw, Math.max(0, lsize.h - TITLE_H) / ph) || 0;
+    const s = Math.min(lsize.w / pw, Math.max(0, lsize.h - (sideways ? 26 : TITLE_H)) / ph) || 0;
     return { fw: pw * s, fh: ph * s };
-  }, [shelf, lsize]);
+  }, [shelf, lsize, sideways]);
   const sec = at.k >= 0 ? sections[at.k] : null;
   // Before the first section, the right shows section 1 faintly (the shelf on the left is what is on show).
   const shownSec = sec ?? sections[0] ?? null;
@@ -272,10 +272,10 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   return (
     // Left to right whatever the page's language: the logo at the top left, «‹ Previous» on the left (the panel sets its own).
     <div dir="ltr" className="fixed inset-0 flex flex-col bg-black text-white">
-      <header className={`relative flex ${sideways ? "min-h-[5.2rem]" : "min-h-[8.6rem]"} flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 py-3 pr-[8.5rem] text-[14px] sm:min-h-0 sm:pr-[15.5rem]`}>
+      <header className={`relative flex ${sideways ? "min-h-0 py-1.5" : "min-h-[8.6rem] py-3"} flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 pr-[8.5rem] text-[14px] sm:min-h-0 sm:pr-[15.5rem]`}>
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
-        {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
+        {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} small={sideways} /> : null}
         <StoreText slug={kit.store} name={kit.name ?? kit.title} className="mt-1" iconOnly={sideways} />
         {/* No «name · نام · Shelf Tour» line (owner, 2026-11-17: "remove this label … from Shelf Tour"); the logo says whose. */}
         <div className="me-auto" />
@@ -287,20 +287,20 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             (both tours)"). */}
         {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
           <div className={sideways
-            ? "absolute left-[12rem] right-[24rem] top-3 z-30 rounded-2xl bg-black/70 p-1"
+            ? "absolute left-[10rem] right-[24rem] top-2 z-30 rounded-2xl bg-black/70 p-1"
             : "absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/70 p-1 sm:static sm:order-last sm:mx-auto sm:w-full sm:max-w-[20rem] sm:basis-full xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto"}>
-            <MusicPicker channels={channels} lang={lang} onPick={setMusic}
+            <MusicPicker compact={sideways} channels={channels} lang={lang} onPick={setMusic}
               current={music === NO_MUSIC ? NO_MUSIC : (music ?? radioSourceOf(kit.sound?.radio))?.id ?? null} />
           </div>
         )}
         <TourSwitch on="shelf" freeHref={walkHref} />
-        <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />
+        <TourBazaarLink overlay className={`absolute right-3 z-40 ${sideways ? "top-1" : "top-3"}`} />
         {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
-{music !== NO_MUSIC && <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
+{music !== NO_MUSIC && <WalkSound place={sideways ? "right-[5.5rem] top-2" : "right-[5.5rem] top-4"} label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
           radio={(music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
       </header>
 
-      <div ref={stage} className="relative mt-4 min-h-0 flex-1 overflow-hidden"
+      <div ref={stage} className={`relative ${sideways ? "mt-1" : "mt-4"} min-h-0 flex-1 overflow-hidden`}
         onClick={() => { if (open) return; setPaused((p) => !p); }}>
         <div className="absolute inset-0 flex">
           {/* LEFT: the shelf (Type III), always; «قفسه دوم · its name» on top; the section in view outlined. */}
@@ -329,10 +329,10 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
               <button type="button" aria-label="Next shelf" className={arrow} style={{ top: fit.fh / 2, right: Math.max(0, (lsize.w - fit.fw) / 2 - ARROW - GAP) }}
                 onClick={(e) => { e.stopPropagation(); setOpen(null); nextShelf(); }}>›</button>
               <div className="absolute inset-x-0 text-center" style={{ top: fit.fh + 6 }}>
-                <p dir="rtl" className="text-[clamp(17px,2.6vw,26px)] font-extrabold leading-tight text-amber-100">
-                  {faShelfOrdinal(shelf.n ?? si + 1)}{faName ? ` · ${faName}` : ""}
+                <p dir="rtl" className={`${sideways ? "text-[14px]" : "text-[clamp(17px,2.6vw,26px)]"} font-extrabold leading-tight text-amber-100`}>
+                  {faShelfOrdinal(shelf.n ?? si + 1)}{faName ? ` · ${faName}` : ""}{sideways ? <span className="ms-1 font-normal text-white/60">({shelf.label.en})</span> : null}
                 </p>
-                <p className="text-[clamp(11px,1.4vw,14px)] text-white/60">{shelf.label.en}</p>
+                {!sideways && <p className="text-[clamp(11px,1.4vw,14px)] text-white/60">{shelf.label.en}</p>}
               </div>
             </div>
           </div>
@@ -425,7 +425,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
 
       {/* THE FOOTER (owner, 2026-11-17: "make the bottom section also as a block rectangle with the same background color
           for symmetry, lets call them from now on header and footer"): the tour's bar and its keys. */}
-      <footer className="mt-3 border-t border-white/10 bg-[#1c1610] pb-1 pt-2">
+      <footer className={`border-t border-white/10 bg-[#1c1610] ${sideways ? "mt-1 pb-0.5 pt-1" : "mt-3 pb-1 pt-2"}`}>
       {/* The tour's bar: it fills as the shelf's tour plays; a section's start is a tick; a tap goes there. */}
       <div className="relative mx-3 mt-1 h-2.5 cursor-pointer rounded-full bg-white/15" role="slider" aria-label="Where the shelf's tour is"
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={total ? Math.round((clock.current / total) * 100) : 0}
@@ -435,7 +435,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
           <div key={q.k} className="absolute inset-y-0 w-0.5 bg-white/60" style={{ left: `${total ? (q.from / total) * 100 : 0}%` }} />
         ))}
       </div>
-      <div className="flex flex-wrap items-center justify-center gap-2 px-3 py-2">
+      <div className={`flex flex-wrap items-center justify-center gap-2 px-3 ${sideways ? "py-1" : "py-2"}`}>
         <button type="button" className={btn} disabled={si === 0} onClick={() => { setOpen(null); setSi((i) => Math.max(0, i - 1)); }}>‹ {lang === "fa" ? "قفسه قبلی" : "Previous shelf"}</button>
         <button type="button" className={btn} onClick={() => { if (paused && clock.current >= total) seek(0); setPaused((p) => !p); }} aria-label={paused ? "Play" : "Pause"}>{paused ? "▶" : "❚❚"}</button>
         <div className="flex items-center gap-1.5 px-1" aria-label="Sections">

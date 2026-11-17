@@ -11,9 +11,9 @@
  */
 import { useState } from "react";
 
-export default function StoreLogo({ src, className = "", site, name }: { src: string; className?: string; site?: string | null; name?: { en: string; fa?: string } | null }) {
+export default function StoreLogo({ src, className = "", site, name, small = false }: { src: string; className?: string; site?: string | null; name?: { en: string; fa?: string } | null; /** A sideways phone's short header (2026-11-17). */ small?: boolean }) {
   const [ask, setAsk] = useState(false);
-  const img = <img src={src} alt="" className="block h-12 w-auto max-w-[7.65rem] object-contain sm:h-[3.4rem]" />;
+  const img = <img src={src} alt="" className={small ? "block h-9 w-auto max-w-[6rem] object-contain" : "block h-12 w-auto max-w-[7.65rem] object-contain sm:h-[3.4rem]"} />;
   if (!site) return <div className={`pointer-events-none rounded-xl bg-white/90 p-1 shadow-lg ${className}`}>{img}</div>;
   const en = name?.en || "this", fa = name?.fa || name?.en || "";
   return (
