@@ -3146,7 +3146,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         return (
           <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[6rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: "16.667%" }}>
             <button type="button" data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
-              className="relative block w-full overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg"
+              className="relative block w-full cursor-pointer overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg transition-transform duration-200 hover:-translate-y-1 hover:scale-[1.04] hover:border-amber-200/80 hover:shadow-2xl"
               style={{ aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
               aria-label={`${sh.label.en} · ${sh.label.fa}`}>
               <img src={sh.photo.thumb} alt="" data-nosave {...noSave} className="block h-full w-full object-cover" />

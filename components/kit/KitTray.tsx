@@ -35,7 +35,7 @@ function Row({ shelf, picked, onPick, lang }: { shelf: ShopShelf; picked: string
           key={s.id} type="button" data-track="tray-photo" data-kit-section={s.id} data-kit-shelf={shelf.id}
           onClick={(e) => { e.stopPropagation(); onPick(s, e.currentTarget); }}
           aria-label={`${lang === "fa" ? shelf.label.fa : shelf.label.en}, ${lang === "fa" ? "بخش" : "section"} ${s.i}`}
-          className={`relative h-full shrink-0 overflow-hidden rounded-lg bg-black/40 shadow-lg ring-1 transition-[box-shadow,opacity] ${picked === s.id ? "ring-2 ring-amber-300" : picked ? "opacity-60 ring-white/15" : "ring-white/15 hover:ring-amber-200/70"}`}
+          className={`relative h-full shrink-0 cursor-pointer overflow-hidden rounded-lg bg-black/40 shadow-lg ring-1 transition-[box-shadow,opacity,transform] duration-200 hover:-translate-y-1 hover:scale-[1.03] hover:shadow-2xl ${picked === s.id ? "ring-2 ring-amber-300" : picked ? "opacity-60 ring-white/15" : "ring-white/15 hover:ring-amber-200/70"}`}
           style={{ aspectRatio: s.w && s.h ? `${s.w} / ${s.h}` : "4 / 3" }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
