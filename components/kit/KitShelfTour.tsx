@@ -271,7 +271,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   return (
     // Left to right whatever the page's language: the logo at the top left, «‹ Previous» on the left (the panel sets its own).
     <div dir="ltr" className="fixed inset-0 flex flex-col bg-black text-white">
-      <header className="relative flex flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 py-3 pr-[15.5rem] text-[14px]">
+      <header className="relative flex min-h-[8.6rem] flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 py-3 pr-[8.5rem] text-[14px] sm:min-h-0 sm:pr-[15.5rem]">
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
@@ -285,7 +285,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
             (both tours)"). */}
         {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
-          <div className="z-30 order-last mx-auto w-full max-w-[20rem] basis-full rounded-2xl bg-black/70 p-1 xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto">
+          <div className="absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/70 p-1 sm:static sm:order-last sm:mx-auto sm:w-full sm:max-w-[20rem] sm:basis-full xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto">
             <MusicPicker channels={channels} lang={lang} onPick={setMusic}
               current={music === NO_MUSIC ? NO_MUSIC : (music ?? radioSourceOf(kit.sound?.radio))?.id ?? null} />
           </div>
