@@ -27,15 +27,17 @@ const EASE = "cubic-bezier(.45,.05,.25,1)";
 
 type Layer = { shelf: ShopShelf; state: "in" | "on" | "out"; from: 1 | -1 };
 
-function Row({ shelf, picked, onPick, lang }: { shelf: ShopShelf; picked: string | null; onPick: (s: ShopSection, el: HTMLElement) => void; lang: "fa" | "en" }) {
+function Row({ shelf, picked, onPick, lang, vertical }: { shelf: ShopShelf; picked: string | null; onPick: (s: ShopSection, el: HTMLElement) => void; lang: "fa" | "en"; vertical?: boolean }) {
   return (
-    <div className="flex h-full w-full items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 py-2.5 [scrollbar-width:none]">
+    <div className={vertical
+      ? "flex h-full w-full flex-col items-stretch gap-2 overflow-y-auto overflow-x-hidden px-2 py-2 [scrollbar-width:none]"
+      : "flex h-full w-full items-stretch gap-3 overflow-x-auto overflow-y-hidden px-3 py-2.5 [scrollbar-width:none]"}>
       {shelf.sections.map((s) => (
         <button
           key={s.id} type="button" data-track="tray-photo" data-kit-section={s.id} data-kit-shelf={shelf.id}
           onClick={(e) => { e.stopPropagation(); onPick(s, e.currentTarget); }}
           aria-label={`${lang === "fa" ? shelf.label.fa : shelf.label.en}, ${lang === "fa" ? "بخش" : "section"} ${s.i}`}
-          className={`relative h-full shrink-0 cursor-pointer overflow-hidden rounded-lg bg-black/40 shadow-lg ring-1 transition-[box-shadow,opacity,transform] duration-200 hover:-translate-y-1 hover:scale-[1.03] hover:shadow-2xl ${picked === s.id ? "ring-2 ring-amber-300" : picked ? "opacity-60 ring-white/15" : "ring-white/15 hover:ring-amber-200/70"}`}
+          className={`relative ${vertical ? "w-full" : "h-full"} shrink-0 cursor-pointer overflow-hidden rounded-lg bg-black/40 shadow-lg ring-1 transition-[box-shadow,opacity,transform] duration-200 hover:-translate-y-1 hover:scale-[1.03] hover:shadow-2xl ${picked === s.id ? "ring-2 ring-amber-300" : picked ? "opacity-60 ring-white/15" : "ring-white/15 hover:ring-amber-200/70"}`}
           style={{ aspectRatio: s.w && s.h ? `${s.w} / ${s.h}` : "4 / 3" }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -47,8 +49,10 @@ function Row({ shelf, picked, onPick, lang }: { shelf: ShopShelf; picked: string
   );
 }
 
-export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
+export default function KitTray({ shelf, dir, picked, onPick, lang, music, vertical = false }: {
   shelf: ShopShelf | null;
+  /** A phone held sideways (owner, 2026-11-17): the tray is a column at the right, its photos one under another. */
+  vertical?: boolean;
   /** The shopper's music key (`MusicPicker`), at the top of the dark side. */
   music?: ReactNode;
   /** The way the walk moved when the shelf changed (see above). */
@@ -80,16 +84,16 @@ export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
   }, [shelf, dir]);
   const pos = (l: Layer) => (l.state === "on" ? "0%" : l.state === "in" ? `${l.from * 100}%` : `${-l.from * 100}%`);
   return (
-    <div className="relative flex h-full w-full overflow-hidden border-t border-white/10 bg-[#1c1610]">
+    <div className={`relative flex h-full w-full overflow-hidden bg-[#1c1610] ${vertical ? "flex-col border-l border-white/10" : "border-t border-white/10"}`}>
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {layers.map((l) => (
           <div key={l.shelf.id} className="absolute inset-0" style={{ transform: `translate3d(${pos(l)},0,0)`, transition: `transform ${SWAP_MS}ms ${EASE}`, pointerEvents: l.state === "on" ? "auto" : "none" }}>
-            <Row shelf={l.shelf} picked={picked} onPick={onPick} lang={lang} />
+            <Row shelf={l.shelf} picked={picked} onPick={onPick} lang={lang} vertical={vertical} />
           </div>
         ))}
       </div>
       {/* The shelf's name, large and readable, on the dark right-hand side; it changes with the sections. */}
-      <div className="relative w-[34%] max-w-[18rem] shrink-0 overflow-hidden border-l border-white/10">
+      <div className={`relative shrink-0 overflow-hidden ${vertical ? "h-[4.5rem] w-full border-t border-white/10" : "w-[34%] max-w-[18rem] border-l border-white/10"}`}>
         {music && <div className="absolute inset-x-2 top-1.5 z-10">{music}</div>}
         {layers.map((l) => (
           <div key={l.shelf.id} className={`absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center ${music ? "pt-12" : ""}`}
@@ -97,7 +101,7 @@ export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
             {/* The shelf's name is no longer here (owner, 2026-11-17: "remove shelf names from lower panel … add them to
                 the label below shelf photo (Type III)"): only how to buy. */}
             {/* How to buy (owner, 2026-11-17: on the black area of the lower panel). */}
-            <p dir="rtl" className="mt-1.5 text-[clamp(10px,2.3vw,13px)] leading-snug text-white/70">
+            <p dir="rtl" className={`mt-1.5 leading-snug text-white/70 ${vertical ? "text-[10px]" : "text-[clamp(10px,2.3vw,13px)]"}`}>
               برای خرید روی تصویر طبقات در اینجا یا روی تصویر قفسه در بالا سمت چپ کلیک کنید
             </p>
           </div>

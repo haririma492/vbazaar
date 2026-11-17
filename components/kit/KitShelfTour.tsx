@@ -259,7 +259,8 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   }, [open, size, narrow, panelW]);
   const shown = open && target ? (grown ? target : open.from) : null;
 
-  if (sideways) return <HoldUpright />;
+  // Sideways phones are welcome now (owner, 2026-11-17): the two columns use the width; no «hold upright» notice.
+  void sideways;
   if (!shelf) return <div className="fixed inset-0 flex items-center justify-center bg-black text-white/70">This store&apos;s shelves are not ready yet.</div>;
   const name = kit.title?.en ?? kit.merchant ?? slug;
   const label = lang === "fa" ? shelf.label.fa : shelf.label.en;

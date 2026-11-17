@@ -481,7 +481,13 @@ plan and the Managed Agents decision are in
     shelf first if it is not on screen), draws a thin arrow to the section on the shelf, opens the photo 3× through a
     funnel, and the shopping panel (`components/kit/KitPanel.tsx`) on the right: names, prices, a weight for what is
     sold by the kilo, «Add to basket», Farsi / English. No zooming into the photo: this is the e-commerce step.
-    Closing the panel closes the photo and the walk goes on. Phones upright only (a notice when held sideways).
+    Closing the panel closes the photo and the walk goes on. ~~Phones upright only~~ **⚠️ Phones may be held sideways**
+    (owner, 2026-11-17: *"we need to configure the screen if a shopper decides to hold phone horizontally in landscape. We
+    need to make full use of that space"*; it was a «hold upright» notice since 2026-11-15): a phone in landscape (coarse
+    pointer, ≤600 px high) gets the walk on the left 72% at full height and the tray as a column on the right
+    (`KitTray vertical`: the sections one under another, the how-to-buy line at its foot); the Shelf Tour shows as it is.
+    **The shelf photo at the top left is larger on a phone** (owner, same day: *"it's very small"*): 36% of an upright
+    phone's width, 18% sideways, a sixth on a computer.
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
       scrolls them if they do not fit), and on the dark right-hand side the shelf's NAME, large (`KitTray.tsx`).

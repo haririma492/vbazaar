@@ -2851,7 +2851,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     <div className="fixed inset-0 bg-black">
       {/* THE PASTRY REDESIGN (owner, 2026-11-15: "77% of the top will be assigned to the 360 recording walk … the 23%
           of the bottom will act as a news ticker moving tray"): with the store's shelf kit, the walk is the top 77%. */}
-      <div ref={topRef} className="absolute inset-x-0 top-0" style={{ height: kitOn ? "77%" : "100%" }}>
+      {/* A phone held sideways (owner, 2026-11-17: "configure the screen if a shopper decides to hold phone horizontally in
+          landscape … make full use of that space"): the walk on the left 72%, full height; the tray a column at the right. */}
+      <div ref={topRef} className="absolute left-0 top-0" style={kitOn && sideways ? { height: "100%", width: "72%" } : { height: kitOn ? "77%" : "100%", width: "100%" }}>
       <div ref={host} className="absolute inset-0" />
       {doorPhoto && (
         <div
@@ -3154,8 +3156,11 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         // Under the photo, which shelf it is in Farsi words, large (owner, 2026-11-17: "under the photo of type III (the
         // shelf) write قفسه دوم or قفسه اول and so on in larger text"): by the shelf's number, else its place in the walk.
         const nth = sh.n ?? (trayShelves.findIndex((x) => x.id === sh.id) + 1 || 1);
+        // Larger on a phone (owner, 2026-11-17: "the shelf photo … it's very small"): a third of an upright phone, a
+        // quarter of the walk held sideways, a sixth of a computer's screen (as asked 2026-11-16).
+        const shelfPhotoW = sideways ? "18%" : typeof window !== "undefined" && window.innerWidth < 640 ? "36%" : "16.667%";
         return (
-          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[9.4rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: "16.667%" }}>
+          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[9.4rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: shelfPhotoW }}>
             <button type="button" data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
               className="relative block w-full cursor-pointer overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg transition-transform duration-200 hover:-translate-y-1 hover:scale-[1.04] hover:border-amber-200/80 hover:shadow-2xl"
               style={{ aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
@@ -3260,8 +3265,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       )}
       </div>
       {kitOn && kit && (
-        <div className="absolute inset-x-0 bottom-0" style={{ height: "23%" }}>
-          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
+        <div className={sideways ? "absolute bottom-0 right-0 top-[5.4rem] w-[28%]" : "absolute inset-x-0 bottom-0 h-[23%]"}>
+          <KitTray vertical={sideways} shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
         </div>
       )}
       {/* Going back to the shelf of a photo tapped in the tray: a short fade over the jump. */}
@@ -3278,14 +3283,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           </div>
         </>
       )}
-      {/* Phones stay upright (owner, 2026-11-15: "phones should stay upright and not landscape for best experience"). */}
-      {kitOn && sideways && (
-        <div className="fixed inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/95 p-6 text-center text-white">
-          <span className="text-[44px]" aria-hidden="true">📱↻</span>
-          <p className="text-[17px] font-bold">Please hold your phone upright</p>
-          <p dir="rtl" className="text-[16px]">لطفاً گوشی را عمودی نگه دارید</p>
-        </div>
-      )}
+      {/* Phones held sideways are no longer asked to turn back (owner, 2026-11-17): the layout above uses the space. */}
     </div>
   );
 }
