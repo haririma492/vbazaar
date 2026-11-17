@@ -364,10 +364,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (ids.length > MAX_RADIOS) return fail(400, `At most ${MAX_RADIOS} channels.`);
     let cat;
     try { cat = await radioCatalogue(); } catch (e) { return fail(502, `Not changed: the music list could not be read (${(e as Error).message}). Try again.`); }
-    const list = ids.map((id) => sourceInCatalogue(cat, "channel", id));
-    if (list.some((x) => !x)) return fail(400, "No such music channel.");
+    // A channel's id, or "m:<member>:<id>" for music played continuously (a group or a singer of nikoo.tv's music).
+    const list = ids.map((id) => { const m = /^m:(iranmusic|worldmusic):(.+)$/.exec(id); return m ? sourceInCatalogue(cat, "music", m[2], m[1]) : sourceInCatalogue(cat, "channel", id); });
+    if (list.some((x) => !x)) return fail(400, "No such music channel or music.");
     const radios = list as NonNullable<(typeof list)[number]>[];
-    const def = radios.find((x) => x.id === body.def) ?? radios[0];
+    const def = radios.find((x) => x.id === body.def || (x.kind === "music" && `m:${x.member}:${x.id}` === body.def)) ?? radios[0];
     const walks = await readWalks();
     await writeWalks(setRadios(walks, s.out.walk, radios, def), walks);
     return ok({ def: def.id });

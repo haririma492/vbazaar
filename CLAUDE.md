@@ -1240,6 +1240,12 @@ quality and choice to break away and enter in a shop. (period)"*
     visit), and under it a volume bar for every player on the page (`setMusicVolume` in `WalkSound.tsx`, kept on the device as `vb.walk.volume`; YouTube players
     told by message). The Shelf Tour has the same (owner: *"in the shelf tour add the same music choice dropdown and volume
     as well"*), from `ShopKit.sound.radios`.
+  - **Continuous music beside the channels** (owner, 2026-11-17: *"on the music choices that operator can turn on … add:
+    پخش پیوسته «هاوزر و آندره ریو» · پخش پیوسته همه آهنگ‌های آندره‌آ بوچلی … Title them for shoppers هاوزر و آندره ریو ·
+    آندره‌آ بوچلی"*). In the same tick list (now «Live channels / continuous music»), after the channels: 🎶 those two
+    (`CONTINUOUS` in `MusicCard.tsx`: World Music's group `grp-hauser-rieu` and singer `cat-mw7k942j-p43p0`), sent as
+    `m:<member>:<id>`; either may be the default. `Walk.radios` takes music picks too; shoppers read nikoo.tv's own
+    names, which are the titles asked for. Played like any music pick (one track after another, `ListSound`).
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the

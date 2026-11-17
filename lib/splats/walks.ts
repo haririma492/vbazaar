@@ -226,7 +226,8 @@ export type Walk = {
    * THE LIVE CHANNELS A SHOPPER MAY SWITCH BETWEEN (owner, 2026-11-17: "select one or multiple live music channels …
    * then on the lower panel allow a drop down for music let the shopper a) change channel and b) change the volume …
    * allow one of the channels to be default"). The default is `radio` (one of these); the Free Tour's tray offers
-   * the rest. Channels only (`kind: "channel"`), at most `MAX_RADIOS`.
+   * the rest. Live channels, and since 2026-11-17 also a music pick played continuously (owner: «پخش پیوسته
+   * «هاوزر و آندره ریو»», «پخش پیوسته همه آهنگ‌های آندره‌آ بوچلی»), at most `MAX_RADIOS`.
    */
   radios?: RadioSource[];
   /**
@@ -707,8 +708,8 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     }
     if (r.radios !== undefined && r.radios !== null) {
       const list = Array.isArray(r.radios) ? r.radios.map(radioSourceOf) : [];
-      if (list.length <= MAX_RADIOS && list.every((x) => x?.kind === "channel")) { if (list.length) walk.radios = list as RadioSource[]; }
-      else problems.push(`${key}: «radios» is up to ${MAX_RADIOS} live music channels.`);
+      if (list.length <= MAX_RADIOS && list.every(Boolean)) { if (list.length) walk.radios = list as RadioSource[]; }
+      else problems.push(`${key}: «radios» is up to ${MAX_RADIOS} live music channels or music picks.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -1450,7 +1451,7 @@ export function setRadios(w: Walks, key: string, radios: RadioSource[], def: Rad
 export function radiosOf(walk: Pick<Walk, "radio" | "radios"> | null | undefined): RadioSource[] {
   if (!walk?.radios?.length) return [];
   const def = radioSourceOf(walk.radio);
-  return def && def.kind === "channel" && !walk.radios.some((x) => x.id === def.id) ? [def, ...walk.radios] : walk.radios;
+  return def && !walk.radios.some((x) => x.id === def.id) ? [def, ...walk.radios] : walk.radios;
 }
 
 /** A walk's background sound (a `walkAudioKey`); null: none. */

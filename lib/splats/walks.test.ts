@@ -681,6 +681,11 @@ test("setRadios / radiosOf: several live channels, one the default; parsed back"
   assert.deepEqual(radiosOf(w.walks.a).map((x) => x.id), ["main", "world-pop", "iran-new-pop"]);
   const back = parseWalks(JSON.parse(JSON.stringify({ walks: { "scenes/a/walk.mp4": w.walks.a } })));
   assert.deepEqual(back.walks["scenes/a/walk.mp4"]?.radios?.map((x) => x.id), ["main", "world-pop", "iran-new-pop"]);
+  const bocelli = { kind: "music" as const, member: "worldmusic" as const, id: "cat-mw7k942j-p43p0", fa: "آندره‌آ بوچلی", en: "Andrea Bocelli" };
+  const mixed = setRadios(w0, "a", [ch("main"), bocelli], bocelli);
+  const back2 = parseWalks(JSON.parse(JSON.stringify({ walks: { "scenes/a/walk.mp4": mixed.walks.a } })));
+  assert.deepEqual(back2.walks["scenes/a/walk.mp4"]?.radios?.map((x) => x.id), ["main", "cat-mw7k942j-p43p0"]);
+  assert.equal((back2.walks["scenes/a/walk.mp4"]?.radio as { id: string }).id, "cat-mw7k942j-p43p0");
   const one = setRadios(w0, "a", [ch("main")], ch("main"));
   assert.equal(one.walks.a.radios, undefined);
   assert.deepEqual(radiosOf(one.walks.a), []);
