@@ -28,14 +28,21 @@ export default function MusicPicker({ channels, current, onPick, lang, compact =
   const off = current === NO_MUSIC;
   return (
     <div className={compact ? "flex w-full items-center gap-2" : "w-full space-y-1"} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      {/* Our own ▾ at the end (owner, 2026-11-17: "missing the small arrow that shows that under this field there is a drop
+          down"): an iPhone draws none on a styled box, so the box draws no arrow of its own and this one is always there. */}
+      <span className={`relative block ${compact ? "min-w-0 flex-1" : "w-full"}`}>
       <select data-track="tray-music" dir={fa ? "rtl" : "ltr"} value={current ?? ""} aria-label={fa ? "موسیقی" : "Music"}
         onChange={(e) => { const v = e.target.value; if (v !== NO_MUSIC) { turnSoundOn(); primeAudio(); } onPick(v === NO_MUSIC ? NO_MUSIC : v === "" ? null : channels.find((c) => c.id === v) ?? null); }}
-        className={`${compact ? "min-w-0 flex-1" : "w-full"} cursor-pointer rounded-full border border-white/25 bg-[#1b140d] px-3 py-1 text-[13px] font-semibold text-white hover:bg-[#2a2016]`}>
+        className="w-full cursor-pointer appearance-none rounded-full border border-white/25 bg-[#1b140d] py-1 pe-8 ps-3 text-[13px] font-semibold text-white hover:bg-[#2a2016]">
         {channels.length
           ? channels.map((c) => <option key={c.id} value={c.id}>🎵 {fa ? c.fa || c.en : c.en || c.fa}</option>)
           : <option value="">🎵 {fa ? "موسیقی فروشگاه" : "The store's music"}</option>}
         <option value={NO_MUSIC}>🔇 {fa ? "بدون موسیقی" : "No music"}</option>
       </select>
+      <svg viewBox="0 0 12 8" width="12" height="8" aria-hidden="true" className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-white ${fa ? "left-3" : "right-3"}`}>
+        <path d="M1 1.5l5 5 5-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      </span>
       {!off && (
         <span dir="ltr" className={`flex items-center gap-1.5 px-1 text-[12px] text-white/80 ${compact ? "w-28 shrink-0" : ""}`}>
           {!compact && <span className="shrink-0 font-semibold">{fa ? "صدا" : "Volume"}</span>}
