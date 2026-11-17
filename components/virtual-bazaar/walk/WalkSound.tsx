@@ -93,6 +93,52 @@ export function useMusicVolume(): [number, (v: number) => void] {
   useEffect(() => { setV(musicVolume()); volFns.add(setV); return () => { volFns.delete(setV); }; }, []);
   return [v, setMusicVolume];
 }
+
+/**
+ * ONE AUDIO ELEMENT FOR THE WHOLE PAGE (owner, 2026-11-17: "on mobile, when we change the music type and music source, it
+ * does not change"). An iPhone lets an element play only once a tap has started it; each player made its own element,
+ * so a new pick on a phone made a fresh, locked element and stayed silent. Now every player takes THE page's element
+ * (`claimAudio`, the last owner's listeners dropped), and a pick in the music box unlocks it inside the tap itself
+ * (`primeAudio`, a moment of silence).
+ */
+let sharedEl: HTMLAudioElement | null = null;
+let sharedOff: Array<() => void> = [];
+function claimAudio(): HTMLAudioElement {
+  if (!sharedEl) { sharedEl = new Audio(); sharedEl.preload = "auto"; atVolume(sharedEl); }
+  sharedOff.forEach((f) => f());
+  sharedOff = [];
+  sharedEl.pause();
+  sharedEl.loop = false;
+  return sharedEl;
+}
+function onAudio(el: HTMLAudioElement, ev: string, fn: () => void) {
+  el.addEventListener(ev, fn);
+  sharedOff.push(() => el.removeEventListener(ev, fn));
+}
+function releaseAudio(el: HTMLAudioElement | null) {
+  if (!el) return;
+  if (el === sharedEl) { sharedOff.forEach((f) => f()); sharedOff = []; }
+  el.pause(); el.removeAttribute("src"); el.load();
+}
+let silence: string | null = null;
+/** Inside a tap (the music box's change): play a moment of silence on the page's element, so it is unlocked. */
+export function primeAudio() {
+  if (typeof window === "undefined") return;
+  try {
+    if (!silence) {
+      const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+      const w = (o: number, t: string) => { for (let i = 0; i < 4; i++) b[o + i] = t.charCodeAt(i); };
+      w(0, "RIFF"); v.setUint32(4, 36 + n, true); w(8, "WAVE"); w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+      v.setUint16(22, 1, true); v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+      w(36, "data"); v.setUint32(40, n, true); b.fill(128, 44);
+      silence = "data:audio/wav;base64," + btoa(String.fromCharCode(...b));
+    }
+    if (!sharedEl) { sharedEl = new Audio(); sharedEl.preload = "auto"; atVolume(sharedEl); }
+    const el = sharedEl;
+    if (!el.getAttribute("src") || el.paused) { el.src = silence; void el.play().catch(() => {}); }
+  } catch { /* nothing to unlock */ }
+}
+
 /** An audio element made by a player: at the shopper's volume, and told when it changes. */
 function atVolume(el: HTMLAudioElement): HTMLAudioElement { el.volume = musicVolume(); volEls.add(el); return el; }
 
@@ -166,10 +212,7 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
     const keys = listKey ? listKey.split("|") : [];
     if (!keys.length) return;
     let gone = false;
-    const el = new Audio();
-    el.preload = "auto";
-    // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
-    atVolume(el);
+    const el = claimAudio();
     el.loop = keys.length === 1;
     audio.current = el;
     let i = 0;
@@ -196,7 +239,6 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
       el.pause();
       el.removeAttribute("src");
       el.load();
-      volEls.delete(el);
       if (audio.current === el) audio.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -342,20 +384,18 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
   // it has loaded: an iPhone does not load media until asked to play (it waited for a load that never came).
   const audioEl = (): HTMLAudioElement => {
     if (!audio.current) {
-      const el = new Audio();
-      el.preload = "auto";
-      atVolume(el);
-      el.addEventListener("loadedmetadata", () => {
+      const el = claimAudio();
+      onAudio(el, "loadedmetadata", () => {
         const p = playRef.current, r = nowRef.current;
         if (p?.live && r) { try { el.currentTime = positionAt(r, Date.now()); } catch { /* not seekable yet */ } }
       });
-      el.addEventListener("ended", () => { if (playRef.current?.live) setTick((t) => t + 1); else nextFbRef.current(); });
-      el.addEventListener("error", () => {
+      onAudio(el, "ended", () => { if (playRef.current?.live) setTick((t) => t + 1); else nextFbRef.current(); });
+      onAudio(el, "error", () => {
         if (!el.getAttribute("src")) return;
         if (++failures.current > 3) return;
         setTimeout(() => { if (playRef.current?.live) setTick((t) => t + 1); else nextFbRef.current(); }, 3000);
       });
-      el.addEventListener("playing", () => { failures.current = 0; setWaiting(false); });
+      onAudio(el, "playing", () => { failures.current = 0; setWaiting(false); });
       audio.current = el;
     }
     return audio.current;
@@ -368,7 +408,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
     if (readOn()) start(el);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playKey]);
-  useEffect(() => () => { const el = audio.current; if (el) { el.pause(); el.removeAttribute("src"); el.load(); } }, []);
+  useEffect(() => () => { releaseAudio(audio.current); }, []);
 
   function start(el: HTMLAudioElement) {
     el.play().then(() => setWaiting(false), () => {
@@ -510,12 +550,10 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
   // ONE audio element for the visit (an iPhone keeps playing the element a tap unlocked), told to play at once.
   const audioEl = (): HTMLAudioElement => {
     if (!audio.current) {
-      const el = new Audio();
-      el.preload = "auto";
-      atVolume(el);
-      el.addEventListener("ended", () => nextRef.current(false));
-      el.addEventListener("error", () => { if (el.getAttribute("src")) setTimeout(() => nextRef.current(true), 1500); });
-      el.addEventListener("playing", () => { failures.current = 0; setWaiting(false); });
+      const el = claimAudio();
+      onAudio(el, "ended", () => nextRef.current(false));
+      onAudio(el, "error", () => { if (el.getAttribute("src")) setTimeout(() => nextRef.current(true), 1500); });
+      onAudio(el, "playing", () => { failures.current = 0; setWaiting(false); });
       audio.current = el;
     }
     return audio.current;
@@ -539,7 +577,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
     if (readOn()) start(el);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileUrl, pos.turn]);
-  useEffect(() => () => { const el = audio.current; if (el) { el.pause(); el.removeAttribute("src"); el.load(); } }, []);
+  useEffect(() => () => { releaseAudio(audio.current); }, []);
 
   // The shopper's first tap anywhere: a YouTube player made after it may play with sound.
   const [tapped, setTapped] = useState(hasTapped);

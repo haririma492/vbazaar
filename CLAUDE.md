@@ -493,7 +493,14 @@ plan and the Managed Agents decision are in
   - **The speaker is drawn, not an emoji** (owner, 2026-11-17: *"the speaker sign … is unrecognizable, unclickable … put
     a standard speaker sign … a line going across like a stop sign when it is not open … when they click on it, that line
     disappears"*): `SpeakerIcon` in `WalkSound.tsx`, a plain white speaker, waves when playing, one line struck across
-    when off; the same on every phone and computer (an iPhone drew 🔇 as a red no-entry circle).
+    when off; the same on every phone and computer (an iPhone drew 🔇 as a red no-entry circle). It sits left of the
+    arch, clear of it (`right-[6.75rem]`; it was half under the arch on phones, owner, same day), the tour switch moved
+    left to match (`sm:right-[10rem]`).
+  - **ONE audio element for the page** (owner, 2026-11-17: *"on mobile, when we change the music type and music source,
+    it does not change"*): an iPhone plays only an element a tap has started, and each player made its own, so a new pick
+    on a phone was a fresh, locked element. Now every player takes the page's one element (`claimAudio`, the last
+    owner's listeners dropped via `onAudio`; `releaseAudio` on unmount), and a pick in the music box unlocks it inside
+    the tap (`primeAudio`, a moment of silence). Not tried on a real iPhone when built.
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
       scrolls them if they do not fit), and on the dark right-hand side the shelf's NAME, large (`KitTray.tsx`).

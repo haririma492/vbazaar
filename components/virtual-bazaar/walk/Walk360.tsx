@@ -3207,7 +3207,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {phase !== "loading" && picked4(view.key)?.radio !== NO_MUSIC && (
         // The sound key at the top right, left of the bazaar's arch, and no «nikoo.tv live music» label (owner,
         // 2026-11-16: "remove the nikoo.tv live label, move the speaker sign up to the left of arch logo of vbazaar").
-        <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={(() => { const p = picked4(view.key); return p && p.radio && p.radio !== NO_MUSIC ? p.radio : walkOf(walks, view.key)?.radio ?? null; })()}
+        <WalkSound place="right-[6.75rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={(() => { const p = picked4(view.key); return p && p.radio && p.radio !== NO_MUSIC ? p.radio : walkOf(walks, view.key)?.radio ?? null; })()}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 

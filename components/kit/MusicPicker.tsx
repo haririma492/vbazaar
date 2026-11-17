@@ -9,7 +9,7 @@
  * bar for every player on the page (`setMusicVolume`, kept on the device). The choice lasts the visit.
  */
 import type { RadioSource } from "@/lib/radio";
-import { turnSoundOn, useMusicVolume } from "@/components/virtual-bazaar/walk/WalkSound";
+import { primeAudio, turnSoundOn, useMusicVolume } from "@/components/virtual-bazaar/walk/WalkSound";
 
 export const NO_MUSIC = "none";
 
@@ -29,7 +29,7 @@ export default function MusicPicker({ channels, current, onPick, lang, compact =
   return (
     <div className={compact ? "flex w-full items-center gap-2" : "w-full space-y-1"} onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
       <select data-track="tray-music" dir={fa ? "rtl" : "ltr"} value={current ?? ""} aria-label={fa ? "موسیقی" : "Music"}
-        onChange={(e) => { const v = e.target.value; if (v !== NO_MUSIC) turnSoundOn(); onPick(v === NO_MUSIC ? NO_MUSIC : v === "" ? null : channels.find((c) => c.id === v) ?? null); }}
+        onChange={(e) => { const v = e.target.value; if (v !== NO_MUSIC) { turnSoundOn(); primeAudio(); } onPick(v === NO_MUSIC ? NO_MUSIC : v === "" ? null : channels.find((c) => c.id === v) ?? null); }}
         className={`${compact ? "min-w-0 flex-1" : "w-full"} cursor-pointer rounded-full border border-white/25 bg-[#1b140d] px-3 py-1 text-[13px] font-semibold text-white hover:bg-[#2a2016]`}>
         {channels.length
           ? channels.map((c) => <option key={c.id} value={c.id}>🎵 {fa ? c.fa || c.en : c.en || c.fa}</option>)

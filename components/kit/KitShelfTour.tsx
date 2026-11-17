@@ -296,7 +296,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         <TourSwitch on="shelf" freeHref={walkHref} />
         <TourBazaarLink overlay className={`absolute right-3 z-40 ${sideways ? "top-1" : "top-3"}`} />
         {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
-{music !== NO_MUSIC && <WalkSound place={sideways ? "right-[5.5rem] top-2" : "right-[5.5rem] top-4"} label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
+{music !== NO_MUSIC && <WalkSound place={sideways ? "right-[6.75rem] top-2" : "right-[6.75rem] top-4"} label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
           radio={(music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
       </header>
 
