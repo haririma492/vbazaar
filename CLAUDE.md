@@ -1253,6 +1253,10 @@ quality and choice to break away and enter in a shop. (period)"*
     (`CONTINUOUS` in `MusicCard.tsx`: World Music's group `grp-hauser-rieu` and singer `cat-mw7k942j-p43p0`), sent as
     `m:<member>:<id>`; either may be the default. `Walk.radios` takes music picks too; shoppers read nikoo.tv's own
     names, which are the titles asked for. Played like any music pick (one track after another, `ListSound`).
+  - **A new pick plays at once** (owner, 2026-11-17: *"after selecting a music from dropdown it takes a min to start
+    playing"*). The server answers in 0.1–0.9 s; the wait was the page: each player kept its own «tapped», so the player
+    made for a new pick waited for the shopper's NEXT tap before making its YouTube player. Now one flag for the visit
+    (`pageTapped` / `hasTapped` in `WalkSound.tsx`, with the browser's `userActivation`).
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the

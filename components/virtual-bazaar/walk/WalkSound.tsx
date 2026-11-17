@@ -36,6 +36,23 @@ const WALK_MUSIC_VOLUME = 0.45;
 export const soundOn = () => typeof window !== "undefined" && readOn();
 
 /**
+ * Whether the shopper has tapped this page yet, for the whole visit (owner, 2026-11-17: "after selecting a music from
+ * dropdown it takes a min to start playing"). Each player kept its own "tapped", so a NEW player (another channel
+ * picked) waited for the NEXT tap before its YouTube player was made. The browser's own record counts too.
+ */
+let pageTapped = false;
+function hasTapped(): boolean {
+  if (pageTapped) return true;
+  try { if ((navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation?.hasBeenActive) pageTapped = true; } catch { /* */ }
+  return pageTapped;
+}
+if (typeof window !== "undefined") {
+  const mark = () => { pageTapped = true; };
+  window.addEventListener("pointerdown", mark, true);
+  window.addEventListener("keydown", mark, true);
+}
+
+/**
  * THE SHOPPER'S VOLUME (owner, 2026-11-17: the tray's music key lets the shopper "change the volume"). One level for
  * every player on the page, kept on the device: each audio element the players make is registered here, and the
  * hidden YouTube players are told by message.
@@ -342,10 +359,10 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
   }
 
   // The shopper's first tap anywhere: a YouTube player made after it may play with sound.
-  const [tapped, setTapped] = useState(false);
+  const [tapped, setTapped] = useState(hasTapped);
   useEffect(() => {
     if (tapped) return;
-    const go = () => setTapped(true);
+    const go = () => { pageTapped = true; setTapped(true); };
     window.addEventListener("pointerdown", go, true);
     window.addEventListener("keydown", go, true);
     return () => { window.removeEventListener("pointerdown", go, true); window.removeEventListener("keydown", go, true); };
@@ -497,10 +514,10 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
   useEffect(() => () => { const el = audio.current; if (el) { el.pause(); el.removeAttribute("src"); el.load(); } }, []);
 
   // The shopper's first tap anywhere: a YouTube player made after it may play with sound.
-  const [tapped, setTapped] = useState(false);
+  const [tapped, setTapped] = useState(hasTapped);
   useEffect(() => {
     if (tapped) return;
-    const go = () => setTapped(true);
+    const go = () => { pageTapped = true; setTapped(true); };
     window.addEventListener("pointerdown", go, true);
     window.addEventListener("keydown", go, true);
     return () => { window.removeEventListener("pointerdown", go, true); window.removeEventListener("keydown", go, true); };
