@@ -149,3 +149,12 @@ test("the Lock zone, the turn to the shelves and where tags begin move with the 
   assert.deepEqual(old.hide!.at!.map((p) => p.t), [5, 15, 30, 45]);
   assert.equal(old.faceAt, 30);
 });
+
+test("a walk's FIRST cut keeps the shelves' tray marks, moved with the picture", () => {
+  const now: Walk = { doors: [], zooms: [{ id: "z", label: { en: "Shelf 1" }, pins: [{ t: 5, x: 0, y: 0 }], outline: [{ t: 5, c: [0, 0, 1, 0, 1, 1, 0, 1] }], trayAt: 3.7, trayEnd: 16.8 }] };
+  // The record a first cut makes: the walk as it is, one part, the whole video.
+  const onOriginal = originalWalk({ walk: now, parts: [{ from: 0, to: 141.18 }], v: 2 }, now).walk;
+  const z = remapWalk(onOriginal, [{ from: 2, to: 141.18 }]).walk.zooms![0];
+  assert.equal(z.trayAt, 1.7);
+  assert.equal(z.trayEnd, 14.8);
+});

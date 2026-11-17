@@ -108,7 +108,10 @@ export function startCutJob(key: string, rawParts: unknown): CutJob {
       // The first cut keeps the original video(s) and the walk as it was.
       job.step = "keeping the original";
       const stored = readCutRecord(JSON.parse((await readMastersText(backupKeyOf(key))) ?? "null"));
-      const record: CutRecord = stored ?? { walk: walkOf(await readWalks(), key) ?? { doors: [] } };
+      // ⚠️ The first cut: the walk is on the original's times, so its record holds ONE part, the whole video (2026-11-17:
+      // with no parts, `originalWalk` could not move anything back and the shelves' tray marks were dropped by nuttime's
+      // first cut). The next cut reads them back through it unchanged.
+      const record: CutRecord = stored ?? { walk: walkOf(await readWalks(), key) ?? { doors: [] }, parts: [{ from: 0, to: duration }], v: CUT_RECORD_V };
       for (const f of files) if (!(await webObjectExists(originalKeyOf(f)))) await copyWebObject(f, originalKeyOf(f));
 
       for (const [i, f] of files.entries()) {

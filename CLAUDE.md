@@ -1253,6 +1253,12 @@ quality and choice to break away and enter in a shop. (period)"*
   `originalWalk` leaves them). «Put the original back» used to restore only doors and dots; it now runs `originalWalk`
   (shelves' borders and tray marks too) and leaves a record of the whole video. nuttime was put back to its original
   (141 s) the same day. The .insv was not the cause: nothing in the route reads it (`files.raw` is kept for tests).
+- **⚠️ A walk's FIRST cut dropped the shelves' tray marks** (2026-11-17, nuttime: 2 s cut off the start, owner: *"gracefully
+  cut off 2 sec from the begining … without messing up the spot for each shelf"*). The first cut's record had no parts,
+  so `originalWalk` could move nothing back and `trayAt` / `trayEnd` were lost (borders kept: they fall back to the
+  record's). Now the first cut's record holds one part, the whole video (`startCutJob`), and the marks move with the
+  picture. ⚠️ Read a walk's live state from the server (the store page's `kit` action, `readWalks`), not from
+  `/api/splats/walks`: that public copy can lag minutes behind.
 - **⚠️ A walk's copies are made at 30 fps at most; a store's new video keeps what belongs to it** (owner, 2026-11-16,
   nuttime: the walk re-exported at 8K H.265 **50 fps**, 174 Mbit/s, the same 141.18 s; the Video agent failed three
   times with «ffmpeg stopped (null)», killed for memory). `walkFps` (`walks.ts`, tested): an upload above 30 fps is
