@@ -1226,6 +1226,16 @@ quality and choice to break away and enter in a shop. (period)"*
     `Standby`: the store's own tracks, else the main broadcast. ⚠️ The main broadcast's state says `isLive` while it
     plays ordinary videos (still joined at its second); only another channel's `isLive` means a live stream.
   - Not verified in a real browser when built: YouTube videos playing (the test browser answered error 150 to each).
+  - **Several live channels, one the default; the shopper switches and sets the volume** (owner, 2026-11-17: *"select one
+    or multiple live music channels … namely channels (3, 4, 12, 1, 2, 11) then on the lower panel allow a drop down for
+    music let the shopper a) change channel and b) change the volume … on the store page allow one of the channels to
+    be default"*). The music card's «A live music channel» is now a list of ticks (the six music channels first, the
+    news ones marked «not music»), each ticked one with «Make default» / «★ Default»; every change saves itself (action
+    `musicChannels {ids, def}`, checked against nikoo.tv's list). Stored as `Walk.radios` (2+ channels; `setRadios`,
+    `radiosOf`, tested) beside `Walk.radio` = the default. In the Free Tour the tray's dark side has «🎵 Music ▼»
+    (`components/kit/MusicPicker.tsx`): the ticked channels (the choice lasts the visit) and a volume bar for every
+    player on the page (`setMusicVolume` in `WalkSound.tsx`, kept on the device as `vb.walk.volume`; YouTube players
+    told by message). Not in the Shelf Tour.
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`
   (`startWordFix` in `r2.ts`, `wordFixRules.ts`). Every object whose key holds the word is copied inside R2 to the

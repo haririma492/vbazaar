@@ -18,7 +18,7 @@
  */
 import { noSave } from "./noSave";
 import Watermark from "./Watermark";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { ShopSection, ShopShelf } from "@/lib/stores/kitRules";
 
 /** How long a change of shelf takes: smooth, not sudden. */
@@ -47,8 +47,10 @@ function Row({ shelf, picked, onPick, lang }: { shelf: ShopShelf; picked: string
   );
 }
 
-export default function KitTray({ shelf, dir, picked, onPick, lang }: {
+export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
   shelf: ShopShelf | null;
+  /** The shopper's music key (`MusicPicker`), at the top of the dark side. */
+  music?: ReactNode;
   /** The way the walk moved when the shelf changed (see above). */
   dir: 1 | -1;
   /** The section whose photo is open (marked in the tray). */
@@ -88,6 +90,7 @@ export default function KitTray({ shelf, dir, picked, onPick, lang }: {
       </div>
       {/* The shelf's name, large and readable, on the dark right-hand side; it changes with the sections. */}
       <div className="relative w-[34%] max-w-[18rem] shrink-0 overflow-hidden border-l border-white/10 bg-black/70">
+        {music && <div className="absolute inset-x-0 top-1.5 z-10 flex justify-center">{music}</div>}
         {layers.map((l) => (
           <div key={l.shelf.id} className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
             style={{ opacity: l.state === "on" ? 1 : 0, transform: `translate3d(0,${l.state === "on" ? "0" : l.state === "in" ? "30%" : "-30%"},0)`, transition: `opacity ${SWAP_MS}ms ${EASE}, transform ${SWAP_MS}ms ${EASE}` }}>

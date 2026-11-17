@@ -35,6 +35,41 @@ const WALK_MUSIC_VOLUME = 0.45;
 
 export const soundOn = () => typeof window !== "undefined" && readOn();
 
+/**
+ * THE SHOPPER'S VOLUME (owner, 2026-11-17: the tray's music key lets the shopper "change the volume"). One level for
+ * every player on the page, kept on the device: each audio element the players make is registered here, and the
+ * hidden YouTube players are told by message.
+ */
+const VOL_KEY = "vb.walk.volume";
+let volNow: number | null = null;
+const volEls = new Set<HTMLAudioElement>();
+const volFns = new Set<(v: number) => void>();
+export function musicVolume(): number {
+  if (volNow === null) {
+    volNow = WALK_MUSIC_VOLUME;
+    try { const v = Number(window.localStorage.getItem(VOL_KEY)); if (window.localStorage.getItem(VOL_KEY) !== null && v >= 0 && v <= 1) volNow = v; } catch { /* */ }
+  }
+  return volNow;
+}
+export function setMusicVolume(v: number) {
+  volNow = Math.max(0, Math.min(1, v));
+  try { window.localStorage.setItem(VOL_KEY, String(volNow)); } catch { /* */ }
+  for (const el of volEls) el.volume = volNow;
+  for (const f of volFns) f(volNow);
+  if (typeof document !== "undefined") {
+    for (const f of document.querySelectorAll<HTMLIFrameElement>('iframe[src*="youtube.com/embed"]')) {
+      f.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(volNow * 100)] }), "*");
+    }
+  }
+}
+export function useMusicVolume(): [number, (v: number) => void] {
+  const [v, setV] = useState(WALK_MUSIC_VOLUME);
+  useEffect(() => { setV(musicVolume()); volFns.add(setV); return () => { volFns.delete(setV); }; }, []);
+  return [v, setMusicVolume];
+}
+/** An audio element made by a player: at the shopper's volume, and told when it changes. */
+function atVolume(el: HTMLAudioElement): HTMLAudioElement { el.volume = musicVolume(); volEls.add(el); return el; }
+
 /** An English woman's voice where the device has one (founder: "Robotic lady in english"). */
 function ladyVoice(): SpeechSynthesisVoice | null {
   const all = window.speechSynthesis.getVoices().filter((v) => /^en(-|_|$)/i.test(v.lang));
@@ -108,7 +143,7 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
     const el = new Audio();
     el.preload = "auto";
     // 25% quieter than the 0.6 it was (owner, 2026-11-03: "25% less load").
-    el.volume = WALK_MUSIC_VOLUME;
+    atVolume(el);
     el.loop = keys.length === 1;
     audio.current = el;
     let i = 0;
@@ -135,6 +170,7 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
       el.pause();
       el.removeAttribute("src");
       el.load();
+      volEls.delete(el);
       if (audio.current === el) audio.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -263,7 +299,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
     if (!audio.current) {
       const el = new Audio();
       el.preload = "auto";
-      el.volume = WALK_MUSIC_VOLUME;
+      atVolume(el);
       el.addEventListener("loadedmetadata", () => {
         const p = playRef.current, r = nowRef.current;
         if (p?.live && r) { try { el.currentTime = positionAt(r, Date.now()); } catch { /* not seekable yet */ } }
@@ -354,7 +390,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
           src={`https://www.youtube.com/embed/${yt.youtubeId}?autoplay=1&playsinline=1&controls=0&rel=0&enablejsapi=1&start=${ytStart.current?.sec ?? 0}`}
           allow="autoplay; encrypted-media"
           onLoad={(e) => {
-            e.currentTarget.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(WALK_MUSIC_VOLUME * 100)] }), "*");
+            e.currentTarget.contentWindow?.postMessage(JSON.stringify({ event: "command", func: "setVolume", args: [Math.round(musicVolume() * 100)] }), "*");
           }}
         />
       )}
@@ -431,7 +467,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
     if (!audio.current) {
       const el = new Audio();
       el.preload = "auto";
-      el.volume = WALK_MUSIC_VOLUME;
+      atVolume(el);
       el.addEventListener("ended", () => nextRef.current(false));
       el.addEventListener("error", () => { if (el.getAttribute("src")) setTimeout(() => nextRef.current(true), 1500); });
       el.addEventListener("playing", () => { failures.current = 0; setWaiting(false); });
@@ -479,7 +515,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
     frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "vb-music", channel: "widget" }), "https://www.youtube.com");
     tell("addEventListener", ["onStateChange"]);
     tell("addEventListener", ["onError"]);
-    tell("setVolume", [Math.round(WALK_MUSIC_VOLUME * 100)]);
+    tell("setVolume", [Math.round(musicVolume() * 100)]);
   };
   useEffect(() => {
     if (!showYt) return;
@@ -494,7 +530,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
       if (d.event === "onError") { move(true); return; }
       const st = d.event === "onStateChange" ? d.info
         : (d.event === "infoDelivery" || d.event === "initialDelivery") && d.info && typeof d.info === "object" ? (d.info as { playerState?: unknown }).playerState : undefined;
-      if (st === 1) { playing = true; failures.current = 0; tell("setVolume", [Math.round(WALK_MUSIC_VOLUME * 100)]); }
+      if (st === 1) { playing = true; failures.current = 0; tell("setVolume", [Math.round(musicVolume() * 100)]); }
       if (st === 0) move(false);
     };
     window.addEventListener("message", onMsg);

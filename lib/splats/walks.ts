@@ -223,6 +223,13 @@ export type Walk = {
    */
   radio?: 4 | RadioSource;
   /**
+   * THE LIVE CHANNELS A SHOPPER MAY SWITCH BETWEEN (owner, 2026-11-17: "select one or multiple live music channels …
+   * then on the lower panel allow a drop down for music let the shopper a) change channel and b) change the volume …
+   * allow one of the channels to be default"). The default is `radio` (one of these); the Free Tour's tray offers
+   * the rest. Channels only (`kind: "channel"`), at most `MAX_RADIOS`.
+   */
+  radios?: RadioSource[];
+  /**
    * Bumped by each cut of the video (`cut.ts`): the file keeps its name but
    * changes, and files are cached "forever" by name, so the player asks for
    * `<file>?r=<rev>`.
@@ -697,6 +704,11 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
         if (src) walk.radio = src;
         else problems.push(`${key}: «radio» is a music channel or a category of its music.`);
       }
+    }
+    if (r.radios !== undefined && r.radios !== null) {
+      const list = Array.isArray(r.radios) ? r.radios.map(radioSourceOf) : [];
+      if (list.length <= MAX_RADIOS && list.every((x) => x?.kind === "channel")) { if (list.length) walk.radios = list as RadioSource[]; }
+      else problems.push(`${key}: «radios» is up to ${MAX_RADIOS} live music channels.`);
     }
     if (r.audio !== undefined && r.audio !== null) {
       if (isAudioKey(r.audio)) walk.audio = r.audio;
@@ -1426,11 +1438,26 @@ export function setTrack(w: Walks, key: string, slot: number, audio: string | nu
   });
 }
 
+/** At most this many live channels a shopper can switch between. */
+export const MAX_RADIOS = 12;
+/** The live channels shoppers may switch between, and the one the walk starts on (`def`, one of them). Pure. */
+export function setRadios(w: Walks, key: string, radios: RadioSource[], def: RadioSource): Walks {
+  const walk = w.walks[key] ?? { doors: [] };
+  const { radio: _r, radios: _rs, ...rest } = walk;
+  return { ...w, walks: { ...w.walks, [key]: radios.length > 1 ? { ...rest, radio: def, radios } : { ...rest, radio: def } } };
+}
+/** The channels a shopper can pick from on this walk (its default first in the list's order), or none. */
+export function radiosOf(walk: Pick<Walk, "radio" | "radios"> | null | undefined): RadioSource[] {
+  if (!walk?.radios?.length) return [];
+  const def = radioSourceOf(walk.radio);
+  return def && def.kind === "channel" && !walk.radios.some((x) => x.id === def.id) ? [def, ...walk.radios] : walk.radios;
+}
+
 /** A walk's background sound (a `walkAudioKey`); null: none. */
 /** The walk tuned in to a Nikoo.tv channel or a category of its music, or back to its own tracks (null). */
 export function setRadio(w: Walks, key: string, radio: 4 | RadioSource | null): Walks {
   const walk = w.walks[key] ?? { doors: [] };
-  const { radio: _r, ...rest } = walk;
+  const { radio: _r, radios: _rs, ...rest } = walk;
   return { ...w, walks: { ...w.walks, [key]: radio ? { ...rest, radio } : rest } };
 }
 
@@ -1584,7 +1611,7 @@ export function mergeConflicts(base: Walks, mine: Walks, theirs: Walks): string[
 export function carryWalk(prev: Walk | undefined, o: { seconds: number; prevSeconds: number; flat: boolean }): { walk: Partial<Walk>; note: string } {
   if (!prev) return { walk: {}, note: "" };
   const walk: Partial<Walk> = {};
-  for (const k of ["logo", "radio", "playlist", "audio"] as const) if (prev[k] !== undefined) (walk as Record<string, unknown>)[k] = prev[k];
+  for (const k of ["logo", "radio", "radios", "playlist", "audio"] as const) if (prev[k] !== undefined) (walk as Record<string, unknown>)[k] = prev[k];
   const same = o.prevSeconds > 0 && Math.abs(o.seconds - o.prevSeconds) <= 0.3 && Boolean(lensOf(prev)) === o.flat;
   if (!same) {
     const shelves = prev.zooms?.length ?? 0;

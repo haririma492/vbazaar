@@ -62,7 +62,7 @@ export type ShopShelf = {
 export type ShopKit = {
   store: string; walk: string | null; /** The walk's address for share links (short when the store has one). */ link: string | null; title: { en: string; fa: string } | null; merchant: string; shelves: ShopShelf[];
   /** The store's logo and the walk's music (own tracks' keys, or a channel / music source), for the Shelf Tour too (2026-11-17). */
-  logo?: string | null; sound?: { keys: string[]; radio: unknown };
+  logo?: string | null; sound?: { keys: string[]; radio: unknown; radios?: unknown[] };
 };
 
 /** The store's tours are the new ones once at least one shelf has its photo and a section (owner: "stays the same

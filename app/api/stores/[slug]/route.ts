@@ -13,6 +13,7 @@
  *   POST { action: "musicClear", slot }         (that track taken out)
  *   POST { action: "musicRadio", channel }      (tune in to Nikoo.tv channel 4; null = the uploaded tracks)
  *   POST { action: "musicRadio", source }       (any nikoo.tv channel, or a category / group of its music)
+ *   POST { action: "musicChannels", ids, def }  (live channels shoppers may switch between; `def` plays first)
  *   POST { action: "message", text }            (to the crew; answered on the page)
  *   POST { action: "password", password }       (a new password for the store)
  *   POST { action: "publish" | "unpublish" }    (operator: shoppers see the store, or not)
@@ -33,7 +34,7 @@ import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
 import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
 import { UNITS, formatCents, readPrice, type Unit } from "@/lib/splats/catalogue";
-import { MAX_TRACKS, musicOf, setRadio, setTrack } from "@/lib/splats/walks";
+import { MAX_RADIOS, MAX_TRACKS, musicOf, radiosOf, setRadio, setRadios, setTrack } from "@/lib/splats/walks";
 import { radioSourceOf, sourceInCatalogue } from "@/lib/radio";
 import { radioCatalogue } from "@/lib/radioServer";
 import { soundOnly } from "@/lib/stores/music";
@@ -96,6 +97,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   return ok({
     music: musicOf(walk).map((key) => ({ key, url: base ? `${base}/${key}` : null })),
     radio: radioSourceOf(walk?.radio),
+    radios: radiosOf(walk),
     who: o.who,
     store: forPage(o.s),
     status: statusOf(o.s),
@@ -354,6 +356,23 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     await writeWalks(w2, walks);
     return ok({ before: tracks, after: clean });
   }
+  if (body.action === "musicChannels") {
+    // Several live channels a shopper may switch between in the Free Tour, one of them the default (owner, 2026-11-17).
+    if (!s.out.walk) return fail(409, "No walk.");
+    const ids = Array.isArray(body.ids) ? [...new Set((body.ids as unknown[]).map(String))] : [];
+    if (!ids.length) return fail(400, "Tick at least one channel.");
+    if (ids.length > MAX_RADIOS) return fail(400, `At most ${MAX_RADIOS} channels.`);
+    let cat;
+    try { cat = await radioCatalogue(); } catch (e) { return fail(502, `Not changed: the music list could not be read (${(e as Error).message}). Try again.`); }
+    const list = ids.map((id) => sourceInCatalogue(cat, "channel", id));
+    if (list.some((x) => !x)) return fail(400, "No such music channel.");
+    const radios = list as NonNullable<(typeof list)[number]>[];
+    const def = radios.find((x) => x.id === body.def) ?? radios[0];
+    const walks = await readWalks();
+    await writeWalks(setRadios(walks, s.out.walk, radios, def), walks);
+    return ok({ def: def.id });
+  }
+
   if (body.action === "musicRadio") {
     // { channel: 4 | null } as before, or { source: { kind: "channel", id } | { kind: "music", member, id } }:
     // any nikoo.tv channel, or a category / group of its Iranian or World Music (owner, 2026-11-13). The choice

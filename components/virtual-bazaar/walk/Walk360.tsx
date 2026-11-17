@@ -76,6 +76,8 @@ import Watermark from "@/components/kit/Watermark";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
+import MusicPicker from "@/components/kit/MusicPicker";
+import { radioSourceOf, type RadioSource } from "@/lib/radio";
 import KitBridge from "@/components/kit/KitBridge";
 import DeepZoom from "@/components/zoom/DeepZoom";
 import { track } from "@/lib/visitors/track";
@@ -91,6 +93,7 @@ import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
   entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, outlineAt, quadBox, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  radiosOf,
 } from "@/lib/splats/walks";
 
 /**
@@ -2576,6 +2579,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   const [trayDir, setTrayDir] = useState<1 | -1>(-1);
   const [trayPaused, setTrayPaused] = useState(false);
   const [kitLang, setKitLang] = useState<KitLang>("en");
+  // The live channel the shopper switched to in the tray's music key (owner, 2026-11-17), for this walk and visit;
+  // none: the walk's default (`Walk.radio`).
+  const [pickRadio, setPickRadio] = useState<{ walk: string; radio: RadioSource } | null>(null);
   const [veil, setVeil] = useState(false);
   type Box = { left: number; top: number; width: number; height: number };
   const [picked, setPicked] = useState<{ section: ShopSection; shelf: ShopShelf; from: Box; area: Box; panel: Box; target: Array<[number, number]> | null; highlight?: string } | null>(null);
@@ -3151,7 +3157,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {phase !== "loading" && (
         // The sound key at the top right, left of the bazaar's arch, and no «nikoo.tv live music» label (owner,
         // 2026-11-16: "remove the nikoo.tv live label, move the speaker sign up to the left of arch logo of vbazaar").
-        <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={walkOf(walks, view.key)?.radio ?? null}
+        <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={(pickRadio && pickRadio.walk === view.key ? pickRadio.radio : null) ?? walkOf(walks, view.key)?.radio ?? null}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
@@ -3210,7 +3216,14 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       </div>
       {kitOn && kit && (
         <div className="absolute inset-x-0 bottom-0" style={{ height: "23%" }}>
-          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
+          <KitTray shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang}
+            music={(() => {
+              const w = walkOf(walks, view.key);
+              if (!w || (!w.radio && !musicOf(w).length)) return null;
+              const chans = radiosOf(w);
+              const cur = (pickRadio && pickRadio.walk === view.key ? pickRadio.radio : radioSourceOf(w.radio))?.id ?? null;
+              return <MusicPicker channels={chans} current={cur} lang={kitLang} onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
+            })()} />
         </div>
       )}
       {/* Going back to the shelf of a photo tapped in the tray: a short fade over the jump. */}

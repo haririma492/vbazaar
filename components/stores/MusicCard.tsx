@@ -66,8 +66,8 @@ function Heard({ source }: { source: RadioSource }) {
   return <p dir="ltr" className={`text-left text-[12px] ${text && !text.ok ? "text-rose-200" : "text-white/60"}`}>{text ? text.text : "Asking what this plays… (a whole group can take half a minute the first time)"}</p>;
 }
 
-export default function MusicCard({ api, tracks, radio, reload }: {
-  api: string; tracks: Track[]; radio: RadioSource | null; reload: () => Promise<void>;
+export default function MusicCard({ api, tracks, radio, radios = [], reload }: {
+  api: string; tracks: Track[]; radio: RadioSource | null; radios?: RadioSource[]; reload: () => Promise<void>;
 }) {
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -139,16 +139,50 @@ export default function MusicCard({ api, tracks, radio, reload }: {
           ))}
         </div>
         {mode !== "own" && !cat && <p dir="ltr" className={`text-left text-[13px] ${catErr ? "text-rose-200" : "text-white/60"}`}>{catErr ?? "Reading the music list…"}</p>}
-        {mode === "channel" && cat && (
-          <label className="block space-y-1">
-            <Bi fa="کدام کانال؟" en="Which channel? (saved as soon as you choose)" className="text-[13px] text-white/75" />
-            <select dir="ltr" className={SELECT} disabled={busy} value={radio?.kind === "channel" ? radio.id : ""}
-              onChange={(e) => { const c = cat.channels.find((x) => x.id === e.target.value); if (c) void save({ kind: "channel", id: c.id }, `${c.en} live`); }}>
-              <option value="" disabled>Choose a channel…</option>
-              {cat.channels.map((c) => <option key={c.id} value={c.id}>{c.n ? `${c.n} · ` : ""}{both(c)}</option>)}
-            </select>
-          </label>
-        )}
+        {mode === "channel" && cat && (() => {
+          // ONE OR SEVERAL LIVE CHANNELS, ONE THE DEFAULT (owner, 2026-11-17: "select one or multiple live music channels
+          // … namely channels (3, 4, 12, 1, 2, 11) … allow one of the channels to be default"). Shoppers switch between
+          // the ticked ones in the Free Tour's tray. Each tick saves by itself.
+          const ticked = radios.length ? radios.map((x) => x.id) : radio?.kind === "channel" ? [radio.id] : [];
+          const def = radio?.kind === "channel" ? radio.id : ticked[0] ?? null;
+          const music = new Set(["iran-new-pop", "iranian-nostalgia", "world-greats", "main", "iranian-party", "world-pop"]);
+          const saveSet = (ids: string[], d: string | null) => {
+            if (!ids.length) { setSaid({ ok: false, text: "Keep at least one channel ticked (or choose «The store's own tracks»)." }); return; }
+            const dd = d && ids.includes(d) ? d : ids[0];
+            setSaid(null); setBusy(true);
+            void postJson(api, { action: "musicChannels", ids, def: dd }).then(reload)
+              .then(() => setSaid({ ok: true, text: `✓ Saved: ${ids.length} channel${ids.length > 1 ? "s" : ""}, starting on ${both(cat.channels.find((c) => c.id === dd)!)} · ذخیره شد` }))
+              .catch((e) => setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }))
+              .finally(() => setBusy(false));
+          };
+          const order = [...cat.channels].sort((a, b) => Number(music.has(b.id)) - Number(music.has(a.id)) || (a.n ?? 999) - (b.n ?? 999));
+          return (
+            <div className="space-y-1">
+              <Bi fa="کدام کانال‌ها؟ (خریدار بین آن‌ها جابه‌جا می‌شود؛ یکی پیش‌فرض)" en="Which channels? Tick one or more: shoppers switch between them in the tour's lower panel. ★ is the one the walk starts on. (Saved as you tick.)" className="text-[13px] text-white/75" />
+              <ul dir="ltr" className="space-y-1">
+                {order.map((c) => {
+                  const on = ticked.includes(c.id);
+                  return (
+                    <li key={c.id} className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-left text-[13px] ${on ? "border-amber-300/60 bg-amber-300/10" : "border-white/10"}`}>
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                        <input type="checkbox" className="h-4 w-4 accent-amber-300" disabled={busy} checked={on}
+                          onChange={() => saveSet(on ? ticked.filter((x) => x !== c.id) : [...ticked, c.id], def)} />
+                        <span>{c.n ? `${c.n} · ` : ""}{both(c)}{!music.has(c.id) && <span className="text-white/40"> (not music)</span>}</span>
+                      </label>
+                      {on && (
+                        <label className="flex cursor-pointer items-center gap-1 text-[12px]">
+                          <input type="radio" name="radio-default" className="accent-amber-300" disabled={busy} checked={def === c.id}
+                            onChange={() => saveSet(ticked, c.id)} />
+                          {def === c.id ? "★ Default" : "Make default"}
+                        </label>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })()}
         {section && (
           <>
             <label className="block space-y-1">

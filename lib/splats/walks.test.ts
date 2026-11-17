@@ -671,3 +671,17 @@ test("a store's new video keeps the music and logo, and the shelves only for the
   assert.equal(carryWalk(prev, { seconds: 141.18, prevSeconds: 141.18, flat: true }).walk.zooms, undefined);
   assert.deepEqual(carryWalk(undefined, { seconds: 1, prevSeconds: 0, flat: false }), { walk: {}, note: "" });
 });
+
+test("setRadios / radiosOf: several live channels, one the default; parsed back", async () => {
+  const { setRadios, radiosOf, parseWalks } = await import("./walks.ts");
+  const ch = (id: string) => ({ kind: "channel" as const, id, fa: id, en: id });
+  const w0 = { walks: { a: { doors: [] } } } as unknown as Parameters<typeof setRadios>[0];
+  const w = setRadios(w0, "a", [ch("main"), ch("world-pop"), ch("iran-new-pop")], ch("world-pop"));
+  assert.equal((w.walks.a.radio as { id: string }).id, "world-pop");
+  assert.deepEqual(radiosOf(w.walks.a).map((x) => x.id), ["main", "world-pop", "iran-new-pop"]);
+  const back = parseWalks(JSON.parse(JSON.stringify({ walks: { "scenes/a/walk.mp4": w.walks.a } })));
+  assert.deepEqual(back.walks["scenes/a/walk.mp4"]?.radios?.map((x) => x.id), ["main", "world-pop", "iran-new-pop"]);
+  const one = setRadios(w0, "a", [ch("main")], ch("main"));
+  assert.equal(one.walks.a.radios, undefined);
+  assert.deepEqual(radiosOf(one.walks.a), []);
+});

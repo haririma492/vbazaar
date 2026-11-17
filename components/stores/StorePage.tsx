@@ -49,6 +49,7 @@ type Page = {
   editUrl?: string | null;
   music?: Track[];
   radio?: RadioSource | null;
+  radios?: RadioSource[];
 };
 
 const TONE: Record<string, string> = { work: "text-amber-200", you: "text-rose-200", ready: "text-emerald-200", live: "text-emerald-300" };
@@ -275,7 +276,7 @@ export default function StorePage({ slug }: { slug: string }) {
           send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: "raw" }, file, onProgress); await load(); }}
         />
         {page.walkUrl && (
-          <MusicCard api={api} tracks={page.music ?? []} radio={page.radio ?? null} reload={load} />
+          <MusicCard api={api} tracks={page.music ?? []} radio={page.radio ?? null} radios={page.radios ?? []} reload={load} />
         )}
       </Card>}
 
