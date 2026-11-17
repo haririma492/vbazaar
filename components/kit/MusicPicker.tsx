@@ -1,61 +1,46 @@
 "use client";
 
 /**
- * THE SHOPPER'S MUSIC KEY IN THE FREE TOUR'S TRAY (owner, 2026-11-17: "on the lower panel allow a drop down for music
- * let the shopper a) change channel and b) change the volume"). A 🎵 key on the tray's dark side; it opens a small
- * panel above the tray: the live channels the operator ticked on the store's page (`Walk.radios`, the default first
- * lit), and a volume bar (`setMusicVolume`, kept on the device). The choice of channel lasts the visit.
+ * THE SHOPPER'S MUSIC IN THE FREE TOUR'S TRAY (owner, 2026-11-17: "on the lower panel allow a drop down for music let
+ * the shopper a) change channel and b) change the volume"; then "let music choice drop down to be right there where the
+ * key is do not open another window on top also add an option "No Music" so it stops them all, make the key wider").
+ * Right on the tray's dark side, nothing opening over the walk: a wide dropdown of the live channels the operator ticked
+ * on the store's page (`Walk.radios`; or the store's own music) and «No music», which stops it all; under it a volume
+ * bar for every player on the page (`setMusicVolume`, kept on the device). The choice lasts the visit.
  */
-import { useEffect, useRef, useState } from "react";
 import type { RadioSource } from "@/lib/radio";
 import { useMusicVolume } from "@/components/virtual-bazaar/walk/WalkSound";
 
+export const NO_MUSIC = "none";
+
 export default function MusicPicker({ channels, current, onPick, lang }: {
-  channels: RadioSource[]; current: string | null; onPick: (r: RadioSource) => void; lang: "fa" | "en";
+  /** The channels to choose from; empty: the walk's own music, as one choice. */
+  channels: RadioSource[];
+  /** The channel playing, `NO_MUSIC`, or null (the walk's own music). */
+  current: string | null;
+  onPick: (r: RadioSource | typeof NO_MUSIC | null) => void;
+  lang: "fa" | "en";
 }) {
-  const [open, setOpen] = useState(false);
   const [vol, setVol] = useMusicVolume();
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
-    window.addEventListener("pointerdown", away, true);
-    return () => window.removeEventListener("pointerdown", away, true);
-  }, [open]);
   const fa = lang === "fa";
+  const off = current === NO_MUSIC;
   return (
-    <div ref={box} className="relative" onClick={(e) => e.stopPropagation()}>
-      <button type="button" data-track="tray-music" aria-expanded={open} onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[13px] font-semibold text-white hover:bg-white/20">
-        🎵 <span>{fa ? "موسیقی" : "Music"}</span> <span className="text-[10px]">{open ? "▲" : "▼"}</span>
-      </button>
-      {open && (
-        <div dir={fa ? "rtl" : "ltr"} className="fixed bottom-[calc(23%+8px)] right-2 z-[60] w-[min(20rem,calc(100vw-1rem))] space-y-3 rounded-xl border border-white/20 bg-black/90 p-3 text-white shadow-2xl backdrop-blur">
-          {channels.length > 1 && (
-            <div className="space-y-1">
-              <p className="text-[12px] font-bold text-white/70">{fa ? "کانال" : "Channel"}</p>
-              <ul className="max-h-[40vh] space-y-1 overflow-y-auto">
-                {channels.map((c) => (
-                  <li key={c.id}>
-                    <button type="button" onClick={() => onPick(c)}
-                      className={`w-full rounded-lg px-3 py-2 text-start text-[14px] ${current === c.id ? "bg-amber-300/20 font-bold text-amber-100 ring-1 ring-amber-300/60" : "hover:bg-white/10"}`}>
-                      {current === c.id ? "● " : "○ "}{fa ? c.fa || c.en : c.en || c.fa}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <label className="block space-y-1">
-            <span className="text-[12px] font-bold text-white/70">{fa ? "صدا" : "Volume"} · {Math.round(vol * 100)}%</span>
-            <span dir="ltr" className="flex items-center gap-2">
-              <span aria-hidden>🔈</span>
-              <input type="range" min={0} max={1} step={0.01} value={vol} onChange={(e) => setVol(Number(e.target.value))}
-                aria-label={fa ? "صدا" : "Volume"} className="h-8 min-w-0 flex-1 accent-amber-300" />
-              <span aria-hidden>🔊</span>
-            </span>
-          </label>
-        </div>
+    <div className="w-full space-y-1" onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      <select data-track="tray-music" dir={fa ? "rtl" : "ltr"} value={current ?? ""} aria-label={fa ? "موسیقی" : "Music"}
+        onChange={(e) => { const v = e.target.value; onPick(v === NO_MUSIC ? NO_MUSIC : v === "" ? null : channels.find((c) => c.id === v) ?? null); }}
+        className="w-full cursor-pointer rounded-full border border-white/25 bg-[#1b140d] px-3 py-1 text-[13px] font-semibold text-white hover:bg-[#2a2016]">
+        {channels.length
+          ? channels.map((c) => <option key={c.id} value={c.id}>🎵 {fa ? c.fa || c.en : c.en || c.fa}</option>)
+          : <option value="">🎵 {fa ? "موسیقی فروشگاه" : "The store's music"}</option>}
+        <option value={NO_MUSIC}>🔇 {fa ? "بدون موسیقی" : "No music"}</option>
+      </select>
+      {!off && (
+        <span dir="ltr" className="flex items-center gap-1.5 px-1 text-[12px] text-white/70">
+          <span aria-hidden>🔈</span>
+          <input type="range" min={0} max={1} step={0.01} value={vol} onChange={(e) => setVol(Number(e.target.value))}
+            aria-label={fa ? "صدا" : "Volume"} className="h-4 min-w-0 flex-1 cursor-pointer accent-amber-300" />
+          <span aria-hidden>🔊</span>
+        </span>
       )}
     </div>
   );

@@ -90,9 +90,9 @@ export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
       </div>
       {/* The shelf's name, large and readable, on the dark right-hand side; it changes with the sections. */}
       <div className="relative w-[34%] max-w-[18rem] shrink-0 overflow-hidden border-l border-white/10 bg-black/70">
-        {music && <div className="absolute inset-x-0 top-1.5 z-10 flex justify-center">{music}</div>}
+        {music && <div className="absolute inset-x-2 top-1.5 z-10">{music}</div>}
         {layers.map((l) => (
-          <div key={l.shelf.id} className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
+          <div key={l.shelf.id} className={`absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center ${music ? "pt-12" : ""}`}
             style={{ opacity: l.state === "on" ? 1 : 0, transform: `translate3d(0,${l.state === "on" ? "0" : l.state === "in" ? "30%" : "-30%"},0)`, transition: `opacity ${SWAP_MS}ms ${EASE}, transform ${SWAP_MS}ms ${EASE}` }}>
             {/* One line, Farsi and English the same size, the English in round brackets after it (owner, 2026-11-17:
                 "make english and farsi the same font size, english in round bracket in front, fonts to be the same as

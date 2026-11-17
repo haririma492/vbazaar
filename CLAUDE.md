@@ -1232,9 +1232,11 @@ quality and choice to break away and enter in a shop. (period)"*
     be default"*). The music card's «A live music channel» is now a list of ticks (the six music channels first, the
     news ones marked «not music»), each ticked one with «Make default» / «★ Default»; every change saves itself (action
     `musicChannels {ids, def}`, checked against nikoo.tv's list). Stored as `Walk.radios` (2+ channels; `setRadios`,
-    `radiosOf`, tested) beside `Walk.radio` = the default. In the Free Tour the tray's dark side has «🎵 Music ▼»
-    (`components/kit/MusicPicker.tsx`): the ticked channels (the choice lasts the visit) and a volume bar for every
-    player on the page (`setMusicVolume` in `WalkSound.tsx`, kept on the device as `vb.walk.volume`; YouTube players
+    `radiosOf`, tested) beside `Walk.radio` = the default. In the Free Tour, at the top of the tray's dark side, a wide
+    dropdown right there, nothing opening over the walk (owner: *"let music choice drop down to be right there where the
+    key is do not open another window on top also add an option "No Music" so it stops them all"*;
+    `components/kit/MusicPicker.tsx`): the ticked channels and «🔇 No music» (no player at all; the choice lasts the
+    visit), and under it a volume bar for every player on the page (`setMusicVolume` in `WalkSound.tsx`, kept on the device as `vb.walk.volume`; YouTube players
     told by message). Not in the Shelf Tour.
 - **A word corrected in every bucket** (owner, 2026-11-06, the one-l spelling of "gallery", *"everywhere even as part
   of email address"*): operator action `wordFix {from, to, apply, deleteOld}` on `/api/operator/splats`

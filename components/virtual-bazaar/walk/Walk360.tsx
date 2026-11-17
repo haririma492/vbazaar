@@ -76,7 +76,7 @@ import Watermark from "@/components/kit/Watermark";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
-import MusicPicker from "@/components/kit/MusicPicker";
+import MusicPicker, { NO_MUSIC } from "@/components/kit/MusicPicker";
 import { radioSourceOf, type RadioSource } from "@/lib/radio";
 import KitBridge from "@/components/kit/KitBridge";
 import DeepZoom from "@/components/zoom/DeepZoom";
@@ -2581,7 +2581,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   const [kitLang, setKitLang] = useState<KitLang>("en");
   // The live channel the shopper switched to in the tray's music key (owner, 2026-11-17), for this walk and visit;
   // none: the walk's default (`Walk.radio`).
-  const [pickRadio, setPickRadio] = useState<{ walk: string; radio: RadioSource } | null>(null);
+  const [pickRadio, setPickRadio] = useState<{ walk: string; radio: RadioSource | typeof NO_MUSIC | null } | null>(null);
+  const picked4 = (key: string | null | undefined) => (pickRadio && pickRadio.walk === key ? pickRadio : null);
   const [veil, setVeil] = useState(false);
   type Box = { left: number; top: number; width: number; height: number };
   const [picked, setPicked] = useState<{ section: ShopSection; shelf: ShopShelf; from: Box; area: Box; panel: Box; target: Array<[number, number]> | null; highlight?: string } | null>(null);
@@ -3154,10 +3155,11 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           </div>
         );
       })()}
-      {phase !== "loading" && (
+      {/* «No music» in the tray (owner, 2026-11-17: "so it stops them all"): no player at all, nothing plays. */}
+      {phase !== "loading" && picked4(view.key)?.radio !== NO_MUSIC && (
         // The sound key at the top right, left of the bazaar's arch, and no «nikoo.tv live music» label (owner,
         // 2026-11-16: "remove the nikoo.tv live label, move the speaker sign up to the left of arch logo of vbazaar").
-        <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={(pickRadio && pickRadio.walk === view.key ? pickRadio.radio : null) ?? walkOf(walks, view.key)?.radio ?? null}
+        <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={(() => { const p = picked4(view.key); return p && p.radio && p.radio !== NO_MUSIC ? p.radio : walkOf(walks, view.key)?.radio ?? null; })()}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 
@@ -3221,8 +3223,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               const w = walkOf(walks, view.key);
               if (!w || (!w.radio && !musicOf(w).length)) return null;
               const chans = radiosOf(w);
-              const cur = (pickRadio && pickRadio.walk === view.key ? pickRadio.radio : radioSourceOf(w.radio))?.id ?? null;
-              return <MusicPicker channels={chans} current={cur} lang={kitLang} onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
+              const p = picked4(view.key);
+              const cur = p?.radio === NO_MUSIC ? NO_MUSIC : (p?.radio ?? radioSourceOf(w.radio))?.id ?? null;
+              return <MusicPicker channels={chans.length ? chans : w.radio ? [radioSourceOf(w.radio)].filter((x): x is RadioSource => Boolean(x)) : []} current={chans.length || w.radio ? cur : null} lang={kitLang}
+                onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
             })()} />
         </div>
       )}
