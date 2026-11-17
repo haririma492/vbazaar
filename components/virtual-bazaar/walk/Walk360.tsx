@@ -70,7 +70,7 @@ import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
-import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, wholeShelf, faShelfOrdinal, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, trayInside, wholeShelf, faShelfOrdinal, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { noSave } from "@/components/kit/noSave";
 import { isShortWalkPath } from "@/lib/stores/productLink";
 import Watermark from "@/components/kit/Watermark";
@@ -571,7 +571,7 @@ type Engine = {
    */
   setKit: (on: boolean, onPlainTap: (() => void) | null) => void;
   /** The shelves the tray follows (their borders), and who is told when the shelf on screen changes (`trayShelf`). */
-  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }>; trayAt?: number; trayEnd?: number }> | null, start: string | null, onChange: ((id: string | null, dir?: 1 | -1) => void) | null) => void;
+  setTray: (shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }>; trayAt?: number; trayEnd?: number }> | null, start: string | null, onChange: ((id: string | null, dir?: 1 | -1, hide?: boolean) => void) | null) => void;
   /** Where a shelf (or, with `quad`, a part of its photo) is on the screen now, in the walk area's pixels; null when out of view. */
   shelfOnScreen: (outline: Array<{ t: number; c: number[] }>, quad: number[] | null) => { poly: Array<[number, number]>; cover: number } | null;
   /** Turn to face a direction of this walk (yaw, pitch); nothing on a flat video. */
@@ -1266,7 +1266,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     /** The pastry redesign's tour (`setKit`): no lights, and a tap is stop / walk on. */
     let kitOn = false;
     let onPlainTap: (() => void) | null = null;
-    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }>; trayAt?: number; trayEnd?: number }>; cur: string | null; onChange: (id: string | null, dir?: 1 | -1) => void; prev: Map<string, number> } | null = null;
+    let tray: { shelves: Array<{ id: string; outline: Array<{ t: number; c: number[] }>; trayAt?: number; trayEnd?: number }>; cur: string | null; last: string | null; onChange: (id: string | null, dir?: 1 | -1, hide?: boolean) => void; prev: Map<string, number> } | null = null;
     let itemPreview: WalkItem | null = null;
     let onItem: ((item: WalkItem) => void) | null = null;
     let priceText: (item: WalkItem) => string | undefined = (item) => item.price;
@@ -1833,7 +1833,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         onPlainTap = on ? f : null;
       },
       setTray(shelves, start, onChange) {
-        tray = shelves && onChange ? { shelves, cur: start, onChange, prev: new Map() } : null;
+        tray = shelves && onChange ? { shelves, cur: start, last: start, onChange, prev: new Map() } : null;
       },
       shelfOnScreen(outline, quad) {
         if (!current || busy || current.video.readyState < 1) return null;
@@ -1883,6 +1883,18 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       const round = !current.flat, t = tShown(), W = el.clientWidth;
       // The operator's marks, when there are any (owner, 2026-11-16): the shelf whose mark the walk has passed; the new
       // sections come in from the right going forward, from the left going back.
+      // Marked start AND end: shown only inside a shelf's stretch, nothing before, between or after (owner, 2026-11-17).
+      const inside = trayInside(tray.shelves, t);
+      if (inside !== undefined) {
+        if (inside !== tray.cur) {
+          const order = tray.shelves.map((x) => x.id);
+          const dir: 1 | -1 = tray.last === null || inside === null || order.indexOf(inside) > order.indexOf(tray.last) ? -1 : 1;
+          tray.cur = inside;
+          if (inside) tray.last = inside;
+          tray.onChange(inside, dir, true);
+        }
+        return;
+      }
       const byTime = trayByTime(tray.shelves, t);
       if (byTime) {
         if (byTime !== tray.cur) {
@@ -2584,8 +2596,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   useEffect(() => {
     if (!kitOn || !trayShelves.length) { engine.current?.setTray(null, null, null); return; }
     const first = trayShelves[0].id;
-    setTrayId((cur) => (cur && trayShelves.some((x) => x.id === cur) ? cur : first));
-    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline, trayAt: x.trayAt, trayEnd: x.trayEnd })), null, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
+    // With stretches marked, nothing until the walk is inside one (the engine says when).
+    const ranged = trayInside(trayShelves, 0) !== undefined;
+    setTrayId((cur) => (cur && trayShelves.some((x) => x.id === cur) ? cur : ranged ? null : first));
+    engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline, trayAt: x.trayAt, trayEnd: x.trayEnd })), null, (id, dir, hide) => { if (id || hide) { if (dir) setTrayDir(dir); setTrayId(id); } });
     return () => engine.current?.setTray(null, null, null);
   }, [kitOn, trayShelves, phase]);
   // Phones stay upright: held sideways, the walk asks to be turned back.
@@ -2667,7 +2681,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     setTrayPaused(true);
     if (trayShelves.some((x) => x.id === shelf.id)) {
       setTrayId(shelf.id);
-      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline, trayAt: x.trayAt, trayEnd: x.trayEnd })), shelf.id, (id, dir) => { if (id) { if (dir) setTrayDir(dir); setTrayId(id); } });
+      engine.current?.setTray(trayShelves.map((x) => ({ id: x.id, outline: x.outline, trayAt: x.trayAt, trayEnd: x.trayEnd })), shelf.id, (id, dir, hide) => { if (id || hide) { if (dir) setTrayDir(dir); setTrayId(id); } });
     }
     // The tray slides the shelf in (under a second) before its photo is opened from it. Not cancelled by a re-render:
     // the share is used once (`deepShare` is cleared above).

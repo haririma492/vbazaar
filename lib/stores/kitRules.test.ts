@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { trayByTime, moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { trayByTime, trayInside, moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -185,4 +185,14 @@ test("a shelf's number in Farsi words, as an ordinal", async () => {
   assert.equal(faShelfOrdinal(23), "قفسه بیست و سوم");
   assert.equal(faShelfOrdinal(30), "قفسه سی‌ام".replace("‌", ""));
   assert.equal(faShelfOrdinal(45), "قفسه ۴۵ام");
+});
+
+test("trayInside: only inside a marked stretch", () => {
+  const sh = [{ id: "a", trayAt: 2, trayEnd: 8 }, { id: "b", trayAt: 10, trayEnd: 17 }];
+  assert.equal(trayInside(sh, 1), null);
+  assert.equal(trayInside(sh, 5), "a");
+  assert.equal(trayInside(sh, 9), null);
+  assert.equal(trayInside(sh, 17), "b");
+  assert.equal(trayInside(sh, 30), null);
+  assert.equal(trayInside([{ id: "a", trayAt: 2 }], 5), undefined);
 });

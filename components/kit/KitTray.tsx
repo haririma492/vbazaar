@@ -58,7 +58,12 @@ export default function KitTray({ shelf, dir, picked, onPick, lang }: {
 }) {
   const [layers, setLayers] = useState<Layer[]>([]);
   useEffect(() => {
-    if (!shelf) return;
+    // No shelf (the walk outside every marked stretch): the set slides out, the tray stays empty.
+    if (!shelf) {
+      setLayers((ls) => ls.map((l): Layer => ({ ...l, state: "out", from: dir < 0 ? 1 : -1 })));
+      const t = setTimeout(() => setLayers((ls) => ls.filter((l) => l.state !== "out")), SWAP_MS + 80);
+      return () => clearTimeout(t);
+    }
     // The new set enters from the side the picture is coming from; the old one leaves by the other.
     const from: 1 | -1 = dir < 0 ? 1 : -1;
     setLayers((ls) => {

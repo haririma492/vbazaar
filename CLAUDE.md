@@ -1313,7 +1313,12 @@ quality and choice to break away and enter in a shop. (period)"*
   starts here», then «Shelf 1 ends here», then the next shelf by itself; below, each shelf's start → end, «▶ Watch it»,
   «Mark again». `WalkZoom.trayEnd` beside `trayAt` (action `kitTrayAt {shelf, at?, end?}`, an end before the start is
   refused; a cut moves both). `trayByTime`: inside a shelf's start–end, that shelf (overlap: the later start); between
-  shelves, the last one started.
+  shelves, the last one started. **⚠️ Now only inside the stretches** (owner, 2026-11-17: *"make the photo of the shelf on
+  top and the photo of shelf section underneath only appear when walk is moving through these colored time slots not
+  before and not after"*): with any shelf marked start AND end, `trayInside` (`kitRules.ts`, tested) decides: the Free
+  Tour's Type III photo at the top left and the tray's sections show only while the walk is inside a shelf's stretch;
+  before, between and after, the tray is empty and the top-left photo gone. Shelves marked with a start only keep the
+  old rule.
 - **A step of «Refresh all agents» can be skipped, before or during the run** (owner, 2026-11-13: *"allow operator
   to skip a step … even in the middle of execution or before"*). Before: the card lists the seven steps with a
   tick each; unticked ones go as `skip` with `refreshAll`. During: every step not finished has «Skip» (action

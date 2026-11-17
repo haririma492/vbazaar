@@ -384,6 +384,18 @@ export function trayByTime(shelves: Array<{ id: string; trayAt?: number; trayEnd
   return pick;
 }
 
+/** THE SHELF ON SHOW ONLY INSIDE ITS MARKED STRETCH (owner, 2026-11-17: "make the photo of the shelf on top and the photo
+ *  of shelf section underneath only appear when walk is moving through these colored time slots not before and not
+ *  after"). With any shelf marked start AND end: the shelf whose stretch holds `t` (of two overlapping, the later start),
+ *  else null (nothing shown). With none so marked: undefined (the older rules decide). Pure. */
+export function trayInside(shelves: Array<{ id: string; trayAt?: number; trayEnd?: number }>, t: number): string | null | undefined {
+  const ranged = shelves.filter((s) => typeof s.trayAt === "number" && typeof s.trayEnd === "number").sort((a, b) => a.trayAt! - b.trayAt!);
+  if (!ranged.length) return undefined;
+  let inside: string | null = null;
+  for (const s of ranged) if (s.trayAt! <= t + 1e-6 && t <= s.trayEnd! + 1e-6) inside = s.id;
+  return inside;
+}
+
 /** A section's name (English and Farsi), or none when both are empty. Pure. */
 export function setSectionName(k: Kit, sectionId: string, en: string, fa: string): Kit | { error: string } {
   const clean = (v: string) => v.replace(/\s+/g, " ").trim().slice(0, 60);
