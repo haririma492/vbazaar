@@ -3160,7 +3160,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         // quarter of the walk held sideways, a sixth of a computer's screen (as asked 2026-11-16).
         const shelfPhotoW = sideways ? "18%" : typeof window !== "undefined" && window.innerWidth < 640 ? "36%" : "16.667%";
         return (
-          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[9.4rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: shelfPhotoW }}>
+          <div key={sh.id} dir="ltr" className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[9.4rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: shelfPhotoW }}>
             <button type="button" data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
               className="relative block w-full cursor-pointer overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg transition-transform duration-200 hover:-translate-y-1 hover:scale-[1.04] hover:border-amber-200/80 hover:shadow-2xl"
               style={{ aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
