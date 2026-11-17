@@ -78,6 +78,7 @@ import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
 import KitTray from "@/components/kit/KitTray";
 import MusicPicker, { NO_MUSIC } from "@/components/kit/MusicPicker";
 import StoreText from "@/components/brand/StoreText";
+import TourSwitch from "@/components/brand/TourSwitch";
 /** A store's slug from its walk's key (`scenes/store-<slug>/…`). */
 const storeSlugOf = (key: string | null | undefined) => (key && /^scenes\/store-([a-z0-9-]+)\//.exec(key)?.[1]) || null;
 import { radioSourceOf, type RadioSource } from "@/lib/radio";
@@ -2974,14 +2975,6 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               {/* Only the frame rate (owner, 2026-11-06: "remove the word recommended and extend the bar on its place"). */}
               <span className="shrink-0 whitespace-nowrap text-[10px] tabular-nums text-white/70">{fpsOf(speed)} fps</span>
             </label>
-            {/* «Shelf Tour | Free Tour» under the speed bar, in the same 25%-smaller group (owner, 2026-11-16: "make the
-                Shelf Tour/Free Tour 25% smaller and being the switch under the speed bar"). */}
-            {kitOn && slug && !view.busy && !editing && (
-              <div className="flex h-9 items-center rounded-full border border-white/25 bg-black/70 p-0.5 text-[13px] font-semibold text-white">
-                <a href={shelfTourPath(tourOf ?? slug)} className="flex-1 rounded-full py-1.5 text-center text-white/80">🛒 Shelf Tour</a>
-                <span className="flex-1 rounded-full bg-[#00B8C8] py-1.5 text-center text-[#06131c]">👣 Free Tour</span>
-              </div>
-            )}
           </div>
           </div>
 
@@ -3040,11 +3033,9 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               ← Back to the street · بازگشت به خیابان
             </button>
           )}
-          {tourOf && !kitOn && !view.busy && !editing && (
-            <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-white/25 bg-black/70 p-1 text-[14px] font-semibold text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
-              <a href={shelfTourPath(tourOf ?? slug)} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
-              <span className="rounded-full bg-[#00B8C8] px-4 py-1.5 text-[#06131c]">👣 Free Tour</span>
-            </div>
+          {/* «Shelf Tour | Free Tour» in the header, the same place as the Shelf Tour's (owner, 2026-11-17). */}
+          {(kitOn ? slug : tourOf) && !view.busy && !editing && phase === "walking" && (
+            <TourSwitch on="free" shelfHref={shelfTourPath(tourOf ?? slug!)} />
           )}
           {/* A store's aisles: «‹ Aisle 2 · Aisle 3 of 6 · Aisle 4 ›» (founder, 2026-10-12: "map later, simple next previous now"). */}
           {aisleAt >= 0 && aisles.length > 1 && !view.busy && (

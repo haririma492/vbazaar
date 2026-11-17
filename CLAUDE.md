@@ -263,6 +263,11 @@ plan and the Managed Agents decision are in
   store and visit the web site?"*): with the store's website on its record (`ShopKit.site`, `name`), the logo is a key
   (the hand, a small lift) and opens a card: «آیا می‌خواهید فروشگاه مجازی … را ترک کنید و به وبسایت آن بروید؟» / the
   English, «Stay · بمانم» and «Visit the website · بله» (same tab). Both tours (the Free Tour once its kit is on).
+  **Both tours' headers match** (owner, 2026-11-17: *"make the header of both tours consistent and similar, move 🛒 Shelf
+  Tour | 👣 Free Tour from free tour also to header"*): store logo and «💬 Send a text to store» at the top left, the
+  music in the middle, «🛒 Shelf Tour | 👣 Free Tour» (`components/brand/TourSwitch.tsx`, one component for both) at the
+  top right left of the sound key and the arch (on a phone under them); all at the same 12 px from the top. The Free
+  Tour's switch under the speed bar is gone.
   The Shelf Tour's «name · نام · Shelf Tour» line at the top is gone (owner: *"remove this label"*). So is its «Basket →» link,
   for now (owner, 2026-11-17: *"for now remove this link Basket → from top of the Shelf Tour"*).
 - **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,

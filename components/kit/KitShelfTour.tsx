@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import StoreLogo from "@/components/brand/StoreLogo";
 import StoreText from "@/components/brand/StoreText";
+import TourSwitch from "@/components/brand/TourSwitch";
 import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
 import MusicPicker, { NO_MUSIC } from "./MusicPicker";
@@ -270,7 +271,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   return (
     // Left to right whatever the page's language: the logo at the top left, «‹ Previous» on the left (the panel sets its own).
     <div dir="ltr" className="fixed inset-0 flex flex-col bg-black text-white">
-      <div className="relative flex flex-wrap items-center justify-between gap-2 px-3 py-2 pr-[15.5rem] text-[14px]">
+      <div className="relative flex flex-wrap items-center justify-between gap-2 px-3 py-3 pr-[15.5rem] text-[14px]">
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
@@ -278,24 +279,21 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* No «name · نام · Shelf Tour» line (owner, 2026-11-17: "remove this label … from Shelf Tour"); the logo says whose. */}
         <div className="me-auto" />
         <div className="flex shrink-0 items-center gap-2 text-[13px]">
-          <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
-            <span className="rounded-full bg-[#00B8C8] px-2.5 py-1 text-[#06131c]">🛒 Shelf Tour</span>
-            {walkHref && <a className="rounded-full px-2.5 py-1 text-white/80" href={walkHref}>👣 Free Tour</a>}
-          </span>
           {/* «Basket →» taken off the top for now (owner, 2026-11-17: "for now remove this link Basket → from top of the
               Shelf Tour"); the basket is still /basket. */}
         </div>
         {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
             (both tours)"). */}
         {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
-          <div className="z-30 order-last mx-auto w-full max-w-[20rem] basis-full rounded-2xl bg-black/70 p-1 xl:absolute xl:left-1/2 xl:top-2 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto">
+          <div className="z-30 order-last mx-auto w-full max-w-[20rem] basis-full rounded-2xl bg-black/70 p-1 xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto">
             <MusicPicker channels={channels} lang={lang} onPick={setMusic}
               current={music === NO_MUSIC ? NO_MUSIC : (music ?? radioSourceOf(kit.sound?.radio))?.id ?? null} />
           </div>
         )}
-        <TourBazaarLink overlay className="absolute right-3 top-2 z-40" />
+        <TourSwitch on="shelf" freeHref={walkHref} />
+        <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />
         {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
-{music !== NO_MUSIC && <WalkSound place="right-[5.5rem] top-3" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
+{music !== NO_MUSIC && <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
           radio={(music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
       </div>
 
