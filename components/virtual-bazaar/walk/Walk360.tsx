@@ -3141,7 +3141,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {/* «📸 Share to Story» was REMOVED from the walk (owner, 2026-11-17: "remove the camera with text share to story");
           ShareToStory.tsx stays in the repo, unused. Share keys on shelves, sections and products remain. */}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
-      {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
+      {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" site={kitOn ? kit?.site : null} name={kit?.name ?? kit?.title} />}
       {/* THE SHELF'S WHOLE PHOTO (Type III) under the store's logo, a sixth of the screen wide, the same shelf as the tray:
           it changes as the shopper walks from shelf to shelf (owner, 2026-11-16: "under the store logo on the left of
           the top section bring the photo of the shelf (Type III) that takes 1/6 of the width of the screen from left

@@ -271,8 +271,9 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
       <div className="relative flex flex-wrap items-center justify-between gap-2 px-3 py-2 pr-[15.5rem] text-[14px]">
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
-        {kit.logo ? <StoreLogo src={kit.logo} /> : null}
-        <div className="me-auto min-w-0 flex-1 truncate xl:max-w-[calc(50%-15rem)]"><b>{name}</b>{kit.title?.fa ? <span className="text-white/60"> · {kit.title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
+        {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
+        {/* No «name · نام · Shelf Tour» line (owner, 2026-11-17: "remove this label … from Shelf Tour"); the logo says whose. */}
+        <div className="me-auto" />
         <div className="flex shrink-0 items-center gap-2 text-[13px]">
           <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
             <span className="rounded-full bg-[#00B8C8] px-2.5 py-1 text-[#06131c]">🛒 Shelf Tour</span>

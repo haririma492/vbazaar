@@ -228,7 +228,12 @@ plan and the Managed Agents decision are in
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,
   or «Paste from clipboard»; `FilePick` `paste`). `prepareLogo` (`crew.ts`) makes it a public PNG (≤512 px,
   transparency kept) and sets `Walk.logo`; both tours show it at the top left (`StoreLogo`), the bazaar's logo
-  on the right. A logo given before the walk exists reaches it at the Placer step.
+  on the right. A logo given before the walk exists reaches it at the Placer step. **A tap on it asks to visit the store's website** (owner,
+  2026-11-17: *"make the store logo active when user click on it a small modal asks do you want to leave virtual <name>
+  store and visit the web site?"*): with the store's website on its record (`ShopKit.site`, `name`), the logo is a key
+  (the hand, a small lift) and opens a card: «آیا می‌خواهید فروشگاه مجازی … را ترک کنید و به وبسایت آن بروید؟» / the
+  English, «Stay · بمانم» and «Visit the website · بله» (same tab). Both tours (the Free Tour once its kit is on).
+  The Shelf Tour's «name · نام · Shelf Tour» line at the top is gone (owner: *"remove this label"*).
 - **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,
   3840×1920 or larger, 25 fps, 8-bit, H.264 or H.265; owner's laptop could not
   export 8K, 2026-11-03). The crew makes its own web and phone copies, so the

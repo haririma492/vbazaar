@@ -286,6 +286,7 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
   const { musicOf, radiosOf } = await import("@/lib/splats/walks");
   return {
     store: s.slug, walk: s.out.walk ?? null, link: s.out.walk ? walkLink(s.out.walk, undefined, s.slug) : null, title: walk?.title ? { en: walk.title.en, fa: walk.title.fa ?? walk.title.en } : null, merchant: s.name.en || s.name.fa || s.slug, shelves,
+    site: s.website ?? null, name: { en: s.name.en || s.name.fa || s.slug, fa: s.name.fa || s.name.en || s.slug },
     logo: walk?.logo ?? null, sound: { keys: musicOf(walk), radio: walk?.radio ?? null, radios: radiosOf(walk) },
   };
 }
