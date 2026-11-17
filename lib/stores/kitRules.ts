@@ -34,7 +34,9 @@ export type KitProduct = { id: string; i: number; photo: KitPhoto; match?: KitMa
 export type KitPlace = { quad: number[] | null; by: "auto" | "hand"; note: string; sig: string };
 /** `items`: the store's website products the operator assigned to this section (their `web` keys, in the order chosen;
  *  owner, 2026-11-16): what the shopping panel lists when a shopper taps the section. */
-export type KitSection = { id: string; i: number; photo: KitPhoto; place?: KitPlace; products: KitProduct[]; items?: string[] };
+/** `name`: the operator's name for the section (owner, 2026-11-17: "allow operator to change the metadata for each shelf /
+ *  section"); shoppers see it in place of «Section 2». Its number `i` stays: the share links and product ids hold it. */
+export type KitSection = { id: string; i: number; photo: KitPhoto; place?: KitPlace; products: KitProduct[]; items?: string[]; name?: { en: string; fa?: string } };
 /** `id` is the shelf's id on the walk (its `WalkZoom`); `n` its number then. */
 export type KitShelf = { id: string; n?: number; photo?: KitPhoto; sections: KitSection[] };
 export type Kit = { store: string; shelves: KitShelf[]; updated: string };
@@ -46,7 +48,7 @@ export type ShopProduct = {
   id: string; photo: string; thumb: string; more: string[];
   en: string; fa: string; priceCents: number | null; unit: Unit; note?: string;
 };
-export type ShopSection = { id: string; i: number; url: string; thumb: string; w: number; h: number; quad: number[] | null; products: ShopProduct[] };
+export type ShopSection = { id: string; i: number; url: string; thumb: string; w: number; h: number; quad: number[] | null; products: ShopProduct[]; name?: { en: string; fa: string } };
 export type ShopShelf = {
   id: string; n?: number; label: { en: string; fa: string };
   photo: { url: string; thumb: string; w: number; h: number } | null;
@@ -381,3 +383,23 @@ export function trayByTime(shelves: Array<{ id: string; trayAt?: number; trayEnd
   for (const s of marked) if (s.trayAt! <= t + 1e-6) pick = s.id;
   return pick;
 }
+
+/** A section's name (English and Farsi), or none when both are empty. Pure. */
+export function setSectionName(k: Kit, sectionId: string, en: string, fa: string): Kit | { error: string } {
+  const clean = (v: string) => v.replace(/\s+/g, " ").trim().slice(0, 60);
+  const e = clean(en), f = clean(fa);
+  let found = false;
+  const shelves = k.shelves.map((sh) => ({ ...sh, sections: sh.sections.map((x) => {
+    if (x.id !== sectionId) return x;
+    found = true;
+    const { name: _n, ...rest } = x;
+    return e || f ? { ...rest, name: { en: e || f, ...(f ? { fa: f } : {}) } } : rest;
+  }) }));
+  return found ? { ...k, shelves } : { error: "That section is not in the kit." };
+}
+
+/** What shoppers read for a section: its name, else «Section n». */
+export const sectionLabel = (s: { i: number; name?: { en: string; fa?: string } }, lang: "en" | "fa") => {
+  if (s.name) return lang === "fa" ? s.name.fa || s.name.en : s.name.en;
+  return lang === "fa" ? `بخش ${String(s.i).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)])}` : `Section ${s.i}`;
+};

@@ -27,7 +27,7 @@ import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import StoreLogo from "@/components/brand/StoreLogo";
 import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
-import type { ShopKit, ShopProduct, ShopSection, ShopShelf } from "@/lib/stores/kitRules";
+import { sectionLabel, type ShopKit, type ShopProduct, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { formatCents } from "@/lib/splats/catalogue";
 
 const WHOLE_MS = 2500, GLIDE_MS = 1600, SECTION_MS = 3000, PRODUCT_MS = 2400, GROW_MS = 450;
@@ -285,7 +285,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         <div className="pointer-events-none absolute left-3 top-3 z-10 rounded-full bg-black/65 px-3 py-1 text-[13px] font-semibold text-white">
           {at.k < 0
             ? (lang === "fa" ? "کل قفسه" : "The whole shelf")
-            : `${lang === "fa" ? "بخش" : "Section"} ${at.k + 1} ${lang === "fa" ? "از" : "of"} ${sections.length}${product ? ` · ${lang === "fa" ? "محصول" : "Product"} ${step.j + 1} ${lang === "fa" ? "از" : "of"} ${Math.min(MAX_SHOWN, sections[at.k].products.length)}` : ""}`}
+            : `${sections[at.k].name ? `${sectionLabel(sections[at.k], lang)} · ` : ""}${lang === "fa" ? "بخش" : "Section"} ${at.k + 1} ${lang === "fa" ? "از" : "of"} ${sections.length}${product ? ` · ${lang === "fa" ? "محصول" : "Product"} ${step.j + 1} ${lang === "fa" ? "از" : "of"} ${Math.min(MAX_SHOWN, sections[at.k].products.length)}` : ""}`}
         </div>
         {/* The bazaar's mark over whatever photo is showing (it stays put while the shelf glides): sparse here. */}
         <Watermark size="lg" sparse />
@@ -296,7 +296,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
           <div className="absolute right-3 top-3 z-10" onClick={(e) => e.stopPropagation()}>
             <ShareKey base={kit.link} lang={lang}
               to={sec ? { shelf: shelf.id, section: sec.i } : { shelf: shelf.id }}
-              title={sec ? `${label} · ${lang === "fa" ? "بخش" : "Section"} ${sec.i}` : label}
+              title={sec ? `${label} · ${sectionLabel(sec, lang)}` : label}
               className="shadow" />
           </div>
         )}

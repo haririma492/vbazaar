@@ -158,3 +158,19 @@ test("with a start and an end per shelf, the tray takes the shelf the walk is in
   assert.equal(trayByTime(sh, 45), "c");
   assert.equal(trayByTime(sh, 99), "c");
 });
+
+test("a section takes a name (English and Farsi) and keeps its number; shoppers read the name", async () => {
+  const { setSectionName, sectionLabel } = await import("./kitRules.ts");
+  let k = put(put(emptyKit("s"), { shelf: "z1" }, "III"), { shelf: "z1", section: 2 }, "IV-2");
+  const r = setSectionName(k, "z1-2", "  Rock   candy ", "نبات");
+  assert.ok(!("error" in r));
+  k = r as Kit;
+  const sec = k.shelves[0].sections[0];
+  assert.equal(sec.i, 2);
+  assert.deepEqual(sec.name, { en: "Rock candy", fa: "نبات" });
+  assert.equal(sectionLabel(sec, "fa"), "نبات");
+  const cleared = setSectionName(k, "z1-2", "", "") as Kit;
+  assert.equal(cleared.shelves[0].sections[0].name, undefined);
+  assert.equal(sectionLabel(cleared.shelves[0].sections[0], "en"), "Section 2");
+  assert.ok("error" in setSectionName(k, "nope", "x", ""));
+});

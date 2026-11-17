@@ -487,6 +487,13 @@ plan and the Managed Agents decision are in
     from this computer, «📷 My own photo», and every photo from the computer listed with its website product (dropdown),
     «Move to section…» (action `kitMove`, `moveProduct` in `kitRules.ts`, tested: the photo keeps its match and takes
     the next free number there; a website pick of that product moves with it) and «Remove». `PlaceScreen.tsx` is shared.
+  - **A shelf's number and names, and each section's names, on the store's page** (owner, 2026-11-17: *"on store page …
+    allow operator to change the metadata for each shelf / section (name, number ..)"*). «✎ Number and names» on each
+    shelf in «Shelf photos for shopping» (`ShelfMeta` in `KitCard.tsx`): the shelf's number (1–999, never another
+    shelf's), English and Farsi names, saved on the walk's `WalkZoom` (`n`, `name`, `label` from `shelfLabel`; action
+    `kitShelfMeta`; the kit's `n` follows); and per section an English and Farsi name (`KitSection.name`, action
+    `kitSectionMeta`, `setSectionName`, tested). ⚠️ A section keeps its NUMBER: the share links and product ids hold it.
+    Shoppers read the section's name where «Section 2» stood (`sectionLabel`: the panel, the Shelf Tour's chip).
   - **Share keys almost everywhere; the photo is never shared** (owner, 2026-11-15: *"share key should be almost
     everywhere, on shelf (e-commerce shelf …), on shelf level (Type IV) and on products (type V) and receivers should
     end up exactly on the same spot on walking tour and the same photo should be made open"*). `ShareKey.tsx` (the

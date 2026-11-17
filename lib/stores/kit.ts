@@ -241,7 +241,7 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
   const shelves = kit.shelves.flatMap((sh) => {
     const z = walk?.zooms?.find((x) => x.id === sh.id);
     const sections = sh.sections.filter((x) => x.photo.url).map((x) => ({
-      id: x.id, i: x.i, url: x.photo.url!, thumb: x.photo.thumb ?? x.photo.url!, w: x.photo.w ?? 0, h: x.photo.h ?? 0, quad: x.place?.quad ?? null,
+      id: x.id, i: x.i, ...(x.name ? { name: { en: x.name.en, fa: x.name.fa ?? x.name.en } } : {}), url: x.photo.url!, thumb: x.photo.thumb ?? x.photo.url!, w: x.photo.w ?? 0, h: x.photo.h ?? 0, quad: x.place?.quad ?? null,
       products: (() => {
         const own = (w: string) => x.products.find((p) => p.photo.url && p.match?.web === w);
         const listed = new Set(x.items ?? []);
@@ -321,7 +321,7 @@ export async function kitForPage(s: StoreRecord) {
       const z = zooms.find((x) => x.id === id);
       const sh = k.shelves.find((x) => x.id === id);
       const o = z?.outline ?? [];
-      return { id, trayAt: z?.trayAt ?? null, trayEnd: z?.trayEnd ?? null, border: o.length ? [o[0].t, o[o.length - 1].t] : null, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
+      return { id, name: z?.name ? { en: z.name.en, fa: z.name.fa ?? "" } : null, trayAt: z?.trayAt ?? null, trayEnd: z?.trayEnd ?? null, border: o.length ? [o[0].t, o[o.length - 1].t] : null, n: z?.n ?? sh?.n ?? null, label: z ? { en: z.label.en, fa: z.label.fa ?? z.label.en } : { en: sh?.n ? `Shelf ${sh.n}` : "Shelf", fa: sh?.n ? `قفسه ${faNum(sh.n)}` : "قفسه" }, onWalk: Boolean(z?.outline?.length), photo: sh?.photo ?? null, sections: sh?.sections ?? [] };
     }),
   };
 }

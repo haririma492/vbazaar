@@ -61,7 +61,8 @@ import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/store
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { setZoom } from "@/lib/splats/walks";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
-import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, type KitSlot } from "@/lib/stores/kitRules";
+import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, setSectionName, type KitSlot } from "@/lib/stores/kitRules";
+import { shelfLabel } from "@/lib/splats/shelves";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
 import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
@@ -214,6 +215,39 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   }
   // When the tray takes a shelf, and when it leaves it (owner, 2026-11-16): `at` (its start) and/or `end`, the walk's
   // seconds, each null to take it off. A field not sent is left as it is.
+  // A shelf's number and names, and a section's names (owner, 2026-11-17: "on store page … allow operator to change the
+  // metadata for each shelf / section (name, number ..)"). The shelf's live on the walk (its border), so a cut keeps them.
+  if (body.action === "kitShelfMeta") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.shelf ?? "");
+    if (!KIT_ID_RE.test(id)) return fail(400, "Which shelf?");
+    if (!s.out.walk) return fail(409, "This store has no walk yet.");
+    const clean = (v: unknown) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, 60) : "");
+    const n = body.n === null || body.n === "" || body.n === undefined ? undefined : Number(body.n);
+    if (n !== undefined && !(Number.isInteger(n) && n >= 1 && n <= 999)) return fail(400, "The number is a whole number from 1 to 999.");
+    const walks = await readWalks();
+    const w = walks.walks[s.out.walk];
+    const z = w?.zooms?.find((x) => x.id === id);
+    if (!z) return fail(400, "That shelf is not marked on the walk.");
+    if (n !== undefined && w!.zooms!.some((x) => x.id !== id && x.n === n)) return fail(409, `Shelf ${n} is another shelf's number: choose a free one.`);
+    const en = clean(body.en), fa = clean(body.fa);
+    const name = en || fa ? { en: en || fa, ...(fa ? { fa } : {}) } : undefined;
+    const { n: _n, name: _nm, ...rest } = z;
+    void _n; void _nm;
+    const next = { ...rest, ...(n !== undefined ? { n } : {}), ...(name ? { name } : {}), label: shelfLabel(n, name) };
+    const saved = await writeWalks(setZoom(walks, s.out.walk, next), walks);
+    if (saved.conflicts.length) return fail(409, `Not saved: ${saved.conflicts.join(" ")}`);
+    // The kit keeps the shelf's number too (photo names like shelf-03.jpg place themselves by it).
+    await updateKit(s.slug, (k) => ({ ...k, shelves: k.shelves.map((x) => (x.id === id ? { ...x, ...(n !== undefined ? { n } : {}) } : x)) }));
+    return ok({ label: next.label });
+  }
+  if (body.action === "kitSectionMeta") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const id = String(body.section ?? "");
+    let why = "";
+    await updateKit(s.slug, (k) => { const r = setSectionName(k, id, String(body.en ?? ""), String(body.fa ?? "")); if ("error" in r) { why = r.error; return k; } return r; });
+    return why ? fail(400, why) : ok();
+  }
   if (body.action === "kitTrayAt") {
     if (who !== "operator") return fail(403, "The operator only.");
     const id = String(body.shelf ?? "");

@@ -21,7 +21,7 @@ import { type SiteItem } from "@/components/kit/SectionItems";
 import ShelfProducts from "@/components/kit/ShelfProducts";
 import TrayTimeline from "@/components/kit/TrayTimeline";
 
-type Shelf = { id: string; trayAt: number | null; trayEnd: number | null; border: [number, number] | null; n: number | null; label: { en: string; fa: string }; onWalk: boolean; photo: KitPhoto | null; sections: KitSection[] };
+type Shelf = { id: string; name: { en: string; fa: string } | null; trayAt: number | null; trayEnd: number | null; border: [number, number] | null; n: number | null; label: { en: string; fa: string }; onWalk: boolean; photo: KitPhoto | null; sections: KitSection[] };
 type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; walkVideo?: string | null; walkFlat?: boolean; shelves: Shelf[] };
 
 const mb = (n: number) => `${(n / 1e6).toFixed(1)} MB`;
@@ -137,6 +137,7 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
               {!sh.onWalk && <span className="text-amber-200">Not bordered on the walk: the tray cannot follow it.</span>}
               {(sh.photo || sh.sections.length > 0) && <button type="button" className="ml-auto text-[12px] text-rose-200 underline" onClick={() => { if (confirm(`Take away every photo of «${sh.label.en}»? The border stays on the walk.`)) void act({ action: "kitRemove", shelf: sh.id }, "✓ Taken away"); }}>Remove all its photos</button>}
             </div>
+            {sh.onWalk && <ShelfMeta api={api} shelf={sh} onSaved={load} />}
             <ShelfProducts slug={slug} shelfId={sh.id} onChanged={load} />
           </li>
         ))}
@@ -150,5 +151,58 @@ export default function KitCard({ api, operator, editUrl }: { api: string; opera
       {said && <Said ok={said.ok} text={said.text} />}
 
     </Card>
+  );
+}
+
+/**
+ * A SHELF'S NUMBER AND NAMES, AND ITS SECTIONS' NAMES (owner, 2026-11-17: "on store page … allow operator to change the
+ * metadata for each shelf / section (name, number ..)"). Closed until «✎ Number and names»; each row saves on «Save»
+ * and says so. A section keeps its number (share links and product ids hold it); its name is what shoppers read.
+ */
+function ShelfMeta({ api, shelf, onSaved }: { api: string; shelf: Shelf; onSaved: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [n, setN] = useState(shelf.n !== null ? String(shelf.n) : "");
+  const [en, setEn] = useState(shelf.name?.en ?? "");
+  const [fa, setFa] = useState(shelf.name?.fa ?? "");
+  const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
+  const sections = [...shelf.sections].sort((a, b) => a.i - b.i);
+  const save = async (body: Record<string, unknown>, what: string) => {
+    try { await postJson(api, body); setSaid({ ok: true, text: `✓ ${what} saved. · ذخیره شد` }); onSaved(); }
+    catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
+  };
+  const input = "rounded-md border border-white/20 bg-black/40 px-2 py-1 text-[13px] text-white";
+  if (!open) return <button type="button" className="mb-2 text-[12px] text-sky-200 underline" onClick={() => setOpen(true)}>✎ Number and names · شماره و نام</button>;
+  return (
+    <div dir="ltr" className="mb-3 space-y-2 rounded-lg border border-sky-300/30 bg-sky-300/[0.05] p-2 text-left text-[13px]">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-0.5"><span className="text-[11px] text-white/60">Shelf number</span>
+          <input className={`${input} w-20`} inputMode="numeric" value={n} onChange={(e) => setN(e.target.value.replace(/[^0-9]/g, "").slice(0, 3))} /></label>
+        <label className="flex min-w-[10rem] flex-1 flex-col gap-0.5"><span className="text-[11px] text-white/60">Name (English)</span>
+          <input className={input} value={en} onChange={(e) => setEn(e.target.value)} placeholder="e.g. Honey and Jams" /></label>
+        <label className="flex min-w-[10rem] flex-1 flex-col gap-0.5"><span className="text-[11px] text-white/60">Name (Farsi)</span>
+          <input dir="rtl" className={input} value={fa} onChange={(e) => setFa(e.target.value)} placeholder="مثلاً عسل و مربا" /></label>
+        <button type="button" className="rounded-full bg-sky-400 px-3 py-1 text-[12px] font-semibold text-black"
+          onClick={() => void save({ action: "kitShelfMeta", shelf: shelf.id, n: n ? Number(n) : null, en, fa }, "The shelf")}>Save the shelf</button>
+      </div>
+      {sections.map((x) => <SectionMeta key={x.id} section={x} save={save} input={input} />)}
+      <div className="flex items-center gap-3">
+        {said && <p className={said.ok ? "text-emerald-300" : "text-rose-300"}>{said.text}</p>}
+        <button type="button" className="ml-auto text-[12px] text-white/60 underline" onClick={() => setOpen(false)}>Close</button>
+      </div>
+    </div>
+  );
+}
+
+function SectionMeta({ section, save, input }: { section: KitSection; save: (b: Record<string, unknown>, what: string) => Promise<void>; input: string }) {
+  const [en, setEn] = useState(section.name?.en ?? "");
+  const [fa, setFa] = useState(section.name?.fa ?? "");
+  return (
+    <div className="flex flex-wrap items-end gap-2 border-t border-white/10 pt-2">
+      <span className="w-20 pb-1 text-[12px] text-white/70">Section {section.i}</span>
+      <input className={`${input} min-w-[9rem] flex-1`} value={en} onChange={(e) => setEn(e.target.value)} placeholder="Name (English), e.g. Rock candy" />
+      <input dir="rtl" className={`${input} min-w-[9rem] flex-1`} value={fa} onChange={(e) => setFa(e.target.value)} placeholder="نام (فارسی)" />
+      <button type="button" className="rounded-full border border-sky-300/60 px-3 py-1 text-[12px]"
+        onClick={() => void save({ action: "kitSectionMeta", section: section.id, en, fa }, `Section ${section.i}`)}>Save</button>
+    </div>
   );
 }

@@ -14,7 +14,7 @@ import Watermark from "./Watermark";
 import { useEffect, useRef, useState } from "react";
 import { addToBasket } from "@/components/basket/useBasket";
 import { byWeight, formatCents, UNIT_SAY, weightChoices } from "@/lib/splats/catalogue";
-import type { ShopProduct, ShopSection } from "@/lib/stores/kitRules";
+import { sectionLabel, type ShopProduct, type ShopSection } from "@/lib/stores/kitRules";
 import ShareKey from "./ShareKey";
 
 export type Lang = "fa" | "en";
@@ -181,7 +181,7 @@ export default function KitPanel({ section, title, merchant, href, lang, onLang,
       <div className="flex items-center gap-2 border-b border-neutral-200 bg-neutral-50 px-4 py-2.5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-extrabold">{lang === "fa" ? title.fa : title.en}</p>
-          <p className="truncate text-[12px] text-neutral-500">{merchant} · {section.i > 0 ? (lang === "fa" ? `بخش ${fa(String(section.i))}` : `Section ${section.i}`) : (lang === "fa" ? "همهٔ بخش‌ها" : "All sections")}</p>
+          <p className="truncate text-[12px] text-neutral-500">{merchant} · {section.i > 0 ? sectionLabel(section, lang) : (lang === "fa" ? "همهٔ بخش‌ها" : "All sections")}</p>
         </div>
         {share && <ShareKey base={share.base} to={section.i > 0 ? { shelf: share.shelf, section: section.i } : { shelf: share.shelf }} title={lang === "fa" ? title.fa : title.en} lang={lang} />}
         <button type="button" onClick={() => onLang(lang === "fa" ? "en" : "fa")} className="rounded-md border border-neutral-300 px-2 py-1 text-[12px]">{lang === "fa" ? "English" : "فارسی"}</button>
