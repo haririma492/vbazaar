@@ -5,10 +5,9 @@
 // a walk has it (the long address opens any walk anyway). Not indexed. Any other two-part address here is a 404: the
 // site's own pages (`/stores/…`, `/vca/…`, `/walk/…`) are matched before this one.
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
-import Walk360 from "@/components/virtual-bazaar/walk/Walk360";
+import { notFound, redirect } from "next/navigation";
 import { readStore } from "@/lib/stores/bucket";
-import { TOUR_PATH_RE } from "@/lib/stores/productLink";
+import { TOUR_PATH_RE, storeWalkPath } from "@/lib/stores/productLink";
 
 export const dynamic = "force-dynamic";
 
@@ -25,8 +24,10 @@ export async function generateMetadata({ params }: { params: { store: string; to
   return { title: name ? `${name} · Virtual Bazaar` : "Virtual Bazaar", robots: { index: false, follow: true } };
 }
 
-export default async function StoreTour({ params }: { params: { store: string; tour: string } }) {
+// The store's page is now plain vbazaar.app/<store> (owner, 2026-11-17): this address is sent on to it.
+export default async function StoreTour({ params, searchParams }: { params: { store: string; tour: string }; searchParams: Record<string, string | string[] | undefined> }) {
   const s = await storeOf(params);
   if (!s) notFound();
-  return <Walk360 walkKey={s.out.walk!} />;
+  const q = new URLSearchParams(Object.entries(searchParams).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
+  redirect(`${storeWalkPath(s.slug)}${q ? `?${q}` : ""}`);
 }

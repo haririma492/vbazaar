@@ -101,7 +101,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     products: c?.products ?? [],
     // A published store's walk has its short address; the editor always opens the video by its key.
     walkUrl: o.s.out.walk ? storeWalkPath(o.s.slug) : null,
-    editUrl: o.s.out.walk ? `/vca/walk?v=${encodeURIComponent(o.s.out.walk)}&edit=1` : null,
+    editUrl: o.s.out.walk ? `${storeWalkPath(o.s.slug)}?edit=1` : null,
   });
 }
 

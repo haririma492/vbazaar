@@ -211,14 +211,17 @@ plan and the Managed Agents decision are in
   published OR the operator ticks «Show on the stores' list» on its page (`onTours` on the record, action
   `toursShow`, `hasShortAddress`, `readTourStores`). The bazaar's own directory (home page, `/s/<slug>`) stays
   published stores only. Switched on that day: saraye-bamdad, shirazgallery, helogolab (the test stores left off).
-- **⚠️ A store's tour address is now `vbazaar.app/<store>/vtour1.mp4`** (owner, 2026-11-17: *"make this link URL to be
-  sensible https://vbazaar.app/vca/walk?v=scenes%2Fstore-nuttime%2Fwalk-20261116-053157.mp4 e.g.
-  https://vbazaar.app/nuttime/vtour1.mp4"*). `app/[store]/[tour]/page.tsx`: the store's walk as it is today (it
-  outlives a new video), `.mp4` optional, every query (`p`, `shelf`, `section`, `product`) as on the long address; EVERY
-  store with a walk has it, published or not (the long address opened any walk anyway); noindex. `storeWalkPath`,
-  `TOUR_PATH_RE`, `isShortWalkPath` (`productLink.ts`, tested). Every link the site makes uses it (the store page's
-  «Walk the store», share keys, Instagram bio and product links, the Shelf Tour's «Free Tour»); `/walk/<store>` and
-  `/s/<store>` send on to it. `/walk` (the list) still lists only published or «Show on the stores' list» stores.
+- **⚠️ EACH STORE'S OWN PAGE IS `vbazaar.app/<store>`** (owner, 2026-11-17: first *"make this link URL to be sensible
+  … e.g. https://vbazaar.app/nuttime/vtour1.mp4"*, then *"/vca/walk is not good, each store deserves its own straight
+  direct page after our domain e.g. vbazaar.app/nuttime"*). `app/[store]/page.tsx`: the store's Free Tour as it is today
+  (it outlives a new video), every query as on the long address (`p`, `shelf`, `section`, `product`, the operator's
+  `edit=1`); EVERY store with a walk has it, published or not (the long address opened any walk anyway); noindex.
+  `/<store>/vtour1(.mp4)`, `/walk/<store>` and `/s/<store>` send on to it. Every link the site makes uses it
+  (`storeWalkPath`: «Walk the store», the editor's link, share keys, Instagram links, the Shelf Tour's «Free Tour»).
+  ⚠️ The site's own top-level pages win over a store, so no store may take their names: `RESERVED_SLUGS`
+  (`productLink.ts`, tested), refused at registration; `isShortWalkPath` never reads `/demo` etc. as a store. A NEW
+  top-level page must be added to `RESERVED_SLUGS`. `/walk` (the list) still lists only published or «Show on the
+  stores' list» stores.
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,

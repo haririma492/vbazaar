@@ -5,6 +5,7 @@
  *   GET                     → { stores: [{ slug, name, status, live, steps, spent }] }
  *   POST { intake }         → { slug }   (refused, every problem named, when an answer is wrong)
  */
+import { RESERVED_SLUGS } from "@/lib/stores/productLink";
 import { NextRequest } from "next/server";
 import { r2Config } from "@/lib/splats/r2";
 import { checkIntake, newStore, slugOf, statusOf, type Intake } from "@/lib/stores/store";
@@ -42,7 +43,8 @@ export async function POST(req: NextRequest) {
   const i = intake as Intake;
   const slug = slugOf(i.nameEn);
   // `area-…` is where the bazaar's own areas keep their uploads.
-  if (slug === "new" || slug === "areas") return fail(400, "«New» and «Areas» are this site's own pages: give the store a fuller English name.");
+  // A store's page is vbazaar.app/<slug>: never one of the site's own pages (2026-11-17).
+  if (RESERVED_SLUGS.has(slug)) return fail(400, `«${slug}» is one of this site's own pages: give the store a fuller English name. · این نام برای صفحه‌های خود سایت است.`);
   if (slug.startsWith("area-")) return fail(400, "A store's English name may not start with «Area». · نام فروشگاه با Area شروع نشود.");
   const s = newStore(slug, i, hashPassword(i.password.trim()), new Date());
   if (!(await createStore(s))) return fail(409, `A store at /stores/${slug} already exists. Give this one a different English name. · این نام قبلاً ثبت شده است.`);
