@@ -3172,7 +3172,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               <img src={sh.photo.thumb} alt="" data-nosave {...noSave} className="block h-full w-full object-cover" />
               <Watermark size="xs" />
             </button>
-            <p dir="rtl" className="mt-1 w-max max-w-[min(26rem,60vw)] rounded-md bg-black/60 px-2 py-0.5 text-center text-[clamp(15px,2.4vw,22px)] font-extrabold leading-snug text-amber-100 shadow">
+            <p dir="rtl" className="mt-1 w-max max-w-[min(26rem,60vw)] rounded-md bg-black/60 px-2 py-0.5 text-center text-[clamp(12px,1.92vw,17.6px)] font-extrabold text-amber-100 shadow">
               {faShelfOrdinal(nth)}
               {/* Its names after it, «(کهن - Oldies)» (owner, 2026-11-17: moved here from the tray, "in the round bracket
                   (farsi - english)"); none when the shelf has only a number. */}
@@ -3181,7 +3181,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
                 const fa = strip(sh.label.fa), en = strip(sh.label.en);
                 const named = (x: string) => x && !/^(shelf|قفسه)\s*[\d۰-۹]+$/i.test(x);
                 const parts = [named(fa) ? fa : "", named(en) && en !== fa ? en : ""].filter(Boolean);
-                return parts.length ? <span className="ms-1.5 text-[0.8em] font-bold">({parts.join(" - ")})</span> : null;
+                return parts.length ? <span className="ms-1.5">({parts.join(" - ")})</span> : null;
               })()}
             </p>
           </div>
