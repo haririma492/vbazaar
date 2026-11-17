@@ -204,7 +204,7 @@ export default function ShelfTour() {
           {tour && (
             <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
               <span className="rounded-full bg-[#00B8C8] px-3 py-1 text-[#06131c]">🛒 Shelf Tour</span>
-              <a className="rounded-full px-3 py-1 text-white/80" href={live ? `/walk/${slug}` : `/vca/walk?v=${encodeURIComponent(tour.walk)}`}>👣 Free Tour</a>
+              <a className="rounded-full px-3 py-1 text-white/80" href={live ? `/${slug}/vtour1.mp4` : `/vca/walk?v=${encodeURIComponent(tour.walk)}`}>👣 Free Tour</a>
             </span>
           )}
           <a className="text-white/80 underline" href={`/vca/tour?s=${encodeURIComponent(slug)}&view=photos`}>📷 Photos</a>

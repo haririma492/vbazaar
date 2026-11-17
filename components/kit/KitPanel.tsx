@@ -139,8 +139,10 @@ function BigPhoto({ photos, at, onAt, name, lang, onClose }: { photos: string[];
     <div dir="ltr" role="dialog" aria-label={name} onClick={(e) => { e.stopPropagation(); onClose(); }} onPointerDown={(e) => e.stopPropagation()}
       className="fixed inset-0 z-[80] flex cursor-zoom-out items-center justify-center bg-black/85 p-4">
       <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
-        <img {...noSave} src={photos[at]} alt="" className="block max-h-[85vh] max-w-[92vw] rounded-xl bg-white object-contain shadow-2xl" />
-        <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"><Watermark size="lg" /></div>
+        <div className="relative">
+          <img {...noSave} src={photos[at]} alt="" className="block max-h-[85vh] max-w-[92vw] rounded-xl bg-white object-contain shadow-2xl" />
+          <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-xl"><Watermark size="lg" /></div>
+        </div>
         <p dir="auto" className="mt-2 text-center text-[15px] font-bold text-white">{name}{n > 1 ? ` · ${at + 1} / ${n}` : ""}</p>
       </div>
       {n > 1 && (

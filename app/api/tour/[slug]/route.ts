@@ -27,5 +27,5 @@ export async function GET(_req: Request, { params }: { params: { slug: string } 
     return NextResponse.json({ ok: false, error: "This store has no Shelf tour of its new (flat) video yet." }, { status: 404, headers: NO_STORE });
   }
   // A tour made before the videos went private names the public address: played through /api/media now.
-  return NextResponse.json({ ok: true, tour: { ...tour, video: toMediaUrl(tour.video) }, title: walk?.title ?? null, live: Boolean(store && hasShortAddress(store)) }, { headers: NO_STORE });
+  return NextResponse.json({ ok: true, tour: { ...tour, video: toMediaUrl(tour.video) }, title: walk?.title ?? null, live: Boolean(store?.out.walk) }, { headers: NO_STORE });
 }

@@ -4,7 +4,8 @@
 // too and sent on to the plain address. Only a store that is published, or that the operator switched onto the tours page (`onTours`): any other slug opens nothing.
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import Walk360 from "@/components/virtual-bazaar/walk/Walk360";
+import { storeWalkPath } from "@/lib/stores/productLink";
+import { readStore } from "@/lib/stores/bucket";
 import { readTourStores } from "@/lib/stores/directory";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,10 @@ export default async function StoreWalk({ params, searchParams }: { params: { sl
     const q = new URLSearchParams(Object.entries(searchParams).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
     redirect(`/walk/${slug}${q ? `?${q}` : ""}`);
   }
-  const s = (await readTourStores()).find((x) => x.slug === slug);
-  if (!s) notFound();
-  return <Walk360 walkKey={s.walk} />;
+  // Any store with a walk (the new address has no list behind it).
+  const s = await readStore(slug).catch(() => null);
+  if (!s?.out.walk) notFound();
+  // The store's address is now /<store>/vtour1.mp4 (owner, 2026-11-17): links already shared are sent on to it.
+  const q = new URLSearchParams(Object.entries(searchParams).flatMap(([k, v]) => (typeof v === "string" ? [[k, v]] : []))).toString();
+  redirect(`${storeWalkPath(slug)}${q ? `?${q}` : ""}`);
 }

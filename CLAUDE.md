@@ -211,6 +211,14 @@ plan and the Managed Agents decision are in
   published OR the operator ticks «Show on the stores' list» on its page (`onTours` on the record, action
   `toursShow`, `hasShortAddress`, `readTourStores`). The bazaar's own directory (home page, `/s/<slug>`) stays
   published stores only. Switched on that day: saraye-bamdad, shirazgallery, helogolab (the test stores left off).
+- **⚠️ A store's tour address is now `vbazaar.app/<store>/vtour1.mp4`** (owner, 2026-11-17: *"make this link URL to be
+  sensible https://vbazaar.app/vca/walk?v=scenes%2Fstore-nuttime%2Fwalk-20261116-053157.mp4 e.g.
+  https://vbazaar.app/nuttime/vtour1.mp4"*). `app/[store]/[tour]/page.tsx`: the store's walk as it is today (it
+  outlives a new video), `.mp4` optional, every query (`p`, `shelf`, `section`, `product`) as on the long address; EVERY
+  store with a walk has it, published or not (the long address opened any walk anyway); noindex. `storeWalkPath`,
+  `TOUR_PATH_RE`, `isShortWalkPath` (`productLink.ts`, tested). Every link the site makes uses it (the store page's
+  «Walk the store», share keys, Instagram bio and product links, the Shelf Tour's «Free Tour»); `/walk/<store>` and
+  `/s/<store>` send on to it. `/walk` (the list) still lists only published or «Show on the stores' list» stores.
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind
   `logo`) at registration and on the store's page, which also takes a pasted picture (Ctrl+V / ⌘V on the page,

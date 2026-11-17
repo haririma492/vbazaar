@@ -10,7 +10,17 @@ export const SITE = "https://vbazaar.app";
  * new video. Only a published store has it (an unpublished one's slug must not open its walk); the long address
  * with the video's key keeps working for every walk.
  */
-export const storeWalkPath = (slug: string) => `/walk/${slug}`;
+export const storeWalkPath = (slug: string) => `/${slug}/vtour1.mp4`;
+
+/**
+ * ⚠️ THE STORE'S TOUR ADDRESS IS NOW /<store>/vtour1.mp4 (owner, 2026-11-17: "make this link URL to be sensible
+ * https://vbazaar.app/vca/walk?v=scenes%2Fstore-nuttime%2Fwalk-20261116-053157.mp4 e.g.
+ * https://vbazaar.app/nuttime/vtour1.mp4"): `app/[store]/[tour]/page.tsx`, for every store with a walk; `vtour1` is its
+ * Free Tour, `.mp4` may be left off. The older /walk/<store> is sent on to it.
+ */
+export const TOUR_PATH_RE = /^\/([a-z0-9][a-z0-9-]{0,62})\/vtour1(?:\.mp4)?$/i;
+/** Is this page address a store's short tour address (the new one, or the older /walk/<store>)? */
+export const isShortWalkPath = (path: string) => TOUR_PATH_RE.test(path) || /^\/walk\/[^/]+$/.test(path);
 
 /** With `slug` (a published store): the short address. */
 export function productLink(walkKey: string, n: number, origin = SITE, slug?: string): string {

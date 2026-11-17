@@ -72,6 +72,7 @@ import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
 import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { noSave } from "@/components/kit/noSave";
+import { isShortWalkPath } from "@/lib/stores/productLink";
 import Watermark from "@/components/kit/Watermark";
 import { useKit } from "@/components/kit/useKit";
 import KitPanel, { type Lang as KitLang } from "@/components/kit/KitPanel";
@@ -743,7 +744,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     const addressTo = (key: string) => {
       try {
         const u = new URL(window.location.href);
-        if (u.pathname.startsWith("/walk/")) { u.pathname = "/vca/walk"; u.searchParams.delete("p"); }
+        if (isShortWalkPath(u.pathname)) { u.pathname = "/vca/walk"; u.searchParams.delete("p"); }
         u.searchParams.set("v", key);
         window.history.replaceState(null, "", u.toString());
       } catch { /* the address is a convenience */ }
@@ -3106,7 +3107,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           className="absolute right-4 top-[12rem] z-20"
           snapshot={() => engine.current?.snapshot() ?? Promise.resolve(null)}
           title={walkOf(walks, view.key)?.title ?? { en: "the Virtual Bazaar" }}
-          link={() => view.key === walkKey && window.location.pathname.startsWith("/walk/")
+          link={() => view.key === walkKey && isShortWalkPath(window.location.pathname)
             ? `${window.location.origin}${window.location.pathname}${card?.n ? `?p=${card.n}` : ""}`
             : `${window.location.origin}/vca/walk?v=${encodeURIComponent(view.key!)}${card?.n ? `&p=${card.n}` : ""}`}
         />
