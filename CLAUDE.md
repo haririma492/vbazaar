@@ -529,7 +529,11 @@ plan and the Managed Agents decision are in
   - **The Free Tour opens zoomed out** (owner, 2026-11-17: *"during free tour make the view zoomed out by default if
     shoppers need they zoom in … we already have high quality photos of type IV and V and III"*): a store with its kit
     starts at 100° (the zoom's widest; it was 67.4°), once, when the kit comes on (`setKit`). **The tray's shelf name**:
-    one number, the Farsi name large without its number, the English («3 · Elm») smaller under it, no sections' count.
+    one line, the Farsi name without its number then the English in round brackets, both at one size (owner, 2026-11-17:
+    *"make english and farsi the same font size, english in round bracket in front"*), no sections' count; under it, in
+    the black area, «برای خرید روی تصویر طبقات اینجا یا روی تصویر قفسه در بالا سمت چپ قفسه کلیک کنید». Under the Type III
+    photo at the top left, the shelf in Farsi words, large: «قفسه اول», «قفسه دوم»… (`faShelfOrdinal`, by the shelf's
+    number, tested).
   - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,

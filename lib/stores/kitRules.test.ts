@@ -174,3 +174,15 @@ test("a section takes a name (English and Farsi) and keeps its number; shoppers 
   assert.equal(sectionLabel(cleared.shelves[0].sections[0], "en"), "Section 2");
   assert.ok("error" in setSectionName(k, "nope", "x", ""));
 });
+
+test("a shelf's number in Farsi words, as an ordinal", async () => {
+  const { faShelfOrdinal } = await import("./kitRules.ts");
+  assert.equal(faShelfOrdinal(1), "قفسه اول");
+  assert.equal(faShelfOrdinal(2), "قفسه دوم");
+  assert.equal(faShelfOrdinal(3), "قفسه سوم");
+  assert.equal(faShelfOrdinal(4), "قفسه چهارم");
+  assert.equal(faShelfOrdinal(13), "قفسه سیزدهم");
+  assert.equal(faShelfOrdinal(23), "قفسه بیست و سوم");
+  assert.equal(faShelfOrdinal(30), "قفسه سی‌ام".replace("‌", ""));
+  assert.equal(faShelfOrdinal(45), "قفسه ۴۵ام");
+});

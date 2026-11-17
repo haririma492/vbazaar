@@ -86,13 +86,15 @@ export default function KitTray({ shelf, dir, picked, onPick, lang }: {
         {layers.map((l) => (
           <div key={l.shelf.id} className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
             style={{ opacity: l.state === "on" ? 1 : 0, transform: `translate3d(0,${l.state === "on" ? "0" : l.state === "in" ? "30%" : "-30%"},0)`, transition: `opacity ${SWAP_MS}ms ${EASE}, transform ${SWAP_MS}ms ${EASE}` }}>
-            {/* One number, not two; the Farsi name large, the English smaller (owner, 2026-11-17: "there are two numbers (3)
-                one is enough, english font is too large, make the farsi font larger"; the sections' count removed). */}
-            <p dir="rtl" className="text-[clamp(18px,5vw,32px)] font-extrabold leading-tight text-amber-100 [text-wrap:balance]">
-              {l.shelf.label.fa.replace(/^[\d۰-۹]+\s*·\s*/, "")}
+            {/* One line, Farsi and English the same size, the English in round brackets after it (owner, 2026-11-17:
+                "make english and farsi the same font size, english in round bracket in front, fonts to be the same as
+                english text size"); one number only. */}
+            <p dir="rtl" className="text-[clamp(12px,2.8vw,16px)] font-bold leading-snug text-amber-100 [text-wrap:balance]">
+              {l.shelf.label.fa.replace(/^[\d۰-۹]+\s*·\s*/, "")} <span dir="ltr" className="inline-block">({l.shelf.label.en})</span>
             </p>
-            <p dir="ltr" className="text-[clamp(11px,2.6vw,15px)] font-semibold leading-tight text-amber-100/70">
-              {l.shelf.label.en}
+            {/* How to buy (owner, 2026-11-17: on the black area of the lower panel). */}
+            <p dir="rtl" className="mt-1.5 text-[clamp(10px,2.3vw,13px)] leading-snug text-white/70">
+              برای خرید روی تصویر طبقات اینجا یا روی تصویر قفسه در بالا سمت چپ قفسه کلیک کنید
             </p>
           </div>
         ))}

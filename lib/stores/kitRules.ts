@@ -403,3 +403,21 @@ export const sectionLabel = (s: { i: number; name?: { en: string; fa?: string } 
   if (s.name) return lang === "fa" ? s.name.fa || s.name.en : s.name.en;
   return lang === "fa" ? `بخش ${String(s.i).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)])}` : `Section ${s.i}`;
 };
+
+/**
+ * «قفسه اول», «قفسه دوم» … (owner, 2026-11-17: under the shelf's photo on the Free Tour "write قفسه دوم or قفسه اول and
+ * so on in larger text"). 1–30 in words; past that, the number with «ام». Pure.
+ */
+export function faShelfOrdinal(n: number): string {
+  const ones = ["", "یک", "دو", "سه", "چهار", "پنج", "شش", "هفت", "هشت", "نه"];
+  const teens = ["ده", "یازده", "دوازده", "سیزده", "چهارده", "پانزده", "شانزده", "هفده", "هجده", "نوزده"];
+  const tens = ["", "", "بیست", "سی"];
+  const word = (k: number) => (k < 10 ? ones[k] : k < 20 ? teens[k - 10] : `${tens[Math.floor(k / 10)]}${k % 10 ? ` و ${ones[k % 10]}` : ""}`);
+  let ord: string;
+  if (n === 1) ord = "اول";
+  else if (Number.isInteger(n) && n > 1 && n <= 39) {
+    const w = word(n);
+    ord = w.endsWith("سه") ? `${w.slice(0, -2)}سوم` : w.endsWith("سی") ? `${w}ام` : `${w}م`;
+  } else ord = `${String(n).replace(/\d/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)])}ام`;
+  return `قفسه ${ord}`;
+}

@@ -70,7 +70,7 @@ import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
 import { quadPoints, shelfNear } from "@/lib/splats/shelves";
-import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, wholeShelf, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
+import { coverOf, readKitShare, sharedSection, shelfMoment, trayByTime, trayCross, wholeShelf, faShelfOrdinal, type KitShare, type ShopSection, type ShopShelf } from "@/lib/stores/kitRules";
 import { noSave } from "@/components/kit/noSave";
 import { isShortWalkPath } from "@/lib/stores/productLink";
 import Watermark from "@/components/kit/Watermark";
@@ -3126,14 +3126,22 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         const sh = kit.shelves.find((x) => x.id === trayId);
         const all = sh ? wholeShelf(sh) : null;
         if (!sh?.photo || !all) return null;
+        // Under the photo, which shelf it is in Farsi words, large (owner, 2026-11-17: "under the photo of type III (the
+        // shelf) write قفسه دوم or قفسه اول and so on in larger text"): by the shelf's number, else its place in the walk.
+        const nth = sh.n ?? (trayShelves.findIndex((x) => x.id === sh.id) + 1 || 1);
         return (
-          <button type="button" key={sh.id} data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
-            className={`absolute left-3 z-20 overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg ${logoOf(walks, view.key) ? "top-[4.6rem] sm:top-[5.1rem]" : "top-3"}`}
-            style={{ width: "16.667%", aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
-            aria-label={`${sh.label.en} · ${sh.label.fa}`}>
-            <img src={sh.photo.thumb} alt="" data-nosave {...noSave} className="block h-full w-full object-cover" />
-            <Watermark size="xs" />
-          </button>
+          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[4.6rem] sm:top-[5.1rem]" : "top-3"}`} style={{ width: "16.667%" }}>
+            <button type="button" data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
+              className="relative block w-full overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg"
+              style={{ aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
+              aria-label={`${sh.label.en} · ${sh.label.fa}`}>
+              <img src={sh.photo.thumb} alt="" data-nosave {...noSave} className="block h-full w-full object-cover" />
+              <Watermark size="xs" />
+            </button>
+            <p dir="rtl" className="mt-1 whitespace-nowrap rounded-md bg-black/60 px-2 py-0.5 text-center text-[clamp(15px,2.4vw,22px)] font-extrabold text-amber-100 shadow">
+              {faShelfOrdinal(nth)}
+            </p>
+          </div>
         );
       })()}
       {phase !== "loading" && (
