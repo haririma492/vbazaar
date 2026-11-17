@@ -26,7 +26,7 @@ function convId(slug: string): string {
   }
 }
 
-export default function StoreText({ slug, name, className = "" }: { slug: string; name?: { en: string; fa?: string } | null; className?: string }) {
+export default function StoreText({ slug, name, className = "", iconOnly = false }: { slug: string; name?: { en: string; fa?: string } | null; className?: string; /** «💬» alone (a sideways phone's short header). */ iconOnly?: boolean }) {
   const [enabled, setEnabled] = useState(false);
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -94,7 +94,7 @@ export default function StoreText({ slug, name, className = "" }: { slug: string
     <>
       <button type="button" data-track="store-text" onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         className={`relative flex items-center gap-1.5 rounded-full border border-white/30 bg-black/60 px-3 py-1.5 text-[13px] font-semibold text-white shadow hover:bg-black/75 ${className}`}>
-        💬 <span className="hidden sm:inline">Send a text to store</span>
+        💬 <span className={iconOnly ? "hidden" : "hidden sm:inline"}>Send a text to store</span>
         {answers > seen && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-rose-500 ring-2 ring-black" aria-label="New answer" />}
       </button>
       {open && (

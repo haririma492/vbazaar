@@ -272,11 +272,11 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   return (
     // Left to right whatever the page's language: the logo at the top left, «‹ Previous» on the left (the panel sets its own).
     <div dir="ltr" className="fixed inset-0 flex flex-col bg-black text-white">
-      <header className="relative flex min-h-[8.6rem] flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 py-3 pr-[8.5rem] text-[14px] sm:min-h-0 sm:pr-[15.5rem]">
+      <header className={`relative flex ${sideways ? "min-h-[5.2rem]" : "min-h-[8.6rem]"} flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 py-3 pr-[8.5rem] text-[14px] sm:min-h-0 sm:pr-[15.5rem]`}>
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
-        <StoreText slug={kit.store} name={kit.name ?? kit.title} className="mt-1" />
+        <StoreText slug={kit.store} name={kit.name ?? kit.title} className="mt-1" iconOnly={sideways} />
         {/* No «name · نام · Shelf Tour» line (owner, 2026-11-17: "remove this label … from Shelf Tour"); the logo says whose. */}
         <div className="me-auto" />
         <div className="flex shrink-0 items-center gap-2 text-[13px]">
@@ -286,7 +286,9 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
             (both tours)"). */}
         {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
-          <div className="absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/70 p-1 sm:static sm:order-last sm:mx-auto sm:w-full sm:max-w-[20rem] sm:basis-full xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto">
+          <div className={sideways
+            ? "absolute left-[12rem] right-[24rem] top-3 z-30 rounded-2xl bg-black/70 p-1"
+            : "absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/70 p-1 sm:static sm:order-last sm:mx-auto sm:w-full sm:max-w-[20rem] sm:basis-full xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto"}>
             <MusicPicker channels={channels} lang={lang} onPick={setMusic}
               current={music === NO_MUSIC ? NO_MUSIC : (music ?? radioSourceOf(kit.sound?.radio))?.id ?? null} />
           </div>
@@ -358,10 +360,10 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             <div className="relative flex min-h-0 flex-1 items-center justify-center gap-1.5 px-2 py-2">
               <button type="button" aria-label="Previous product" className={arrowRow} onClick={(e) => { e.stopPropagation(); goProduct(-1); }}>‹</button>
               {product ? (
-                <div key={product.id} className="flex max-h-full min-w-0 max-w-[420px] flex-1 flex-col items-center gap-1.5 rounded-2xl bg-white p-2.5 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div key={product.id} className="flex max-h-full min-w-0 max-w-[420px] flex-1 flex-col items-center gap-1.5 rounded-2xl [@media(max-height:500px)]:flex-row [@media(max-height:500px)]:gap-2 bg-white p-2.5 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   {product.photo
                     // eslint-disable-next-line @next/next/no-img-element
-                    ? <div className="relative min-h-0"><img {...noSave} src={product.photo} alt="" className="max-h-[22vh] max-w-full rounded-lg object-contain" /><Watermark size="sm" address={false} sparse /></div>
+                    ? <div className="relative min-h-0"><img {...noSave} src={product.photo} alt="" className="max-h-[22vh] max-w-full rounded-lg object-contain [@media(max-height:500px)]:max-h-[24vh]" /><Watermark size="sm" address={false} sparse /></div>
                     : <div className="flex h-24 w-24 items-center justify-center text-[40px]">🛍️</div>}
                   <p className="text-center text-[clamp(13px,1.6vw,17px)] font-bold leading-snug">{(lang === "fa" ? product.fa || product.en : product.en || product.fa) || "Product"}</p>
                   {product.priceCents !== null && product.priceCents > 0 && <p className="text-[15px] font-extrabold text-emerald-700">{formatCents(product.priceCents)}</p>}

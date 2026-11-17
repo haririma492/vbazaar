@@ -3037,7 +3037,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           )}
           {/* «Shelf Tour | Free Tour» in the header, the same place as the Shelf Tour's (owner, 2026-11-17). */}
           {(kitOn ? slug : tourOf) && !view.busy && !editing && phase === "walking" && (
-            <TourSwitch on="free" shelfHref={shelfTourPath(tourOf ?? slug!)} />
+            !(kitOn && sideways) && <TourSwitch on="free" shelfHref={shelfTourPath(tourOf ?? slug!)} />
           )}
           {/* A store's aisles: «‹ Aisle 2 · Aisle 3 of 6 · Aisle 4 ›» (founder, 2026-10-12: "map later, simple next previous now"). */}
           {aisleAt >= 0 && aisles.length > 1 && !view.busy && (
@@ -3142,7 +3142,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         // dir="ltr": the logo on the LEFT of the message key whatever the page's language (owner, 2026-11-17).
         <div dir="ltr" className="absolute left-3 top-3 z-20 flex items-start gap-2">
           {logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} site={kitOn ? kit?.site : null} name={kit?.name ?? kit?.title} />}
-          {storeSlugOf(view.key) && <StoreText slug={storeSlugOf(view.key)!} name={kit?.name ?? walkOf(walks, view.key)?.title ?? null} className="mt-1" />}
+          {storeSlugOf(view.key) && <StoreText slug={storeSlugOf(view.key)!} name={kit?.name ?? walkOf(walks, view.key)?.title ?? null} className="mt-1" iconOnly={sideways} />}
         </div>
       )}
       {/* THE SHELF'S WHOLE PHOTO (Type III) under the store's logo, a sixth of the screen wide, the same shelf as the tray:
@@ -3168,7 +3168,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               <img src={sh.photo.thumb} alt="" data-nosave {...noSave} className="block h-full w-full object-cover" />
               <Watermark size="xs" />
             </button>
-            <p dir="rtl" className="mt-1 w-max max-w-[min(26rem,60vw)] rounded-md bg-black/60 px-2 py-0.5 text-center text-[clamp(12px,1.92vw,17.6px)] font-extrabold text-amber-100 shadow">
+            <p dir="rtl" className="mt-1 w-max max-w-[min(26rem,calc(100vw-1.5rem))] rounded-md bg-black/60 px-2 py-0.5 text-center text-[clamp(12px,1.92vw,17.6px)] font-extrabold text-amber-100 shadow">
               {faShelfOrdinal(nth)}
               {/* Its names after it, «(کهن - Oldies)» (owner, 2026-11-17: moved here from the tray, "in the round bracket
                   (farsi - english)"); none when the shelf has only a number. */}
@@ -3201,7 +3201,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
               return <MusicPicker channels={chans.length ? chans : w.radio ? [radioSourceOf(w.radio)].filter((x): x is RadioSource => Boolean(x)) : []} current={chans.length || w.radio ? cur : null} lang={kitLang}
                 onPick={(r) => view.key && setPickRadio({ walk: view.key, radio: r })} />;
             })();
-        return el ? <div className="absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/60 p-1 sm:left-1/2 sm:top-3 sm:w-[16rem] sm:-translate-x-1/2">{el}</div> : null;
+        return el ? <div className={sideways ? "absolute left-[12rem] right-[9.5rem] top-3 z-30 max-w-[16rem] rounded-2xl bg-black/60 p-1" : "absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/60 p-1 sm:left-1/2 sm:top-3 sm:w-[16rem] sm:-translate-x-1/2"}>{el}</div> : null;
       })()}
       {/* «No music» in the music dropdown (owner, 2026-11-17: "so it stops them all"): no player at all, nothing plays. */}
       {phase !== "loading" && picked4(view.key)?.radio !== NO_MUSIC && (
@@ -3265,8 +3265,11 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       )}
       </div>
       {kitOn && kit && (
-        <div className={sideways ? "absolute bottom-0 right-0 top-[5.4rem] w-[28%]" : "absolute inset-x-0 bottom-0 h-[23%]"}>
+        <div className={sideways ? "absolute bottom-0 right-0 top-0 flex w-[28%] flex-col bg-[#1c1610]" : "absolute inset-x-0 bottom-0 h-[23%]"}>
+          {sideways && slug && !editing && <div className="shrink-0 border-l border-white/10 px-2 py-3"><TourSwitch inline on="free" shelfHref={shelfTourPath(tourOf ?? slug)} /></div>}
+          <div className={sideways ? "min-h-0 flex-1" : "h-full"}>
           <KitTray vertical={sideways} shelf={kit.shelves.find((x) => x.id === trayId) ?? null} dir={trayDir} picked={picked?.section.id ?? null} onPick={(sec, el) => void pickSection(sec, el)} lang={kitLang} />
+          </div>
         </div>
       )}
       {/* Going back to the shelf of a photo tapped in the tray: a short fade over the jump. */}
