@@ -142,7 +142,11 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
     if (i >= steps.length || i < 0) return d > 0 ? nextShelf() : seek(0);
     seek(steps[i].from);
   };
-  const arrow = "absolute top-1/2 z-10 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-[26px] font-bold leading-none text-white shadow ring-1 ring-white/30 hover:bg-black/80";
+  /** ‹ › close beside a photo (owner, 2026-11-17: "attached (with a bit of distance) to the object"): `x` is where the
+   *  photo's side is; the key sits GAP px outside it, never off the box. */
+  const ARROW = 40, GAP = 6;
+  const arrowRow = "flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-black/60 text-[26px] font-bold leading-none text-white shadow ring-1 ring-white/30 hover:bg-black/80";
+  const arrow = "absolute z-10 -translate-y-1/2 flex h-10 w-10 items-center justify-center rounded-full bg-black/60 text-[26px] font-bold leading-none text-white shadow ring-1 ring-white/30 hover:bg-black/80";
 
   useEffect(() => {
     const el = stage.current;
@@ -201,6 +205,20 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   // Before the first section, the right shows section 1 faintly (the shelf on the left is what is on show).
   const shownSec = sec ?? sections[0] ?? null;
   const secBox = useRef<HTMLDivElement>(null);
+  const [sb, setSb] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = secBox.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setSb({ w: el.clientWidth, h: el.clientHeight }));
+    ro.observe(el);
+    setSb({ w: el.clientWidth, h: el.clientHeight });
+    return () => ro.disconnect();
+  }, []);
+  /** How far in from each side the level's photo starts (object-contain), so its ‹ › sit close to it. */
+  const secIn = (() => {
+    const a = shownSec && shownSec.w && shownSec.h ? shownSec.w / shownSec.h : 4 / 3;
+    return Math.max(0, (sb.w - Math.min(sb.w, sb.h * a)) / 2);
+  })();
   /** The section photo's place on screen (stage pixels), where the grown photo starts from. */
   const rectOf = useCallback((): Rect => {
     const st = stage.current?.getBoundingClientRect(), r = secBox.current?.getBoundingClientRect();
@@ -280,6 +298,12 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
                 </svg>
                 <Watermark size="sm" sparse />
               </div>
+              {/* ‹ › beside the shelf's photo: the shelf before / after (owner, 2026-11-17: "add two also on the sides of
+                  TYPE III (shelf) so shopper can quickly maneuver though shelves"). */}
+              <button type="button" aria-label="Previous shelf" className={arrow} style={{ top: fit.fh / 2, left: Math.max(0, (lsize.w - fit.fw) / 2 - ARROW - GAP) }}
+                onClick={(e) => { e.stopPropagation(); setOpen(null); setSi((i) => (i > 0 ? i - 1 : shelves.length - 1)); }}>‹</button>
+              <button type="button" aria-label="Next shelf" className={arrow} style={{ top: fit.fh / 2, right: Math.max(0, (lsize.w - fit.fw) / 2 - ARROW - GAP) }}
+                onClick={(e) => { e.stopPropagation(); setOpen(null); nextShelf(); }}>›</button>
               <div className="absolute inset-x-0 text-center" style={{ top: fit.fh + 6 }}>
                 <p dir="rtl" className="text-[clamp(17px,2.6vw,26px)] font-extrabold leading-tight text-amber-100">
                   {faShelfOrdinal(shelf.n ?? si + 1)}{faName ? ` · ${faName}` : ""}
@@ -305,15 +329,14 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
                     style={{ opacity: shownSec?.id === x.id ? (sec ? 1 : 0.35) : 0, transition: "opacity 500ms" }} />
                 ))}
                 <Watermark size="sm" address={false} sparse />
+                <button type="button" aria-label="Previous level" className={`${arrow} top-1/2`} style={{ left: Math.max(0, secIn - ARROW - GAP) }} onClick={(e) => { e.stopPropagation(); goSection(-1); }}>‹</button>
+                <button type="button" aria-label="Next level" className={`${arrow} top-1/2`} style={{ right: Math.max(0, secIn - ARROW - GAP) }} onClick={(e) => { e.stopPropagation(); goSection(1); }}>›</button>
               </div>
-              <button type="button" aria-label="Previous level" className={`${arrow} left-1`} onClick={(e) => { e.stopPropagation(); goSection(-1); }}>‹</button>
-              <button type="button" aria-label="Next level" className={`${arrow} right-1`} onClick={(e) => { e.stopPropagation(); goSection(1); }}>›</button>
             </div>
-            <div className="relative flex min-h-0 flex-1 items-center justify-center px-12 py-2">
-              <button type="button" aria-label="Previous product" className={`${arrow} left-1`} onClick={(e) => { e.stopPropagation(); goProduct(-1); }}>‹</button>
-              <button type="button" aria-label="Next product" className={`${arrow} right-1`} onClick={(e) => { e.stopPropagation(); goProduct(1); }}>›</button>
+            <div className="relative flex min-h-0 flex-1 items-center justify-center gap-1.5 px-2 py-2">
+              <button type="button" aria-label="Previous product" className={arrowRow} onClick={(e) => { e.stopPropagation(); goProduct(-1); }}>‹</button>
               {product ? (
-                <div key={product.id} className="flex max-h-full w-full max-w-[420px] flex-col items-center gap-1.5 rounded-2xl bg-white p-2.5 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+                <div key={product.id} className="flex max-h-full min-w-0 max-w-[420px] flex-1 flex-col items-center gap-1.5 rounded-2xl bg-white p-2.5 text-neutral-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                   {product.photo
                     // eslint-disable-next-line @next/next/no-img-element
                     ? <div className="relative min-h-0"><img {...noSave} src={product.photo} alt="" className="max-h-[22vh] max-w-full rounded-lg object-contain" /><Watermark size="sm" address={false} sparse /></div>
@@ -330,6 +353,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
               ) : (
                 <p className="text-center text-[13px] text-white/50">{lang === "fa" ? "محصولات هر بخش اینجا می‌آیند" : "Each section's products show here"}</p>
               )}
+              <button type="button" aria-label="Next product" className={arrowRow} onClick={(e) => { e.stopPropagation(); goProduct(1); }}>›</button>
             </div>
           </div>
         </div>

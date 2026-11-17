@@ -528,7 +528,9 @@ plan and the Managed Agents decision are in
     clock (`plan()`), the grown photo and panel open from the section's photo. **‹ ›** on both sides of the level's
     photo and of the product (owner, 2026-11-17: *"put < and > on both side of photos so shoppers can go back one
     product or one level back or forth"*): to that level's or product's start on the clock (`goSection`, `goProduct`);
-    past the last, the next shelf; before the first, the whole shelf.
+    past the last, the next shelf; before the first, the whole shelf. They sit just outside the photo's own edge, 6 px
+    off (owner: *"attached (with a bit of distance) to the object"*), and the shelf's photo has its own ‹ › for the
+    shelf before / after (after the last, the first).
   - **nuttime's SADAF jars removed** (owner, 2026-11-17: *"some photos still have old wrong labels, there is no SADAAF
     product in this store"*): the four uploads of shelf 2 level 2 (made-up «سادف SADAF» labels) taken off by `kitRemove`;
     the level shows the website's five jams (Quince Jam added to its picks). The other uploads are generated pictures
