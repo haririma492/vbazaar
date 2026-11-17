@@ -2,7 +2,7 @@
  * «SEND A TEXT TO STORE» — the server side (owner, 2026-11-17; rules in `textRules.ts`). Twilio carries the texts:
  *
  *   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN  the account (Railway)
- *   TWILIO_FROM                            the Twilio number texts come from and replies go to (+1…)
+ *   TWILIO_FROM (or TWILIO_FROM_NUMBER)    the Twilio number texts come from and replies go to (+1…)
  *
  * Without them the shoppers' key is not shown. A shopper's text goes to the store's phone (or the owner's, until the
  * operator turns texting on); the store's reply comes to `/api/sms/inbound` (Twilio's webhook, signed and checked)
@@ -15,8 +15,11 @@ import { readMastersText, writeMastersJson } from "@/lib/splats/r2";
 import type { StoreRecord } from "./store";
 import { TEXT_OWNER, codeOf, e164, type TextConversation } from "./textRules";
 
+/** The Twilio number: `TWILIO_FROM`, or `TWILIO_FROM_NUMBER` as the owner's other project names it (2026-11-17). */
+const fromNumber = () => e164(process.env.TWILIO_FROM || process.env.TWILIO_FROM_NUMBER);
+
 export function textingConfigured(): boolean {
-  return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && e164(process.env.TWILIO_FROM));
+  return Boolean(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && fromNumber());
 }
 
 /** Where a store's texts go now: its own phone once texting is turned on for it, else the owner's. */
@@ -25,7 +28,7 @@ export function textTarget(s: StoreRecord): string {
 }
 
 export async function sendSms(to: string, body: string): Promise<void> {
-  const sid = process.env.TWILIO_ACCOUNT_SID!, token = process.env.TWILIO_AUTH_TOKEN!, from = e164(process.env.TWILIO_FROM)!;
+  const sid = process.env.TWILIO_ACCOUNT_SID!, token = process.env.TWILIO_AUTH_TOKEN!, from = fromNumber()!;
   const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(sid)}/Messages.json`, {
     method: "POST",
     headers: { authorization: `Basic ${Buffer.from(`${sid}:${token}`).toString("base64")}`, "content-type": "application/x-www-form-urlencoded" },

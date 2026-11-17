@@ -161,7 +161,7 @@ plan and the Managed Agents decision are in
     `/api/sms/inbound` (Twilio's webhook, signature checked against `https://vbazaar.app/api/sms/inbound`) and goes to
     the conversation its «#CODE» names, else the one that last texted that phone (`texts/last.json`). Conversations:
     `texts/conv/<id>.json` (masters bucket, private).
-  - **Needs on Railway:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` (the Twilio number, +1…); in Twilio,
+  - **Needs on Railway:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM` or `TWILIO_FROM_NUMBER` (the Twilio number, +1…; the owner's other project's names work as they are); in Twilio,
     the number's «A message comes in» webhook = `https://vbazaar.app/api/sms/inbound` (HTTP POST). Without them the key
     is not shown to anyone.
 - **Visitor statistics, with AAA** (owner, 2026-11-11: *"add statistics collection to vbazaar.app with admin mode
