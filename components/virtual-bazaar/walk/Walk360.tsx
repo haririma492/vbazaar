@@ -62,7 +62,6 @@ import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
 import { ProductCard } from "@/components/stores/Products";
 import { isBookStore } from "@/lib/stores/store";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
-import ShareToStory from "./ShareToStory";
 import WalkStats from "./WalkStats";
 import { useAdminMode } from "@/lib/admin/useAdminMode";
 import { productParam } from "@/lib/stores/productLink";
@@ -3119,17 +3118,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {/* The link to vbazaar.app (a bazaar sign) on the right, from the first screen (owner, 2026-11-06); the sound key and the
           website key sit below it. z-40: above the «Start walking» screen (z-30), so it works before the walk starts too. */}
       {phase !== "loading" && <TourBazaarLink overlay className="absolute right-3 top-3 z-40" />}
-      {/* «Share to Story» (the Instagram pathway): inside a store's walk, for shoppers; not while editing. */}
-      {phase === "walking" && !editing && !spotMode && view.key && /^scenes\/store-/.test(view.key) && (
-        <ShareToStory
-          className="absolute right-4 top-[12rem] z-20"
-          snapshot={() => engine.current?.snapshot() ?? Promise.resolve(null)}
-          title={walkOf(walks, view.key)?.title ?? { en: "the Virtual Bazaar" }}
-          link={() => view.key === walkKey && isShortWalkPath(window.location.pathname)
-            ? `${window.location.origin}${window.location.pathname}${card?.n ? `?p=${card.n}` : ""}`
-            : `${window.location.origin}/vca/walk?v=${encodeURIComponent(view.key!)}${card?.n ? `&p=${card.n}` : ""}`}
-        />
-      )}
+      {/* «📸 Share to Story» was REMOVED from the walk (owner, 2026-11-17: "remove the camera with text share to story");
+          ShareToStory.tsx stays in the repo, unused. Share keys on shelves, sections and products remain. */}
       {/* The store's own logo at the top left (owner, 2026-11-06); out of the way while editing (the editor sits there). */}
       {phase !== "loading" && !editing && logoOf(walks, view.key) && <StoreLogo src={logoOf(walks, view.key)!} className="absolute left-3 top-3 z-20" />}
       {/* THE SHELF'S WHOLE PHOTO (Type III) under the store's logo, a sixth of the screen wide, the same shelf as the tray:

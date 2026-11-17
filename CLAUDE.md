@@ -142,7 +142,8 @@ plan and the Managed Agents decision are in
   music); a private video, downloaded through a signed attachment link (`presignDownload`); plus a ready caption.
   (2) **The bio link** (`walkLink`). (3) **A link per lit product** (`productLink`, `/vca/walk?v=<walk>&p=<n>`): the
   walk opens facing that product (`goToItem`, the middle of its pins), its card open, the door photo skipped.
-  **«📸 Share to Story»** on every store walk (`walk/ShareToStory.tsx`): the frame on screen (`snapshot`, read right
+  **⚠️ «📸 Share to Story» is OFF the walk** (owner, 2026-11-17: *"remove the camera with text share to story"*; the
+  file stays, unused). It was, on every store walk (`walk/ShareToStory.tsx`): the frame on screen (`snapshot`, read right
   after `renderer.render`) on a 9:16 card with the store's name and vbazaar.app, to the phone's share sheet (or saved);
   the link (the walk, or the open product) is copied for Instagram's link sticker. Not built yet: «comment WALK →
   automatic DM» (needs a Meta app, its review and each store's Business account).
