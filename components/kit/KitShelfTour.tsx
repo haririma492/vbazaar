@@ -272,18 +272,18 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} /> : null}
-        <div className="me-auto min-w-0 max-w-[calc(50%-12rem)] flex-1 truncate"><b>{name}</b>{kit.title?.fa ? <span className="text-white/60"> · {kit.title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="me-auto min-w-0 flex-1 truncate xl:max-w-[calc(50%-15rem)]"><b>{name}</b>{kit.title?.fa ? <span className="text-white/60"> · {kit.title.fa}</span> : null} · <span className="text-white/60">Shelf Tour</span></div>
+        <div className="flex shrink-0 items-center gap-2 text-[13px]">
           <span className="flex items-center rounded-full border border-white/25 bg-black/70 p-1 font-semibold">
-            <span className="rounded-full bg-[#00B8C8] px-3 py-1 text-[#06131c]">🛒 Shelf Tour</span>
-            {walkHref && <a className="rounded-full px-3 py-1 text-white/80" href={walkHref}>👣 Free Tour</a>}
+            <span className="rounded-full bg-[#00B8C8] px-2.5 py-1 text-[#06131c]">🛒 Shelf Tour</span>
+            {walkHref && <a className="rounded-full px-2.5 py-1 text-white/80" href={walkHref}>👣 Free Tour</a>}
           </span>
           <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
         </div>
         {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
             (both tours)"). */}
         {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
-          <div className="absolute left-1/2 top-2 z-30 w-[min(16rem,40vw)] -translate-x-1/2 rounded-2xl bg-black/70 p-1">
+          <div className="z-30 order-last mx-auto w-full max-w-[20rem] basis-full rounded-2xl bg-black/70 p-1 xl:absolute xl:left-1/2 xl:top-2 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto">
             <MusicPicker channels={channels} lang={lang} onPick={setMusic}
               current={music === NO_MUSIC ? NO_MUSIC : (music ?? radioSourceOf(kit.sound?.radio))?.id ?? null} />
           </div>
