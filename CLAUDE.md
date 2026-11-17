@@ -233,7 +233,8 @@ plan and the Managed Agents decision are in
   store and visit the web site?"*): with the store's website on its record (`ShopKit.site`, `name`), the logo is a key
   (the hand, a small lift) and opens a card: «آیا می‌خواهید فروشگاه مجازی … را ترک کنید و به وبسایت آن بروید؟» / the
   English, «Stay · بمانم» and «Visit the website · بله» (same tab). Both tours (the Free Tour once its kit is on).
-  The Shelf Tour's «name · نام · Shelf Tour» line at the top is gone (owner: *"remove this label"*).
+  The Shelf Tour's «name · نام · Shelf Tour» line at the top is gone (owner: *"remove this label"*). So is its «Basket →» link,
+  for now (owner, 2026-11-17: *"for now remove this link Basket → from top of the Shelf Tour"*).
 - **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,
   3840×1920 or larger, 25 fps, 8-bit, H.264 or H.265; owner's laptop could not
   export 8K, 2026-11-03). The crew makes its own web and phone copies, so the

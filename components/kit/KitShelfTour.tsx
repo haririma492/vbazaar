@@ -279,7 +279,8 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
             <span className="rounded-full bg-[#00B8C8] px-2.5 py-1 text-[#06131c]">🛒 Shelf Tour</span>
             {walkHref && <a className="rounded-full px-2.5 py-1 text-white/80" href={walkHref}>👣 Free Tour</a>}
           </span>
-          <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
+          {/* «Basket →» taken off the top for now (owner, 2026-11-17: "for now remove this link Basket → from top of the
+              Shelf Tour"); the basket is still /basket. */}
         </div>
         {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
             (both tours)"). */}
