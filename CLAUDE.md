@@ -248,7 +248,10 @@ plan and the Managed Agents decision are in
   (`storeWalkPath`: «Walk the store», the editor's link, share keys, Instagram links, the Shelf Tour's «Free Tour»).
   ⚠️ The site's own top-level pages win over a store, so no store may take their names: `RESERVED_SLUGS`
   (`productLink.ts`, tested), refused at registration; `isShortWalkPath` never reads `/demo` etc. as a store. A NEW
-  top-level page must be added to `RESERVED_SLUGS`. `/walk` (the list) still lists only published or «Show on the
+  top-level page must be added to `RESERVED_SLUGS`. **The Shelf Tour is `vbazaar.app/<store>?shelf`** (owner, 2026-11-17: *"change this URL
+  https://vbazaar.app/vca/tour?s=nuttime to https://vbazaar.app/nuttime?shelf"*): an EMPTY `shelf` on the store's page
+  renders the Shelf Tour (`TourPage store`); `?shelf=<id>` stays a share link into the Free Tour. `shelfTourPath`
+  (`productLink.ts`) makes every link; `/vca/tour?s=<store>` is sent on there (its `&view=photos` stays). `/walk` (the list) still lists only published or «Show on the
   stores' list» stores.
 - **The store's logo** (owner, 2026-11-06: *"on the new store registration canvas lets add store logo also and
   accept a paste from clipboard and place that on the top left of the virtual tour"*): an upload card (kind

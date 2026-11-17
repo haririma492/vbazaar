@@ -11,6 +11,10 @@ export const SITE = "https://vbazaar.app";
  * with the video's key keeps working for every walk.
  */
 export const storeWalkPath = (slug: string) => `/${slug}`;
+/** A store's Shelf Tour: `vbazaar.app/<store>?shelf` (owner, 2026-11-17: "change this URL https://vbazaar.app/vca/tour?s=nuttime
+ *  to https://vbazaar.app/nuttime?shelf"). An EMPTY `shelf` is the Shelf Tour; `?shelf=<id>` is still a share link into
+ *  the Free Tour. */
+export const shelfTourPath = (slug: string) => `/${slug}?shelf`;
 
 /**
  * ⚠️ EACH STORE'S OWN PAGE IS vbazaar.app/<store> (owner, 2026-11-17: "/vca/walk is not good, each store deserves its

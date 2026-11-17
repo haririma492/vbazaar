@@ -13,9 +13,9 @@ import { kitReady, type ShopKit } from "@/lib/stores/kitRules";
 import ShelfLevels from "./ShelfLevels";
 import ShelfTour from "./ShelfTour";
 
-export default function TourPage() {
+export default function TourPage({ store }: { store?: string } = {}) {
   const q = useSearchParams();
-  const slug = q.get("s") ?? "";
+  const slug = store ?? q.get("s") ?? "";
   const photos = q.get("view") === "photos";
   const [got, setGot] = useState<null | false | { shelves: Parameters<typeof ShelfLevels>[0]["data"]; name: { en: string; fa?: string } | null; walk: string | null }>(null);
   /** null while asked; false: no kit (the film). */

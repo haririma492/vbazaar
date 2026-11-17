@@ -23,6 +23,7 @@
  * top and the product (V) below.
  * Phones are held upright: sideways, the screen says so.
  */
+import { shelfTourPath } from "@/lib/stores/productLink";
 import { noSave } from "./noSave";
 import Watermark from "./Watermark";
 import ShareKey from "./ShareKey";
@@ -413,7 +414,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
               style={{ left: shown.x, top: shown.y, width: shown.w, height: shown.h, transition: `all ${GROW_MS}ms cubic-bezier(.2,.8,.2,1)` }}>
               <Watermark size="lg" address={false} sparse />
             </div>
-            <KitPanel share={{ base: kit.link, shelf: shelf.id }} section={open.section} title={shelf.label} merchant={kit.merchant || name} href={`/vca/tour?s=${encodeURIComponent(slug)}`}
+            <KitPanel share={{ base: kit.link, shelf: shelf.id }} section={open.section} title={shelf.label} merchant={kit.merchant || name} href={shelfTourPath(slug)}
               lang={lang} onLang={setLang} onClose={close} highlight={open.highlight}
               className={narrow ? "absolute inset-x-2 bottom-2 top-[44%]" : "absolute bottom-3 right-3 top-3 w-[400px] max-w-[42%]"}
             />

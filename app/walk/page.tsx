@@ -3,6 +3,7 @@
 // just for the demo"; then 2026-11-11, "for consistency also change this to /walk": the list is /walk, each store
 // /walk/<store>, and /tours is sent here). Each store: its door photo, its name, and one key per tour it has. Not indexed and not
 // linked from the home page; the switch is «Show on the tours page» on the store's page.
+import { shelfTourPath } from "@/lib/stores/productLink";
 import type { Metadata } from "next";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import { readTourStores } from "@/lib/stores/directory";
@@ -42,7 +43,7 @@ export default async function WalkListPage() {
               <p className="text-[13px] text-white/55">{s.category}</p>
               <div className="mt-auto flex flex-wrap gap-2 pt-2">
                 <a href={`/walk/${s.slug}`} className="inline-flex min-h-[44px] items-center rounded-full border border-amber-300/50 bg-amber-300/15 px-5 text-[15px] font-bold text-amber-100">👣 Free Tour</a>
-                {s.shelfTour && <a href={`/vca/tour?s=${s.slug}`} className="inline-flex min-h-[44px] items-center rounded-full border border-white/20 px-5 text-[15px] font-bold text-white/85">🛒 Shelf Tour</a>}
+                {s.shelfTour && <a href={shelfTourPath(s.slug)} className="inline-flex min-h-[44px] items-center rounded-full border border-white/20 px-5 text-[15px] font-bold text-white/85">🛒 Shelf Tour</a>}
               </div>
               <p className="text-[12px] text-white/40">vbazaar.app/walk/{s.slug}</p>
             </div>

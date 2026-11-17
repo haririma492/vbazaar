@@ -11,6 +11,7 @@
  * on it (anywhere on the product) opens the walk's own card, «Add to basket».
  */
 
+import { shelfTourPath } from "@/lib/stores/productLink";
 import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ItemCard } from "@/components/virtual-bazaar/walk/WalkItems";
@@ -95,7 +96,7 @@ export default function ShelfLevels({ slug, data, name, walkKey }: { slug: strin
             <span className="rounded-full bg-[#00B8C8] px-3 py-1 text-[#06131c]">🛒 Shelf Tour</span>
             {walkKey && <a className="rounded-full px-3 py-1 text-white/80" href={`/vca/walk?v=${encodeURIComponent(walkKey)}`}>👣 Free Tour</a>}
           </span>
-          <a className="text-white/80 underline" href={`/vca/tour?s=${encodeURIComponent(slug)}`}>🎬 Back to the Shelf Tour</a>
+          <a className="text-white/80 underline" href={shelfTourPath(slug)}>🎬 Back to the Shelf Tour</a>
           <a className="text-[#00B8C8] underline" href="/basket">Basket →</a>
         </div>
       </div>

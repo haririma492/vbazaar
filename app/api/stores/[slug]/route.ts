@@ -67,7 +67,7 @@ import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit
 import { shelfLabel } from "@/lib/splats/shelves";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
-import { productLink, storeWalkPath, walkLink } from "@/lib/stores/productLink";
+import { productLink, storeWalkPath, walkLink, shelfTourPath } from "@/lib/stores/productLink";
 import { demoClear, demoCount, demoFill } from "@/lib/stores/demoFill";
 import { coverProduct, dropCover, startTidy, tidyForPage } from "@/lib/stores/tidy";
 
@@ -618,7 +618,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const working = Boolean(job?.busy && job.key === s.out.walk && Date.now() - Date.parse(job.at) < 3 * 3600_000);
     return ok({
       tour: r ? { made: r.made, seconds: r.seconds, shelves: r.clips.length, products: r.items.length, video: r.video, walk: r.walk } : null,
-      working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
+      working, note: working ? job?.note ?? "" : "", page: shelfTourPath(s.slug),
     });
   }
   if (body.action === "shelvesBuild") {
@@ -633,7 +633,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const working = Boolean(job?.busy && job.key === s.slug && Date.now() - Date.parse(job.at) < 3 * 3600_000);
     return ok({
       shelves: m ? { made: m.made, shelves: m.shelves.length, levels: m.shelves.reduce((x, sh) => x + sh.levels.length, 0) } : null,
-      working, note: working ? job?.note ?? "" : "", page: `/vca/tour?s=${s.slug}`,
+      working, note: working ? job?.note ?? "" : "", page: shelfTourPath(s.slug),
     });
   }
   if (body.action === "mapBuild") {

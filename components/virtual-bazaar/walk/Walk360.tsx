@@ -64,7 +64,7 @@ import { isBookStore } from "@/lib/stores/store";
 import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
 import WalkStats from "./WalkStats";
 import { useAdminMode } from "@/lib/admin/useAdminMode";
-import { productParam } from "@/lib/stores/productLink";
+import { productParam, shelfTourPath } from "@/lib/stores/productLink";
 import { CutEditor } from "./WalkCut";
 import { ShadowEditor } from "./WalkShadow";
 import { ShelfEditor } from "./WalkShelves";
@@ -2978,7 +2978,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
                 Shelf Tour/Free Tour 25% smaller and being the switch under the speed bar"). */}
             {kitOn && slug && !view.busy && !editing && (
               <div className="flex h-9 items-center rounded-full border border-white/25 bg-black/70 p-0.5 text-[13px] font-semibold text-white">
-                <a href={`/vca/tour?s=${tourOf ?? slug}`} className="flex-1 rounded-full py-1.5 text-center text-white/80">🛒 Shelf Tour</a>
+                <a href={shelfTourPath(tourOf ?? slug)} className="flex-1 rounded-full py-1.5 text-center text-white/80">🛒 Shelf Tour</a>
                 <span className="flex-1 rounded-full bg-[#00B8C8] py-1.5 text-center text-[#06131c]">👣 Free Tour</span>
               </div>
             )}
@@ -3042,7 +3042,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           )}
           {tourOf && !kitOn && !view.busy && !editing && (
             <div dir="ltr" className={`absolute left-1/2 z-10 flex -translate-x-1/2 items-center rounded-full border border-white/25 bg-black/70 p-1 text-[14px] font-semibold text-white ${view.inside > 0 ? "top-16" : "top-3"}`}>
-              <a href={`/vca/tour?s=${tourOf ?? slug}`} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
+              <a href={shelfTourPath(tourOf ?? slug)} className="rounded-full px-4 py-1.5 text-white/80">🛒 Shelf Tour</a>
               <span className="rounded-full bg-[#00B8C8] px-4 py-1.5 text-[#06131c]">👣 Free Tour</span>
             </div>
           )}

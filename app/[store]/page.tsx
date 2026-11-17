@@ -5,7 +5,9 @@
 // before this one, and no store may take their names (`RESERVED_SLUGS`).
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import Walk360 from "@/components/virtual-bazaar/walk/Walk360";
+import TourView from "@/components/virtual-bazaar/tour/TourPage";
 import { readStore } from "@/lib/stores/bucket";
 import { SLUG_RE } from "@/lib/stores/store";
 import { RESERVED_SLUGS, storeWalkPath } from "@/lib/stores/productLink";
@@ -25,7 +27,7 @@ export async function generateMetadata({ params }: { params: { store: string } }
   return { title: name ? `${name} · Virtual Bazaar` : "Virtual Bazaar", robots: { index: false, follow: true } };
 }
 
-export default async function StorePage({ params }: { params: { store: string } }) {
+export default async function StorePage({ params, searchParams }: { params: { store: string }; searchParams: Record<string, string | string[] | undefined> }) {
   // «vbazaar.app/nuttime&edit=1» (owner, 2026-11-17: the long links used «&edit=1», so the habit stays): what comes
   // after the first «&» is the query, and the page is sent on to «/nuttime?edit=1».
   const raw = decodeURIComponent(params.store);
@@ -36,5 +38,8 @@ export default async function StorePage({ params }: { params: { store: string } 
   }
   const s = await storeOf(params.store);
   if (!s) notFound();
+  // «?shelf» with nothing after it is the store's Shelf Tour (owner, 2026-11-17: vbazaar.app/nuttime?shelf); «?shelf=<id>»
+  // is a share link into the Free Tour, as before.
+  if (searchParams.shelf === "") return <Suspense fallback={null}><TourView store={s.slug} /></Suspense>;
   return <Walk360 walkKey={s.out.walk!} />;
 }
