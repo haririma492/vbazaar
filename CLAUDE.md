@@ -520,12 +520,16 @@ plan and the Managed Agents decision are in
     («Tap to go on»); the product card stands on the right third (under the section on a phone) with the section's photo
     beside it; buying is the card's «🛒 Buy» or «🛒 Shop this section» while a section shows (taps on the shelf's
     outlines no longer open the panel).
-  - **⚠️ Photos from the operator's computer reach shoppers only when the operator tied them to a website product**
-    (owner, 2026-11-17: *"you are using the wrong OLD type V photos where labels were made up"*). nuttime's 79 product
-    uploads of 2026-11-16 were generated concept pictures («…_CONCEPT_UNVERIFIED.png», invented labels); 75 were tied to
-    nothing, 4 tied by the matcher (`match.by: "auto"`). `shopKit`: an upload shows only with `match.by: "operator"`
-    («📷 My own photo» or the dropdown); an auto-tied one gives its website product with the website's photo; an untied
-    one is left out. The store's page still lists them all, to remove. Free Tour and Shelf Tour alike.
+  - **Every product photo the operator uploads is shown to shoppers** (owner, 2026-11-17: *"Why later shelves do not
+    show products in the basket section I have uploaded all Type Vs"*). The same day, on a misreading of *"you are using
+    the wrong OLD type V photos where labels were made up"*, uploads not tied to a website product by hand were hidden;
+    13 of nuttime's 23 sections went empty, and it was undone. ⚠️ nuttime's uploads are generated product pictures
+    (their packaging text is invented: «…_CONCEPT_UNVERIFIED.png», «Level_01_Product_01_Concept.jpg»); which ones the
+    owner calls «old» was not settled. Remove a photo on the store's page («Remove»), never hide by a rule.
+  - **The Free Tour opens zoomed out** (owner, 2026-11-17: *"during free tour make the view zoomed out by default if
+    shoppers need they zoom in … we already have high quality photos of type IV and V and III"*): a store with its kit
+    starts at 100° (the zoom's widest; it was 67.4°), once, when the kit comes on (`setKit`). **The tray's shelf name**:
+    one number, the Farsi name large without its number, the English («3 · Elm») smaller under it, no sections' count.
   - Not tried in a real browser on a real store when built (2026-11-15). Not decided: the Florida walk's doors.
 - **PPD and FPS at a walk's top left** (owner, 2026-11-11: *"accurately measure and label on top left a) actual
   PPD & 2) FPS"*; *"total pixels devided by total angels gives PPD"*, angle in degrees). `walk/WalkStats.tsx`,

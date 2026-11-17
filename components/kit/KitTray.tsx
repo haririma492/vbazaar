@@ -86,15 +86,14 @@ export default function KitTray({ shelf, dir, picked, onPick, lang }: {
         {layers.map((l) => (
           <div key={l.shelf.id} className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center"
             style={{ opacity: l.state === "on" ? 1 : 0, transform: `translate3d(0,${l.state === "on" ? "0" : l.state === "in" ? "30%" : "-30%"},0)`, transition: `opacity ${SWAP_MS}ms ${EASE}, transform ${SWAP_MS}ms ${EASE}` }}>
-            <p dir="auto" className="text-[clamp(15px,4.2vw,26px)] font-extrabold leading-tight text-amber-100 [text-wrap:balance]">
-              {lang === "fa" ? l.shelf.label.fa : l.shelf.label.en}
+            {/* One number, not two; the Farsi name large, the English smaller (owner, 2026-11-17: "there are two numbers (3)
+                one is enough, english font is too large, make the farsi font larger"; the sections' count removed). */}
+            <p dir="rtl" className="text-[clamp(18px,5vw,32px)] font-extrabold leading-tight text-amber-100 [text-wrap:balance]">
+              {l.shelf.label.fa.replace(/^[\d۰-۹]+\s*·\s*/, "")}
             </p>
-            {(lang === "fa" ? l.shelf.label.en : l.shelf.label.fa) !== (lang === "fa" ? l.shelf.label.fa : l.shelf.label.en) && (
-              <p dir="auto" className="text-[clamp(12px,3.1vw,17px)] font-semibold leading-tight text-amber-100/65">
-                {lang === "fa" ? l.shelf.label.en : l.shelf.label.fa}
-              </p>
-            )}
-            <p className="mt-1 text-[11px] text-white/40">{l.shelf.sections.length} {lang === "fa" ? "بخش" : l.shelf.sections.length > 1 ? "sections" : "section"}</p>
+            <p dir="ltr" className="text-[clamp(11px,2.6vw,15px)] font-semibold leading-tight text-amber-100/70">
+              {l.shelf.label.en}
+            </p>
           </div>
         ))}
       </div>

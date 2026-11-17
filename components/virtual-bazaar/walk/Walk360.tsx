@@ -1825,6 +1825,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         return new Promise<Blob | null>((resolve) => { snapWanted.push(resolve); });
       },
       setKit(on, f) {
+        // A store shopped from its shelf photos opens zoomed out, as wide as the zoom goes (owner, 2026-11-17: "during free
+        // tour make the view zoomed out by default if shoppers need they zoom in … we already have high quality photos of
+        // type IV and V and III"). Once, when the kit comes on; the shopper's own zoom is kept after that.
+        if (on && !kitOn) { camera.fov = 100; camera.updateProjectionMatrix(); }
         kitOn = on;
         onPlainTap = on ? f : null;
       },
