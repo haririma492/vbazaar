@@ -3144,7 +3144,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         // shelf) write قفسه دوم or قفسه اول and so on in larger text"): by the shelf's number, else its place in the walk.
         const nth = sh.n ?? (trayShelves.findIndex((x) => x.id === sh.id) + 1 || 1);
         return (
-          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[4.6rem] sm:top-[5.1rem]" : "top-3"}`} style={{ width: "16.667%" }}>
+          <div key={sh.id} className={`absolute left-3 z-20 ${logoOf(walks, view.key) ? "top-[6rem] sm:top-[6.6rem]" : "top-3"}`} style={{ width: "16.667%" }}>
             <button type="button" data-track="kit-shelf-photo" onClick={(ev) => void pickSection(all, ev.currentTarget, { shelf: sh, jump: false })}
               className="relative block w-full overflow-hidden rounded-lg border border-white/40 bg-black shadow-lg"
               style={{ aspectRatio: sh.photo.w && sh.photo.h ? `${sh.photo.w} / ${sh.photo.h}` : "4 / 3" }}
