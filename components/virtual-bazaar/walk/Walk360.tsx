@@ -92,14 +92,9 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, outlineAt, quadBox, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, smoothHide, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, outlineAt, quadBox, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
   radiosOf,
 } from "@/lib/splats/walks";
-
-/** Degrees into the photographer's zone left alone before the view is eased out of it (2026-11-17). */
-const HIDE_SLACK = THREE.MathUtils.degToRad(4);
-/** Each walk's photographer zone, smoothed once (`smoothHide`). */
-const smoothedHides = new WeakMap<object, ReturnType<typeof smoothHide>>();
 
 /**
  * How fast the pedal plays the walk (1 = as filmed). One speed: the founder
@@ -2316,24 +2311,16 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
         const p = THREE.MathUtils.clamp(pitch, -(tilt.up ?? Math.PI / 2), -(tilt.down ?? -Math.PI / 2));
         if (p !== pitch) { pitch = p; aim(); }
       }
-      const hidRaw = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
-      if (hidRaw) {
-        // Smoothed over ±1.5 s (owner, 2026-11-17: the view was shoved side to side by every wobble of the zone's
-        // readings), worked out once per zone.
-        let hid = smoothedHides.get(hidRaw);
-        if (!hid) { hid = smoothHide(hidRaw); smoothedHides.set(hidRaw, hid); }
+      const hid = !lockOff && current && !current.flat ? walkOf(walksNow, current.key)?.hide : undefined;
+      if (hid) {
         const zone = hideAt(hid, tNow());
         // The zone is where the photographer IS; the view's middle stays half
         // this screen's width clear of it, so on any screen they stay off it.
         const lim = Math.min(Math.PI - 0.02, zone.width / 2 + halfFovNow() + 0.02);
         const d = angleDiff(videoYaw(), zone.yaw);
-        const over = lim - Math.abs(d);
-        // A few degrees in is left alone (the edge of the zone, not the photographer), and beyond that the view is
-        // EASED out, a part of the way each frame, never snapped (2026-11-17).
-        if (over > HIDE_SLACK) {
-          const push = Math.min(over - HIDE_SLACK, Math.max(0.002, (over - HIDE_SLACK) * Math.min(1, dt * 6)));
-          turnYaw += (d >= 0 ? 1 : -1) * push;
-          if (Math.sign(velTurn) !== (d >= 0 ? 1 : -1)) velTurn = 0;
+        if (Math.abs(d) < lim) {
+          turnYaw += (d >= 0 ? 1 : -1) * (lim - Math.abs(d));
+          velTurn = 0;
           aim();
         }
       }
