@@ -80,7 +80,7 @@ export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
   }, [shelf, dir]);
   const pos = (l: Layer) => (l.state === "on" ? "0%" : l.state === "in" ? `${l.from * 100}%` : `${-l.from * 100}%`);
   return (
-    <div className="relative flex h-full w-full overflow-hidden border-t border-white/15 bg-gradient-to-b from-[#1b140d] to-[#0d0a07]">
+    <div className="relative flex h-full w-full overflow-hidden border-t border-white/10 bg-[#1c1610]">
       <div className="relative min-w-0 flex-1 overflow-hidden">
         {layers.map((l) => (
           <div key={l.shelf.id} className="absolute inset-0" style={{ transform: `translate3d(${pos(l)},0,0)`, transition: `transform ${SWAP_MS}ms ${EASE}`, pointerEvents: l.state === "on" ? "auto" : "none" }}>
@@ -89,7 +89,7 @@ export default function KitTray({ shelf, dir, picked, onPick, lang, music }: {
         ))}
       </div>
       {/* The shelf's name, large and readable, on the dark right-hand side; it changes with the sections. */}
-      <div className="relative w-[34%] max-w-[18rem] shrink-0 overflow-hidden border-l border-white/10 bg-black/70">
+      <div className="relative w-[34%] max-w-[18rem] shrink-0 overflow-hidden border-l border-white/10 bg-black/25">
         {music && <div className="absolute inset-x-2 top-1.5 z-10">{music}</div>}
         {layers.map((l) => (
           <div key={l.shelf.id} className={`absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center ${music ? "pt-12" : ""}`}

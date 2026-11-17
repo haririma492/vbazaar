@@ -267,7 +267,11 @@ plan and the Managed Agents decision are in
   Tour | 👣 Free Tour from free tour also to header"*): store logo and «💬 Send a text to store» at the top left, the
   music in the middle, «🛒 Shelf Tour | 👣 Free Tour» (`components/brand/TourSwitch.tsx`, one component for both) at the
   top right left of the sound key and the arch (on a phone under them); all at the same 12 px from the top. The Free
-  Tour's switch under the speed bar is gone.
+  Tour's switch under the speed bar is gone. **«Header» and «footer»** (owner's words from 2026-11-17: *"make a rectangle
+  block around header with slightly different background … make the bottom section also as a block rectangle with the
+  same background color for symmetry, lets call them from now on header and footer"*): the header is a band of `#1c1610`
+  with a thin line under it (the Free Tour draws it behind its top keys, 5.4rem high); the footer is the same colour with
+  a line above it: the Free Tour's tray, the Shelf Tour's bar and keys. The Shelf Tour's picture starts a little lower.
   The Shelf Tour's «name · نام · Shelf Tour» line at the top is gone (owner: *"remove this label"*). So is its «Basket →» link,
   for now (owner, 2026-11-17: *"for now remove this link Basket → from top of the Shelf Tour"*).
 - **Videos:** Insta360, exported from Insta360 Studio as `.mp4` (360 Video,

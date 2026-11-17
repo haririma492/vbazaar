@@ -271,7 +271,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   return (
     // Left to right whatever the page's language: the logo at the top left, «‹ Previous» on the left (the panel sets its own).
     <div dir="ltr" className="fixed inset-0 flex flex-col bg-black text-white">
-      <div className="relative flex flex-wrap items-start justify-between gap-2 px-3 py-3 pr-[15.5rem] text-[14px]">
+      <header className="relative flex flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-[#1c1610] px-3 py-3 pr-[15.5rem] text-[14px]">
         {/* The store's logo at the top left, as on the Free Tour (owner, 2026-11-17: "the store logo is missing from top
             left"); the bazaar's arch at the top right, the sound key to its left (the same place as the Free Tour's). */}
         {kit.logo ? <StoreLogo src={kit.logo} site={kit.site} name={kit.name ?? kit.title} /> : null}
@@ -295,9 +295,9 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
 {music !== NO_MUSIC && <WalkSound place="right-[5.5rem] top-4" label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
           radio={(music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
-      </div>
+      </header>
 
-      <div ref={stage} className="relative min-h-0 flex-1 overflow-hidden"
+      <div ref={stage} className="relative mt-4 min-h-0 flex-1 overflow-hidden"
         onClick={() => { if (open) return; setPaused((p) => !p); }}>
         <div className="absolute inset-0 flex">
           {/* LEFT: the shelf (Type III), always; «قفسه دوم · its name» on top; the section in view outlined. */}
@@ -420,6 +420,9 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         )}
       </div>
 
+      {/* THE FOOTER (owner, 2026-11-17: "make the bottom section also as a block rectangle with the same background color
+          for symmetry, lets call them from now on header and footer"): the tour's bar and its keys. */}
+      <footer className="mt-3 border-t border-white/10 bg-[#1c1610] pb-1 pt-2">
       {/* The tour's bar: it fills as the shelf's tour plays; a section's start is a tick; a tap goes there. */}
       <div className="relative mx-3 mt-1 h-2.5 cursor-pointer rounded-full bg-white/15" role="slider" aria-label="Where the shelf's tour is"
         aria-valuemin={0} aria-valuemax={100} aria-valuenow={total ? Math.round((clock.current / total) * 100) : 0}
@@ -443,6 +446,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         <span className="hidden text-[13px] text-white/70 sm:inline">{label} · {si + 1} / {shelves.length}</span>
         <button type="button" className={btn} disabled={si >= shelves.length - 1} onClick={() => { setOpen(null); setSi((i) => Math.min(shelves.length - 1, i + 1)); }}>{lang === "fa" ? "قفسه بعدی" : "Next shelf"} ›</button>
       </div>
+      </footer>
     </div>
   );
 }

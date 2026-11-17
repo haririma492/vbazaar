@@ -3178,6 +3178,12 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
           </div>
         );
       })()}
+      {/* THE HEADER (owner, 2026-11-17: "on both tours make a rectangle block around header with slightly different
+          background … lets call them from now on header and footer"): a band behind the logo, the text key, the music,
+          the tour switch, the sound key and the arch; the same colour as the footer (the tray) and as the Shelf Tour's. */}
+      {kitOn && kit && phase === "walking" && !editing && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[15] h-[5.4rem] border-b border-white/10 bg-[#1c1610]" aria-hidden="true" />
+      )}
       {/* THE MUSIC, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
           (both tours)"): channel or «No music», and the volume. */}
       {kitOn && kit && phase === "walking" && !editing && (() => {
