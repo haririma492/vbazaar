@@ -100,8 +100,8 @@ export default function KitTray({ shelf, dir, picked, onPick, lang, music, verti
             style={{ opacity: l.state === "on" ? 1 : 0, transform: `translate3d(0,${l.state === "on" ? "0" : l.state === "in" ? "30%" : "-30%"},0)`, transition: `opacity ${SWAP_MS}ms ${EASE}, transform ${SWAP_MS}ms ${EASE}` }}>
             {/* The shelf's name is no longer here (owner, 2026-11-17: "remove shelf names from lower panel … add them to
                 the label below shelf photo (Type III)"): only how to buy. */}
-            {/* How to buy (owner, 2026-11-17: on the black area of the lower panel). */}
-            <p dir="rtl" className={`mt-1.5 leading-snug text-white/70 ${vertical ? "text-[10px]" : "text-[clamp(10px,2.3vw,13px)]"}`}>
+            {/* How to buy (owner, 2026-11-17: on the black area of the lower panel); 2026-11-18: 20% larger, 30% bolder (400 → 520). */}
+            <p dir="rtl" className={`mt-1.5 font-[520] leading-snug text-white/70 ${vertical ? "text-[12px]" : "text-[clamp(12px,2.76vw,15.6px)]"}`}>
               برای خرید روی تصویر طبقات در اینجا یا روی تصویر قفسه در بالا سمت چپ کلیک کنید
             </p>
           </div>
