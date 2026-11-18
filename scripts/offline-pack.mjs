@@ -125,7 +125,6 @@ async function main() {
   if (!said) throw new Error("olgoo.com did not say where its videos are");
   const base = new URL(said, `${SITE}/`).href.replace(/\/+$/, "");
   const { walks } = await json("/api/splats/walks");
-  save("scenes/walks.json", walks);
 
   // One file that cannot be had is said and skipped; the rest still come.
   const missed = [];
@@ -142,7 +141,10 @@ async function main() {
     // The store's record, as the store page reads it (`readStore`): its slug, name and walk. No password.
     save(`stores/${slug}/store.json`, { slug, name: kit.title, passwordHash: "offline", out: { walk: kit.walk } });
     if (kit.walk) kitWalks.push(kit.walk);
+    // The walk's own record may hold links too (its logo): taken and made the folder's address.
+    if (kit.walk && walks.walks[kit.walk]) walks.walks[kit.walk] = await localize(walks.walks[kit.walk], take);
   }
+  save("scenes/walks.json", walks);
 
   // What /demo can reach: its walks, every door's shop, a store's other aisles.
   const todo = [startOf(walks), ...DEMO_WALKS, ...kitWalks].filter(Boolean);
