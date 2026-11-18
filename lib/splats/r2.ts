@@ -42,7 +42,8 @@ export function r2Config() {
   const account = env("R2_ACCOUNT_ID");
   const web = env("R2_BUCKET");
   // The demo without internet (`offline.ts`): the folder stands in for the buckets.
-  if (offlineDir()) return { configured: true, offline: true, webBucket: web, mastersBucket: web, publicBase: OFFLINE_BASE };
+  // (The bucket names are placeholders: nothing is sent to R2 offline, and an empty name would fail the SDK.)
+  if (offlineDir()) return { configured: true, offline: true, webBucket: "offline", mastersBucket: "offline", publicBase: OFFLINE_BASE };
   return {
     configured: Boolean(account && env("R2_ACCESS_KEY_ID") && env("R2_SECRET_ACCESS_KEY") && web),
     offline: false,
@@ -301,6 +302,7 @@ export async function downloadToFile(key: string, path: string, kind: SplatKind 
 
 /** Whether the web bucket holds `key` (a video: the private bucket, or the public one before the move). */
 export async function webObjectExists(key: string): Promise<boolean> {
+  if (offlineDir()) return offlinePath(key) !== null;
   return headIn(await readBucket("web", key), key);
 }
 
