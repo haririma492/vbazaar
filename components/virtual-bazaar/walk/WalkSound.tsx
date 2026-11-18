@@ -447,8 +447,8 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
 
   // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
   if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
-  // A phone, another channel than the main one, a YouTube programme on air: a phone cannot play it.
-  if (phone && liveYoutube && !main) return <Standby audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} label={label} />;
+  // A phone, another channel than the main one, a YouTube programme on air: the small visible player (`PhoneTube`).
+  const phoneYt = phone && liveYoutube && !main && now?.youtubeId ? now : null;
   const yt = !phone && now?.kind === "youtube" && now.youtubeId ? now : null;
 
   const toggle = () => {
@@ -479,6 +479,9 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
           }}
         />
       )}
+      {phoneYt && on && phoneYt.youtubeId && (
+        <PhoneTube videoId={phoneYt.youtubeId} start={positionAt(phoneYt, Date.now())} onEnded={() => setTick((t) => t + 1)} onError={() => setTick((t) => t + 1)} />
+      )}
       <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {speakerLabel(on, Boolean((waiting && !yt) || (yt && !tapped)))}
@@ -486,6 +489,61 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
         {label && <span className="rounded-full border border-white/20 bg-black/60 px-3 py-1 text-[12px] font-bold text-white">live music</span>}
       </div>
     </>
+  );
+}
+
+
+/**
+ * A SMALL VISIBLE YOUTUBE PLAYER, PHONES ONLY (owner, 2026-11-18, choosing it: phones refuse a HIDDEN YouTube player, so
+ * every channel airing a YouTube programme fell back to the same music on a phone). About 168×94 at the lower left; the
+ * shopper taps ▶ on it once; the next programme or track loads into the SAME player (`loadVideoById`), which an iPhone
+ * lets play on. Computers keep the hidden player. It says when a video ends or will not play (its own messages).
+ */
+function PhoneTube({ videoId, start, onEnded, onError }: { videoId: string; start: number; onEnded: () => void; onError?: () => void }) {
+  const frame = useRef<HTMLIFrameElement>(null);
+  const first = useRef({ id: videoId, start: Math.max(0, Math.floor(start)) });
+  const loaded = useRef(videoId);
+  const [playing, setPlaying] = useState(false);
+  const ended = useRef(onEnded); ended.current = onEnded;
+  const failed = useRef(onError); failed.current = onError;
+  const tell = (func: string, args: unknown[] = []) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "https://www.youtube.com");
+  const listen = () => {
+    frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "vb-phone-music", channel: "widget" }), "https://www.youtube.com");
+    tell("addEventListener", ["onStateChange"]);
+    tell("addEventListener", ["onError"]);
+    tell("setVolume", [Math.round(musicVolume() * 100)]);
+  };
+  useEffect(() => {
+    if (loaded.current === videoId) return;
+    loaded.current = videoId;
+    tell("loadVideoById", [{ videoId, startSeconds: Math.max(0, Math.floor(start)) }]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoId]);
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.origin !== "https://www.youtube.com" || e.source !== frame.current?.contentWindow) return;
+      let d: { event?: string; info?: unknown } | null = null;
+      try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch { return; }
+      if (!d || typeof d !== "object") return;
+      if (d.event === "onError") { failed.current?.(); return; }
+      const st = d.event === "onStateChange" ? d.info
+        : (d.event === "infoDelivery" || d.event === "initialDelivery") && d.info && typeof d.info === "object" ? (d.info as { playerState?: unknown }).playerState : undefined;
+      if (st === 1) { setPlaying(true); tell("setVolume", [Math.round(musicVolume() * 100)]); }
+      if (st === 0) ended.current();
+    };
+    window.addEventListener("message", onMsg);
+    const again = [setTimeout(listen, 1000), setTimeout(listen, 3000)];
+    return () => { window.removeEventListener("message", onMsg); again.forEach(clearTimeout); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div className="fixed bottom-[calc(23%+3.5rem)] left-2 z-[45] w-[168px] overflow-hidden rounded-lg border border-white/30 bg-black shadow-2xl"
+      onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
+      {!playing && <p className="bg-black/80 px-2 py-1 text-center text-[11px] leading-tight text-amber-100">▶ Tap the video for music<br /><span dir="rtl">برای شنیدن موسیقی روی ویدیو بزنید</span></p>}
+      <iframe ref={frame} title="music" width={168} height={94} className="block"
+        src={`https://www.youtube.com/embed/${first.current.id}?playsinline=1&controls=1&rel=0&enablejsapi=1&start=${first.current.start}&origin=${encodeURIComponent(window.location.origin)}`}
+        allow="autoplay; encrypted-media" onLoad={listen} />
+    </div>
   );
 }
 
@@ -518,17 +576,19 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
   const audio = useRef<HTMLAudioElement | null>(null);
   const frame = useRef<HTMLIFrameElement | null>(null);
   const failures = useRef(0);
+  const [phone, setPhone] = useState(false);
+  useEffect(() => { setPhone(window.matchMedia?.("(pointer: coarse)").matches ?? false); }, []);
 
   useEffect(() => setOn(readOn()), []);
 
   const query = sourceQuery(source);
   useEffect(() => {
     let gone = false;
-    const phone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
     void fetch(`/api/radio?${query}`, { cache: "no-store" }).then((r) => r.json()).then((j: { tracks?: RadioTrack[] }) => {
       if (gone) return;
       const all = Array.isArray(j?.tracks) ? j.tracks : [];
-      const list = phone ? all.filter((t) => t.kind === "file") : all;
+      // Phones play the YouTube tracks too now, in the small visible player (owner, 2026-11-18).
+      const list = all;
       setPos({ i: list.length ? Math.floor(Math.random() * list.length) : 0, turn: 0 });
       setTracks(list);
     }).catch(() => { if (!gone) setTracks([]); });
@@ -592,7 +652,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
   // YouTube's player says what it is doing in messages to this page: ended → the next track; an error, or
   // answering but not playing after 25 s → passed over. If it never answers at all we cannot know when the
   // video ends, so it is left to play and the next one starts after 10 minutes.
-  const showYt = Boolean(ytId && on && tapped);
+  const showYt = Boolean(ytId && on && tapped && !phone);
   const tell = (func: string, args: unknown[] = []) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "https://www.youtube.com");
   const listen = () => {
     frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "vb-music", channel: "widget" }), "https://www.youtube.com");
@@ -653,6 +713,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
           onLoad={listen}
         />
       )}
+      {phone && on && ytId && <PhoneTube videoId={ytId} start={0} onEnded={() => nextRef.current(false)} onError={() => nextRef.current(true)} />}
       <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {speakerLabel(on, Boolean((waiting && fileUrl) || (ytId && !tapped)))}

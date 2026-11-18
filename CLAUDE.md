@@ -501,6 +501,15 @@ plan and the Managed Agents decision are in
     on a phone was a fresh, locked element. Now every player takes the page's one element (`claimAudio`, the last
     owner's listeners dropped via `onAudio`; `releaseAudio` on unmount), and a pick in the music box unlocks it inside
     the tap (`primeAudio`, a moment of silence). Not tried on a real iPhone when built.
+  - **⚠️ On phones, YouTube plays in a SMALL VISIBLE player** (owner, 2026-11-18: *"the mobile free tour does not switch
+    the music to different channels"*; measured: every channel was airing a YouTube programme, and phones refuse a hidden
+    YouTube player, so every pick fell back to the same music; the owner chose «Small visible player» over file-only
+    channels). `PhoneTube` in `WalkSound.tsx`: about 168×94 at the lower left, «▶ Tap the video for music», the shopper taps
+    ▶ once; the next programme / track loads into the SAME player (`loadVideoById`). For a channel other than the main one
+    (the main one still plays its own files on a phone) and for music picks (Bocelli, Hauser & Rieu: phones no longer drop
+    their YouTube tracks). Computers keep the hidden player. This brings back a YouTube window on phones only, against
+    2026-11-06's «remove the youtube window», by the owner's choice. Not tried on a real phone when built.
+  - **The music box draws its own ▾** (owner, same day: *"missing the small arrow"*; an iPhone draws none on a styled box).
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
       scrolls them if they do not fit), and on the dark right-hand side the shelf's NAME, large (`KitTray.tsx`).
