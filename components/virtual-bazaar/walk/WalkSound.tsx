@@ -42,7 +42,18 @@ const WALK_MUSIC_VOLUME = 0.2;
 
 export const soundOn = () => typeof window !== "undefined" && readOn();
 /** The shopper chose music (a channel from the dropdown): sound on, for this pick and after. */
-export const turnSoundOn = () => { if (typeof window !== "undefined") writeOn(true); };
+export const turnSoundOn = () => { if (typeof window !== "undefined") { writeOn(true); window.dispatchEvent(new Event(SOUND_ON_EVENT)); } };
+/** Told to the players already on the page: a pick of the channel already playing (the default) changes no player,
+ *  so the one there must hear that the sound is now on (2026-11-18: on a phone the mini player never showed). */
+const SOUND_ON_EVENT = "vb-sound-on";
+function useSoundOn(setOn: (v: boolean) => void, turnOn: { current: (() => void) | null }) {
+  useEffect(() => {
+    setOn(readOn());
+    const go = () => (turnOn.current ? turnOn.current() : setOn(true));
+    window.addEventListener(SOUND_ON_EVENT, go);
+    return () => window.removeEventListener(SOUND_ON_EVENT, go);
+  }, [setOn]);
+}
 
 /**
  * Whether the shopper has tapped this page yet, for the whole visit (owner, 2026-11-17: "after selecting a music from
@@ -199,7 +210,8 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
   const [waiting, setWaiting] = useState(false); // the browser wants a tap first
   const audio = useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => setOn(readOn()), []);
+  const turnOnRef = useRef<(() => void) | null>(null);
+  useSoundOn(setOn, turnOnRef);
 
   const listKey = audioKeys.join("|");
   const audioKey = audioKeys[0] ?? null;
@@ -269,6 +281,7 @@ function TrackSound({ audioKeys, srcOf, specials, place }: { audioKeys: string[]
     if (next) start(el);
     else el.pause();
   };
+  turnOnRef.current = () => { if (!on) toggle(); };
   return (
     <button
       type="button"
@@ -324,7 +337,8 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
   const audio = useRef<HTMLAudioElement | null>(null);
   const failures = useRef(0);
 
-  useEffect(() => setOn(readOn()), []);
+  const turnOnRef = useRef<(() => void) | null>(null);
+  useSoundOn(setOn, turnOnRef);
 
   // What is on air. Asked again when the programme ends (`endsAt`), and every 5 minutes in case the channel moved.
   useEffect(() => {
@@ -461,6 +475,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
     if (next) { if (play?.live && now) { try { el.currentTime = positionAt(now, Date.now()); } catch { /* */ } } if (play) start(el); }
     else el.pause();
   };
+  turnOnRef.current = () => { if (!on) toggle(); };
   return (
     <>
       {yt && on && tapped && (
@@ -579,7 +594,8 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
   const [phone, setPhone] = useState(false);
   useEffect(() => { setPhone(window.matchMedia?.("(pointer: coarse)").matches ?? false); }, []);
 
-  useEffect(() => setOn(readOn()), []);
+  const turnOnRef = useRef<(() => void) | null>(null);
+  useSoundOn(setOn, turnOnRef);
 
   const query = sourceQuery(source);
   useEffect(() => {
@@ -696,6 +712,7 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
     if (turnOn) start(el);
     else el.pause();
   };
+  turnOnRef.current = () => { if (!on) toggle(); };
   return (
     <>
       {showYt && ytId && (
