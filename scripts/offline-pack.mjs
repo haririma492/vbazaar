@@ -20,13 +20,23 @@ import { dirname, join, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-const SITE = (process.env.SITE || "https://olgoo.com").replace(/\/+$/, "");
+// vbazaar.app and olgoo.com serve the same bucket (`/api/splats/config` gives the same base), and the
+// stores made on vbazaar.app (nuttime) exist only there, so it is the default now.
+const SITE = (process.env.SITE || "https://vbazaar.app").replace(/\/+$/, "");
 const OUT = resolve(process.argv[2] || "offline");
 /** The stores on /demo's keys besides the start walk (app/demo/DemoScreen.tsx). */
 const DEMO_WALKS = [
   "scenes/chinastoreyoutube/Billstra-119-Hamburg-20539-Qm7OVO4braI-.mp4",
   "scenes/minesouta2/axman-4k-h264.mp4",
 ];
+/**
+ * The store pages /demo opens (its keys link to `/<slug>`). A store's kit is read from the
+ * public `/api/kit/<slug>`: its photos are signed links that run out in 6 h, so each one is
+ * taken into the folder and the saved kit points at the folder (`/api/offline/<key>`).
+ */
+const DEMO_STORES = ["nuttime"];
+/** The R2 hosts a kit's links point at (signed private ones and the public `r2.dev` ones). */
+const R2_HOST = /\.r2\.cloudflarestorage\.com$|\.r2\.dev$/;
 const RAD_KEY = "scenes/demo/world-on-yonge-lod.rad";
 const INTRO_KEY = "scenes/demo/vca-intro.mp4";
 
@@ -73,6 +83,32 @@ async function download(key, url) {
   process.stdout.write(`\r  ✓ ${key} (${mb(got)})${" ".repeat(20)}\n`);
 }
 
+/**
+ * A JSON value with every R2 link in it taken into the folder (`take`) and replaced by the
+ * folder's own address, `/api/offline/<key>`: the same object, read offline. Other links stay.
+ */
+async function localize(value, take) {
+  if (typeof value === "string") {
+    if (!/^https:\/\//.test(value)) return value;
+    const u = new URL(value);
+    if (!R2_HOST.test(u.hostname)) return value;
+    const key = decodeURIComponent(u.pathname.replace(/^\/+/, ""));
+    await take(key, value);
+    return `/api/offline/${key.split("/").map(encodeURIComponent).join("/")}`;
+  }
+  if (Array.isArray(value)) {
+    const out = [];
+    for (const v of value) out.push(await localize(v, take));
+    return out;
+  }
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = await localize(v, take);
+    return out;
+  }
+  return value;
+}
+
 /** The start walk, as the walk page picks it (lib/splats/walks.ts `startOf`). */
 function startOf(w) {
   if (w.start) return w.start;
@@ -91,8 +127,25 @@ async function main() {
   const { walks } = await json("/api/splats/walks");
   save("scenes/walks.json", walks);
 
+  // One file that cannot be had is said and skipped; the rest still come.
+  const missed = [];
+  const take = (key, url) => download(key, url).catch((e) => { missed.push(key); console.log(`\n  ✗ ${e.message}`); });
+
+  // The stores on /demo's keys: their kit (photos taken into the folder), and the walk each one opens.
+  const kitWalks = [];
+  for (const slug of DEMO_STORES) {
+    const kit = await json(`/api/kit/${slug}`).then((j) => j.kit).catch((e) => { console.log(`  ✗ ${slug}: ${e.message}`); return null; });
+    if (!kit) { missed.push(`stores/${slug}`); continue; }
+    console.log(`${slug}: its kit and photos …`);
+    const local = await localize(kit, take);
+    save(`stores/${slug}/offline-kit.json`, { ok: true, kit: local });
+    // The store's record, as the store page reads it (`readStore`): its slug, name and walk. No password.
+    save(`stores/${slug}/store.json`, { slug, name: kit.title, passwordHash: "offline", out: { walk: kit.walk } });
+    if (kit.walk) kitWalks.push(kit.walk);
+  }
+
   // What /demo can reach: its walks, every door's shop, a store's other aisles.
-  const todo = [startOf(walks), ...DEMO_WALKS].filter(Boolean);
+  const todo = [startOf(walks), ...DEMO_WALKS, ...kitWalks].filter(Boolean);
   const keys = new Set();
   const stores = new Set();
   while (todo.length) {
@@ -116,9 +169,6 @@ async function main() {
     if (catalogue) save(`scenes/catalogues/${store}.json`, catalogue);
   }
 
-  // One file that cannot be had is said and skipped; the rest still come.
-  const missed = [];
-  const take = (key, url) => download(key, url).catch((e) => { missed.push(key); console.log(`\n  ✗ ${e.message}`); });
   for (const key of keys) {
     const walk = walks.walks[key];
     const rev = walk?.rev ? `?r=${walk.rev}` : "";

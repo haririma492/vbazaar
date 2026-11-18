@@ -730,6 +730,13 @@ app served there by the root `server.js` at the paths it had on sarekooche.com:
   every bucket read into the folder (`lib/splats/offline.ts`),
   `/api/offline/<key>` serves its files with byte ranges, and «Add to basket»
   keeps the line on the device. Saving is not offered offline.
+  **Nuttime is in it** (2026-11-18, owner: *"run /demo when not connected to internet from this laptop"*). The pack's
+  default site is vbazaar.app (the same bucket as olgoo.com, and nuttime exists only there). For each store in
+  `DEMO_STORES` (`scripts/offline-pack.mjs`) it takes `/api/kit/<slug>` with every R2 photo in it, saved as
+  `stores/<slug>/offline-kit.json` (the route `app/api/kit/[slug]` serves it offline), and a record
+  `stores/<slug>/store.json` (slug, name, walk; no password) that `readStore` reads through `readMastersText`, which
+  is offline-aware now. The /demo key «Nuttime · pastry shelves» opens `/nuttime`. A new store on /demo: its slug in
+  `DEMO_STORES` and a key in `app/demo/DemoScreen.tsx`.
 
 The notes below came with it from Sarekooche's CLAUDE.md, unchanged.
 

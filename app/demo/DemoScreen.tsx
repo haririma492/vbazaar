@@ -74,6 +74,15 @@ const KEYS = [
     href: "/vca/walk?v=scenes%2Fminesouta2%2Faxman-4k-h264.mp4",
   },
   {
+    // A store made on vbazaar.app (its own page, `/<store>`): the shelves, the tray and the products to buy.
+    id: "nuttime",
+    icon: "🥐",
+    fa: "نات تایم — شیرینی‌فروشی",
+    en: "Nuttime · pastry shelves",
+    note: "Walk the store, then shop its shelves: the tray, the Free Tour and the Shelf Tour",
+    href: "/nuttime",
+  },
+  {
     id: "store",
     icon: "🏬",
     fa: "داخل فروشگاه — ورلد آن یانگ",

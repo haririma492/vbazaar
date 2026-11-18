@@ -31,7 +31,8 @@ import { contentTypeFor, type SignImageType, type SplatKind, type WalkAudioType 
 import { TOUR_KEY, emptyTour, mergeTour, parseTour, type Tour } from "./tour";
 import { WALKS_KEY, emptyWalks, mergeConflicts, mergeWalks, parseWalks, type Walks } from "./walks";
 import { catalogueKey, checkCatalogue, type Catalogue } from "./catalogue";
-import { OFFLINE_BASE, offlineDir, offlineJson, offlineKeys } from "./offline";
+import { OFFLINE_BASE, offlineDir, offlineJson, offlineKeys, offlinePath } from "./offline";
+import { readFileSync } from "node:fs";
 import { isPrivateVideoKey } from "./media";
 import { fixWord, isTextKey } from "./wordFixRules";
 
@@ -507,6 +508,11 @@ export function presignPutMasters(key: string, seconds: number): Promise<string>
 
 /** A masters-bucket object as text; null when it is not there (yet). */
 export async function readMastersText(key: string): Promise<string | null> {
+  // The demo without internet (`offline.ts`): the copy the offline pack saved for this key, or none.
+  if (offlineDir()) {
+    const p = offlinePath(key);
+    return p ? readFileSync(p, "utf8") : null;
+  }
   try {
     const out = await s3().send(new GetObjectCommand({ Bucket: r2Config().mastersBucket, Key: key }));
     return (await out.Body?.transformToString()) ?? null;
