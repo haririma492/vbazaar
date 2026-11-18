@@ -171,3 +171,18 @@ test("the main broadcast says isLive while it plays an ordinary video: still joi
   assert.equal(r.offsetSec, 50);
   assert.equal(r.endsAt, AT + 150_000);
 });
+
+test("readCatalogue: World Music filed under families (nikoo.tv, 2026-11-18)", () => {
+  const music = { sections: [{ members: [{ slug: "worldmusic", titleFa: "موسیقی جهان", titleEn: "World Music", groups: [], categories: [], families: [
+    { slug: "wm-classical", groups: [{ id: "grp-hauser-rieu", label: "Hauser & André Rieu", labelFa: "هاوزر و آندره ریو" }],
+      categories: [{ id: "cat-mwb3n27u-91fue", label: "HAUSER", labelFa: "هاوزر", platform: "youtube", hasSource: true, groupId: "grp-hauser-rieu" }] },
+    { slug: "wm-opera", groups: [{ id: "grp-op", label: "Opera", labelFa: "اپرا" }],
+      categories: [{ id: "cat-mw7k942j-p43p0", label: "Andrea Bocelli", labelFa: "آندره‌آ بوچلی", platform: "youtube", hasSource: true, groupId: "grp-op" }] },
+  ] }] }] };
+  const cat = readCatalogue({ channels: [] }, music);
+  const wm = cat.sections.find((s) => s.member === "worldmusic");
+  assert.ok(wm);
+  assert.deepEqual(wm.groups.map((g) => g.id), ["grp-hauser-rieu", "grp-op"]);
+  assert.ok(sourceInCatalogue(cat, "music", "cat-mw7k942j-p43p0", "worldmusic"));
+  assert.ok(sourceInCatalogue(cat, "music", "grp-hauser-rieu", "worldmusic"));
+});

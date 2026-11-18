@@ -231,10 +231,15 @@ export function readCatalogue(channelsJson: unknown, musicJson: unknown): RadioC
       const m = rec(m0);
       if (m.slug !== "iranmusic" && m.slug !== "worldmusic") continue;
       if (sections.some((x) => x.member === m.slug)) continue;
-      const groups = arr(m.groups).map(rec).filter((g) => isRadioId(g.id) && /^grp-/.test(g.id as string))
+      // nikoo.tv files World Music under FAMILIES since 2026-11-18 (`families[].groups / .categories`, the member's own
+      // lists empty); the ids are the same, so a family's groups and categories are read as the member's.
+      const fams = arr(m.families).map(rec);
+      const groupsRaw = [...arr(m.groups), ...fams.flatMap((f) => arr(f.groups))];
+      const catsRaw = [...arr(m.categories), ...fams.flatMap((f) => arr(f.categories))];
+      const groups = groupsRaw.map(rec).filter((g, i, a) => a.findIndex((x) => x.id === g.id) === i).filter((g) => isRadioId(g.id) && /^grp-/.test(g.id as string))
         .map((g) => ({ id: g.id as string, fa: label(g.labelFa) || label(g.label), en: label(g.label) || label(g.labelFa), categories: [] as Array<{ id: string; fa: string; en: string }> }));
       const others = { id: "", fa: "سایر", en: "Others", categories: [] as Array<{ id: string; fa: string; en: string }> };
-      for (const c0 of arr(m.categories)) {
+      for (const c0 of catsRaw) {
         const c = rec(c0);
         const fa = label(c.labelFa), en = label(c.label);
         if (!isRadioId(c.id) || !/^cat-/.test(c.id) || c.platform === "instagram" || c.hasSource === false || (!fa && !en)) continue;

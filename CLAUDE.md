@@ -509,6 +509,12 @@ plan and the Managed Agents decision are in
     (the main one still plays its own files on a phone) and for music picks (Bocelli, Hauser & Rieu: phones no longer drop
     their YouTube tracks). Computers keep the hidden player. This brings back a YouTube window on phones only, against
     2026-11-06's «remove the youtube window», by the owner's choice. Not tried on a real phone when built.
+  - **A pick of the channel already playing turns that player on** (2026-11-18): the dropdown wrote «on» but the player
+    already on the page (the default channel) never read it again, so on a phone the mini player never came; now the
+    players hear it (`turnSoundOn` → `vb-sound-on`, `useSoundOn`). Checked on an emulated iPhone: every YouTube channel
+    shows the mini player and switches. **⚠️ nikoo.tv files World Music under `families` since 2026-11-18** (the
+    member's own groups and categories empty): Bocelli and Hauser & Rieu read «no such music category» until
+    `readCatalogue` read the families too (same ids; tracks still by `slug=worldmusic`).
   - **The music box draws its own ▾** (owner, same day: *"missing the small arrow"*; an iPhone draws none on a styled box).
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger
