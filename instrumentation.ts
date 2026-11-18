@@ -5,7 +5,9 @@
  * Next compiles this for the edge too; the check keeps the crew out of that build.
  */
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") {
+  // The demo without internet (OFFLINE_DIR, `lib/splats/offline.ts`): nothing below can reach R2, so none of it
+  // starts; the server only shows the folder.
+  if (process.env.NEXT_RUNTIME === "nodejs" && !process.env.OFFLINE_DIR) {
     const { kick } = await import("./lib/stores/crew");
     setTimeout(() => kick(), 15_000);
     // The Shadow agent carries on a walk a restart cut off (`lib/stores/reflect.ts`).
