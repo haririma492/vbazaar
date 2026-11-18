@@ -501,7 +501,7 @@ plan and the Managed Agents decision are in
     on a phone was a fresh, locked element. Now every player takes the page's one element (`claimAudio`, the last
     owner's listeners dropped via `onAudio`; `releaseAudio` on unmount), and a pick in the music box unlocks it inside
     the tap (`primeAudio`, a moment of silence). Not tried on a real iPhone when built.
-  - **⚠️ On phones, YouTube plays in a SMALL VISIBLE player** (owner, 2026-11-18: *"the mobile free tour does not switch
+  - **⚠️ SUPERSEDED 2026-11-18 (see the PHONES bullet below): the small YouTube window is gone.** Earlier note, for history: On phones, YouTube plays in a SMALL VISIBLE player** (owner, 2026-11-18: *"the mobile free tour does not switch
     the music to different channels"*; measured: every channel was airing a YouTube programme, and phones refuse a hidden
     YouTube player, so every pick fell back to the same music; the owner chose «Small visible player» over file-only
     channels). `PhoneTube` in `WalkSound.tsx`: about 168×94 at the lower left, «▶ Tap the video for music», the shopper taps
@@ -515,6 +515,7 @@ plan and the Managed Agents decision are in
     shows the mini player and switches. **⚠️ nikoo.tv files World Music under `families` since 2026-11-18** (the
     member's own groups and categories empty): Bocelli and Hauser & Rieu read «no such music category» until
     `readCatalogue` read the families too (same ids; tracks still by `slug=worldmusic`).
+  - **⚠️ PHONES: ONE CHANNEL, NO YOUTUBE, NO PICKER IN THE TOURS** (owner, 2026-11-18: *"on free tour and shelf tour on mobile … put the music in the channel of French and Italian … do not bring videos, do not bring iframe from YouTube there … do not allow users to change the channel … Remove the small YouTube window on the screen"*). On a phone (`usePhoneOneChannel`, `(pointer: coarse)`) both tours play nikoo.tv's channel 4 (نغمه‌های نوستالژیک فرانسه و ایتالیا) only, its FILE programmes, with no MusicPicker and no YouTube window or iframe; a YouTube programme on air is skipped for the channel's own file. `PhoneTube` is deleted. Computers keep the picker and the hidden player. The store's own music choice is ignored on a phone in the tours. Not tried on a real phone when built.
   - **The music box draws its own ▾** (owner, same day: *"missing the small arrow"*; an iPhone draws none on a styled box).
   - **Changes of 2026-11-16** (owner: *"it is great and I love it, couple of changes"*):
     - **The tray stands still** (*"lets the bottom section stop moving"*): the shelf's sections side by side (a finger

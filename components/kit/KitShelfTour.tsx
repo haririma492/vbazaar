@@ -32,7 +32,7 @@ import TourBazaarLink from "@/components/brand/TourBazaarLink";
 import StoreLogo from "@/components/brand/StoreLogo";
 import StoreText from "@/components/brand/StoreText";
 import TourSwitch from "@/components/brand/TourSwitch";
-import { WalkSound } from "@/components/virtual-bazaar/walk/WalkSound";
+import { WalkSound, usePhoneOneChannel } from "@/components/virtual-bazaar/walk/WalkSound";
 import KitPanel, { type Lang } from "./KitPanel";
 import MusicPicker, { NO_MUSIC } from "./MusicPicker";
 import { radioSourceOf, type RadioSource } from "@/lib/radio";
@@ -114,6 +114,8 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
   // The shopper's music choice for this visit, as in the Free Tour's tray (owner, 2026-11-17: "in the shelf tour add
   // the same music choice dropdown and volume as well"); null: the walk's default.
   const [music, setMusic] = useState<RadioSource | typeof NO_MUSIC | null>(null);
+  // A phone: one channel, nikoo.tv's French and Italian (channel 4), no picker and no YouTube (owner, 2026-11-18).
+  const phone = usePhoneOneChannel();
   const channels = useMemo(() => {
     const list = (kit.sound?.radios ?? []).map(radioSourceOf).filter((x): x is RadioSource => Boolean(x));
     const def = radioSourceOf(kit.sound?.radio);
@@ -285,7 +287,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         </div>
         {/* The music, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
             (both tours)"). */}
-        {(channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
+        {!phone && (channels.length > 0 || (kit.sound?.keys.length ?? 0) > 0) && (
           <div className={sideways
             ? "absolute left-[10rem] right-[24rem] top-2 z-30 rounded-2xl bg-black/70 p-1"
             : "absolute left-3 top-[4.6rem] z-30 w-[calc(100vw-15rem)] rounded-2xl bg-black/70 p-1 sm:static sm:order-last sm:mx-auto sm:w-full sm:max-w-[20rem] sm:basis-full xl:absolute xl:left-1/2 xl:top-3 xl:w-[16rem] xl:-translate-x-1/2 xl:basis-auto"}>
@@ -297,7 +299,7 @@ export default function KitShelfTour({ slug, kit }: { slug: string; kit: ShopKit
         <TourBazaarLink overlay className={`absolute right-3 z-40 ${sideways ? "top-1" : "top-3"}`} />
         {/* The same music as the store's Free Tour (owner: "same music source and a speaker on top same place"). */}
 {music !== NO_MUSIC && <WalkSound place={sideways ? "right-[6.75rem] top-2" : "right-[6.75rem] top-4"} label={false} audioKeys={kit.sound?.keys ?? []} srcOf={soundSrc}
-          radio={(music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
+          radio={phone ? 4 : (music ?? kit.sound?.radio ?? null) as Parameters<typeof WalkSound>[0]["radio"]} />}
       </header>
 
       <div ref={stage} className={`relative ${sideways ? "mt-1" : "mt-4"} min-h-0 flex-1 overflow-hidden`}

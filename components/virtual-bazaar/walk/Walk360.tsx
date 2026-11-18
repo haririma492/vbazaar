@@ -61,7 +61,7 @@ import SteeringWheel from "./SteeringWheel";
 import { ItemCard, ItemsEditor, PRODUCTS_PANEL_SHIFT } from "./WalkItems";
 import { ProductCard } from "@/components/stores/Products";
 import { isBookStore } from "@/lib/stores/store";
-import { SoundEditor, WalkSound, sayAloud } from "./WalkSound";
+import { SoundEditor, WalkSound, sayAloud, usePhoneOneChannel } from "./WalkSound";
 import WalkStats from "./WalkStats";
 import { useAdminMode } from "@/lib/admin/useAdminMode";
 import { productParam, shelfTourPath } from "@/lib/stores/productLink";
@@ -2600,6 +2600,8 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   // none: the walk's default (`Walk.radio`).
   const [pickRadio, setPickRadio] = useState<{ walk: string; radio: RadioSource | typeof NO_MUSIC | null } | null>(null);
   const picked4 = (key: string | null | undefined) => (pickRadio && pickRadio.walk === key ? pickRadio : null);
+  // A phone: one channel, nikoo.tv's French and Italian (channel 4), no picker and no YouTube (owner, 2026-11-18).
+  const phone = usePhoneOneChannel();
   const [veil, setVeil] = useState(false);
   type Box = { left: number; top: number; width: number; height: number };
   const [picked, setPicked] = useState<{ section: ShopSection; shelf: ShopShelf; from: Box; area: Box; panel: Box; target: Array<[number, number]> | null; highlight?: string } | null>(null);
@@ -3191,7 +3193,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       )}
       {/* THE MUSIC, at the top, in the middle (owner, 2026-11-17: "move the music drop down on top section and centered
           (both tours)"): channel or «No music», and the volume. */}
-      {kitOn && kit && phase === "walking" && !editing && (() => {
+      {kitOn && kit && phase === "walking" && !editing && !phone && (() => {
         const el = (() => {
               const w = walkOf(walks, view.key);
               if (!w || (!w.radio && !musicOf(w).length)) return null;
@@ -3207,7 +3209,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
       {phase !== "loading" && picked4(view.key)?.radio !== NO_MUSIC && (
         // The sound key at the top right, left of the bazaar's arch, and no «nikoo.tv live music» label (owner,
         // 2026-11-16: "remove the nikoo.tv live label, move the speaker sign up to the left of arch logo of vbazaar").
-        <WalkSound place="right-[6.75rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={(() => { const p = picked4(view.key); return p && p.radio && p.radio !== NO_MUSIC ? p.radio : walkOf(walks, view.key)?.radio ?? null; })()}
+        <WalkSound place="right-[6.75rem] top-4" label={false} audioKeys={musicOf(walkOf(walks, view.key))} srcOf={soundSrc} radio={phone ? 4 : (() => { const p = picked4(view.key); return p && p.radio && p.radio !== NO_MUSIC ? p.radio : walkOf(walks, view.key)?.radio ?? null; })()}
           specials={Boolean(walkOf(walks, view.key)?.items?.some((it) => it.special))} />
       )}
 

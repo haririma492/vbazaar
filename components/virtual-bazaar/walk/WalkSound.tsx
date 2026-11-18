@@ -40,6 +40,18 @@ function readOn(): boolean {
  *  shopper's own setting (`vb.walk.volume`) still wins. */
 const WALK_MUSIC_VOLUME = 0.2;
 
+/**
+ * A PHONE PLAYS ONE CHANNEL IN THE TOURS (owner, 2026-11-18: "on free tour and shelf tour on mobile … put the music in the
+ * channel of French and Italian … do not bring videos, do not bring iframe from YouTube there … do not allow users to change
+ * the channel … remove the small YouTube window"). The tours give a phone nikoo.tv's channel 4 (نغمه‌های نوستالژیک فرانسه و
+ * ایتالیا) and show no picker; a phone never gets a YouTube window. Computers keep the picker and the hidden player.
+ */
+export function usePhoneOneChannel(): boolean {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => { setPhone(window.matchMedia?.("(pointer: coarse)").matches ?? false); }, []);
+  return phone;
+}
+
 export const soundOn = () => typeof window !== "undefined" && readOn();
 /** The shopper chose music (a channel from the dropdown): sound on, for this pick and after. */
 export const turnSoundOn = () => { if (typeof window !== "undefined") { writeOn(true); window.dispatchEvent(new Event(SOUND_ON_EVENT)); } };
@@ -461,8 +473,7 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
 
   // Nothing playable this minute (a live stream, nikoo.tv unreachable): the store's own tracks.
   if (now && now.kind === "none") return <TrackSound audioKeys={audioKeys} srcOf={srcOf} specials={specials} place={place} />;
-  // A phone, another channel than the main one, a YouTube programme on air: the small visible player (`PhoneTube`).
-  const phoneYt = phone && liveYoutube && !main && now?.youtubeId ? now : null;
+  // A computer only: the hidden player for a YouTube programme. A phone never gets a YouTube window (owner, 2026-11-18).
   const yt = !phone && now?.kind === "youtube" && now.youtubeId ? now : null;
 
   const toggle = () => {
@@ -494,9 +505,6 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
           }}
         />
       )}
-      {phoneYt && on && phoneYt.youtubeId && (
-        <PhoneTube videoId={phoneYt.youtubeId} start={positionAt(phoneYt, Date.now())} onEnded={() => setTick((t) => t + 1)} onError={() => setTick((t) => t + 1)} />
-      )}
       <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {speakerLabel(on, Boolean((waiting && !yt) || (yt && !tapped)))}
@@ -507,60 +515,6 @@ function RadioSound({ ch, audioKeys, srcOf, specials, place, label }: {
   );
 }
 
-
-/**
- * A SMALL VISIBLE YOUTUBE PLAYER, PHONES ONLY (owner, 2026-11-18, choosing it: phones refuse a HIDDEN YouTube player, so
- * every channel airing a YouTube programme fell back to the same music on a phone). About 168×94 at the lower left; the
- * shopper taps ▶ on it once; the next programme or track loads into the SAME player (`loadVideoById`), which an iPhone
- * lets play on. Computers keep the hidden player. It says when a video ends or will not play (its own messages).
- */
-function PhoneTube({ videoId, start, onEnded, onError }: { videoId: string; start: number; onEnded: () => void; onError?: () => void }) {
-  const frame = useRef<HTMLIFrameElement>(null);
-  const first = useRef({ id: videoId, start: Math.max(0, Math.floor(start)) });
-  const loaded = useRef(videoId);
-  const [playing, setPlaying] = useState(false);
-  const ended = useRef(onEnded); ended.current = onEnded;
-  const failed = useRef(onError); failed.current = onError;
-  const tell = (func: string, args: unknown[] = []) => frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "command", func, args }), "https://www.youtube.com");
-  const listen = () => {
-    frame.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: "vb-phone-music", channel: "widget" }), "https://www.youtube.com");
-    tell("addEventListener", ["onStateChange"]);
-    tell("addEventListener", ["onError"]);
-    tell("setVolume", [Math.round(musicVolume() * 100)]);
-  };
-  useEffect(() => {
-    if (loaded.current === videoId) return;
-    loaded.current = videoId;
-    tell("loadVideoById", [{ videoId, startSeconds: Math.max(0, Math.floor(start)) }]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoId]);
-  useEffect(() => {
-    const onMsg = (e: MessageEvent) => {
-      if (e.origin !== "https://www.youtube.com" || e.source !== frame.current?.contentWindow) return;
-      let d: { event?: string; info?: unknown } | null = null;
-      try { d = typeof e.data === "string" ? JSON.parse(e.data) : e.data; } catch { return; }
-      if (!d || typeof d !== "object") return;
-      if (d.event === "onError") { failed.current?.(); return; }
-      const st = d.event === "onStateChange" ? d.info
-        : (d.event === "infoDelivery" || d.event === "initialDelivery") && d.info && typeof d.info === "object" ? (d.info as { playerState?: unknown }).playerState : undefined;
-      if (st === 1) { setPlaying(true); tell("setVolume", [Math.round(musicVolume() * 100)]); }
-      if (st === 0) ended.current();
-    };
-    window.addEventListener("message", onMsg);
-    const again = [setTimeout(listen, 1000), setTimeout(listen, 3000)];
-    return () => { window.removeEventListener("message", onMsg); again.forEach(clearTimeout); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return (
-    <div className="fixed bottom-[calc(23%+3.5rem)] left-2 z-[45] w-[168px] overflow-hidden rounded-lg border border-white/30 bg-black shadow-2xl"
-      onClick={(e) => e.stopPropagation()} onPointerDown={(e) => e.stopPropagation()}>
-      {!playing && <p className="bg-black/80 px-2 py-1 text-center text-[11px] leading-tight text-amber-100">▶ Tap the video for music<br /><span dir="rtl">برای شنیدن موسیقی روی ویدیو بزنید</span></p>}
-      <iframe ref={frame} title="music" width={168} height={94} className="block"
-        src={`https://www.youtube.com/embed/${first.current.id}?playsinline=1&controls=1&rel=0&enablejsapi=1&start=${first.current.start}&origin=${encodeURIComponent(window.location.origin)}`}
-        allow="autoplay; encrypted-media" onLoad={listen} />
-    </div>
-  );
-}
 
 /** What plays when the choice cannot: the store's own tracks, else nikoo.tv's main broadcast (which has files a phone plays). */
 function Standby({ audioKeys, srcOf, specials, place, label }: { audioKeys: string[]; srcOf: (key: string) => Promise<string | null>; specials: boolean; place: string; label: boolean }) {
@@ -603,8 +557,9 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
     void fetch(`/api/radio?${query}`, { cache: "no-store" }).then((r) => r.json()).then((j: { tracks?: RadioTrack[] }) => {
       if (gone) return;
       const all = Array.isArray(j?.tracks) ? j.tracks : [];
-      // Phones play the YouTube tracks too now, in the small visible player (owner, 2026-11-18).
-      const list = all;
+      // A phone plays only the files (no YouTube window on a phone, owner 2026-11-18): its YouTube tracks are left out.
+      const onPhone = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+      const list = onPhone ? all.filter((t) => t.kind === "file") : all;
       setPos({ i: list.length ? Math.floor(Math.random() * list.length) : 0, turn: 0 });
       setTracks(list);
     }).catch(() => { if (!gone) setTracks([]); });
@@ -730,7 +685,6 @@ function ListSound({ source, audioKeys, srcOf, specials, place, label }: {
           onLoad={listen}
         />
       )}
-      {phone && on && ytId && <PhoneTube videoId={ytId} start={0} onEnded={() => nextRef.current(false)} onError={() => nextRef.current(true)} />}
       <div dir="ltr" className={`absolute ${place} z-20 flex items-center gap-2`}>
         <button type="button" onClick={toggle} aria-label={on ? "Sound off" : "Sound on"} className={SOUND_KEY_CLASS}>
           {speakerLabel(on, Boolean((waiting && fileUrl) || (ytId && !tapped)))}
