@@ -100,8 +100,8 @@ export default function Areas() {
                     </div>
                   )}
                   <FilePick
-                    fa="ویدیوی ۳۶۰ درجه (Insta360)" en="Its 360° walk (Insta360 Studio export, .mp4)" accept=".mp4,.insv,video/mp4"
-                    hint="Walk slowly, camera above your head, the way a shopper would; stop 2–3 s facing each door. Start where the area before it ends. Export: 360 Video, 3840×1920 (4K) or larger, 25 fps, Rec.709 8-bit, H.264 or H.265."
+                    fa="ویدیوی قسمت (۳۶۰ درجه یا معمولی، .mp4)" en="Its walk: a 360° video (Insta360 Studio .mp4) or a flat one (any .mp4)" accept=".mp4,video/mp4"
+                    hint="Walk slowly, the way a shopper would; stop 2–3 s facing each door. Start where the area before it ends. 360°: export from Insta360 Studio as 360 Video, 3840×1920 (4K) or larger, 25 fps, H.264 or H.265. Flat (an ordinary camera): any .mp4, 4K or larger, H.264 or H.265. We tell them apart by the picture's shape."
                     current={a.files.video?.name ?? null}
                     send={async (file, onProgress) => { await uploadInParts(API, { action: "upload", id: a.id }, file, onProgress); await load(); }}
                   />

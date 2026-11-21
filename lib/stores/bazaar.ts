@@ -23,6 +23,7 @@
 
 import type { Bi, Step, ThreadEntry, Uploaded } from "./store";
 import type { SignPin, WalkDoor } from "../splats/walks";
+import type { FlatLens } from "../splats/lens";
 
 export const BAZAAR_KEY = "stores/bazaar.json";
 export const AREA_RE = /^[a-z0-9](?:[a-z0-9-]{0,22}[a-z0-9])?$/;
@@ -50,6 +51,8 @@ export type Area = {
   files: { video?: Uploaded };
   /** Its walk once the Video agent made it, `scenes/area-<id>/walk-<stamp>.mp4`. */
   walk?: string;
+  /** Set when its video is a flat (ordinary camera) video, not 360°: its lens, kept for the walk (owner, 2026-11-21). */
+  lens?: FlatLens;
   video: Step;
   thread: ThreadEntry[];
 };

@@ -238,16 +238,18 @@ async function areaVideo(id: string) {
   if (!area?.files.video) return;
   try {
     await say("Starting…");
-    const { key, seconds } = await makeWalk(area.files.video.key, areaScene(id), say);
+    // A flat (ordinary camera) video is taken too (owner, 2026-11-21: skip 360° and upload only flat .mp4s).
+    const { key, seconds, lens } = await makeWalk(area.files.video.key, areaScene(id), say, true);
     const after = await updateBazaar((x) => ({
-      ...x, areas: x.areas.map((a) => (a.id === id ? { ...a, walk: key, video: { state: "done", tries: 0, note: `The walk is ready: ${Math.round(seconds)} s.`, at: new Date().toISOString() } } : a)),
+      ...x, areas: x.areas.map((a) => (a.id === id ? { ...a, walk: key, lens: lens ?? undefined, video: { state: "done", tries: 0, note: `The walk is ready: ${Math.round(seconds)} s${lens ? ", a flat video" : ""}.`, at: new Date().toISOString() } } : a)),
     }));
     await writeJoins(after);
     // The camera operator, locked out of view here too (best effort: the walk is ready either way).
     let spent = 0;
     const purse: Purse = { spent: () => spent, limit: 100, add: async (c) => { spent += c; } };
     try {
-      await say(await autoLock(key, purse, say));
+      // A flat video has nothing behind the camera to lock out of view (the same as a store's walk).
+      await say(lens ? "A flat video: nothing behind the camera to lock out of view." : await autoLock(key, purse, say));
     } catch (e) {
       console.error("[crew] area lock", id, e);
     }
@@ -277,6 +279,13 @@ export async function writeJoins(b: Bazaar) {
     next.walks[k] = { ...w, next: undefined, doors: w.doors.filter((d) => !d.id.startsWith("area-")) };
   }
   for (const a of b.areas) if (a.walk && !next.walks[a.walk]) next.walks[a.walk] = { title: { en: a.name.en, fa: a.name.fa }, doors: [] };
+  // An area's projection follows its video: a flat one is flat, a re-upload as 360° is not.
+  for (const a of b.areas) {
+    const w = a.walk ? next.walks[a.walk] : undefined;
+    if (!a.walk || !w) continue;
+    if (a.lens) next.walks[a.walk] = { ...w, projection: "flat", lens: a.lens };
+    else if (w.projection === "flat") { const { projection: _p, lens: _l, ...rest } = w; next.walks[a.walk] = rest; }
+  }
   for (const j of joins(b)) next.walks[j.from] = { ...(next.walks[j.from] ?? { doors: [] }), next: j.to };
   for (const sp of b.spots) {
     if (!sp.toArea) continue;

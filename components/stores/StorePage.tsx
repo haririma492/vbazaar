@@ -275,13 +275,6 @@ export default function StorePage({ slug }: { slug: string }) {
             send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: c.kind }, file, onProgress); await load(); }}
           />
         ))}
-        <FilePick
-          fa="فایل خام دوربین (‎.insv) — فقط برای عامل‌ها" en="The camera's own .insv of this walk, or the SDK's stills of it — for the agents only"
-          accept=".insv,.png,.jpg,.jpeg" multiple
-          hint="The same walk as the .mp4, straight from the camera's card (if the camera made two .insv files for it, both). The agents read the camera's motion sensor and its picture from it; shoppers still see the .mp4."
-          current={s.files.raw?.length ? s.files.raw.map((f) => f.name).join(", ") : null}
-          send={async (file, onProgress) => { await uploadInParts(api, { action: "upload", kind: "raw" }, file, onProgress); await load(); }}
-        />
         {page.walkUrl && (
           <MusicCard api={api} tracks={page.music ?? []} radio={page.radio ?? null} radios={page.radios ?? []} reload={load} />
         )}
