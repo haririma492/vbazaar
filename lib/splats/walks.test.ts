@@ -655,6 +655,13 @@ test("a walk's copies: up to 30 fps as uploaded, else halved", async () => {
   assert.equal(walkFps(59.94), 29.97);
   assert.equal(walkFps(120), 30);
   assert.equal(walkFps(0), null);
+  // A flat walk may run to 60: 50 and 60 are kept as they are (null = no change), 120 halves to 60.
+  assert.equal(walkFps(50, true), null);
+  assert.equal(walkFps(60, true), null);
+  assert.equal(walkFps(59.94, true), null);
+  assert.equal(walkFps(120, true), 60);
+  assert.equal(walkFps(240, true), 60);
+  assert.equal(walkFps(30, true), null);
 });
 
 test("a store's new video keeps the music and logo, and the shelves only for the same footage", async () => {

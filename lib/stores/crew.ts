@@ -184,7 +184,7 @@ async function makeWalk(masterKey: string, scene: string, say: (note: string) =>
     }
     const key = `scenes/${scene}/walk-${stamp()}.mp4`;
     const web = join(dir, "web.mp4"), phone = join(dir, "phone.mp4");
-    const fps = walkFps(info.fps);
+    const fps = walkFps(info.fps, flat);
     const at = fps ? ` (${Math.round(info.fps)} fps made ${fps})` : "";
     await encode(src, web, 5760, 18, info.seconds, (p) => void say(`Making the web copy${at}… ${p}%`), fps);
     await encode(src, phone, 3840, 21, info.seconds, (p) => void say(`Making the phone copy${at}… ${p}%`), fps);

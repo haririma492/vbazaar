@@ -1624,13 +1624,17 @@ export function carryWalk(prev: Walk | undefined, o: { seconds: number; prevSeco
 }
 
 /**
- * The frame rate a walk's copies are made at: the upload's own up to 30, else half of it (owner's 8K 50 fps export,
- * nuttime, 2026-11-16: the web copy ran the server out of memory, "ffmpeg stopped (null)", three times). A walk is
- * walked slowly; 50 fps doubles the work for every copy and every agent, and no phone plays 4K at 50. Pure.
+ * The frame rate a walk's copies are made at: the upload's own up to the cap, else halved until it is under it.
+ * A 360° walk stays at 30 (owner's 8K 50 fps export, nuttime, 2026-11-16: the web copy ran the server out of memory,
+ * "ffmpeg stopped (null)", three times). A FLAT walk (no 360° to look round, owner 2026-11-21) may run to 60: 4K 60
+ * from a phone or a camera is what the owner now shoots. 120 halves to 60 (every other frame). Pure.
  */
-export function walkFps(fps: number): number | null {
-  if (!(fps > 30)) return null;
+export const WALK_FPS_CAP_360 = 30;
+export const WALK_FPS_CAP_FLAT = 60;
+export function walkFps(fps: number, flat = false): number | null {
+  const cap = flat ? WALK_FPS_CAP_FLAT : WALK_FPS_CAP_360;
+  if (!(fps > cap)) return null;
   let f = fps;
-  while (f > 30) f /= 2;
+  while (f > cap) f /= 2;
   return Math.round(f * 1000) / 1000;
 }
