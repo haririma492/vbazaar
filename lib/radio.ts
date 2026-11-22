@@ -25,8 +25,11 @@ export const RADIO: Record<3 | 4, { statePath: string }> = {
   4: { statePath: "/api/olgoo-live/state" },
 };
 
-/** The main broadcast's name until nikoo.tv's list names it (it does not, as of 2026-11-22). Not a title. */
-export const MAIN_FALLBACK = { fa: "کانال ۴ · پخش اصلی", en: "Channel 4 · main broadcast" };
+/**
+ * The main broadcast's name until nikoo.tv's list names it. nikoo.tv's own home page shows it as «کانال ۴ · موسیقی
+ * فولکلور ایرانی» (owner, 2026-11-22), but its `/api/channels` does not list it yet. The English is our translation.
+ */
+export const MAIN_FALLBACK = { fa: "کانال ۴ · موسیقی فولکلور ایرانی", en: "Channel 4 · Iranian Folk Music" };
 
 export function radioChannelOf(v: unknown): RadioChannel | null {
   const n = typeof v === "string" ? Number(v) : v;
