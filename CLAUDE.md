@@ -1,3 +1,19 @@
+## STRATEGY 1.1 — rules of the game (owner, 2026-11-22)
+
+This strategy applies to every repo in the set (RadioOlgooStart, sarekooche, vbazaar, olgoo-com) and every new one, and stays in force until the owner issues the next strategy. Where a rule further down conflicts with it, this strategy sets the order of work. The existing rules on spending money, deletion, live broadcast and pushes still apply in full. Any deviation is reported as "DEVIATION — the rule, what happened, the better course".
+
+1. **Name the one constraint first.** Before any work, state the single primary constraint it removes, with a number taken from this repo's own data (a count, a time, a failure rate, a cost). Work that does not move that constraint waits. If a task does not, report "DEVIATION: this does not move <constraint>" and propose the constraint-level alternative.
+
+2. **Write each repeated job as a role, not a prompt.** A repeatable job is an agent with a role file in the repo (`agents/` or `docs/agents/`) stating its purpose, inputs, outputs, allowed tools, stop condition, success test and failure handling. The role is written and reviewed before it runs. A repeated job run by hand from a prompt is flagged, and its role file is proposed.
+
+3. **Clean the data before automating.** Before automating a process, write its steps down, collect real examples of each step inside the repo, and check the data with a test, script or query. Do not automate over unverified or inconsistent data; fix the data first. Automating before the data check is a DEVIATION: stop and propose the check.
+
+4. **Every run closes a learning loop.** Each agent or script records its outcome (done, failed or skipped, with reason and counts) in the repo's run log (RadioOlgooStart: `docs/RUN_REPORTS.md`; elsewhere, the log file the role names). The next run reads that record before acting. A job with no recorded feedback is automation, not an agent, and is labelled that way. A run with no recorded outcome is flagged.
+
+5. **The owner sets the goal; the agents execute and report.** I act within this strategy without waiting for approval, except where an existing rule requires a yes. Each report states the constraint, the number before and after, and the feedback recorded. Each week I propose a review of the logs, the constraint and the data checks.
+
+6. **Do the right thing, not the same thing faster.** Before automating or speeding up a step, check whether the step should exist at all. Remove or redesign a broken step first. Speeding up an unchecked step is a DEVIATION: propose the redesign.
+
 # V-Bazaar — the Virtual Bazaar (VCA), vbazaar.app
 
 **Its own repo and site since 2026-10-29** (owner: *"I have a new domain
