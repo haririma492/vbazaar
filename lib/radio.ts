@@ -14,12 +14,19 @@ export type RadioChannel = 4;
 export const RADIO_CHANNELS: RadioChannel[] = [4];
 export const DEFAULT_RADIO_CHANNEL: RadioChannel = 4;
 
-/** The two channels, in nikoo.tv's own words, and where nikoo.tv says what each is airing. */
-export const RADIO: Record<3 | 4, { fa: string; en: string; statePath: string }> = {
-  3: { fa: "موسیقی جهان", en: "World Music", statePath: "/api/channels/state?id=world-greats" },
-  // Channel 4 is nikoo.tv's main broadcast: it lives on the old pipeline, not in `nikoo_channel`.
-  4: { fa: "نغمه‌های نوستالژیک فرانسه و ایتالیا", en: "French & Italian Nostalgic Melodies", statePath: "/api/olgoo-live/state" },
+/**
+ * Where nikoo.tv says what each old channel number is airing. NO NAMES here: a channel's name is nikoo.tv's own,
+ * read from its live list (`/api/channels`, `readCatalogue`), so a renamed channel shows its new name by itself.
+ * Channel 4 is nikoo.tv's main broadcast: it lives on the old pipeline, not in `nikoo_channel`, so it is not in
+ * that list by its id (it is found there by its number, when nikoo.tv lists it).
+ */
+export const RADIO: Record<3 | 4, { statePath: string }> = {
+  3: { statePath: "/api/channels/state?id=world-greats" },
+  4: { statePath: "/api/olgoo-live/state" },
 };
+
+/** The main broadcast's name until nikoo.tv's list names it (it does not, as of 2026-11-22). Not a title. */
+export const MAIN_FALLBACK = { fa: "کانال ۴ · پخش اصلی", en: "Channel 4 · main broadcast" };
 
 export function radioChannelOf(v: unknown): RadioChannel | null {
   const n = typeof v === "string" ? Number(v) : v;
@@ -182,7 +189,7 @@ const label = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 120) : 
 
 /** A walk's stored `radio` (4, a 3 from before, or a choice) as a choice; null when it is none of them. */
 export function radioSourceOf(v: unknown): RadioSource | null {
-  if (v === 3 || v === 4 || v === "3" || v === "4") return { kind: "channel", id: MAIN_CHANNEL, fa: RADIO[4].fa, en: RADIO[4].en };
+  if (v === 3 || v === 4 || v === "3" || v === "4") return { kind: "channel", id: MAIN_CHANNEL, fa: MAIN_FALLBACK.fa, en: MAIN_FALLBACK.en };
   if (!v || typeof v !== "object") return null;
   const r = v as Record<string, unknown>;
   if (!isRadioId(r.id)) return null;
@@ -217,13 +224,19 @@ const arr = (v: unknown) => (Array.isArray(v) ? v : []) as unknown[];
  * under «Others». Never throws.
  */
 export function readCatalogue(channelsJson: unknown, musicJson: unknown): RadioCatalogue {
-  const channels: RadioCatalogue["channels"] = [{ id: MAIN_CHANNEL, n: 4, fa: RADIO[4].fa, en: RADIO[4].en }];
+  // The main broadcast takes the name of whatever nikoo.tv lists as number 4, else the fallback. Every other
+  // channel is listed under its own title, as nikoo.tv has it now.
+  const listed: RadioCatalogue["channels"] = [];
+  let main: { fa: string; en: string } = MAIN_FALLBACK;
   for (const c0 of arr(rec(channelsJson).channels)) {
     const c = rec(c0);
     if (!isRadioId(c.id) || c.id === MAIN_CHANNEL) continue;
     const fa = label(c.titleFa), en = label(c.titleEn);
-    if (fa || en) channels.push({ id: c.id, n: num(c.channelNumber), fa: fa || en, en: en || fa });
+    if (!fa && !en) continue;
+    if (num(c.channelNumber) === 4) { main = { fa: fa || en, en: en || fa }; continue; }
+    listed.push({ id: c.id, n: num(c.channelNumber), fa: fa || en, en: en || fa });
   }
+  const channels: RadioCatalogue["channels"] = [{ id: MAIN_CHANNEL, n: 4, fa: main.fa, en: main.en }, ...listed];
   channels.sort((a, b) => (a.n ?? 999) - (b.n ?? 999));
   const sections: RadioCatalogue["sections"] = [];
   for (const s0 of arr(rec(musicJson).sections)) {

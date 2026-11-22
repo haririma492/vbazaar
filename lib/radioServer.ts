@@ -39,8 +39,9 @@ function remembered<T>(ttl: number, max: number) {
 }
 
 const HOUR = 3_600_000;
-const catalogueOnce = remembered<RadioCatalogue>(HOUR, 1);
-/** The channels and the music categories nikoo.tv has now (an hour's memory). Throws when it cannot be reached. */
+// Five minutes: a channel nikoo.tv renames or adds shows on the stores' cards within that (owner, 2026-11-22: "always the most updated").
+const catalogueOnce = remembered<RadioCatalogue>(5 * 60_000, 1);
+/** The channels and the music categories nikoo.tv has now (5 minutes' memory). Throws when it cannot be reached. */
 export function radioCatalogue(): Promise<RadioCatalogue> {
   return catalogueOnce("all", async () => {
     const [channels, music] = await Promise.all([getJson("/api/channels"), getJson("/api/home-sections-type-3/list", 20_000)]);
