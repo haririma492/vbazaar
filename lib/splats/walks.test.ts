@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import {
   doorPhotoOf,
   DEFAULT_PITCH, zoomsAt, MAX_DOORS, addDoor, angleDiff, signAt, isSiteOnlyDoor, checkWalks, doorsAround, doorsNear, emptyWalks, isPhoneCopy, isWalkKey, keysNamed, mergeConflicts,
-  isFlatDoor, itemHitAt, entryOf, faceOf, rightShelfOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setTrack, musicOf, MAX_TRACKS, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
+  isFlatDoor, itemHitAt, entryOf, faceOf, storeFaceOf, storeSlugOf, rightShelfOf, STORE_FACE, isPhoneVideoKey, isVideoKey, looksFlat, mergeWalks, nextDoorId, parseWalks, phoneKeyOf, removeDoor, returnPoint, setStart, startOf, updateDoor, addItem, updateItem, removeItem, setTitle, itemAt, itemsAt, MAX_ITEMS, itemTime, setProjection, setAudio, setTrack, musicOf, MAX_TRACKS, setHide, setTagsFrom, setTilt, hideFacing, hideYawAt, hideAt, specialSay, isPinned, walkOf, wrapAngle, type Walks,
 } from "./walks.ts";
 
 const STREET = "scenes/street/street-v1.mp4";
@@ -696,4 +696,14 @@ test("setRadios / radiosOf: several live channels, one the default; parsed back"
   const one = setRadios(w0, "a", [ch("main")], ch("main"));
   assert.equal(one.walks.a.radios, undefined);
   assert.deepEqual(radiosOf(one.walks.a), []);
+});
+
+test("Oranous Bakery turns to its left-hand fridge at 2 s; other stores keep the shelf on the right", () => {
+  assert.equal(storeSlugOf("scenes/store-oranous-bakery/walk.mp4"), "oranous-bakery");
+  assert.equal(faceOf(null, "scenes/store-oranous-bakery/walk.mp4"), -Math.PI / 2);
+  assert.deepEqual(storeFaceOf("scenes/store-oranous-bakery/walk.mp4"), { yaw: -Math.PI / 2, at: 2 });
+  assert.equal(faceOf(null, "scenes/store-saraye-bamdad/walk.mp4"), STORE_FACE);
+  assert.equal(storeFaceOf("scenes/store-saraye-bamdad/walk.mp4"), null);
+  const own = { key: "x", faceAt: 9, face: 1 } as unknown as Walks["walks"][string];
+  assert.equal(faceOf(own, "scenes/store-oranous-bakery/walk.mp4"), 1, "a walk's own face wins");
 });

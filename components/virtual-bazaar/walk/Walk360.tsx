@@ -96,7 +96,7 @@ import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
 import {
   DEFAULT_PITCH, DOOR_PHOTO_MS, musicOf, DOOR_SIZE, PRELOAD_DT, addDoor, angleDiff, doorsAround, signAt, sortPins, startOf, type SignPin, doorsNear, emptyWalks, isFlatDoor, isSiteOnlyDoor, isSiteUrl, isPhoneCopy, isReverseCopy, reverseKeyOf, doorPhotoOf, logoOf, isPhoneVideoKey, isVideoKey, isWalkKey,
-  entryOf, faceOf, itemHitAt, itemsAt, coversAt, zoomsAt, outlineAt, quadBox, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
+  entryOf, faceOf, storeFaceOf, itemHitAt, itemsAt, coversAt, zoomsAt, outlineAt, quadBox, type WalkZoom, specialSay, type ItemPin, type WalkItem, looksFlat, parseWalks, phoneKeyOf, removeDoor, returnPoint, setProjection, setHide, setTagsFrom, setTilt, hideFacing, hideAt, HIDE_WIDTH, HIDE_TOP, setStart, updateDoor, walkOf, wrapAngle, type WalkDoor, type Walks,
   radiosOf,
 } from "@/lib/splats/walks";
 
@@ -2046,7 +2046,10 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
     function planFace(key: string | null) {
       const walk = walkOf(walksNow, key);
       const yaw = faceOf(walk, key);
-      facePlan = key && yaw !== null ? { key, t: entryOf(walk), yaw } : null;
+      // A store with its own first view (`FACE_BY_STORE`) turns at its own second, unless the walk says otherwise.
+      const own = storeFaceOf(key);
+      const at = own && walk?.faceAt === undefined && walk?.face === undefined ? own.at : entryOf(walk);
+      facePlan = key && yaw !== null ? { key, t: at, yaw } : null;
       faceTo = null;
     }
     let velTurn = 0;

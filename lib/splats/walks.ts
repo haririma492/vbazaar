@@ -1243,8 +1243,28 @@ export function steadyPins(pins: ItemPin[], round: boolean): ItemPin[] {
  */
 export const STORE_FACE = Math.PI / 2;
 /** Which way to turn a shopper to on entering the walk `key` (rad from the video's forward), or null: stay as they are. */
+/**
+ * A store whose first view is not the shelf on the right. Oranous Bakery (owner, 2026-11-22): 2 s into the walk, turn
+ * to the display fridge on the LEFT (-90°); the shopper turns elsewhere with the wheel as usual. Keyed by the store's
+ * slug (the `scenes/store-<slug>/` folder); a walk's own `face` / `faceAt` still wins.
+ */
+export const FACE_BY_STORE: Record<string, { yaw: number; at: number }> = {
+  "oranous-bakery": { yaw: -Math.PI / 2, at: 2 },
+};
+export function storeSlugOf(key: string | null): string | null {
+  const m = key ? /^scenes\/store-([a-z0-9-]+)\//.exec(key) : null;
+  return m ? m[1] : null;
+}
+/** The store's own first view, if it has one: the yaw and the second to turn at. */
+export function storeFaceOf(key: string | null): { yaw: number; at: number } | null {
+  const slug = storeSlugOf(key);
+  return slug && Object.prototype.hasOwnProperty.call(FACE_BY_STORE, slug) ? FACE_BY_STORE[slug] : null;
+}
+
 export function faceOf(walk: Walk | null, key: string | null): number | null {
   if (walk?.face !== undefined) return walk.face;
+  const own = storeFaceOf(key);
+  if (own) return own.yaw;
   if (!key || !/^scenes\/store-/.test(key)) return null;
   // ⚠️ 90° RIGHT (owner, 2026-11-05: "the camera should turn right 90 degree and view the shelves"). The
   // measured right-hand shelf (`rightShelfOf`, 27–35° on the bookshop) turned too little; kept for reference.
