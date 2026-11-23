@@ -128,7 +128,7 @@ async function runGoogle(slug: string, opts: { fresh?: boolean; storeOnly?: bool
       try {
         const got = await listingPhotos(slug, storeName, store.address);
         run.queries++;
-        run.store_photos = { q: got.q, photos: got.photos, at: got.at, found: got.found };
+        run.store_photos = { q: got.q, photos: got.photos, at: got.at, found: got.found, by: got.by };
         if (!got.photos.length) stopped = " The store's Google listing has no photos (or no listing was found).";
       } catch (e) { run.queries++; stopped = ` The store's Google listing: ${(e as Error).message}`; }
     } else if (wantStore && !stopped && store) {

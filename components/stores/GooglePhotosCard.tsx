@@ -50,6 +50,22 @@ export default function GooglePhotosCard({ slug }: { slug: string }) {
         </div>
       )}
       {!g?.run && g?.configured && <p className="mt-2 text-[13px] text-white/50">Not searched yet.</p>}
+      {g && g.store.length > 0 && (
+        <>
+          <p dir="ltr" className="mt-3 text-left text-[13px] text-white/70">{g.store.length} photos of the store, kept in our storage (bucket `scenes/catalogues/`):</p>
+          <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+            {g.store.map((u, k) => (
+              <a key={u} href={u} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-lg border border-white/10 bg-white">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={u} alt={`Store photo ${k + 1}`} loading="lazy" className="aspect-square w-full object-contain" />
+              </a>
+            ))}
+          </div>
+          {g.run?.store_photos?.by && g.run.store_photos.by.length > 0 && (
+            <p className="mt-2 text-[12px] text-white/45">Photo authors on Google: {g.run.store_photos.by.join(", ")}</p>
+          )}
+        </>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {g?.configured && !running && (
           <button type="button" className={KEY} disabled={busy} onClick={() => start(false)}>Search Google for the store&apos;s photos · عکس‌های فروشگاه</button>

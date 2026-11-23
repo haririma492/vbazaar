@@ -225,7 +225,11 @@ export default function StorePage({ slug }: { slug: string }) {
         <Card>
           <Bi fa="کاوشگر وبسایت" en="Website Explorer" className="text-[16px] font-bold" />
           <p className="mt-1 text-[13px] text-white/60">Products, prices, descriptions and photos read from the store&apos;s own website.</p>
-          <a href={`/stores/${slug}/website`} className={`${QUIET} mt-3 inline-flex items-center`}>Open · باز کردن</a>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <a href={`/stores/${slug}/website`} className={`${QUIET} inline-flex items-center`}>Open · باز کردن</a>
+            <a href={`/stores/${slug}/website`} className={`${KEY} inline-flex items-center`}>All website photos · همهٔ عکس‌های وبسایت</a>
+          </div>
+          <p className="mt-2 text-[12px] text-white/45">Every photo the website has, before you add it to a shelf or after. The shelf picker is below under «Shelf photos for shopping».</p>
         </Card>
       )}
       {op && <GooglePhotosCard slug={slug} />}

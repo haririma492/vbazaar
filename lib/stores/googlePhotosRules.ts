@@ -29,7 +29,7 @@ export type CseItem = {
   image?: { width?: number; height?: number; contextLink?: string };
 };
 
-export type GoogleRunEntry = { q: string; photos: string[]; at: string; found: number };
+export type GoogleRunEntry = { q: string; photos: string[]; at: string; found: number; /** The photos' authors, as Google gives them (listing photos). */ by?: string[] };
 export type GoogleRun = {
   store: string;
   running: boolean;
