@@ -63,6 +63,30 @@ async function keep(slug: string, links: string[]): Promise<string[]> {
 }
 
 /** Start (or carry on) the Google search for the store, in the background. */
+/**
+ * Each Google listing photo becomes a product of the store's list (owner, 2026-11-23: "all photos … with or without price
+ * … made available to ADD TO THEIR BASKET"): no name and no price yet, its photo, `by: "google"`, and its address as the
+ * `web` key the shelf picker and the tours use. Photos already on the list are not added again.
+ */
+export async function addListingProducts(slug: string, urls: string[]): Promise<number> {
+  const store = sceneOf(slug);
+  const cat = await readCatalogue(store);
+  const products = [...(cat?.products ?? [])];
+  const have = new Set(products.map((p) => p.web).filter((w): w is string => Boolean(w)));
+  const used = new Set(products.map((p) => p.n));
+  let next = 1, added = 0;
+  for (const url of urls) {
+    if (have.has(url)) continue;
+    while (used.has(next)) next++;
+    if (next > 999) break;
+    used.add(next);
+    products.push({ n: next, unit: "piece", priceCents: null, photo: url, by: "google", web: url });
+    added++;
+  }
+  if (added) await writeCatalogue({ store, products: products.sort((a, b) => a.n - b.n) });
+  return added;
+}
+
 export async function startGooglePhotos(slug: string, opts: { fresh?: boolean; storeOnly?: boolean } = {}): Promise<{ started: boolean; note: string }> {
   if (!googleConfigured()) return { started: false, note: "Not set up yet: GOOGLE_CSE_KEY and GOOGLE_CSE_CX are not set on the server (see lib/stores/googlePhotos.ts)." };
   if (busy) return { started: false, note: busy === slug ? "Already searching Google for this store." : `Searching for another store (${busy}); try again when it is done.` };
@@ -129,6 +153,7 @@ async function runGoogle(slug: string, opts: { fresh?: boolean; storeOnly?: bool
         const got = await listingPhotos(slug, storeName, store.address);
         run.queries++;
         run.store_photos = { q: got.q, photos: got.photos, at: got.at, found: got.found, by: got.by };
+        await addListingProducts(slug, got.photos).catch((e) => console.error("[google] list", (e as Error).message));
         if (!got.photos.length) stopped = " The store's Google listing has no photos (or no listing was found).";
       } catch (e) { run.queries++; stopped = ` The store's Google listing: ${(e as Error).message}`; }
     } else if (wantStore && !stopped && store) {

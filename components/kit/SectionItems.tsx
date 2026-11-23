@@ -46,7 +46,7 @@ export default function SectionItems({ section, site, photos, siteNote, onSave, 
       {/* eslint-disable-next-line @next/next/no-img-element */}
       {w.photo ? <img src={w.photo} alt="" className="h-10 w-10 shrink-0 rounded bg-white object-contain" loading="lazy" /> : <div className="h-10 w-10 shrink-0 rounded bg-white/10" />}
       <div className="min-w-0 flex-1 leading-tight">
-        <p className="truncate">{w.en || w.fa}</p>
+        <p className="truncate">{w.en || w.fa || "Photo (name later)"}</p>
         <p className="truncate text-[12px] text-white/50">{w.shots && w.shots > 1 ? `photo ${(w.shot ?? 0) + 1} of ${w.shots} · ` : ""}{w.en && w.fa ? `${w.fa} · ` : ""}{w.priceCents !== null ? `${formatCents(w.priceCents)} / ${w.unit}` : "no price"}</p>
       </div>
       {children}

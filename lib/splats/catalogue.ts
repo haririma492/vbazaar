@@ -48,7 +48,7 @@ export type Product = {
   photo?: string;
   /** Added on the walk by hand («hand»), found in the store's video by the crew («video»), or read off the store's own
    *  website by the Website Explorer («website», `lib/stores/websiteMerge.ts`), not from the merchant's sheet. */
-  by?: "hand" | "video" | "website";
+  by?: "hand" | "video" | "website" | "google";
   /** Its page on the store's own website (the Website Explorer's key for it). */
   web?: string;
   /** More photos of it (https), after `photo`: the store's site's other pictures, shown on the product's card. */
@@ -252,12 +252,12 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
     const unit = UNITS.includes(x.unit as Unit) ? (x.unit as Unit) : null;
     const en = typeof x.en === "string" ? x.en.trim().slice(0, 120) : "";
     const fa = typeof x.fa === "string" ? x.fa.trim().slice(0, 120) : "";
-    const by = x.by === "hand" || x.by === "video" || x.by === "website" ? x.by : undefined;
+    const by = x.by === "hand" || x.by === "video" || x.by === "website" || x.by === "google" ? x.by : undefined;
     const web = typeof x.web === "string" && isHttps(x.web) ? x.web.slice(0, 400) : "";
     const more = Array.isArray(x.more) ? x.more.filter((u): u is string => typeof u === "string" && isHttps(u)).slice(0, 8) : [];
     const google = Array.isArray(x.google) ? x.google.filter((u): u is string => typeof u === "string" && isHttps(u)).slice(0, 8) : [];
     // A product found in the video waits for its owner to name it; every other one has a title.
-    if (!unit || (!en && !fa && by !== "video")) { problems.push(`Product #${n} needs a title and a unit.`); continue; }
+    if (!unit || (!en && !fa && by !== "video" && by !== "google")) { problems.push(`Product #${n} needs a title and a unit.`); continue; }
     const price = x.priceCents === null || x.priceCents === undefined ? null : typeof x.priceCents === "number" && Number.isInteger(x.priceCents) && x.priceCents >= 0 ? x.priceCents : NaN;
     if (Number.isNaN(price)) { problems.push(`Product #${n}: its price must be whole cents.`); continue; }
     const photo = typeof x.photo === "string" && isHttps(x.photo) ? x.photo : "";

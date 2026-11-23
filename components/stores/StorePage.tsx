@@ -22,6 +22,7 @@
 
 import GooglePhotosCard from "./GooglePhotosCard";
 import WebsitePhotosStrip from "./WebsitePhotosStrip";
+import PhotoLibrary from "./PhotoLibrary";
 import { useCallback, useEffect, useState } from "react";
 import { ACTIVE_STEPS, BUDGET_CENTS, STEPS, STEP_SAY, isBookStore, type StoreRecord } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
@@ -235,6 +236,7 @@ export default function StorePage({ slug }: { slug: string }) {
         </Card>
       )}
       {op && <GooglePhotosCard slug={slug} />}
+      {op && <PhotoLibrary slug={slug} />}
       {page.walkUrl && <InstagramCard api={api} name={page.store.name.en || page.store.name.fa} />}
       {/* «Refresh all agents» is off the page (owner, 2026-11-16: after the pastry redesign "number of these steps are
           obsolete"): its steps served the green lights and the filmed Shelf Tour. `RefreshAllCard.tsx` stays, unused. */}

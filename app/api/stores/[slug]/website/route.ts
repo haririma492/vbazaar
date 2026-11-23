@@ -50,7 +50,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   // The website's products as the store's list holds them (owner, 2026-11-23: the photos must stay on screen even when a
   // later read finds nothing): used when the last read has no products of its own.
   const listed = await readCatalogue(sceneOf(o.s.slug)).catch(() => null);
-  const fromList = (listed?.products ?? []).filter((p) => p.web).map((p) => ({
+  const fromList = (listed?.products ?? []).filter((p) => p.web && p.by !== "google").map((p) => ({
     url: p.web!, handle: p.web!.split("/").filter(Boolean).pop() ?? "", name: { en: p.en ?? "", fa: p.fa ?? "" },
     description: { en: "", fa: "" }, priceCents: p.priceCents, compareAtCents: null, currency: "CAD",
     // Website photos only: the Google photos are sent apart (`google.byWeb`).

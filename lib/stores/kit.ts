@@ -258,7 +258,7 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
           const first = p?.photo.url ?? sitePhotos[0] ?? "";
           return {
             id, photo: first, thumb: p ? p.photo.thumb ?? p.photo.url! : first, more: (p ? sitePhotos : sitePhotos.slice(1)).slice(0, 8),
-            en: site?.en ?? "", fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
+            en: site?.en || (site && !site.fa ? "Photo (name later)" : site?.en ?? ""), fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
           };
         };
         return [

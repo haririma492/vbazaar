@@ -88,7 +88,7 @@ export function mergeIntoCatalogue(existing: Product[], site: SiteProduct[], pre
     if (changed) updated++; else unchanged++;
   }
   const onSite = new Set(site.filter((s) => !s.unlisted).map((s) => s.url));
-  const gone = products.filter((p) => p.web && !onSite.has(p.web)).length;
+  const gone = products.filter((p) => p.web && p.by !== "google" && !onSite.has(p.web)).length;
   products.sort((a, b) => a.n - b.n);
   return { products, added, updated, unchanged, gone, full };
 }
