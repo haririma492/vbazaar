@@ -11,7 +11,7 @@ import { sceneOf } from "./store";
 import type { GoogleRunEntry } from "./googlePhotosRules";
 
 const TIMEOUT_MS = 20_000;
-const MAX_PHOTOS = 10;
+const MAX_PHOTOS = 100;
 const key = () => process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 const fold = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 
