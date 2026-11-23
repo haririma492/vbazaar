@@ -21,6 +21,7 @@
  */
 
 import GooglePhotosCard from "./GooglePhotosCard";
+import WebsitePhotosStrip from "./WebsitePhotosStrip";
 import { useCallback, useEffect, useState } from "react";
 import { ACTIVE_STEPS, BUDGET_CENTS, STEPS, STEP_SAY, isBookStore, type StoreRecord } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
@@ -230,6 +231,7 @@ export default function StorePage({ slug }: { slug: string }) {
             <a href={`/stores/${slug}/website`} className={`${KEY} inline-flex items-center`}>All website photos · همهٔ عکس‌های وبسایت</a>
           </div>
           <p className="mt-2 text-[12px] text-white/45">Every photo the website has, before you add it to a shelf or after. The shelf picker is below under «Shelf photos for shopping».</p>
+          <WebsitePhotosStrip slug={slug} />
         </Card>
       )}
       {op && <GooglePhotosCard slug={slug} />}
