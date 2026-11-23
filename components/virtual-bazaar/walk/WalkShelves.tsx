@@ -66,6 +66,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   const pickMany = useRef<HTMLInputElement>(null);
   const [browsing, setBrowsing] = useState(false);
   const [browsePick, setBrowsePick] = useState(false);
+  const [browseSection, setBrowseSection] = useState(false);
 
   // The store's stitched photos: one with no shelf on the walk yet is offered for its border.
   useEffect(() => {
@@ -236,13 +237,18 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   }
 
   /** A shelf's quality photo (Type III) from the store's photos already in the system (`kitShelfFromLibrary`). */
-  async function useLibraryPhoto(id: string, url: string) {
+  async function useLibraryPhoto(id: string, url: string, level: "shelf" | "section" = "shelf") {
     if (!slug) return;
     setSending({ name: "the store's photo", sent: 0, total: 1, i: 0, of: 1 });
     try {
-      await postJson(`/api/stores/${slug}`, { action: "kitShelfFromLibrary", shelf: id, url });
+      await postJson(`/api/stores/${slug}`, { action: "kitFromLibrary", level, shelf: id, url });
       setSending(null);
-      setStatus({ tone: "ok", text: `✓ «${shelfNow(id)?.label.en ?? "the shelf"}»'s quality photo saved from the store's photos.` });
+      const label = shelfNow(id)?.label.en ?? "the shelf";
+      if (level === "section") {
+        setStatus({ tone: "ok", text: `✓ A section photo of «${label}» saved from the store's photos. Choose the next, or go on to the products.` });
+        return;
+      }
+      setStatus({ tone: "ok", text: `✓ «${label}»'s quality photo saved from the store's photos.` });
       setAt({ step: "sections", id });
     } catch (e) {
       setSending(null);
@@ -299,7 +305,13 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
           <p className="text-white/70">Close photos of each level of the shelf, a few products in each. Choose them together. Named <b>{kitFileName(cur?.n ?? 3, 2)}</b> (section 2) they keep their number; otherwise they are numbered in the order chosen.</p>
           <input ref={pickMany} type="file" multiple accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden"
             onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; void sendPhotos(at.id, f, true); }} />
-          <button className={key} disabled={Boolean(sending)} onClick={() => pickMany.current?.click()}>📷 Choose the section photos</button>
+          <div className="flex flex-wrap gap-2">
+            <button className={key} disabled={Boolean(sending)} onClick={() => pickMany.current?.click()}>📷 Choose from this computer</button>
+            {slug && <button className={btn} disabled={Boolean(sending)} onClick={() => setBrowseSection(true)}>🖼 Choose from the store&apos;s photos</button>}
+            <button className={btn} onClick={() => setAt({ step: "next", id: at.id })}>Next: the products →</button>
+          </div>
+          <p className="text-[12px] text-white/50">From the store&apos;s photos, one at a time: each one becomes the next section, 1 to {MAX_SECTIONS}.</p>
+          {browseSection && slug && <PhotoBrowser slug={slug} onClose={() => setBrowseSection(false)} onPick={(src) => { setBrowseSection(false); void useLibraryPhoto(at.id, src, "section"); }} />}
         </>)}
         {at.step === "next" && (<>
           {/* Each section's products, here and now (owner, 2026-11-16): the website's, and photos from this computer. */}

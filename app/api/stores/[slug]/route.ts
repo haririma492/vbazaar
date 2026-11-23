@@ -63,7 +63,7 @@ import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/store
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { setZoom } from "@/lib/splats/walks";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
-import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, setSectionName, type KitSlot } from "@/lib/stores/kitRules";
+import { KIT_ID_RE, MAX_KIT_PRODUCTS, MAX_SECTIONS, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, setSectionName, type KitSlot } from "@/lib/stores/kitRules";
 import { shelfLabel } from "@/lib/splats/shelves";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
@@ -166,27 +166,47 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   // A SHELF'S KIT (owner, 2026-11-15, the pastry redesign; `lib/stores/kit.ts`): the shelf's quality photo (Type III),
   // its sections (Type IV) and each section's products, for a shelf bordered on the walk. The operator only.
-  // A shelf's quality photo (Type III) taken from the store's photos already in the system (owner, 2026-11-23: "from those
-  // big pages … when most photos are already in the system"): the same kit step as an upload from this computer.
-  if (body.action === "kitShelfFromLibrary") {
+  // A photo from the store's photos already in the system (owner, 2026-11-23): a shelf's quality photo (Type III), a
+  // section's photo (Type IV, the next free number) or a product's photo (Type V, the next free number of its section).
+  // The same kit step as an upload from this computer.
+  if (body.action === "kitShelfFromLibrary" || body.action === "kitFromLibrary") {
     if (who !== "operator") return fail(403, "The operator only.");
     const shelf = String(body.shelf ?? "");
     const url = String(body.url ?? "");
+    const level = body.action === "kitShelfFromLibrary" ? "shelf" : String(body.level ?? "");
     if (!KIT_ID_RE.test(shelf)) return fail(400, "Which shelf? Mark it on the walk first (editor → «Shelves»).");
-    if (!url.startsWith(`${r2Config().publicBase}/`) && !/^https:\/\/[^/]+\/scenes\/catalogues\//.test(url)) return fail(400, "Only a photo already in the store's storage.");
+    if (!["shelf", "section", "product"].includes(level)) return fail(400, "Which photo is it: the shelf, a section or a product?");
+    if (!url.startsWith(`${r2Config().publicBase}/`)) return fail(400, "Only a photo already in the store's storage.");
     const zooms = s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.zooms ?? [] : [];
     const z = zooms.find((x) => x.id === shelf);
-    if (!z && !(await readKit(s.slug))?.shelves.some((x) => x.id === shelf)) return fail(400, "That shelf is not marked on the walk. Draw its 4 corners first (editor → «Shelves»).");
+    const kitNow = await readKit(s.slug);
+    const sh = kitNow?.shelves.find((x) => x.id === shelf);
+    if (!z && !sh) return fail(400, "That shelf is not marked on the walk. Draw its 4 corners first (editor → «Shelves»).");
+    const firstFree = (used: number[], max: number) => { for (let j = 1; j <= max; j++) if (!used.includes(j)) return j; return null; };
+    let slot: KitSlot;
+    if (level === "shelf") slot = { shelf };
+    else if (level === "section") {
+      const n = firstFree((sh?.sections ?? []).map((x) => x.i), MAX_SECTIONS);
+      if (n === null) return fail(400, `This shelf already has ${MAX_SECTIONS} sections.`);
+      slot = { shelf, section: n };
+    } else {
+      const sec = Number(body.section);
+      const secObj = sh?.sections.find((x) => x.i === sec);
+      if (!secObj) return fail(400, "Put the section's photo first, then its products.");
+      const j = firstFree(secObj.products.map((p) => p.i), MAX_KIT_PRODUCTS);
+      if (j === null) return fail(400, `This section already has ${MAX_KIT_PRODUCTS} products.`);
+      slot = { shelf, section: sec, product: j };
+    }
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
     if (!res || !res.ok) return fail(400, "That photo could not be read from the storage. Try another.");
     const bytes = new Uint8Array(await res.arrayBuffer());
     if (!bytes.length || bytes.length > 25 * 1024 * 1024) return fail(400, "That photo is empty or too big.");
     const now = new Date();
-    const key = uploadKey(s.slug, "kit" as UploadKind, "shelf-from-library.jpg", now);
+    const key = uploadKey(s.slug, "kit" as UploadKind, "from-library.jpg", now);
     await writeMastersBytes(key, bytes, "image/jpeg");
     let refusedWhy = "";
     const kit = await updateKit(s.slug, (k) => {
-      const r = putPhoto(k, { shelf }, { key, name: "shelf-from-library.jpg", size: bytes.length, at: now.toISOString() }, z?.n);
+      const r = putPhoto(k, slot, { key, name: "from-library.jpg", size: bytes.length, at: now.toISOString() }, z?.n);
       if ("error" in r) { refusedWhy = r.error; return k; }
       return r.kit;
     });

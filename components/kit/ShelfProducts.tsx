@@ -19,6 +19,7 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import { postJson, uploadInParts } from "@/components/stores/upload";
+import PhotoBrowser from "@/components/virtual-bazaar/walk/PhotoBrowser";
 import { formatCents } from "@/lib/splats/catalogue";
 import { MAX_KIT_PRODUCTS, MAX_SECTIONS, emptySections, nextFree, sectionProductCount, type KitPhoto, type KitSection } from "@/lib/stores/kitRules";
 import SectionItems, { type SiteItem } from "./SectionItems";
@@ -61,6 +62,15 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
   }, [waiting, load]);
 
   const done = async (text: string) => { setSaid({ ok: true, text }); await load(); onChanged?.(); };
+  /** The section whose product is being chosen from the store's photos (`PhotoBrowser`), or null. */
+  const [browse, setBrowse] = useState<number | null>(null);
+  const fromStore = async (url: string, sectionI: number) => {
+    setBrowse(null);
+    try {
+      await postJson(api, { action: "kitFromLibrary", level: "product", shelf: shelfId, section: sectionI, url });
+      await done(`✓ Product photo added to section ${sectionI}. · ذخیره شد`);
+    } catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
+  };
   const act = async (body: Record<string, unknown>, text: string) => {
     try { await postJson(api, body); await done(text); } catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
   };
@@ -179,6 +189,7 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
             catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }
           }}
           onUploadLocal={nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS) === null ? null : () => choose(true, (i) => { const j = freeAt(x.products.map((p) => p.i), MAX_KIT_PRODUCTS)(i); return j ? { section: x.i, product: j } : null; })}
+          onUploadStore={nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS) === null ? null : () => setBrowse(x.i)}
           onOwnPhoto={(web) => {
             const j = x.products.find((p) => p.match?.web === web)?.i ?? nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS);
             if (j === null) { setSaid({ ok: false, text: `This section has its ${MAX_KIT_PRODUCTS} product photos: remove one first.` }); return; }
@@ -236,6 +247,7 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
           {inEditor && <a className={`${BTN} text-white/70`} href={`/stores/${slug}#kit`} target="_blank" rel="noreferrer">The store&apos;s page ↗</a>}
         </div>
       )}
+      {browse !== null && <PhotoBrowser slug={slug} onClose={() => setBrowse(null)} onPick={(src) => void fromStore(src, browse)} />}
       {placing && shelf.photo?.url && <PlaceScreen shelf={shelf.photo.url} section={placing} onClose={() => setPlacing(null)} onSave={(q) => {
         const id = placing.id;
         setPlacing(null);

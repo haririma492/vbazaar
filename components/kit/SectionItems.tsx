@@ -18,7 +18,7 @@ const hit = (w: SiteItem, q: string) => { const hay = norm(`${w.en} ${w.fa}`); r
  * website products by name (English or Farsi), «＋» to add, «✕» to take off, ↑ to move up. Each change saves itself;
  * the panel lists them in this order.
  */
-export default function SectionItems({ section, site, photos, siteNote, onSave, onOwnPhoto, onUploadLocal, uploading }: {
+export default function SectionItems({ section, site, photos, siteNote, onSave, onOwnPhoto, onUploadLocal, onUploadStore, uploading }: {
   section: KitSection; site: SiteItem[];
   /** Every website photo, one per photo (`kitForPage`'s `sitePhotos`): what the operator picks from. */
   photos: SiteItem[];
@@ -28,6 +28,8 @@ export default function SectionItems({ section, site, photos, siteNote, onSave, 
   onOwnPhoto: ((web: string) => void) | null;
   /** Upload product photos from this computer, not picked from the website (matched to it by itself, or chosen below). */
   onUploadLocal: (() => void) | null;
+  /** Choose a product photo from the store's photos (the photo browser); null when the section is full. */
+  onUploadStore?: (() => void) | null;
   uploading: boolean;
 }) {
   const [q, setQ] = useState("");
@@ -58,6 +60,8 @@ export default function SectionItems({ section, site, photos, siteNote, onSave, 
       <p className="text-[12px] text-white/50">Two ways, both fine: pick them from the store&apos;s website below, or upload their photos (Type V) from this computer. A website product can also take your own photo («📷»): it is shown first, the website&apos;s after it.</p>
       {onUploadLocal && <button type="button" className="mt-1 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
         onClick={onUploadLocal}>＋ Upload product photos for section {section.i} from this computer (Type V) · از رایانه</button>}
+      {onUploadStore && <button type="button" className="mt-1 ml-2 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30"
+        disabled={uploading} onClick={onUploadStore}>🖼 Choose product photos for section {section.i} from the store&apos;s photos</button>}
       {!photos.length && <p className="text-amber-200">{siteNote || "No website products yet: run the Website Explorer first."}</p>}
       {chosen.length > 0 && (
         <ol className="mt-1 space-y-1">
