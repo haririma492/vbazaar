@@ -63,7 +63,7 @@ import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/store
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { setZoom } from "@/lib/splats/walks";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
-import { KIT_ID_RE, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, setSectionName, type KitSlot } from "@/lib/stores/kitRules";
+import { KIT_ID_RE, MAX_KIT_PRODUCTS, MAX_SECTIONS, checkKitName, emptyKit, moveProduct, nextFree, putPhoto, removeFromKit, setItems, setMatch, setPlace, setSectionName, type KitSlot } from "@/lib/stores/kitRules";
 import { shelfLabel } from "@/lib/splats/shelves";
 import { recordOwner } from "@/lib/stores/ownerVisits";
 import { readReel, startReel } from "@/lib/stores/reel";
@@ -177,6 +177,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const zooms = s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.zooms ?? [] : [];
     const z = zooms.find((x) => x.id === shelf);
     if (!z && !(await readKit(s.slug))?.shelves.some((x) => x.id === shelf)) return fail(400, "That shelf is not marked on the walk. Draw its 4 corners first (editor → «Shelves»).");
+    // Where the photo goes: the shelf's own photo (no section), a section (a number, or "next": the first free one), or a
+    // product of that section (a number, or "next"). Section and product photos from the store's photos (owner, 2026-11-23:
+    // the same two choices as from this computer). The slot used is answered, so the screen can tie a product to its website product.
+    const wantSection = body.section === undefined || body.section === null ? undefined : body.section === "next" ? "next" : Number(body.section);
+    const wantProduct = body.product === undefined || body.product === null ? undefined : body.product === "next" ? "next" : Number(body.product);
     const res = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
     if (!res || !res.ok) return fail(400, "That photo could not be read from the storage. Try another.");
     const bytes = new Uint8Array(await res.arrayBuffer());
@@ -185,14 +190,29 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const key = uploadKey(s.slug, "kit" as UploadKind, "shelf-from-library.jpg", now);
     await writeMastersBytes(key, bytes, "image/jpeg");
     let refusedWhy = "";
+    let usedSlot: KitSlot = { shelf };
     const kit = await updateKit(s.slug, (k) => {
-      const r = putPhoto(k, { shelf }, { key, name: "shelf-from-library.jpg", size: bytes.length, at: now.toISOString() }, z?.n);
+      let slot: KitSlot = { shelf };
+      if (wantSection !== undefined) {
+        const secs = k.shelves.find((x) => x.id === shelf)?.sections ?? [];
+        const sec = wantSection === "next" ? nextFree(secs.map((x) => x.i), MAX_SECTIONS) : wantSection;
+        if (sec === null || sec === undefined) { refusedWhy = `A shelf has at most ${MAX_SECTIONS} sections.`; return k; }
+        slot = { shelf, section: sec };
+        if (wantProduct !== undefined) {
+          const products = secs.find((x) => x.i === sec)?.products ?? [];
+          const prod = wantProduct === "next" ? nextFree(products.map((x) => x.i), MAX_KIT_PRODUCTS) : wantProduct;
+          if (prod === null || prod === undefined) { refusedWhy = `That section has its ${MAX_KIT_PRODUCTS} product photos: remove one first.`; return k; }
+          slot = { shelf, section: sec, product: prod };
+        }
+      }
+      usedSlot = slot;
+      const r = putPhoto(k, slot, { key, name: "shelf-from-library.jpg", size: bytes.length, at: now.toISOString() }, z?.n);
       if ("error" in r) { refusedWhy = r.error; return k; }
       return r.kit;
     });
     if (refusedWhy) return fail(400, refusedWhy);
     startKit(s.slug);
-    return ok({ kit: kit.shelves.find((x) => x.id === shelf) ?? null });
+    return ok({ kit: kit.shelves.find((x) => x.id === shelf) ?? null, slot: usedSlot });
   }
   if (body.action === "upload" && body.kind === "kit") {
     if (who !== "operator") return fail(403, "The operator only.");

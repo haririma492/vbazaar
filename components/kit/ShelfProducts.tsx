@@ -21,7 +21,8 @@ import { useCallback, useEffect, useState } from "react";
 import { postJson, uploadInParts } from "@/components/stores/upload";
 import { formatCents } from "@/lib/splats/catalogue";
 import { MAX_KIT_PRODUCTS, MAX_SECTIONS, emptySections, nextFree, sectionProductCount, type KitPhoto, type KitSection } from "@/lib/stores/kitRules";
-import SectionItems, { type SiteItem } from "./SectionItems";
+import SectionItems, { type PhotoFrom, type SiteItem } from "./SectionItems";
+import PhotoBrowser from "@/components/virtual-bazaar/walk/PhotoBrowser";
 import PlaceScreen from "./PlaceScreen";
 
 type Shelf = { id: string; n?: number | null; label: { en: string; fa: string }; photo: KitPhoto | null; sections: KitSection[] };
@@ -44,6 +45,8 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [placing, setPlacing] = useState<KitSection | null>(null);
+  // A product photo picked from the store's photos: for this section, or for one website product of it (owner, 2026-11-23).
+  const [browse, setBrowse] = useState<{ sec: KitSection; web?: string } | null>(null);
 
   const load = useCallback(async () => {
     try { setSt(await postJson<State>(api, { action: "kit" })); } catch (e) { setSaid({ ok: false, text: `Could not read the store: ${(e as Error).message}` }); }
@@ -91,6 +94,22 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
       else await done(`✓ ${sent} photo${sent > 1 ? "s" : ""} saved. · ذخیره شد`);
     };
     input.click();
+  };
+  /** A product photo from the store's photos into this section (`web`: it is that website product's own photo, and is tied to it). */
+  const fromStore = async (sec: KitSection, url: string, web?: string) => {
+    setBusy("the store's photo…");
+    try {
+      if (web) {
+        const j = sec.products.find((p) => p.match?.web === web)?.i ?? nextFree(sec.products.map((p) => p.i), MAX_KIT_PRODUCTS);
+        if (j === null) throw new Error(`This section has its ${MAX_KIT_PRODUCTS} product photos: remove one first.`);
+        await postJson(api, { action: "kitShelfFromLibrary", shelf: shelfId, url, section: sec.i, product: j });
+        await postJson(api, { action: "kitMatch", product: `${sec.id}-p${j}`, web });
+      } else {
+        await postJson(api, { action: "kitShelfFromLibrary", shelf: shelfId, url, section: sec.i, product: "next" });
+      }
+      await done(`✓ ${web ? "Your own photo saved" : "1 photo saved"}. · ذخیره شد`);
+    } catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); }
+    setBusy(null);
   };
   /** The i-th free number among `taken` (1…max). */
   const freeAt = (taken: number[], max: number) => (i: number) => {
@@ -178,10 +197,14 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
             try { await postJson(api, { action: "kitItems", section: x.id, webs }); await done("✓ Saved · ذخیره شد"); return true; }
             catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }
           }}
-          onUploadLocal={nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS) === null ? null : () => choose(true, (i) => { const j = freeAt(x.products.map((p) => p.i), MAX_KIT_PRODUCTS)(i); return j ? { section: x.i, product: j } : null; })}
-          onOwnPhoto={(web) => {
+          onUploadLocal={nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS) === null ? null : (from: PhotoFrom) => {
+            if (from === "store") { setBrowse({ sec: x }); return; }
+            choose(true, (i) => { const j = freeAt(x.products.map((p) => p.i), MAX_KIT_PRODUCTS)(i); return j ? { section: x.i, product: j } : null; });
+          }}
+          onOwnPhoto={(web, from) => {
             const j = x.products.find((p) => p.match?.web === web)?.i ?? nextFree(x.products.map((p) => p.i), MAX_KIT_PRODUCTS);
             if (j === null) { setSaid({ ok: false, text: `This section has its ${MAX_KIT_PRODUCTS} product photos: remove one first.` }); return; }
+            if (from === "store") { setBrowse({ sec: x, web }); return; }
             choose(false, (i) => (i === 0 ? { section: x.i, product: j } : null), async () => { await postJson(api, { action: "kitMatch", product: `${x.id}-p${j}`, web }); });
           }} />
 
@@ -236,6 +259,7 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
           {inEditor && <a className={`${BTN} text-white/70`} href={`/stores/${slug}#kit`} target="_blank" rel="noreferrer">The store&apos;s page ↗</a>}
         </div>
       )}
+      {browse && slug && <PhotoBrowser slug={slug} onClose={() => setBrowse(null)} onPick={(src) => { const b = browse; setBrowse(null); void fromStore(b.sec, src, b.web); }} />}
       {placing && shelf.photo?.url && <PlaceScreen shelf={shelf.photo.url} section={placing} onClose={() => setPlacing(null)} onSave={(q) => {
         const id = placing.id;
         setPlacing(null);

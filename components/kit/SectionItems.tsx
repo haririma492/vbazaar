@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { formatCents } from "@/lib/splats/catalogue";
 import { splitPick, type KitSection } from "@/lib/stores/kitRules";
+
+/** Where a photo comes from: this computer, or the store's photos already in the system (owner, 2026-11-23). */
+export type PhotoFrom = "computer" | "store";
 
 /** A product of the store's website, as the operator's screens list it (`kitForPage`'s `site`). */
 export type SiteItem = { web: string; en: string; fa: string; priceCents: number | null; unit: string; photo: string | null; shot?: number; shots?: number };
@@ -24,14 +27,16 @@ export default function SectionItems({ section, site, photos, siteNote, onSave, 
   photos: SiteItem[];
   /** Why the website's list is empty, when it is (`kitForPage`). */
   siteNote?: string; onSave: (webs: string[]) => Promise<boolean>;
-  /** Upload the operator's own photo of a website product (from this computer); null when the section is full. */
-  onOwnPhoto: ((web: string) => void) | null;
-  /** Upload product photos from this computer, not picked from the website (matched to it by itself, or chosen below). */
-  onUploadLocal: (() => void) | null;
+  /** The operator's own photo of a website product, from this computer or from the store's photos; null when the section is full. */
+  onOwnPhoto: ((web: string, from: PhotoFrom) => void) | null;
+  /** Product photos, not picked from the website (matched to it by itself, or chosen below), from this computer or the store's photos. */
+  onUploadLocal: ((from: PhotoFrom) => void) | null;
   uploading: boolean;
 }) {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
+  // Which product's "My own photo" is asking where its photo comes from (one open at a time).
+  const [ownFor, setOwnFor] = useState<string | null>(null);
   const items = section.items ?? [];
   // A pick is a website photo (`web` or `web#n`); a pick of a product with no photo listed falls back to the product.
   const find = (key: string) => photos.find((x) => x.web === key) ?? site.find((x) => x.web === splitPick(key).web);
@@ -56,21 +61,35 @@ export default function SectionItems({ section, site, photos, siteNote, onSave, 
     <div className="mt-2 rounded-md border border-emerald-300/20 bg-emerald-300/[0.04] p-2">
       <p className="font-bold text-emerald-100">Products of section {section.i} · محصولات بخش {section.i} — {chosen.length} from the website</p>
       <p className="text-[12px] text-white/50">Two ways, both fine: pick them from the store&apos;s website below, or upload their photos (Type V) from this computer. A website product can also take your own photo («📷»): it is shown first, the website&apos;s after it.</p>
-      {onUploadLocal && <button type="button" className="mt-1 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
-        onClick={onUploadLocal}>＋ Upload product photos for section {section.i} from this computer (Type V) · از رایانه</button>}
+      {onUploadLocal && (
+        <div className="mt-1 flex flex-wrap gap-2">
+          <button type="button" className="rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
+            onClick={() => onUploadLocal("computer")}>＋ Upload product photos for section {section.i} from this computer (Type V) · از رایانه</button>
+          <button type="button" className="rounded-full border border-white/25 px-3 py-1 text-[13px] text-white/85 disabled:opacity-30" disabled={uploading}
+            onClick={() => onUploadLocal("store")}>🖼 Choose product photos from the store&apos;s photos</button>
+        </div>
+      )}
       {!photos.length && <p className="text-amber-200">{siteNote || "No website products yet: run the Website Explorer first."}</p>}
       {chosen.length > 0 && (
         <ol className="mt-1 space-y-1">
           {chosen.map((w, k) => (
-            <Row key={w.web} w={w} mine={ownOf(w.web)?.photo.thumb}>
-              {onOwnPhoto && <button type="button" className="whitespace-nowrap rounded-full border border-white/20 px-2 text-[12px] text-white/80 disabled:opacity-30" disabled={busy || uploading}
-                title="Use your own photo of this product (from this computer); the website's photos follow it"
-                onClick={() => onOwnPhoto(w.web)}>📷 {ownOf(w.web) ? "Replace my photo" : "My own photo"}</button>}
-              <button type="button" className="px-1 text-white/60 disabled:opacity-30" disabled={busy || k === 0} aria-label="Move up"
-                onClick={() => { const n = [...items]; [n[k - 1], n[k]] = [n[k], n[k - 1]]; void save(n); }}>↑</button>
-              <button type="button" className="px-1 text-rose-200 disabled:opacity-30" disabled={busy} aria-label="Take off"
-                onClick={() => void save(items.filter((x) => x !== w.web))}>✕</button>
-            </Row>
+            <Fragment key={w.web}>
+              <Row w={w} mine={ownOf(w.web)?.photo.thumb}>
+                {onOwnPhoto && <button type="button" className="whitespace-nowrap rounded-full border border-white/20 px-2 text-[12px] text-white/80 disabled:opacity-30" disabled={busy || uploading}
+                  title="Use your own photo of this product (from this computer, or from the store's photos); the website's photos follow it"
+                  onClick={() => setOwnFor(ownFor === w.web ? null : w.web)}>📷 {ownOf(w.web) ? "Replace my photo" : "My own photo"}</button>}
+                <button type="button" className="px-1 text-white/60 disabled:opacity-30" disabled={busy || k === 0} aria-label="Move up"
+                  onClick={() => { const n = [...items]; [n[k - 1], n[k]] = [n[k], n[k - 1]]; void save(n); }}>↑</button>
+                <button type="button" className="px-1 text-rose-200 disabled:opacity-30" disabled={busy} aria-label="Take off"
+                  onClick={() => void save(items.filter((x) => x !== w.web))}>✕</button>
+              </Row>
+              {onOwnPhoto && ownFor === w.web && (
+                <li className="flex flex-wrap gap-2 px-1 pb-1">
+                  <button type="button" className="rounded-full border border-white/25 px-3 py-1 text-[12px] text-white/90" onClick={() => { setOwnFor(null); onOwnPhoto(w.web, "computer"); }}>📷 From this computer</button>
+                  <button type="button" className="rounded-full border border-white/25 px-3 py-1 text-[12px] text-white/90" onClick={() => { setOwnFor(null); onOwnPhoto(w.web, "store"); }}>🖼 From the store&apos;s photos</button>
+                </li>
+              )}
+            </Fragment>
           ))}
         </ol>
       )}
