@@ -120,7 +120,11 @@ async function explore(slug: string, origin: string, opts: { readDisallowed?: bo
   const now = () => new Date().toISOString();
   const run: WebsiteRun = prev && prev.site === origin ? { ...prev, running: true, finished: null, ask: null } : {
     store: slug, site: origin, started: now(), finished: null, running: true, note: "Reading robots.txt…", method: "",
-    robots: { disallow: [], sitemaps: [] }, ask: null, permission: null, endpoint: null, found: 0, done: [], failures: [], products: [],
+    robots: { disallow: [], sitemaps: [] }, ask: null, permission: null, endpoint: null, found: 0, done: [],
+    failures: [],
+    // A fresh read starts its pages again, but keeps the products it had: a read that finds nothing must not wipe them
+    // (owner, 2026-11-23: "Read it all again" said "nothing found" and the saved list was emptied).
+    products: last?.site === origin ? last.products : [],
     // Read again from the start, the photo copies and the last merge are kept: the owner's changes stay theirs.
     // …and so is the operator's answer about robots.txt for this site.
     ...(last?.site === origin ? { photos: last.photos, merged: last.merged, integrated: last.integrated, permission: last.permission } : {}),

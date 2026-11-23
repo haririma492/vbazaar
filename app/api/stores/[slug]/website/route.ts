@@ -47,7 +47,17 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
     });
   }
   // The last merge's copy of the site and the photo map are for the merge, not the page.
-  const shown = run ? { ...run, merged: undefined, photos: undefined } : null;
+  // The website's products as the store's list holds them (owner, 2026-11-23: the photos must stay on screen even when a
+  // later read finds nothing): used when the last read has no products of its own.
+  const listed = await readCatalogue(sceneOf(o.s.slug)).catch(() => null);
+  const fromList = (listed?.products ?? []).filter((p) => p.web).map((p) => ({
+    url: p.web!, handle: p.web!.split("/").filter(Boolean).pop() ?? "", name: { en: p.en ?? "", fa: p.fa ?? "" },
+    description: { en: "", fa: "" }, priceCents: p.priceCents, compareAtCents: null, currency: "CAD",
+    // Website photos only: the Google photos are sent apart (`google.byWeb`).
+    images: [p.photo, ...(p.more ?? [])].filter((u): u is string => Boolean(u)), variants: [], category: [], available: null, source: "json" as const,
+  }));
+  const products = run?.products?.length ? run.products : fromList;
+  const shown = run ? { ...run, products, merged: undefined, photos: undefined } : null;
   // The products found in the video, each with what was decided about its website product (operator).
   let matching: unknown = null;
   if (o.who === "operator") {
@@ -62,7 +72,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
   const [google, catalogue] = await Promise.all([readGoogle(o.s.slug), readCatalogue(sceneOf(o.s.slug)).catch(() => null)]);
   const byWeb: Record<string, string[]> = {};
   for (const p of catalogue?.products ?? []) if (p.web && p.google?.length) byWeb[p.web] = p.google;
-  return ok({ who: o.who, website: o.s.website ?? null, name: o.s.name, run: shown, summary: summarize(run?.products ?? []), matching,
+  return ok({ who: o.who, website: o.s.website ?? null, name: o.s.name, run: shown, summary: summarize(products), matching,
     google: { configured: googleConfigured(), run: google, byWeb, store: google?.store_photos?.photos ?? [] } });
 }
 
