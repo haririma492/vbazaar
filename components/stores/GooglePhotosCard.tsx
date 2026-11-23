@@ -41,21 +41,21 @@ export default function GooglePhotosCard({ slug }: { slug: string }) {
   return (
     <Card>
       <Bi fa="عکس‌ها از گوگل" en="Photos from Google" className="text-[16px] font-bold" />
-      <p className="mt-1 text-[13px] text-white/60">Google&apos;s image search for each product&apos;s name and for the store itself. They go on the product beside the website&apos;s photos, and in the shelf picker. Other people&apos;s pictures: check them first.</p>
+      <p className="mt-1 text-[13px] text-white/60">Google&apos;s image search for the store&apos;s name and street: its photos. They are shown with the website&apos;s photos. Other people&apos;s pictures: check them first.</p>
       {g && !g.configured && <Said text="Not set up yet: the server needs GOOGLE_CSE_KEY and GOOGLE_CSE_CX (on Railway). Until then nothing is searched." />}
       {g?.run && (
         <div dir="ltr" className="mt-2 space-y-1 text-left text-[13px] text-white/60">
           <p>{g.run.note || (running ? "Searching…" : "")}</p>
-          <p className="text-white/45">{withPhotos} of {products.length} searched products have Google photos ({photos} in all) · {g.store.length} photos of the store</p>
+          <p className="text-white/45">{g.store.length} photos of the store{products.length ? ` · ${withPhotos} of ${products.length} searched products have Google photos (${photos} in all)` : ""}</p>
         </div>
       )}
       {!g?.run && g?.configured && <p className="mt-2 text-[13px] text-white/50">Not searched yet.</p>}
       <div className="mt-3 flex flex-wrap gap-2">
         {g?.configured && !running && (
-          <button type="button" className={KEY} disabled={busy} onClick={() => start(false)}>Search Google for photos · جستجوی عکس</button>
+          <button type="button" className={KEY} disabled={busy} onClick={() => start(false)}>Search Google for the store&apos;s photos · عکس‌های فروشگاه</button>
         )}
         {g?.configured && !running && g.run && (
-          <button type="button" className={QUIET} disabled={busy} onClick={() => start(true)}>Search every product again</button>
+          <button type="button" className={QUIET} disabled={busy} onClick={() => start(true)}>Search again</button>
         )}
         <a href={`/stores/${slug}/website`} className={QUIET}>See the photos · دیدن عکس‌ها</a>
       </div>

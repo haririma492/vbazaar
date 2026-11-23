@@ -206,7 +206,7 @@ export default function WebsitePage({ slug }: { slug: string }) {
       {page.google && (
         <Card>
           <Bi fa="عکس‌ها از جستجوی گوگل" en="Photos from Google" className="text-[17px] font-bold" />
-          <p className="mt-2 text-[13px] text-white/60">Google&apos;s image search is asked for each product&apos;s name with the store&apos;s name, and for the store itself. The best few pictures are copied to our bucket and shown with the website&apos;s photos. These are other people&apos;s pictures: check them before they go on the store&apos;s page.</p>
+          <p className="mt-2 text-[13px] text-white/60">Google&apos;s image search for the store&apos;s name and street. Its photos are copied to our bucket and shown with the website&apos;s photos. These are other people&apos;s pictures: check them before they go on the store&apos;s page.</p>
           {!page.google.configured && <Said text="Not set up yet: the server needs GOOGLE_CSE_KEY and GOOGLE_CSE_CX (on Railway). Until then nothing is searched." />}
           {page.google.run && (
             <div dir="ltr" className="mt-3 space-y-1 text-left text-[13px] text-white/60">
@@ -216,8 +216,8 @@ export default function WebsitePage({ slug }: { slug: string }) {
           )}
           {op && page.google.configured && !googleRunning && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" className={KEY} disabled={busy} onClick={() => googleStart(false)}>Search Google for photos · جستجوی عکس</button>
-              {page.google.run && <button type="button" className={QUIET} disabled={busy} onClick={() => googleStart(true)}>Search every product again</button>}
+              <button type="button" className={KEY} disabled={busy} onClick={() => googleStart(false)}>Search Google for the store&apos;s photos · عکس‌های فروشگاه</button>
+              {page.google.run && <button type="button" className={QUIET} disabled={busy} onClick={() => googleStart(true)}>Search again</button>}
             </div>
           )}
           {googleRunning && <p className="mt-3 text-[13px] text-emerald-200/80">{page.google.run?.note}</p>}

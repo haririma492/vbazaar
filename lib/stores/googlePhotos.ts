@@ -62,17 +62,23 @@ async function keep(slug: string, links: string[]): Promise<string[]> {
 }
 
 /** Start (or carry on) the Google search for the store, in the background. */
-export async function startGooglePhotos(slug: string, opts: { fresh?: boolean } = {}): Promise<{ started: boolean; note: string }> {
+export async function startGooglePhotos(slug: string, opts: { fresh?: boolean; storeOnly?: boolean } = {}): Promise<{ started: boolean; note: string }> {
   if (!googleConfigured()) return { started: false, note: "Not set up yet: GOOGLE_CSE_KEY and GOOGLE_CSE_CX are not set on the server (see lib/stores/googlePhotos.ts)." };
   if (busy) return { started: false, note: busy === slug ? "Already searching Google for this store." : `Searching for another store (${busy}); try again when it is done.` };
   const site = await readWebsite(slug).catch(() => null);
   if (site?.running) return { started: false, note: "The Website Explorer is reading this store's site right now. Start the Google search when it is done, so the two do not write the list at once." };
   if (!(await readStore(slug))) return { started: false, note: "No such store." };
   void runGoogle(slug, opts).catch((e) => console.error("[google]", slug, e));
-  return { started: true, note: "Searching Google for the store's products…" };
+  return { started: true, note: opts.storeOnly === false ? "Searching Google for the store's products…" : "Searching Google for the store's photos…" };
 }
 
-async function runGoogle(slug: string, opts: { fresh?: boolean }) {
+/**
+ * Store-only (the default, owner 2026-11-23: "just open the Google search for the store (address) and click on photos"):
+ * ONE search for the store's name and street; its photos are kept on the run and shown on the store's pages. The
+ * per-product search runs only when asked for with `storeOnly: false`, and it alone fills each product's `google`.
+ */
+async function runGoogle(slug: string, opts: { fresh?: boolean; storeOnly?: boolean }) {
+  const storeOnly = opts.storeOnly !== false;
   busy = slug;
   const now = () => new Date().toISOString();
   try {
@@ -92,8 +98,8 @@ async function runGoogle(slug: string, opts: { fresh?: boolean }) {
 
     const ownHost = hostOf(store?.website);
     const products = cat?.products ?? [];
-    const todo = toSearch(products, { ...run, store: storeName }, Boolean(opts.fresh));
-    const wantStore = opts.fresh || !run.store_photos;
+    const todo = storeOnly ? [] : toSearch(products, { ...run, store: storeName }, Boolean(opts.fresh));
+    const wantStore = storeOnly || opts.fresh || !run.store_photos;
     const budget = QUERY_CAP - (wantStore ? 1 : 0);
     let stopped = "";
 
@@ -128,7 +134,8 @@ async function runGoogle(slug: string, opts: { fresh?: boolean }) {
     }
 
     // The copies go on the products (their `google` field); a product whose answer is empty loses nothing it had.
-    const fresh = await readCatalogue(sceneOf(slug));
+    // Store-only: the products are not touched (their `google` photos from an earlier product search stay).
+    const fresh = storeOnly ? null : await readCatalogue(sceneOf(slug));
     if (fresh) {
       const products2: Product[] = fresh.products.map((p) => {
         const got = run.products[String(p.n)]?.photos ?? [];
@@ -140,7 +147,7 @@ async function runGoogle(slug: string, opts: { fresh?: boolean }) {
     }
     run.running = false;
     run.finished = now();
-    await save(summaryNote(run) + stopped);
+    await save(storeOnly ? `${run.store_photos?.photos.length ?? 0} photos of the store from Google (${run.queries} search).${stopped}` : summaryNote(run) + stopped);
   } catch (e) {
     const prev = await readGoogle(slug);
     await writeMastersJson(googleKey(slug), { ...(prev ?? emptyGoogleRun(slug)), running: false, finished: now(), note: `Stopped: ${(e as Error).message}` });

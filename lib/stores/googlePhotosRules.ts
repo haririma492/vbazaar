@@ -13,7 +13,7 @@
 export const QUERY_CAP = 90;
 /** Photos kept for one product, and for the store. */
 export const PER_PRODUCT = 3;
-export const PER_STORE = 8;
+export const PER_STORE = 10;
 /** Smaller than this and the picture will not zoom well on a shelf card. */
 export const MIN_WIDTH = 600;
 /** The picture types we keep. */
