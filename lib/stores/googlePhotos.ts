@@ -17,6 +17,7 @@ import { createHash } from "node:crypto";
 import { r2Config, readCatalogue, readMastersText, writeCatalogue, writeMastersJson } from "@/lib/splats/r2";
 import type { Product } from "@/lib/splats/catalogue";
 import { readStore } from "./bucket";
+import { listingPhotos } from "./googlePlaces";
 import { sceneOf } from "./store";
 import { copyPhoto, readWebsite } from "./website";
 import {
@@ -122,7 +123,15 @@ async function runGoogle(slug: string, opts: { fresh?: boolean; storeOnly?: bool
       await sleep(GAP_MS);
     }
 
-    if (wantStore && !stopped && store) {
+    if (wantStore && !stopped && store && storeOnly) {
+      // The store's own Google listing («See photos»), not an image search (owner, 2026-11-23).
+      try {
+        const got = await listingPhotos(slug, storeName, store.address);
+        run.queries++;
+        run.store_photos = { q: got.q, photos: got.photos, at: got.at, found: got.found };
+        if (!got.photos.length) stopped = " The store's Google listing has no photos (or no listing was found).";
+      } catch (e) { run.queries++; stopped = ` The store's Google listing: ${(e as Error).message}`; }
+    } else if (wantStore && !stopped && store) {
       const q = storeQuery(storeName, store.address);
       if (q) {
         try {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyGoogleRun, hostOf, photosOf, pickPhotos, productQuery, showsPeople, storeQuery, summaryNote, toSearch, usable, MIN_WIDTH } from "./googlePhotosRules.ts";
+import { runStale, STALE_MS, emptyGoogleRun, hostOf, photosOf, pickPhotos, productQuery, showsPeople, storeQuery, summaryNote, toSearch, usable, MIN_WIDTH } from "./googlePhotosRules.ts";
 
 const img = (link: string, width = 1200, mime = "image/jpeg") => ({ link, mime, image: { width } });
 
@@ -76,4 +76,12 @@ test("a picture whose title, snippet or address says it shows people is not kept
     { link: "https://x.example/p.jpg", mime: "image/jpeg", image: { width: 900 }, title: "Staff photo" },
     { link: "https://x.example/b.jpg", mime: "image/jpeg", image: { width: 900 }, title: "Baklava box" },
   ], 3), ["https://x.example/b.jpg"]);
+});
+
+test("a run that says running but started long ago is stale; a fresh one is not", () => {
+  const now = Date.parse("2026-11-23T12:00:00Z");
+  assert.equal(runStale({ running: true, started: "2026-11-23T11:00:00Z" }, now), true);
+  assert.equal(runStale({ running: true, started: new Date(now - 60_000).toISOString() }, now), false);
+  assert.equal(runStale({ running: false, started: "2026-11-23T11:00:00Z" }, now), false);
+  assert.equal(STALE_MS, 600000);
 });

@@ -4,7 +4,7 @@
 // to run it. The full photo grid is on the Website Explorer's page (`/stores/<slug>/website`). The search itself is
 // `lib/stores/googlePhotos.ts`; it needs GOOGLE_CSE_KEY and GOOGLE_CSE_CX on the server.
 import { useCallback, useEffect, useState } from "react";
-import type { GoogleRun } from "@/lib/stores/googlePhotosRules";
+import { runStale, type GoogleRun } from "@/lib/stores/googlePhotosRules";
 import { getJson, postJson } from "./upload";
 import { Bi, Card, KEY, QUIET, Said } from "./ui";
 
@@ -21,7 +21,7 @@ export default function GooglePhotosCard({ slug }: { slug: string }) {
     catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
-  const running = g?.run?.running === true;
+  const running = g?.run?.running === true && !runStale(g.run, Date.now());
   useEffect(() => {
     if (!running) return;
     const id = setInterval(load, 4000);

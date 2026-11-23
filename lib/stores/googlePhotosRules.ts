@@ -136,3 +136,9 @@ export function summaryNote(run: GoogleRun): string {
   const storeLine = `${store} ${store === 1 ? "photo" : "photos"} of the store`;
   return `${withPhotos} of ${entries.length} searched products have Google photos (${photos} in all); ${storeLine}. ${run.queries} searches this run.`;
 }
+
+/** A run that says «running» but started over STALE_MS ago is a run a restart cut off: the page does not wait for it. */
+export const STALE_MS = 10 * 60 * 1000;
+export function runStale(run: { running: boolean; started: string | null } | null | undefined, nowMs: number): boolean {
+  return Boolean(run?.running) && (!run?.started || nowMs - Date.parse(run.started) > STALE_MS);
+}

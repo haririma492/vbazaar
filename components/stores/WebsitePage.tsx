@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import type { SiteProduct, WebsiteRun } from "@/lib/stores/websiteRules";
-import type { GoogleRun } from "@/lib/stores/googlePhotosRules";
+import { runStale, type GoogleRun } from "@/lib/stores/googlePhotosRules";
 import { getJson, postJson } from "./upload";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
@@ -97,7 +97,7 @@ export default function WebsitePage({ slug }: { slug: string }) {
   // after a run that ended in a second, and looked like a run still going (owner, 2026-11-13).
   const finishedAt = page?.run?.finished ?? null;
   useEffect(() => { if (!running && finishedAt) setSaid((x) => (x?.ok ? null : x)); }, [running, finishedAt]);
-  const googleRunning = page?.google?.run?.running === true;
+  const googleRunning = page?.google?.run?.running === true && !runStale(page.google.run, Date.now());
   useEffect(() => {
     if (!running && !googleRunning) return;
     const id = setInterval(load, 4000);
