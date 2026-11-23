@@ -25,7 +25,7 @@ import SectionItems, { type SiteItem } from "./SectionItems";
 import PlaceScreen from "./PlaceScreen";
 
 type Shelf = { id: string; n?: number | null; label: { en: string; fa: string }; photo: KitPhoto | null; sections: KitSection[] };
-type State = { working: boolean; note: string; site: SiteItem[]; siteNote?: string; shelves: Shelf[] };
+type State = { working: boolean; note: string; site: SiteItem[]; sitePhotos?: SiteItem[]; siteNote?: string; shelves: Shelf[] };
 const ACCEPT = ".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp";
 const BTN = "rounded-full border border-white/20 px-3 py-1 text-[13px] disabled:opacity-40";
 
@@ -173,7 +173,7 @@ export default function ShelfProducts({ slug, shelfId, onEmpty, onChanged, inEdi
         </div>
 
         {/* V · the section's products: the website's, and photos from this computer. */}
-        <SectionItems section={x} site={st.site} siteNote={st.siteNote} uploading={Boolean(busy)}
+        <SectionItems section={x} site={st.site} photos={st.sitePhotos ?? []} siteNote={st.siteNote} uploading={Boolean(busy)}
           onSave={async (webs) => {
             try { await postJson(api, { action: "kitItems", section: x.id, webs }); await done("✓ Saved · ذخیره شد"); return true; }
             catch (e) { setSaid({ ok: false, text: `Not saved: ${(e as Error).message}` }); return false; }

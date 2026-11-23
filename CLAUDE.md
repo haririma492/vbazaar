@@ -70,6 +70,11 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
   web, image search on). Without them the card says so. Pictures whose title, snippet or address says they show people are
   dropped (owner, 2026-11-23: «exclude ppl photoes»; a word test, `showsPeople`, not a face test). ⚠️ These are other people's
   pictures: the owner reviews them before they go on a store's page; not yet run against the live API when built (the first run is the check).
+  The card is also on `/stores/<slug>` (`GooglePhotosCard.tsx`: status and the run key). **Every website and Google photo
+  is a pick** (owner, 2026-11-23: *"let all website photos be available so operator … can add them to any SHELF"*): the
+  section picker («Products of section n», `SectionItems.tsx`) lists each photo of each product, a pick is `product-url`
+  (its main photo) or `product-url#n`, and the free and shelf tours' panel shows the picked photo first, the product's
+  others after (`shopKit`, `shotKey` / `splitPick` in `kitRules.ts`). A product with no photo is not in the picker.
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
 

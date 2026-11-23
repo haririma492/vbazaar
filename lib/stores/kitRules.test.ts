@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { trayByTime, trayInside, moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
+import { shotKey, splitPick, trayByTime, trayInside, moveProduct, emptySections, sectionProductCount, trayCross, setItems, kitShareLink, readKitShare, sharedSection, coverOf, emptyKit, kitFileName, kitReady, parseKitName, putPhoto, removeFromKit, saneQuad, setMatch, toMatch, toPlace, trayShelf, type Kit, type KitPhoto } from "./kitRules.ts";
 import { quadPoints } from "../splats/shelves.ts";
 
 const ph = (key: string): KitPhoto => ({ key, name: key, size: 1, at: "2026-11-15T00:00:00Z" });
@@ -195,4 +195,13 @@ test("trayInside: only inside a marked stretch", () => {
   assert.equal(trayInside(sh, 17), "b");
   assert.equal(trayInside(sh, 30), null);
   assert.equal(trayInside([{ id: "a", trayAt: 2 }], 5), undefined);
+});
+
+test("a website photo pick is its product's key, with #n for the n-th photo; splitPick reads both", () => {
+  assert.equal(shotKey("https://s.example/p", 0), "https://s.example/p");
+  assert.equal(shotKey("https://s.example/p", 2), "https://s.example/p#2");
+  assert.deepEqual(splitPick("https://s.example/p#2"), { web: "https://s.example/p", shot: 2 });
+  assert.deepEqual(splitPick("https://s.example/p"), { web: "https://s.example/p", shot: 0 });
+  const k = setItems(emptyKit("s"), "none", [], new Set()); // no section: unchanged
+  assert.equal(k.shelves.length, 0);
 });

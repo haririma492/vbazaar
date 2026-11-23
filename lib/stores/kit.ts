@@ -25,7 +25,7 @@ import { namesFor, OverBudget, sameProduct, type Purse } from "./ai";
 import { jpegOf, run } from "./media";
 import { MATCH_SURE } from "./websiteMatchRules";
 import { photosOf as productPhotos } from "./googlePhotosRules";
-import { emptyKit, placeSig, toMatch, toPlace, type Kit, type KitPhoto, type KitProduct, type ShopKit, type ShopProduct } from "./kitRules";
+import { emptyKit, placeSig, shotKey, splitPick, toMatch, toPlace, type Kit, type KitPhoto, type KitProduct, type ShopKit, type ShopProduct } from "./kitRules";
 
 export const kitKey = (slug: string) => `stores/${slug}/kit.json`;
 /** Where the photos shoppers see are kept: PRIVATE (masters bucket), each `<folder>/photo.<ext>` and `thumb.jpg`. */
@@ -248,9 +248,12 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
         // the basket section I have uploaded all Type Vs": hiding the uploads not tied to a website product by hand, done the
         // same day on a misreading, emptied 13 of nuttime's 23 sections).
         const own = (w: string) => x.products.find((p) => p.photo.url && p.match?.web === w);
-        const listed = new Set(x.items ?? []);
-        const card = (p: KitProduct | undefined, site: Product | undefined, id: string): ShopProduct => {
-          const sitePhotos = site ? productPhotos(site) : [];
+        // A picked website product counts as listed, whichever of its photos was picked.
+        const listed = new Set((x.items ?? []).map((w) => splitPick(w).web));
+        // `shot`: the website photo the operator picked (0 = the main one), shown first; the product's others follow.
+        const card = (p: KitProduct | undefined, site: Product | undefined, id: string, shot = 0): ShopProduct => {
+          const all = site ? productPhotos(site) : [];
+          const sitePhotos = shot && all[shot] ? [all[shot], ...all.filter((_, i) => i !== shot)] : all;
           // The operator's own photo from their computer (owner, 2026-11-16) comes first; the website's follow.
           const first = p?.photo.url ?? sitePhotos[0] ?? "";
           return {
@@ -261,11 +264,12 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
         return [
           // The website products the operator assigned to the section, in the order chosen (owner, 2026-11-16), each
           // with the operator's own photo of it when one was uploaded.
-          ...(x.items ?? []).flatMap((w): ShopProduct[] => {
-            const site = byWeb.get(w);
+          ...(x.items ?? []).flatMap((pick): ShopProduct[] => {
+            const { web, shot } = splitPick(pick);
+            const site = byWeb.get(web);
             if (!site) return [];
-            const p = own(w);
-            return [card(p, site, p ? p.id : `${x.id}-w${site.n}`)];
+            const p = shot ? undefined : own(web);
+            return [card(p, site, p ? p.id : `${x.id}-w${site.n}${shot ? `-p${shot}` : ""}`, shot)];
           }),
           // Then the product photos uploaded from the operator's computer that are not one of those.
           ...x.products.filter((p) => p.photo.url && !(p.match?.web && listed.has(p.match.web)))
@@ -299,6 +303,12 @@ export async function kitForPage(s: StoreRecord) {
   const marked = zooms.filter((z) => z.outline?.length && !z.auto).sort((a, b) => (a.n ?? 1e9) - (b.n ?? 1e9));
   const k = await signedKit(kit ?? emptyKit(s.slug));
   const site = (c?.products ?? []).filter((p) => p.web).map((p) => ({ web: p.web!, en: p.en ?? "", fa: p.fa ?? "", priceCents: p.priceCents, unit: p.unit, photo: p.photo ?? null }));
+  // EVERY website photo, one pick each (owner, 2026-11-23: "let all website photos be available so operator … can add them
+  // to any shelf"): the product's photos from the website and from Google, in the order the product keeps them.
+  const sitePhotos = (c?.products ?? []).filter((p) => p.web).flatMap((p) => {
+    const shots = productPhotos(p);
+    return shots.map((url, i) => ({ web: shotKey(p.web!, i), en: p.en ?? "", fa: p.fa ?? "", priceCents: p.priceCents, unit: p.unit, photo: url, shot: i, shots: shots.length }));
+  });
   const ids = [...new Set([...marked.map((z) => z.id), ...k.shelves.map((x) => x.id)])];
   // Why there are none yet, said plainly: the explorer may have read the site and not finished putting it on the list.
   let siteNote = "";
@@ -321,7 +331,7 @@ export async function kitForPage(s: StoreRecord) {
     walkVideo = mediaPath((await webObjectExists(phone).catch(() => false)) ? phone : s.out.walk);
   }
   return {
-    working: kitWorking(s.slug), note: kitNote(s.slug), site, siteNote, walkVideo, walkFlat,
+    working: kitWorking(s.slug), note: kitNote(s.slug), site, sitePhotos, siteNote, walkVideo, walkFlat,
     shelves: ids.map((id) => {
       const z = zooms.find((x) => x.id === id);
       const sh = k.shelves.find((x) => x.id === id);

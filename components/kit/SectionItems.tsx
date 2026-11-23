@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { formatCents } from "@/lib/splats/catalogue";
-import type { KitSection } from "@/lib/stores/kitRules";
+import { splitPick, type KitSection } from "@/lib/stores/kitRules";
 
 /** A product of the store's website, as the operator's screens list it (`kitForPage`'s `site`). */
-export type SiteItem = { web: string; en: string; fa: string; priceCents: number | null; unit: string; photo: string | null };
+export type SiteItem = { web: string; en: string; fa: string; priceCents: number | null; unit: string; photo: string | null; shot?: number; shots?: number };
 
 /** Every word typed is in the product's English or Farsi name (case and Persian / Arabic digits aside). */
 const norm = (t: string) => t.toLowerCase().replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d))).replace(/ي/g, "ی").replace(/ك/g, "ک");
@@ -18,8 +18,10 @@ const hit = (w: SiteItem, q: string) => { const hay = norm(`${w.en} ${w.fa}`); r
  * website products by name (English or Farsi), «＋» to add, «✕» to take off, ↑ to move up. Each change saves itself;
  * the panel lists them in this order.
  */
-export default function SectionItems({ section, site, siteNote, onSave, onOwnPhoto, onUploadLocal, uploading }: {
+export default function SectionItems({ section, site, photos, siteNote, onSave, onOwnPhoto, onUploadLocal, uploading }: {
   section: KitSection; site: SiteItem[];
+  /** Every website photo, one per photo (`kitForPage`'s `sitePhotos`): what the operator picks from. */
+  photos: SiteItem[];
   /** Why the website's list is empty, when it is (`kitForPage`). */
   siteNote?: string; onSave: (webs: string[]) => Promise<boolean>;
   /** Upload the operator's own photo of a website product (from this computer); null when the section is full. */
@@ -31,8 +33,10 @@ export default function SectionItems({ section, site, siteNote, onSave, onOwnPho
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
   const items = section.items ?? [];
-  const chosen = items.map((w) => site.find((x) => x.web === w)).filter((x): x is SiteItem => Boolean(x));
-  const hits = site.filter((w) => !items.includes(w.web) && (!q.trim() || hit(w, q))).slice(0, 40);
+  // A pick is a website photo (`web` or `web#n`); a pick of a product with no photo listed falls back to the product.
+  const find = (key: string) => photos.find((x) => x.web === key) ?? site.find((x) => x.web === splitPick(key).web);
+  const chosen = items.map(find).filter((x): x is SiteItem => Boolean(x));
+  const hits = photos.filter((w) => !items.includes(w.web) && (!q.trim() || hit(w, q))).slice(0, 60);
   const save = async (webs: string[]) => { setBusy(true); await onSave(webs); setBusy(false); };
   const ownOf = (web: string) => section.products.find((p) => p.match?.web === web && p.photo.thumb);
   const Row = ({ w, children, mine }: { w: SiteItem; children: React.ReactNode; mine?: string }) => (
@@ -43,7 +47,7 @@ export default function SectionItems({ section, site, siteNote, onSave, onOwnPho
       {w.photo ? <img src={w.photo} alt="" className="h-10 w-10 shrink-0 rounded bg-white object-contain" loading="lazy" /> : <div className="h-10 w-10 shrink-0 rounded bg-white/10" />}
       <div className="min-w-0 flex-1 leading-tight">
         <p className="truncate">{w.en || w.fa}</p>
-        <p className="truncate text-[12px] text-white/50">{w.en && w.fa ? `${w.fa} · ` : ""}{w.priceCents !== null ? `${formatCents(w.priceCents)} / ${w.unit}` : "no price"}</p>
+        <p className="truncate text-[12px] text-white/50">{w.shots && w.shots > 1 ? `photo ${(w.shot ?? 0) + 1} of ${w.shots} · ` : ""}{w.en && w.fa ? `${w.fa} · ` : ""}{w.priceCents !== null ? `${formatCents(w.priceCents)} / ${w.unit}` : "no price"}</p>
       </div>
       {children}
     </li>
@@ -54,7 +58,7 @@ export default function SectionItems({ section, site, siteNote, onSave, onOwnPho
       <p className="text-[12px] text-white/50">Two ways, both fine: pick them from the store&apos;s website below, or upload their photos (Type V) from this computer. A website product can also take your own photo («📷»): it is shown first, the website&apos;s after it.</p>
       {onUploadLocal && <button type="button" className="mt-1 rounded-full border border-emerald-300/50 px-3 py-1 text-[13px] text-emerald-100 disabled:opacity-30" disabled={uploading}
         onClick={onUploadLocal}>＋ Upload product photos for section {section.i} from this computer (Type V) · از رایانه</button>}
-      {!site.length && <p className="text-amber-200">{siteNote || "No website products yet: run the Website Explorer first."}</p>}
+      {!photos.length && <p className="text-amber-200">{siteNote || "No website products yet: run the Website Explorer first."}</p>}
       {chosen.length > 0 && (
         <ol className="mt-1 space-y-1">
           {chosen.map((w, k) => (
@@ -70,9 +74,9 @@ export default function SectionItems({ section, site, siteNote, onSave, onOwnPho
           ))}
         </ol>
       )}
-      {site.length > 0 && (
+      {photos.length > 0 && (
         <>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the website's products (English or Farsi)… · جست‌وجو"
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search the website's photos by product name (English or Farsi)… · جست‌وجو"
             className="mt-2 w-full rounded border border-white/20 bg-black/60 px-2 py-1.5 text-[13px] text-white" />
           <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto">
             {hits.map((w) => (
@@ -81,7 +85,7 @@ export default function SectionItems({ section, site, siteNote, onSave, onOwnPho
                   onClick={() => void save([...items, w.web])}>＋ Add</button>
               </Row>
             ))}
-            {!hits.length && <li className="p-1 text-white/50">{q ? "Nothing on the website matches that." : "Every website product is on this section."}</li>}
+            {!hits.length && <li className="p-1 text-white/50">{q ? "Nothing on the website matches that." : "Every website photo is on this section."}</li>}
           </ul>
         </>
       )}

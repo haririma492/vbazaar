@@ -170,8 +170,15 @@ export function setMatch(kit: Kit, productId: string, web: string | null, now = 
  * be added to basket"). `webs`: the website products' keys, in order; repeats and empty ones dropped, at most
  * `MAX_SECTION_ITEMS`. `known`: the keys the store's list holds (an unknown one is left out).
  */
+/** A pick of a section: a website product's photo. The product's own key is its main photo; `key#n` its n-th photo. */
+export const shotKey = (web: string, n: number) => (n ? `${web}#${n}` : web);
+export function splitPick(pick: string): { web: string; shot: number } {
+  const m = /^(.*)#(\d{1,2})$/.exec(pick);
+  return m ? { web: m[1], shot: Number(m[2]) } : { web: pick, shot: 0 };
+}
+
 export function setItems(kit: Kit, sectionId: string, webs: string[], known: Set<string>): Kit {
-  const clean = [...new Set(webs.map((w) => String(w).trim()).filter((w) => w && known.has(w)))].slice(0, MAX_SECTION_ITEMS);
+  const clean = [...new Set(webs.map((w) => String(w).trim()).filter((w) => w && known.has(splitPick(w).web)))].slice(0, MAX_SECTION_ITEMS);
   return {
     ...kit, updated: new Date().toISOString(),
     shelves: kit.shelves.map((s) => ({ ...s, sections: s.sections.map((x) => (x.id === sectionId ? { ...x, items: clean } : x)) })),
