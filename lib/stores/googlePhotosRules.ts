@@ -23,6 +23,8 @@ export const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 export type CseItem = {
   link?: string;
   mime?: string;
+  title?: string;
+  snippet?: string;
   displayLink?: string;
   image?: { width?: number; height?: number; contextLink?: string };
 };
@@ -65,10 +67,20 @@ export function storeQuery(storeName: string, address: string): string {
   return clean(`${storeName} ${street}`);
 }
 
-/** Is this link a picture worth keeping? Https, a usable type, big enough, not an image of the store's own site. */
+/**
+ * Words that say a picture shows people (owner, 2026-11-23: "exclude ppl photoes"). Checked on the answer's title,
+ * snippet and address. A word test, not a face test: it misses a photo whose text says nothing about its people,
+ * and it drops a few products' photos whose text happens to name a person (a «chef's knife» is kept: only the words
+ * below count). A face check would need a vision model; not built.
+ */
+const PEOPLE = /\b(people|person|persons|man|men|woman|women|girl|girls|boy|boys|child|children|kid|kids|baby|babies|family|families|customer|customers|staff|team|owner|owners|chef|chefs|baker|bakers|worker|workers|employee|employees|model|models|portrait|selfie|couple|crowd|shopper|shoppers|guy|lady|ladies|mom|mother|dad|father|bride|groom|actor|actress|singer|celebrity|influencer|people's|wife|husband|son|daughter)\b|مرد|زن|دختر|پسر|کودک|بچه|خانواده|مشتری|کارمند|آشپز|نانوا|مدل|پرتره|سلفی|عروس|داماد/i;
+export const showsPeople = (item: CseItem): boolean => PEOPLE.test(`${clean(item.title)} ${clean(item.snippet)} ${clean(item.link)} ${clean(item.displayLink)}`);
+
+/** Is this link a picture worth keeping? Https, a usable type, big enough, not an image of the store's own site, no people. */
 export function usable(item: CseItem, ownHost: string): boolean {
   const link = clean(item.link);
   if (!/^https:\/\//i.test(link) || /\.svg(\?|$)/i.test(link)) return false;
+  if (showsPeople(item)) return false;
   const mime = clean(item.mime).toLowerCase();
   if (mime && !ALLOWED_MIME.includes(mime)) return false;
   const width = Number(item.image?.width ?? 0);

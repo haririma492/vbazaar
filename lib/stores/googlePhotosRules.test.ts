@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { emptyGoogleRun, hostOf, photosOf, pickPhotos, productQuery, storeQuery, summaryNote, toSearch, usable, MIN_WIDTH } from "./googlePhotosRules.ts";
+import { emptyGoogleRun, hostOf, photosOf, pickPhotos, productQuery, showsPeople, storeQuery, summaryNote, toSearch, usable, MIN_WIDTH } from "./googlePhotosRules.ts";
 
 const img = (link: string, width = 1200, mime = "image/jpeg") => ({ link, mime, image: { width } });
 
@@ -64,4 +64,16 @@ test("the note counts products with photos, photos, and the store's", () => {
     "1": { q: "a", photos: ["x", "y"], at: "", found: 2 }, "2": { q: "b", photos: [], at: "", found: 0 },
   }, store_photos: { q: "s", photos: ["z"], at: "", found: 1 } };
   assert.equal(summaryNote(run), "1 of 2 searched products have Google photos (2 in all); 1 photo of the store. 3 searches this run.");
+});
+
+test("a picture whose title, snippet or address says it shows people is not kept", () => {
+  assert.equal(showsPeople({ title: "Baker holding a tray of baklava" }), true);
+  assert.equal(showsPeople({ snippet: "Our happy customers with their order" }), true);
+  assert.equal(showsPeople({ link: "https://x.example/family-photo.jpg" }), true);
+  assert.equal(showsPeople({ title: "Pistachio baklava on a white plate", snippet: "Fresh tray" }), false);
+  assert.equal(usable({ link: "https://x.example/a.jpg", mime: "image/jpeg", image: { width: 900 }, title: "Portrait of the owner" }, ""), false);
+  assert.deepEqual(pickPhotos([
+    { link: "https://x.example/p.jpg", mime: "image/jpeg", image: { width: 900 }, title: "Staff photo" },
+    { link: "https://x.example/b.jpg", mime: "image/jpeg", image: { width: 900 }, title: "Baklava box" },
+  ], 3), ["https://x.example/b.jpg"]);
 });

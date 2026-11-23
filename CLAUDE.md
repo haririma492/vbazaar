@@ -67,8 +67,9 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
   `photosOf` (`googlePhotosRules.ts`). Result: `stores/<slug>/google-photos.json`; a product already searched is skipped
   unless «Search every product again»; at most 90 searches a run (free 100 a day). **Needs on Railway:** `GOOGLE_CSE_KEY`
   (API key with the Custom Search JSON API on) and `GOOGLE_CSE_CX` (a Programmable Search Engine that searches the whole
-  web, image search on). Without them the card says so. ⚠️ These are other people's pictures: the owner reviews them
-  before they go on a store's page; not yet run against the live API when built (the first run is the check).
+  web, image search on). Without them the card says so. Pictures whose title, snippet or address says they show people are
+  dropped (owner, 2026-11-23: «exclude ppl photoes»; a word test, `showsPeople`, not a face test). ⚠️ These are other people's
+  pictures: the owner reviews them before they go on a store's page; not yet run against the live API when built (the first run is the check).
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
 
