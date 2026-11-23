@@ -29,8 +29,8 @@ import { redo, sceneOf, setStep } from "./store";
 import { matchVideoToWebsite } from "./websiteMatch";
 import { mergeIntoCatalogue } from "./websiteMerge";
 import {
-  fillEndpoint, findJsonEndpoints, handleOf, isDisallowed, parseRobots, parseSitemap, productFromHtml, productFromJson, productPages,
-  socialPage, withSitemapImages, type Robots, type SiteProduct, type SitemapEntry, type WebsiteRun,
+  fillEndpoint, findJsonEndpoints, handleOf, isDisallowed, pagePhotos, pageTitle, parseRobots, parseSitemap, productFromHtml, productFromJson,
+  productPages, socialPage, withSitemapImages, type Robots, type SiteProduct, type SitemapEntry, type WebsiteRun,
 } from "./websiteRules";
 
 export const websiteKey = (slug: string) => `stores/${slug}/website.json`;
@@ -147,7 +147,12 @@ async function explore(slug: string, origin: string, opts: { readDisallowed?: bo
   await save("Reading the sitemap…");
   const pages = await sitemapPages(origin, robots);
   run.found = pages.length;
-  if (!pages.length) { run.method = "nothing found"; return finish(run, save, "No product list, and no product pages in the sitemap. Tell the operator: this site needs a closer look."); }
+  if (!pages.length) {
+    // A site with no shop (owner, 2026-11-23: oranous-pastry.ca is WordPress with no product pages): its pages' photos.
+    const all = await sitemapPages(origin, robots, true);
+    if (all.length) return readPagePhotos(origin, run, all, mayRead, save);
+    run.method = "nothing found"; return finish(run, save, "No product list, and no product pages in the sitemap. Tell the operator: this site needs a closer look.");
+  }
 
   // 4. The JSON the product page's own scripts ask for.
   if (run.endpoint === null || run.endpoint === undefined) run.endpoint = await discoverEndpoint(origin, pages[0].loc);
@@ -305,7 +310,39 @@ async function fromPlatform(origin: string, run: WebsiteRun, mayRead: (u: string
   return false;
 }
 
-async function sitemapPages(origin: string, robots: Robots): Promise<SitemapEntry[]> {
+/**
+ * A site with no shop: each page's photos become items of their own (`photo-only`): the photo as its address, the page's
+ * title as its name, no price. They reach the store's list, the shelf picker and the tours like any other photo.
+ */
+async function readPagePhotos(origin: string, run: WebsiteRun, pages: SitemapEntry[], mayRead: (u: string) => boolean, save: (n?: string) => Promise<void>) {
+  const products: SiteProduct[] = [];
+  const seen = new Set<string>();
+  run.method = "site pages → each page's photos (this site has no product pages)";
+  run.found = pages.length;
+  for (const [i, page] of pages.entries()) {
+    if (!mayRead(page.loc)) continue;
+    await save(`Reading page ${i + 1} of ${pages.length} for its photos…`).catch(() => undefined);
+    const g = await get(page.loc, "text/html");
+    if (g.status === 200) {
+      const title = pageTitle(g.text);
+      for (const img of pagePhotos(g.text)) {
+        if (seen.has(img)) continue;
+        seen.add(img);
+        products.push({
+          url: img, handle: handleOf(img), name: { en: title, fa: "" }, description: { en: "", fa: "" },
+          priceCents: null, compareAtCents: null, currency: "CAD", images: [img], variants: [], category: [], available: null, source: "meta",
+        });
+      }
+    }
+    run.done = [...run.done, page.loc];
+    await sleep(GAP_MS);
+  }
+  run.products = products.slice(0, 400);
+  run.failures = [];
+  return finish(run, save);
+}
+
+async function sitemapPages(origin: string, robots: Robots, allPages = false): Promise<SitemapEntry[]> {
   const queue = robots.sitemaps.length ? [...robots.sitemaps] : [`${origin}/sitemap.xml`];
   const seen = new Set<string>();
   const urls: SitemapEntry[] = [];
@@ -321,6 +358,8 @@ async function sitemapPages(origin: string, robots: Robots): Promise<SitemapEntr
     if (urls.length > MAX_PAGES) break;
   }
   const byLoc = new Map(urls.map((u) => [u.loc.replace(/\/$/, ""), u]));
+  // Every page, without the author pages and the uploads (for a site with no shop); else the product pages.
+  if (allPages) return [...byLoc.values()].filter((u) => !/\/author\/|\/wp-content\//.test(u.loc)).slice(0, MAX_PAGES);
   return productPages([...byLoc.values()]).slice(0, MAX_PAGES);
 }
 

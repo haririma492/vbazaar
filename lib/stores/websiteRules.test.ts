@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  pagePhotos, pageTitle,
   bestImageUrl, fillEndpoint, findJsonEndpoints, handleOf, isDisallowed, parseRobots, parseSitemap, productFromHtml, productFromJson,
   productPages, splitLanguages, toCents, toCsv, withSitemapImages,
 } from "./websiteRules";
@@ -161,4 +162,14 @@ test("a social page is not a shop; a page named like a web address points to it"
   assert.equal(socialPage("https://www.shirazgallery.ca/"), null);
   assert.equal(socialPage("https://notinstagram.com.example.ca/"), null);
   assert.equal(socialPage("not a url"), null);
+});
+
+test("a page's photos: each upload once, full-size, no logos; its title without the site's name", () => {
+  const html = `<title>Danish Pastries &#8211; Oranous Pastry</title>
+    <img src="https://s.example/wp-content/uploads/2025/09/danish-300x200.jpg">
+    <img src="https://s.example/wp-content/uploads/2025/09/danish.jpg">
+    <img src="https://s.example/wp-content/uploads/2025/09/site-logo.png">
+    <img src="https://s.example/wp-content/uploads/2025/09/cake-1024x768.webp">`;
+  assert.deepEqual(pagePhotos(html), ["https://s.example/wp-content/uploads/2025/09/danish.jpg", "https://s.example/wp-content/uploads/2025/09/cake.webp"]);
+  assert.equal(pageTitle(html), "Danish Pastries");
 });

@@ -430,3 +430,26 @@ export function socialPage(url: string): { network: string; guess: string | null
   const guess = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(name) && !SOCIAL.test(name) ? `https://${name.toLowerCase()}` : null;
   return { network, guess };
 }
+
+// ── A site with no shop: its pages' photos (owner, 2026-11-23: oranous-pastry.ca is a WordPress site with no product
+// pages; "there are so many of them on the web site") ──
+
+const PHOTO_RE = /https:\/\/[^"'\s)<>]+?\/wp-content\/uploads\/[^"'\s)<>]+?\.(?:jpe?g|png|webp)/gi;
+
+/** The photos a page shows: each WordPress upload once, the full-size copy (its «-300x200» size dropped), no logos. */
+export function pagePhotos(html: string): string[] {
+  const out = new Set<string>();
+  for (const m of String(html || "").matchAll(PHOTO_RE)) {
+    const full = m[0].replace(/-\d+x\d+(\.(?:jpe?g|png|webp))$/i, "$1");
+    if (/logo|icon|favicon|placeholder|spacer|sprite/i.test(full)) continue;
+    out.add(full);
+  }
+  return [...out];
+}
+
+/** The page's own title, without the site's name after it, as shoppers see it. */
+export function pageTitle(html: string): string {
+  const t = /<title>([^<]*)<\/title>/i.exec(String(html || ""))?.[1] ?? "";
+  const decoded = t.replace(/&#8211;|&ndash;/g, "–").replace(/&amp;/g, "&").replace(/&#8217;|&rsquo;/g, "’").trim();
+  return decoded.split(/\s[|–-]\s/)[0].trim();
+}
