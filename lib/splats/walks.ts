@@ -1460,7 +1460,7 @@ export function setTrack(w: Walks, key: string, slot: number, audio: string | nu
 }
 
 /** At most this many live channels a shopper can switch between. */
-export const MAX_RADIOS = 12;
+export const MAX_RADIOS = 20;
 /** The live channels shoppers may switch between, and the one the walk starts on (`def`, one of them). Pure. */
 export function setRadios(w: Walks, key: string, radios: RadioSource[], def: RadioSource): Walks {
   const walk = w.walks[key] ?? { doors: [] };

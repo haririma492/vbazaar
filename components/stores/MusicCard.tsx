@@ -138,7 +138,7 @@ export default function MusicCard({ api, tracks, radio, radios = [], reload }: {
       <div className="space-y-2">
         <Bi fa="چه چیزی پخش شود؟" en="What the walk plays" className="text-[13px] font-bold text-white/85" />
         <div dir="ltr" className="flex flex-wrap gap-2">
-          {([["own", "The store's own tracks (below)", ""], ["channel", "Live channels / continuous music", "کانال زنده / پخش پیوسته"],
+          {([["own", "The store's own tracks (below)", ""], ["channel", "Live channels + World Music (a combination)", "کانال زنده + موسیقی جهان"],
             ["iranmusic", "Iranian Music", "موسیقی ایرانی"], ["worldmusic", "World Music", "موسیقی جهان"]] as Array<[Mode, string, string]>).map(([m, en, fa]) => (
             <button key={m} type="button" disabled={busy} className={choice(mode === m)} onClick={() => pickMode(m)}>
               {mode === m ? "● " : "○ "}{en}{fa && <> · <span dir="rtl">{fa}</span></>}
@@ -173,8 +173,18 @@ export default function MusicCard({ api, tracks, radio, radios = [], reload }: {
             const hit = g?.id === p.id ? g : g?.categories.find((c) => c.id === p.id);
             return hit ? { key: `m:${p.member}:${p.id}`, name: p.label, fa: hit.fa, en: hit.en } : null;
           }).filter((x): x is NonNullable<typeof x> => Boolean(x));
+          // Every choice the list can show, by its key: the walk's default and the ticked ones (owner, 2026-11-23: a World
+          // Music group or singer can be ticked beside the channels, so it has a row too).
+          const pickOf = new Map<string, RadioSource>();
+          for (const r of [...(radio ? [radio] : []), ...radios]) pickOf.set(keyOf(r), r);
+          const presetKeys = new Set(presets.map((p) => p.key));
+          const extra = ticked.filter((k) => k.startsWith("m:") && !presetKeys.has(k))
+            .flatMap((k) => { const r = pickOf.get(k); return r ? [{ key: k, name: `${both(r)} (${r.en})`, live: false, notMusic: false }] : []; });
           const rows = [...order.map((c) => ({ key: c.id, name: `${c.n ? `${c.n} · ` : ""}${both(c)}`, live: true, notMusic: !music.has(c.id) })),
-            ...presets.map((p) => ({ key: p.key, name: `${p.name} (${p.en})`, live: false, notMusic: false }))];
+            ...presets.map((p) => ({ key: p.key, name: `${p.name} (${p.en})`, live: false, notMusic: false })), ...extra];
+          // World Music to add: every group and singer not in the list yet.
+          const worldSec = cat.sections.find((x) => x.member === "worldmusic") ?? null;
+          const inList = new Set(rows.map((r) => r.key));
           return (
             <div className="space-y-1">
               <Bi fa="کدام کانال‌ها؟ (خریدار بین آن‌ها جابه‌جا می‌شود؛ یکی پیش‌فرض)" en="Which channels? Tick one or more: shoppers switch between them in the tour's lower panel. ★ is the one the walk starts on. (Saved as you tick.)" className="text-[13px] text-white/75" />
@@ -199,6 +209,26 @@ export default function MusicCard({ api, tracks, radio, radios = [], reload }: {
                   );
                 })}
               </ul>
+              {worldSec && (
+                <label className="block space-y-1 pt-1">
+                  <Bi fa="موسیقی جهان به فهرست اضافه کنید (یک دسته یا یک خواننده؛ با انتخاب ذخیره می‌شود)" en="Add World Music to the list: a whole group, or one singer (saved as soon as you choose)" className="text-[13px] text-white/75" />
+                  <select dir="ltr" className={SELECT} disabled={busy} value="-"
+                    onChange={(e) => { const id = e.target.value; if (id) saveSet([...ticked, `m:worldmusic:${id}`], def); }}>
+                    <option value="-" disabled>Choose…</option>
+                    {worldSec.groups.map((g) => {
+                      const free = g.categories.filter((c) => !inList.has(`m:worldmusic:${c.id}`));
+                      const allFree = Boolean(g.id) && !inList.has(`m:worldmusic:${g.id}`);
+                      if (!free.length && !allFree) return null;
+                      return (
+                        <optgroup key={g.id || "others"} label={both(g)}>
+                          {allFree && <option value={g.id}>★ All of {both(g)}</option>}
+                          {free.map((c) => <option key={c.id} value={c.id}>{both(c)}</option>)}
+                        </optgroup>
+                      );
+                    })}
+                  </select>
+                </label>
+              )}
             </div>
           );
         })()}
