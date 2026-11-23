@@ -32,7 +32,7 @@
 import { mediaPath } from "@/lib/splats/media";
 import { NextRequest } from "next/server";
 import { MAX_WALK_AUDIO_BYTES, isWalkAudioKey, isWalkAudioType, walkAudioKey } from "@/lib/splats/keys";
-import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeWalks } from "@/lib/splats/r2";
+import { presignDownload, presignGet, r2Config, readCatalogue, readMastersText, readWalks, signImageHeaders, signImagePutUrl, writeCatalogue, writeMastersBytes, writeWalks } from "@/lib/splats/r2";
 import { UNITS, formatCents, readPrice, type Unit } from "@/lib/splats/catalogue";
 import { MAX_RADIOS, MAX_TRACKS, musicOf, radiosOf, setRadio, setRadios, setTrack } from "@/lib/splats/walks";
 import { radioSourceOf, sourceInCatalogue } from "@/lib/radio";
@@ -166,6 +166,34 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
 
   // A SHELF'S KIT (owner, 2026-11-15, the pastry redesign; `lib/stores/kit.ts`): the shelf's quality photo (Type III),
   // its sections (Type IV) and each section's products, for a shelf bordered on the walk. The operator only.
+  // A shelf's quality photo (Type III) taken from the store's photos already in the system (owner, 2026-11-23: "from those
+  // big pages … when most photos are already in the system"): the same kit step as an upload from this computer.
+  if (body.action === "kitShelfFromLibrary") {
+    if (who !== "operator") return fail(403, "The operator only.");
+    const shelf = String(body.shelf ?? "");
+    const url = String(body.url ?? "");
+    if (!KIT_ID_RE.test(shelf)) return fail(400, "Which shelf? Mark it on the walk first (editor → «Shelves»).");
+    if (!url.startsWith(`${r2Config().publicBase}/`) && !/^https:\/\/[^/]+\/scenes\/catalogues\//.test(url)) return fail(400, "Only a photo already in the store's storage.");
+    const zooms = s.out.walk ? (await readWalks().catch(() => null))?.walks[s.out.walk]?.zooms ?? [] : [];
+    const z = zooms.find((x) => x.id === shelf);
+    if (!z && !(await readKit(s.slug))?.shelves.some((x) => x.id === shelf)) return fail(400, "That shelf is not marked on the walk. Draw its 4 corners first (editor → «Shelves»).");
+    const res = await fetch(url, { signal: AbortSignal.timeout(30_000) }).catch(() => null);
+    if (!res || !res.ok) return fail(400, "That photo could not be read from the storage. Try another.");
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (!bytes.length || bytes.length > 25 * 1024 * 1024) return fail(400, "That photo is empty or too big.");
+    const now = new Date();
+    const key = uploadKey(s.slug, "kit" as UploadKind, "shelf-from-library.jpg", now);
+    await writeMastersBytes(key, bytes, "image/jpeg");
+    let refusedWhy = "";
+    const kit = await updateKit(s.slug, (k) => {
+      const r = putPhoto(k, { shelf }, { key, name: "shelf-from-library.jpg", size: bytes.length, at: now.toISOString() }, z?.n);
+      if ("error" in r) { refusedWhy = r.error; return k; }
+      return r.kit;
+    });
+    if (refusedWhy) return fail(400, refusedWhy);
+    startKit(s.slug);
+    return ok({ kit: kit.shelves.find((x) => x.id === shelf) ?? null });
+  }
   if (body.action === "upload" && body.kind === "kit") {
     if (who !== "operator") return fail(403, "The operator only.");
     const shelf = String(body.shelf ?? "");

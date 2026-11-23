@@ -26,7 +26,7 @@ import { nextShelfNumber, quadFromTaps, shelfLabel } from "@/lib/splats/shelves"
 import { thin } from "@/lib/stores/gigapanRules";
 import { followShelf } from "./followProduct";
 import type { ItemEngine } from "./WalkItems";
-import { uploadInParts } from "@/components/stores/upload";
+import { postJson, uploadInParts } from "@/components/stores/upload";
 import ShelfProducts from "@/components/kit/ShelfProducts";
 import { MAX_SECTIONS, kitFileName, nextFree, parseKitName } from "@/lib/stores/kitRules";
 
@@ -65,6 +65,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   const pickOne = useRef<HTMLInputElement>(null);
   const pickMany = useRef<HTMLInputElement>(null);
   const [browsing, setBrowsing] = useState(false);
+  const [browsePick, setBrowsePick] = useState(false);
 
   // The store's stitched photos: one with no shelf on the walk yet is offered for its border.
   useEffect(() => {
@@ -234,6 +235,21 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
     setAt({ step: sections ? "next" : "sections", id });
   }
 
+  /** A shelf's quality photo (Type III) from the store's photos already in the system (`kitShelfFromLibrary`). */
+  async function useLibraryPhoto(id: string, url: string) {
+    if (!slug) return;
+    setSending({ name: "the store's photo", sent: 0, total: 1, i: 0, of: 1 });
+    try {
+      await postJson(`/api/stores/${slug}`, { action: "kitShelfFromLibrary", shelf: id, url });
+      setSending(null);
+      setStatus({ tone: "ok", text: `✓ «${shelfNow(id)?.label.en ?? "the shelf"}»'s quality photo saved from the store's photos.` });
+      setAt({ step: "sections", id });
+    } catch (e) {
+      setSending(null);
+      setStatus({ tone: "bad", text: `Not saved: ${(e as Error).message}` });
+    }
+  }
+
   const btn = "rounded-md border border-white/25 bg-white/10 px-2 py-1 text-[12px] hover:bg-white/20 disabled:opacity-40";
   const key = "rounded-md bg-emerald-400 px-3 py-1 text-[12px] font-bold text-black hover:bg-emerald-300";
   const field = "w-full rounded-md border border-white/20 bg-black/50 px-2 py-1 text-[13px] text-white";
@@ -271,7 +287,12 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
           <p className="text-white/70">One photo of the whole shelf, taken straight from the front (straight down for a pallet or a table), so its corners are the four you just tapped. Full size, as improved. Name it <b>{kitFileName(cur?.n ?? 3)}</b> if you like.</p>
           <input ref={pickOne} type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" className="hidden"
             onChange={(e) => { const f = [...(e.target.files ?? [])]; e.target.value = ""; void sendPhotos(at.id, f, false); }} />
-          <button className={key} disabled={Boolean(sending)} onClick={() => pickOne.current?.click()}>📷 Choose the shelf&apos;s photo</button>
+          <div className="flex flex-wrap gap-2">
+            <button className={key} disabled={Boolean(sending)} onClick={() => pickOne.current?.click()}>📷 Choose from this computer</button>
+            {slug && <button className={btn} disabled={Boolean(sending)} onClick={() => setBrowsePick(true)}>🖼 Choose from the store&apos;s photos</button>}
+          </div>
+          <p className="text-[12px] text-white/50">First time: from this computer. Later: from the store&apos;s photos, 40 a page.</p>
+          {browsePick && slug && <PhotoBrowser slug={slug} onClose={() => setBrowsePick(false)} onPick={(src) => { setBrowsePick(false); void useLibraryPhoto(at.id, src); }} />}
         </>)}
         {at.step === "sections" && (<>
           <p className="font-semibold">Its sections (Type IV) — 3 to {MAX_SECTIONS} photos, top to bottom, then left to right</p>

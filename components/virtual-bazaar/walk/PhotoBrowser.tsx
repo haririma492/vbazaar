@@ -22,7 +22,11 @@ const GROUPS = [
 ] as const;
 type GroupId = (typeof GROUPS)[number]["id"];
 
-export default function PhotoBrowser({ slug, onClose }: { slug: string; onClose: () => void }) {
+export default function PhotoBrowser({ slug, onClose, onPick }: {
+  slug: string; onClose: () => void;
+  /** Choosing a photo for a slot (a shelf's quality photo): the big view gets «Use this photo». */
+  onPick?: (src: string, label: string) => void;
+}) {
   const api = `/api/stores/${slug}`;
   const [groups, setGroups] = useState<Record<GroupId, Item[]> | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -97,7 +101,11 @@ export default function PhotoBrowser({ slug, onClose }: { slug: string; onClose:
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={big.src} alt={big.label} className="max-h-[80vh] max-w-full rounded bg-white object-contain" />
             <p className="mt-2 text-[14px] text-white/85">{big.label}</p>
-            <p className="text-[12px] text-white/50">Click to close</p>
+            {onPick && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); const b = big; setBig(null); onPick(b.src, b.label); }}
+                className="mt-3 rounded-md bg-emerald-400 px-4 py-2 text-[14px] font-bold text-black">✓ Use this photo</button>
+            )}
+            <p className="mt-2 text-[12px] text-white/50">Click the photo to close</p>
           </div>
         )}
       </div>

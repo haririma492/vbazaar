@@ -516,6 +516,11 @@ export async function readMastersText(key: string): Promise<string | null> {
   }
 }
 
+/** Bytes into the private masters bucket (a photo the operator picked from the store's photos, `kitShelfFromLibrary`). */
+export async function writeMastersBytes(key: string, body: Uint8Array, type: string): Promise<void> {
+  await s3().send(new PutObjectCommand({ Bucket: r2Config().mastersBucket, Key: key, Body: body, ContentType: type, CacheControl: "no-store" }));
+}
+
 export async function writeMastersJson(key: string, value: unknown): Promise<void> {
   await s3().send(new PutObjectCommand({
     Bucket: r2Config().mastersBucket, Key: key, Body: JSON.stringify(value), ContentType: "application/json", CacheControl: "no-store",
