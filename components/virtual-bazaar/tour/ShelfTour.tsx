@@ -68,7 +68,7 @@ export default function ShelfTour() {
   }, [tour]);
   const video = useRef<HTMLVideoElement | null>(null);
   const box = useRef<HTMLDivElement | null>(null);
-  // The store's door photo opens the tour, as it opens the Free Tour (`DOOR_PHOTO_MS`, 7 s; owner, 2026-11-06).
+  // The store's door photo opens the tour, as it opens the Free Tour (`DOOR_PHOTO_MS`, 3 s; owner, 2026-11-23).
   const [door, setDoor] = useState<{ url: string; out: boolean } | null>(null);
   // The store's own logo, at the top left of the picture (owner, 2026-11-06).
   const [logo, setLogo] = useState<string | null>(null);

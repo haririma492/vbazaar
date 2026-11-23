@@ -650,7 +650,7 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   const [phase, setPhase] = useState<"loading" | "ready" | "walking" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  /** The store's door photo, up for its first `DOOR_PHOTO_MS` (7 s; owner, 2026-11-03 and 2026-11-06). */
+  /** The store's door photo, up for its first `DOOR_PHOTO_MS` (3 s; owner, 2026-11-03, 2026-11-06 and 2026-11-23). */
   const [doorPhoto, setDoorPhoto] = useState<{ url: string; out: boolean } | null>(null);
   const doorShown = useRef<string | null>(null);
   /** A product link (`?p=<n>`, the Instagram pathway): open the walk facing that product, its card open. */
