@@ -19,6 +19,7 @@
  * finder did not see it in the walk) is listed here too: «Draw its border».
  */
 
+import PhotoBrowser from "./PhotoBrowser";
 import { useEffect, useRef, useState } from "react";
 import { dropZoom, quadBox, setZoom, walkOf, type ItemPin, type Walks, type WalkZoom } from "@/lib/splats/walks";
 import { nextShelfNumber, quadFromTaps, shelfLabel } from "@/lib/splats/shelves";
@@ -63,6 +64,7 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   const [sending, setSending] = useState<{ name: string; sent: number; total: number; i: number; of: number } | null>(null);
   const pickOne = useRef<HTMLInputElement>(null);
   const pickMany = useRef<HTMLInputElement>(null);
+  const [browsing, setBrowsing] = useState(false);
 
   // The store's stitched photos: one with no shelf on the walk yet is offered for its border.
   useEffect(() => {
@@ -309,7 +311,11 @@ export function ShelfEditor({ engine, walks, viewKey, change, setStatus }: {
   return (
     <div className="space-y-2">
       <p className="text-white/70">Mark each shelf: its four corners, its number and its name; then its quality photo and its sections. Photo names: <b>shelf-03.jpg</b> (the whole shelf 3) · <b>shelf-03-2.jpg</b> (its section 2) · <b>shelf-03-2-p1.jpg</b> (product 1 of section 2, on the store&apos;s page).</p>
-      <button className={key} disabled={Boolean(following)} onClick={() => { setStatus(null); setAt({ step: "tap", taps: [] }); }}>＋ Mark a shelf</button>
+      <div className="flex flex-wrap gap-2">
+        <button className={key} disabled={Boolean(following)} onClick={() => { setStatus(null); setAt({ step: "tap", taps: [] }); }}>＋ Mark a shelf</button>
+        {slug && <button className={btn} onClick={() => setBrowsing(true)}>🖼 All photos (4 groups)</button>}
+      </div>
+      {browsing && slug && <PhotoBrowser slug={slug} onClose={() => setBrowsing(false)} />}
       {progress}
       <ul className="max-h-[45vh] space-y-2 overflow-y-auto">
         {sorted.map((z) => {
