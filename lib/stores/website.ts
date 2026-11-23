@@ -28,6 +28,7 @@ import { run as runBin } from "./media";
 import { redo, sceneOf, setStep } from "./store";
 import { matchVideoToWebsite } from "./websiteMatch";
 import { mergeIntoCatalogue } from "./websiteMerge";
+import { dedupeStoreList } from "./photoDedup";
 import {
   fillEndpoint, findJsonEndpoints, handleOf, isDisallowed, pagePhotos, pageTitle, parseRobots, parseSitemap, productFromHtml, productFromJson,
   productPages, socialPage, withSitemapImages, type Robots, type SiteProduct, type SitemapEntry, type WebsiteRun,
@@ -250,16 +251,10 @@ export async function integrate(run: WebsiteRun, say: (note: string) => Promise<
   // The products found in the video get the site's facts (`websiteMatch.ts`); their lights stay.
   let matched = "";
   try { matched = await matchVideoToWebsite(slug, say); } catch (e) { matched = ` Matching to the video stopped: ${(e as Error).message}`; }
-  const s = await readStore(slug);
-  let tagged = "";
-  // The Tagger again only when the list is not the video's own find (that one already pinned its products' lights).
-  if (s?.out.walk && s.out.found !== s.out.walk && (m.added || m.updated)) {
-    await updateStore(slug, (x) => redo(x, ["tag", "check"]));
-    const { kick } = await import("./crew");
-    kick();
-    tagged = " The Tagger is finding them in the walk.";
-  } else if (!s?.out.walk) tagged = " They get their lights in the tours once the store's walk is made.";
-  const note = `On the store's page: ${m.added} added, ${m.updated} updated, ${m.unchanged} already there${m.gone ? `, ${m.gone} no longer on the site (kept)` : ""}${m.full ? ", the list is full (999)" : ""}; ${copied} photos copied${failed ? `, ${failed} could not be` : ""}.${matched}${tagged}`;
+  // Duplicate pictures go off the list (`photoDedup.ts`): a repeated product lowers the shopper's confidence.
+  const dd = await dedupeStoreList(slug).catch(() => null);
+  const dup = dd && dd.removed ? ` ${dd.removed} duplicate photo${dd.removed === 1 ? "" : "s"} taken off the list.` : "";
+  const note = `On the store's page: ${m.added} added, ${m.updated} updated, ${m.unchanged} already there${m.gone ? `, ${m.gone} no longer on the site (kept)` : ""}${m.full ? ", the list is full (999)" : ""}; ${copied} photos copied${failed ? `, ${failed} could not be` : ""}.${dup}${matched}`;
   return { at: new Date().toISOString(), note, added: m.added, updated: m.updated, gone: m.gone };
 }
 

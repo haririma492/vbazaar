@@ -18,6 +18,7 @@ import { r2Config, readCatalogue, readMastersText, writeCatalogue, writeMastersJ
 import type { Product } from "@/lib/splats/catalogue";
 import { readStore } from "./bucket";
 import { listingPhotos } from "./googlePlaces";
+import { dedupeStoreList } from "./photoDedup";
 import { sceneOf } from "./store";
 import { copyPhoto, readWebsite } from "./website";
 import {
@@ -84,6 +85,7 @@ export async function addListingProducts(slug: string, urls: string[]): Promise<
     added++;
   }
   if (added) await writeCatalogue({ store, products: products.sort((a, b) => a.n - b.n) });
+  if (added) await dedupeStoreList(slug).catch((e) => console.error("[google] dedupe", (e as Error).message));
   return added;
 }
 
