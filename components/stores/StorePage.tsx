@@ -276,7 +276,7 @@ export default function StorePage({ slug }: { slug: string }) {
           />
         ))}
         {page.walkUrl && (
-          <MusicCard api={api} tracks={page.music ?? []} radio={page.radio ?? null} radios={page.radios ?? []} reload={load} />
+          <MusicCard api={api} tracks={page.music ?? []} radio={page.radio ?? null} radios={page.radios ?? []} reload={load} operator={page.who === "operator"} />
         )}
       </Card>}
 

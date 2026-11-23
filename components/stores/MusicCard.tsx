@@ -71,11 +71,38 @@ function Heard({ source }: { source: RadioSource }) {
   return <p dir="ltr" className={`text-left text-[12px] ${text && !text.ok ? "text-rose-200" : "text-white/60"}`}>{text ? text.text : "Asking what this plays… (a whole group can take half a minute the first time)"}</p>;
 }
 
-export default function MusicCard({ api, tracks, radio, radios = [], reload }: {
-  api: string; tracks: Track[]; radio: RadioSource | null; radios?: RadioSource[]; reload: () => Promise<void>;
+export default function MusicCard({ api, tracks, radio, radios = [], reload, operator = false }: {
+  api: string; tracks: Track[]; radio: RadioSource | null; radios?: RadioSource[]; reload: () => Promise<void>; operator?: boolean;
 }) {
   const [said, setSaid] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  // The other stores whose music setup can be copied here (operator only; asked once, when the card opens).
+  const [others, setOthers] = useState<Array<{ slug: string; name: string; choices: number; def: string | null }> | null>(null);
+  useEffect(() => {
+    if (!operator) return;
+    let gone = false;
+    void postJson<{ stores?: Array<{ slug: string; name: string; choices: number; def: string | null }> }>(api, { action: "musicSources" })
+      .then((j) => { if (!gone) setOthers(j.stores ?? []); }).catch(() => { if (!gone) setOthers([]); });
+    return () => { gone = true; };
+  }, [api, operator]);
+  async function copyFrom(slug: string) {
+    setSaid(null); setBusy(true);
+    try {
+      const j = await postJson<{ copied?: number; from?: string }>(api, { action: "musicCopy", from: slug });
+      await reload();
+      setSaid({ ok: true, text: `✓ Copied from ${j.from ?? slug}: ${j.copied ?? 0} choice${j.copied === 1 ? "" : "s"}. The store's own uploaded tracks are kept as they are · کپی شد` });
+    } catch (e) { setSaid({ ok: false, text: `Not copied: ${(e as Error).message}` }); }
+    finally { setBusy(false); }
+  }
+  async function newSet() {
+    setSaid(null); setBusy(true);
+    try {
+      await postJson(api, { action: "musicNew" });
+      await reload();
+      setSaid({ ok: true, text: "✓ A new set: nothing chosen yet, so the walk plays the store's own tracks. Pick again below · مجموعهٔ تازه" });
+    } catch (e) { setSaid({ ok: false, text: `Not done: ${(e as Error).message}` }); }
+    finally { setBusy(false); }
+  }
   // Several picks (channels and continuous music) are kept in the «live channel» list, whatever the default is.
   const modeNow = (): Mode => (radios.length ? "channel" : modeOf(radio));
   const [mode, setMode] = useState<Mode>(modeNow());
@@ -133,6 +160,21 @@ export default function MusicCard({ api, tracks, radio, radios = [], reload }: {
   }
   return (
     <div className="space-y-3">
+      <div dir="ltr" className="flex flex-wrap items-end gap-3 rounded-lg border border-white/10 p-3">
+        <div className="min-w-[14rem] flex-1 space-y-1">
+          <Bi fa="شروع از" en="Start from" className="text-[13px] font-bold text-white/85" />
+          {operator ? (
+            <select dir="ltr" className={SELECT} disabled={busy || !others} value="-"
+              onChange={(e) => { const slug = e.target.value; if (slug) void copyFrom(slug); }}>
+              <option value="-" disabled>{others ? (others.length ? "Copy the music setup from another store…" : "No other store has a music setup yet") : "Reading the other stores…"}</option>
+              {(others ?? []).map((o) => (
+                <option key={o.slug} value={o.slug}>{o.name}: {o.choices} choice{o.choices === 1 ? "" : "s"}{o.def ? ` · ★ ${o.def}` : ""}</option>
+              ))}
+            </select>
+          ) : null}
+        </div>
+        <button type="button" className={QUIET} disabled={busy} onClick={() => void newSet()}>✚ Start a new set of choices</button>
+      </div>
       <Bi fa="موسیقی پس‌زمینه فروشگاه (تا ۳ قطعه، به ترتیب)" en="The store walk's music: up to 3 tracks (.mp3 / .m4a), played one after another, 1 → 2 → 3, then from 1"
         className="text-[15px] font-bold text-amber-100" />
       <div className="space-y-2">

@@ -44,7 +44,7 @@ import {
   type StepName, type UploadKind,
   hasShortAddress, MAX_ZOOM_PHOTOS, ZOOM_SET_RE,
 } from "@/lib/stores/store";
-import { readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
+import { readIndex, readStore, renameInIndex, updateStore } from "@/lib/stores/bucket";
 import { hashPassword, whoIs } from "@/lib/stores/auth";
 import { fail, ok, relayPart, uploadTurn, type UploadAsk } from "@/lib/stores/http";
 import { kick, prepareDoorPhoto, prepareLogo, publish, queuePhotos, storePhotosState } from "@/lib/stores/crew";
@@ -399,6 +399,55 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (radio === undefined) return fail(400, "A music channel or category, or null for the store's own tracks.");
     const walks = await readWalks();
     await writeWalks(setRadio(walks, s.out.walk, radio), walks);
+    return ok();
+  }
+  // THE MUSIC SETUP, COPIED OR NEW (owner, 2026-11-23: "let each store music copy the music selections and setup from
+  // another store (to save time) or setup a new set of choices"). Only the CHOICES are copied (live channels, World
+  // Music, the default): a store's uploaded tracks are its own files and stay as they are.
+  if (body.action === "musicSources") {
+    if (who !== "operator") return fail(403, "Only the operator copies a music setup from another store.");
+    const out: Array<{ slug: string; name: string; choices: number; def: string | null }> = [];
+    const walks = await readWalks().catch(() => null);
+    for (const e of await readIndex()) {
+      if (e.slug === s.slug) continue;
+      const other = await readStore(e.slug);
+      const w = other?.out.walk ? walks?.walks[other.out.walk] : undefined;
+      const list = w ? radiosOf(w) : [];
+      const def = radioSourceOf(w?.radio);
+      if (!def && !list.length) continue;
+      out.push({ slug: e.slug, name: other?.name.en || other?.name.fa || e.slug, choices: list.length || 1, def: def?.en || null });
+    }
+    return ok({ stores: out });
+  }
+  if (body.action === "musicCopy") {
+    if (who !== "operator") return fail(403, "Only the operator copies a music setup from another store.");
+    if (!s.out.walk) return fail(409, "No walk.");
+    const from = typeof body.from === "string" ? body.from : "";
+    if (!SLUG_RE.test(from) || from === s.slug) return fail(400, "Copy from another store.");
+    const other = await readStore(from);
+    if (!other?.out.walk) return fail(404, "That store has no walk.");
+    const walks = await readWalks();
+    const src = walks.walks[other.out.walk];
+    const list = radiosOf(src);
+    const def = radioSourceOf(src?.radio);
+    const fromName = other.name.en || other.name.fa || from;
+    if (!def && !list.length) {
+      await writeWalks(setRadio(walks, s.out.walk, null), walks);
+      return ok({ copied: 0, from: fromName });
+    }
+    if (list.length > 1) {
+      const d = def && list.some((x) => x.id === def.id) ? def : list[0];
+      await writeWalks(setRadios(walks, s.out.walk, list, d), walks);
+    } else {
+      await writeWalks(setRadio(walks, s.out.walk, def ?? list[0] ?? null), walks);
+    }
+    return ok({ copied: list.length || 1, from: fromName });
+  }
+  if (body.action === "musicNew") {
+    // A new set: no live channels, no World Music, the store's own tracks until the operator or owner picks again.
+    if (!s.out.walk) return fail(409, "No walk.");
+    const walks = await readWalks();
+    await writeWalks(setRadio(walks, s.out.walk, null), walks);
     return ok();
   }
   if (body.action === "musicClear") {
