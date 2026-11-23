@@ -371,6 +371,12 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (turn) return turn;
     // Completed: recorded, and the crew starts on what it touches.
     let next = await updateStore(s.slug, (x) => addUpload(x, kind, { key, name: name.slice(0, 120), size: Number(body.size) || 0, at: now.toISOString() }, set));
+    // DIAGNOSTIC (2026-11-23, the door photo filed as a product photo): every upload notes in the store's thread the kind
+    // the server received and where it was filed, so a mis-filed upload shows on the store's page.
+    if (next) {
+      const filed = kind === "photo" ? "product photos" : kind === "gigapan" ? "shelf photos" : `the «${kind}» slot`;
+      next = await updateStore(s.slug, (x) => addToThread(x, { at: now.toISOString(), from: "crew", text: `Upload received: kind «${kind}», «${name.slice(0, 80)}», filed under ${filed}.` })) ?? next;
+    }
     // The logo goes straight onto the store's walk (both tours show it at the top left).
     if (kind === "logo" && next) { await prepareLogo(next).catch((e) => console.error("[logo]", s.slug, e)); next = (await readStore(s.slug)) ?? next; }
     // The door photo too (the Placer that did it is retired, 2026-11-16), once the walk is there.
