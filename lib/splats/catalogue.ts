@@ -53,6 +53,9 @@ export type Product = {
   web?: string;
   /** More photos of it (https), after `photo`: the store's site's other pictures, shown on the product's card. */
   more?: string[];
+  /** Photos found on Google (the Google photo explorer, `lib/stores/googlePhotos.ts`), our copies: kept apart from `more`,
+   *  which the Website Explorer rewrites at every read, so the two sources never overwrite each other. */
+  google?: string[];
   /** The owner's description, shown on the product's card (owner, 2026-11-01). */
   note?: string;
   /**
@@ -252,6 +255,7 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
     const by = x.by === "hand" || x.by === "video" || x.by === "website" ? x.by : undefined;
     const web = typeof x.web === "string" && isHttps(x.web) ? x.web.slice(0, 400) : "";
     const more = Array.isArray(x.more) ? x.more.filter((u): u is string => typeof u === "string" && isHttps(u)).slice(0, 8) : [];
+    const google = Array.isArray(x.google) ? x.google.filter((u): u is string => typeof u === "string" && isHttps(u)).slice(0, 8) : [];
     // A product found in the video waits for its owner to name it; every other one has a title.
     if (!unit || (!en && !fa && by !== "video")) { problems.push(`Product #${n} needs a title and a unit.`); continue; }
     const price = x.priceCents === null || x.priceCents === undefined ? null : typeof x.priceCents === "number" && Number.isInteger(x.priceCents) && x.priceCents >= 0 ? x.priceCents : NaN;
@@ -263,7 +267,7 @@ export function checkCatalogue(raw: unknown): { catalogue: Catalogue | null; pro
     seen.add(n);
     products.push({
       n, unit, priceCents: price as number | null, ...(sku ? { sku } : {}), ...(en ? { en } : {}), ...(fa ? { fa } : {}), ...(photo ? { photo } : {}),
-      ...(by ? { by } : {}), ...(note ? { note } : {}), ...(sawAs ? { seen: sawAs } : {}), ...(web ? { web } : {}), ...(more.length ? { more } : {}), ...(x.demo === true || x.demo === "name" || x.demo === "price" ? { demo: x.demo } : {}),
+      ...(by ? { by } : {}), ...(note ? { note } : {}), ...(sawAs ? { seen: sawAs } : {}), ...(web ? { web } : {}), ...(more.length ? { more } : {}), ...(google.length ? { google } : {}), ...(x.demo === true || x.demo === "name" || x.demo === "price" ? { demo: x.demo } : {}),
     });
   }
   products.sort((a, b) => a.n - b.n);

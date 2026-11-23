@@ -58,6 +58,17 @@ Automatic agent optimization to be turned on on vbazaar.app as well"*:
   no second line round it (in the home header the arch alone, larger, no address under it: owner, 2026-11-11):
   `app/icon.svg`, with `app/favicon.ico` (16/32/48) and `app/apple-icon.png` (180) made
   from it. Change the arch in all of them together.
+- **The Google photo explorer** (owner, 2026-11-23: *"in addition to Website explorer also add a Google … photo explorer
+  and bring them all in all photos"*): «Photos from Google» on `/stores/<slug>/website`, operator only. Google's image
+  search (Custom Search JSON API, `searchType=image`) is asked for each product's English name in quotes plus the store's
+  name, and for the store itself (name + street); the best few usable pictures are copied to our bucket
+  (`website.ts` `copyPhoto`) and kept on the product as `Product.google`, beside the website's `more` (a website re-read
+  rewrites `more`, never `google`). Every product photo shown (walk card, shop kit, the website page's «All photos») is
+  `photosOf` (`googlePhotosRules.ts`). Result: `stores/<slug>/google-photos.json`; a product already searched is skipped
+  unless «Search every product again»; at most 90 searches a run (free 100 a day). **Needs on Railway:** `GOOGLE_CSE_KEY`
+  (API key with the Custom Search JSON API on) and `GOOGLE_CSE_CX` (a Programmable Search Engine that searches the whole
+  web, image search on). Without them the card says so. ⚠️ These are other people's pictures: the owner reviews them
+  before they go on a store's page; not yet run against the live API when built (the first run is the check).
 - olgoo-com's SEO agents (`agents/seo/`) watch this site as their fourth; the
   Fixer may push here once the repo is attached to their session.
 

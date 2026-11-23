@@ -13,12 +13,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { readAdminToken } from "@/lib/admin/useAdminMode";
 import type { SiteProduct, WebsiteRun } from "@/lib/stores/websiteRules";
+import type { GoogleRun } from "@/lib/stores/googlePhotosRules";
 import { getJson, postJson } from "./upload";
 import { Bi, Card, FIELD, KEY, QUIET, Said } from "./ui";
 
 type Summary = { products: number; unlisted?: number; priced: number; onSale: number; photos: number; withoutPhoto: number; described: number; farsi: number; categories: string[] };
 type Match = { n: number; seen: string; photo: string | null; matched: boolean; name: string; confidence: number; why: string; unsure?: boolean; opus?: boolean };
-type Page = { who: "owner" | "operator"; website: string | null; name: { en: string; fa: string }; run: WebsiteRun | null; summary: Summary; matching?: Match[] | null };
+type Page = { who: "owner" | "operator"; website: string | null; name: { en: string; fa: string }; run: WebsiteRun | null; summary: Summary; matching?: Match[] | null; google?: { configured: boolean; run: GoogleRun | null; byWeb: Record<string, string[]>; store: string[] } };
 
 const money = (c: number | null, cur = "CAD") => (c === null ? "—" : `$${(c / 100).toFixed(2)}${cur && cur !== "CAD" ? ` ${cur}` : ""}`);
 const fold = (v: string) => v.toLowerCase().replace(/[يى]/g, "ی").replace(/ك/g, "ک").replace(/‌/g, " ").replace(/\s+/g, " ").trim();
@@ -96,15 +97,24 @@ export default function WebsitePage({ slug }: { slug: string }) {
   // after a run that ended in a second, and looked like a run still going (owner, 2026-11-13).
   const finishedAt = page?.run?.finished ?? null;
   useEffect(() => { if (!running && finishedAt) setSaid((x) => (x?.ok ? null : x)); }, [running, finishedAt]);
+  const googleRunning = page?.google?.run?.running === true;
   useEffect(() => {
-    if (!running) return;
+    if (!running && !googleRunning) return;
     const id = setInterval(load, 4000);
     return () => clearInterval(id);
-  }, [running, load]);
+  }, [running, googleRunning, load]);
 
   const start = async (body: { fresh?: boolean; readDisallowed?: boolean }) => {
     setBusy(true); setSaid(null);
     try { const r = await postJson<{ note: string }>(api, { action: "run", ...body }); setSaid({ ok: true, text: r.note }); setTimeout(load, 1500); }
+    catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
+    finally { setBusy(false); }
+  };
+
+  // The Google photo explorer (`lib/stores/googlePhotos.ts`): one search per product, then the store itself.
+  const googleStart = async (fresh: boolean) => {
+    setBusy(true); setSaid(null);
+    try { const r = await postJson<{ note: string }>(api, { action: "googlePhotos", fresh }); setSaid({ ok: true, text: r.note }); setTimeout(load, 1500); }
     catch (e) { setSaid({ ok: false, text: (e as Error).message }); }
     finally { setBusy(false); }
   };
@@ -193,6 +203,27 @@ export default function WebsitePage({ slug }: { slug: string }) {
         <Said ok={said?.ok} text={said?.text ?? null} />
       </Card>
 
+      {page.google && (
+        <Card>
+          <Bi fa="عکس‌ها از جستجوی گوگل" en="Photos from Google" className="text-[17px] font-bold" />
+          <p className="mt-2 text-[13px] text-white/60">Google&apos;s image search is asked for each product&apos;s name with the store&apos;s name, and for the store itself. The best few pictures are copied to our bucket and shown with the website&apos;s photos. These are other people&apos;s pictures: check them before they go on the store&apos;s page.</p>
+          {!page.google.configured && <Said text="Not set up yet: the server needs GOOGLE_CSE_KEY and GOOGLE_CSE_CX (on Railway). Until then nothing is searched." />}
+          {page.google.run && (
+            <div dir="ltr" className="mt-3 space-y-1 text-left text-[13px] text-white/60">
+              <p>{page.google.run.note}</p>
+              {page.google.run.started && <p className="text-white/45">Started {new Date(page.google.run.started).toLocaleString()}{page.google.run.finished ? ` · finished ${new Date(page.google.run.finished).toLocaleString()}` : ""}</p>}
+            </div>
+          )}
+          {op && page.google.configured && !googleRunning && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button type="button" className={KEY} disabled={busy} onClick={() => googleStart(false)}>Search Google for photos · جستجوی عکس</button>
+              {page.google.run && <button type="button" className={QUIET} disabled={busy} onClick={() => googleStart(true)}>Search every product again</button>}
+            </div>
+          )}
+          {googleRunning && <p className="mt-3 text-[13px] text-emerald-200/80">{page.google.run?.note}</p>}
+        </Card>
+      )}
+
       {products.length > 0 && (
         <Card>
           <div dir="ltr" className="flex flex-wrap gap-x-4 gap-y-1 text-left text-[13px] text-white/70">
@@ -219,24 +250,45 @@ export default function WebsitePage({ slug }: { slug: string }) {
 
       {products.length > 0 && (
         <div className="flex gap-2">
-          <button type="button" className={view === "photos" ? KEY : QUIET} onClick={() => setView("photos")}>All photos ({shown.reduce((n, p) => n + p.images.length, 0)}) · همهٔ عکس‌ها</button>
+          <button type="button" className={view === "photos" ? KEY : QUIET} onClick={() => setView("photos")}>All photos ({shown.reduce((n, p) => n + p.images.length + (page.google?.byWeb[p.url]?.length ?? 0), 0) + (page.google?.store.length ?? 0)}) · همهٔ عکس‌ها</button>
           <button type="button" className={view === "products" ? KEY : QUIET} onClick={() => setView("products")}>Products ({shown.length}) · محصولات</button>
         </div>
       )}
 
       {view === "photos" && shown.length > 0 && (
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-          {shown.flatMap((p) => p.images.map((u, k) => (
-            <a key={`${p.url}#${k}`} href={u} target="_blank" rel="noopener noreferrer" title={p.name.en || p.name.fa || p.handle}
+          {/* The store's own photos from Google, first. */}
+          {(page.google?.store ?? []).map((u, k) => (
+            <a key={`store#${k}`} href={u} target="_blank" rel="noopener noreferrer" title="Photo of the store (Google)"
               className="group flex flex-col overflow-hidden rounded-lg border border-white/10 bg-black/25">
               <span className="relative block aspect-square bg-white">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={u} alt={p.name.en || p.name.fa} loading="lazy" className="h-full w-full object-contain" />
-                {p.images.length > 1 && <span dir="ltr" className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">{k + 1}/{p.images.length}</span>}
+                <img src={u} alt="The store" loading="lazy" className="h-full w-full object-contain" />
+                <span dir="ltr" className="absolute bottom-1 left-1 rounded bg-sky-700/80 px-1 text-[10px] text-white">Google · store</span>
               </span>
-              <span dir="auto" className="line-clamp-2 px-1.5 py-1 text-[11px] leading-tight text-white/70">{p.name.en || p.name.fa || (p.unlisted ? "Draft (no name)" : p.handle)}</span>
+              <span className="line-clamp-2 px-1.5 py-1 text-[11px] leading-tight text-white/70">The store</span>
             </a>
-          )))}
+          ))}
+          {/* Each product: the website's photos, then Google's (a blue tag marks Google's). */}
+          {shown.flatMap((p) => {
+            const all = [...p.images, ...(page.google?.byWeb[p.url] ?? [])];
+            return all.map((u, k) => {
+              const fromGoogle = k >= p.images.length;
+              return (
+                <a key={`${p.url}#${k}`} href={u} target="_blank" rel="noopener noreferrer" title={p.name.en || p.name.fa || p.handle}
+                  className="group flex flex-col overflow-hidden rounded-lg border border-white/10 bg-black/25">
+                  <span className="relative block aspect-square bg-white">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={u} alt={p.name.en || p.name.fa} loading="lazy" className="h-full w-full object-contain" />
+                    {fromGoogle
+                      ? <span dir="ltr" className="absolute bottom-1 left-1 rounded bg-sky-700/80 px-1 text-[10px] text-white">Google</span>
+                      : all.length > 1 && <span dir="ltr" className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[10px] text-white">{k + 1}/{all.length}</span>}
+                  </span>
+                  <span dir="auto" className="line-clamp-2 px-1.5 py-1 text-[11px] leading-tight text-white/70">{p.name.en || p.name.fa || (p.unlisted ? "Draft (no name)" : p.handle)}</span>
+                </a>
+              );
+            });
+          })}
         </div>
       )}
 

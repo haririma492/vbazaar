@@ -22,6 +22,7 @@ import { readCatalogue } from "@/lib/splats/r2";
 import { sceneOf } from "@/lib/stores/store";
 import type { Product } from "@/lib/splats/catalogue";
 import { summarize, toCsv } from "@/lib/stores/websiteRules";
+import { googleConfigured, readGoogle, startGooglePhotos } from "@/lib/stores/googlePhotos";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -57,7 +58,12 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
       return { n: Number(n), seen: p?.seen ?? "", photo: p?.more?.[0] ?? p?.photo ?? null, matched: Boolean(v.web) && Boolean(p?.web), name: v.web ? p?.en ?? "" : "", confidence: v.confidence, why: v.why, unsure: !v.web && v.confidence < 0.8 && !v.why.startsWith("no website product"), opus: v.model === "claude-opus-5-5" };
     }).sort((a, b) => Number(b.matched) - Number(a.matched) || a.n - b.n);
   }
-  return ok({ who: o.who, website: o.s.website ?? null, name: o.s.name, run: shown, summary: summarize(run?.products ?? []), matching });
+  // The Google photo explorer's result (`googlePhotos.ts`): its state, and each website product's Google photos.
+  const [google, catalogue] = await Promise.all([readGoogle(o.s.slug), readCatalogue(sceneOf(o.s.slug)).catch(() => null)]);
+  const byWeb: Record<string, string[]> = {};
+  for (const p of catalogue?.products ?? []) if (p.web && p.google?.length) byWeb[p.web] = p.google;
+  return ok({ who: o.who, website: o.s.website ?? null, name: o.s.name, run: shown, summary: summarize(run?.products ?? []), matching,
+    google: { configured: googleConfigured(), run: google, byWeb, store: google?.store_photos?.photos ?? [] } });
 }
 
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
@@ -66,6 +72,10 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
   if (o.who !== "operator") return fail(403, "The operator starts the explorer.");
   const body = (await req.json().catch(() => ({}))) as { action?: string; fresh?: boolean; readDisallowed?: boolean; opus?: boolean };
   if (body.action === "integrate") return ok({ note: await integrateAgain(o.s.slug) });
+  if (body.action === "googlePhotos") {
+    const r = await startGooglePhotos(o.s.slug, { fresh: body.fresh === true });
+    return r.started ? ok({ note: r.note }) : fail(409, r.note);
+  }
   if (body.action === "rematch") {
     // In the background: comparing a few dozen products takes minutes, longer than a request may wait.
     void rematch(o.s.slug, body.opus === true).catch((e) => console.error("[website] rematch", e));

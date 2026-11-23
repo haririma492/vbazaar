@@ -195,7 +195,7 @@ async function finish(run: WebsiteRun, save: (note?: string) => Promise<void>, n
 /** Our own copy of a site photo: one per picture (its address hashed), so a re-run copies only what is new. */
 const photoKey = (slug: string, url: string) => `scenes/catalogues/${sceneOf(slug)}/web-${createHash("sha1").update(url).digest("hex").slice(0, 16)}.jpg`;
 
-async function copyPhoto(url: string, key: string): Promise<boolean> {
+export async function copyPhoto(url: string, key: string): Promise<boolean> {
   const res = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(TIMEOUT_MS) });
   if (!res.ok) return false;
   const bytes = new Uint8Array(await res.arrayBuffer());

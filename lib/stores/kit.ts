@@ -24,6 +24,7 @@ import { walkLink } from "./productLink";
 import { namesFor, OverBudget, sameProduct, type Purse } from "./ai";
 import { jpegOf, run } from "./media";
 import { MATCH_SURE } from "./websiteMatchRules";
+import { photosOf as productPhotos } from "./googlePhotosRules";
 import { emptyKit, placeSig, toMatch, toPlace, type Kit, type KitPhoto, type KitProduct, type ShopKit, type ShopProduct } from "./kitRules";
 
 export const kitKey = (slug: string) => `stores/${slug}/kit.json`;
@@ -249,11 +250,11 @@ export async function shopKit(s: StoreRecord): Promise<ShopKit | null> {
         const own = (w: string) => x.products.find((p) => p.photo.url && p.match?.web === w);
         const listed = new Set(x.items ?? []);
         const card = (p: KitProduct | undefined, site: Product | undefined, id: string): ShopProduct => {
-          const sitePhotos = site ? [site.photo, ...(site.more ?? [])].filter((u): u is string => Boolean(u)) : [];
+          const sitePhotos = site ? productPhotos(site) : [];
           // The operator's own photo from their computer (owner, 2026-11-16) comes first; the website's follow.
           const first = p?.photo.url ?? sitePhotos[0] ?? "";
           return {
-            id, photo: first, thumb: p ? p.photo.thumb ?? p.photo.url! : first, more: (p ? sitePhotos : sitePhotos.slice(1)).slice(0, 3),
+            id, photo: first, thumb: p ? p.photo.thumb ?? p.photo.url! : first, more: (p ? sitePhotos : sitePhotos.slice(1)).slice(0, 8),
             en: site?.en ?? "", fa: site?.fa ?? "", priceCents: site?.priceCents ?? null, unit: site?.unit ?? "piece", ...(site?.note ? { note: site.note.slice(0, 300) } : {}),
           };
         };

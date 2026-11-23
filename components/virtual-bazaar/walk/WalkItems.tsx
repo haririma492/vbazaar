@@ -28,6 +28,7 @@ import {
   unitPriceSay, weightChoices, type Catalogue, type Product, type Unit,
 } from "@/lib/splats/catalogue";
 import { readXlsx } from "@/lib/splats/xlsx";
+import { photosOf } from "@/lib/stores/googlePhotosRules";
 
 type Lang = "fa" | "en";
 
@@ -112,7 +113,7 @@ export function ItemCard({ item, walkKey, walk, catalogue, onClose }: {
   const name = product ? productName(product, lang) : lang === "fa" && item.label.fa ? item.label.fa : item.label.en;
   const other = product ? productName(product, lang === "fa" ? "en" : "fa") : item.label.fa ? (lang === "fa" ? item.label.en : item.label.fa) : "";
   // The store's website's other photos too (`Product.more`, the Website Explorer): tap one to see it larger.
-  const photos = product ? [product.photo, ...(product.more ?? [])].filter((u): u is string => Boolean(u)) : item.image ? [item.image] : [];
+  const photos = product ? photosOf(product) : item.image ? [item.image] : [];
   const [shown, setShown] = useState(0);
   const photo = photos[Math.min(shown, photos.length - 1)];
   const read = useReadTitle(slugFrom(walkKey), item.n);
