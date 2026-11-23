@@ -9,6 +9,7 @@ with «Cannot read properties of null (reading '1')» in `/chinastore`.)
 | --- | --- | --- |
 | `cormorant-garamond-latin.woff2`, `-italic-latin.woff2` | Cormorant Garamond v21, variable 300–700 | `app/chinastore/page.tsx` |
 | `bodoni-moda-500-italic-latin.woff2` | Bodoni Moda v28, italic 500 | `app/page.tsx` (the co-op line under the badge) |
+| `Vazirmatn-Bold.ttf` (+ `Vazirmatn-OFL.txt`) | Vazirmatn 33.0.3, bold, Farsi and Latin | `app/[store]/opengraph-image.tsx` (the name on a store's link card; `next/og` needs a TTF) |
 
 Both are under the SIL Open Font License 1.1, which allows bundling them.
 Only the latin subset is kept — what the pages asked Google for.
