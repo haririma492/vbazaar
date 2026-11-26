@@ -62,6 +62,7 @@ import { readRefresh, skipRefreshStep, startRefreshAll } from "@/lib/stores/refr
 import { refreshZooms, removeZoom, setZoomCrop, zoomsForPage } from "@/lib/stores/gigapan";
 import { setsOf } from "@/lib/stores/gigapanRules";
 import { setZoom } from "@/lib/splats/walks";
+import { SPEED_MAX, SPEED_MIN } from "@/lib/splats/pace";
 import { kitForPage, readKit, startKit, updateKit } from "@/lib/stores/kit";
 import { KIT_ID_RE, MAX_KIT_PRODUCTS, MAX_SECTIONS, checkKitName, emptyKit, moveProduct, putPhoto, removeFromKit, setItems, setMatch, setPlace, setSectionName, type KitSlot } from "@/lib/stores/kitRules";
 import { shelfLabel } from "@/lib/splats/shelves";
@@ -328,6 +329,22 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const saved = await writeWalks(setZoom(walks, s.out.walk, next), walks);
     if (saved.conflicts.length) return fail(409, `Not saved: ${saved.conflicts.join(" ")}`);
     return ok();
+  }
+  if (body.action === "kitSpeed") {
+    // The free walk's starting speed for THIS store (owner, 2026-11-26): null takes the standard 7 fps back.
+    if (who !== "operator") return fail(403, "The operator only.");
+    if (!s.out.walk) return fail(409, "This store has no walk yet.");
+    const raw = body.speed === null || body.speed === undefined ? null : Number(body.speed);
+    if (raw !== null && !(Number.isFinite(raw) && raw >= SPEED_MIN && raw <= SPEED_MAX)) return fail(400, `The speed must be on the bar (${SPEED_MIN}…${SPEED_MAX} m/s).`);
+    const walks = await readWalks();
+    const w = walks.walks[s.out.walk];
+    if (!w) return fail(409, "This store's walk is not in the walks list yet.");
+    const { speed: _old, ...rest } = w;
+    void _old;
+    const next = raw === null ? rest : { ...rest, speed: Math.round(raw * 1000) / 1000 };
+    const saved = await writeWalks({ ...walks, walks: { ...walks.walks, [s.out.walk]: next } }, walks);
+    if (saved.conflicts.length) return fail(409, `Not saved: ${saved.conflicts.join(" ")}`);
+    return ok({ speed: raw === null ? null : Math.round(raw * 1000) / 1000 });
   }
   if (body.action === "kitPlace") {
     if (who !== "operator") return fail(403, "The operator only.");

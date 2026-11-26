@@ -39,6 +39,7 @@
 import { parseMotion, type WalkMotion } from "./motion";
 import { radioSourceOf, type RadioSource } from "../radio";
 import { flatLens, parseLens, type FlatLens } from "./lens";
+import { SPEED_MAX, SPEED_MIN } from "./pace";
 
 export const WALKS_KEY = "scenes/walks.json";
 export const MAX_DOORS = 60;
@@ -277,6 +278,12 @@ export type Walk = {
    * (`lib/splats/pace.ts`): Slow and Fast play at standard speeds from it.
    */
   pace?: number;
+  /**
+   * THE STORE'S OWN STARTING SPEED OF ITS FREE WALK (m/s, on the speed bar; owner, 2026-11-26: "let operator select the
+   * default speed for the customer's free walk for each store differently"). Set by the operator on the store's page
+   * (`kitSpeed`); absent: the standard 7 fps (`defaultSpeedOf`, `lib/splats/pace.ts`).
+   */
+  speed?: number;
   /**
    * Which follow pinned the crew's products on this walk (`PIN_VERSION` in
    * `lib/stores/tagging.ts`). A walk pinned by an older one is followed
@@ -679,6 +686,10 @@ export function checkWalks(raw: unknown): { walks: Walks; problems: string[] } {
     if (r.pace !== undefined && r.pace !== null) {
       if (typeof r.pace === "number" && r.pace >= 0.1 && r.pace <= 5) walk.pace = r.pace;
       else problems.push(`${key}: «pace» must be the walking speed in m/s (0.1…5).`);
+    }
+    if (r.speed !== undefined && r.speed !== null) {
+      if (typeof r.speed === "number" && r.speed >= SPEED_MIN && r.speed <= SPEED_MAX) walk.speed = r.speed;
+      else problems.push(`${key}: «speed» must be the free walk's starting speed in m/s (${SPEED_MIN}…${SPEED_MAX}).`);
     }
     if (r.logo !== undefined && r.logo !== null && r.logo !== "") {
       if (isSiteUrl(r.logo)) walk.logo = r.logo as string;

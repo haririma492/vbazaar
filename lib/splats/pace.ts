@@ -44,6 +44,17 @@ export function speedForFps(fps: number, pace: number | null | undefined, filmFp
   const p = pace && Number.isFinite(pace) && pace > 0 ? pace : PACE_FALLBACK;
   return speedAt(placeOf((fps / filmFps) * p));
 }
+/** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
+export const FILM_FPS = 25;
+/**
+ * The free walk's STARTING speed (m/s) for one store (owner, 2026-11-26: "let operator select the default speed for the
+ * customer's free walk for each store differently"): the store's own default when the operator set one on its page,
+ * else the standard 7 fps on this walk. Out-of-range values are ignored.
+ */
+export function defaultSpeedOf(stored: number | null | undefined, pace: number | null | undefined, filmFps = FILM_FPS): number {
+  if (typeof stored === "number" && Number.isFinite(stored) && stored >= SPEED_MIN && stored <= SPEED_MAX) return speedAt(placeOf(stored));
+  return speedForFps(DEFAULT_FPS, pace, filmFps);
+}
 /** A walk not measured yet is taken as filmed at this pace (m/s): the old multiples. */
 export const PACE_FALLBACK = 1;
 /**

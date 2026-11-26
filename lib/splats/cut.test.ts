@@ -6,7 +6,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  MAX_PARTS, checkParts, concatList, softFilter, keptSeconds, mapTime, originalWalk, partArgs, readCutRecord, readTime, remapWalk, sayTime, stitchArgs, unmapTime,
+  MAX_PARTS, checkParts, concatList, keptOnOriginal, softFilter, keptSeconds, mapTime, originalWalk, partArgs, readCutRecord, readTime, remapWalk, sayTime, stitchArgs, unmapTime,
 } from "./cut.ts";
 import type { Walk } from "./walks.ts";
 
@@ -157,4 +157,24 @@ test("a walk's FIRST cut keeps the shelves' tray marks, moved with the picture",
   const z = remapWalk(onOriginal, [{ from: 2, to: 141.18 }]).walk.zooms![0];
   assert.equal(z.trayAt, 1.7);
   assert.equal(z.trayEnd, 14.8);
+});
+
+test("cutting out stretches of the walk as it is now keeps the rest, on the original's times", () => {
+  // Never cut: the video is the original; 10–20 s and 40–50 s cut out of a 60 s walk keep 0–10, 20–40, 50–60.
+  assert.deepEqual(keptOnOriginal(60, [{ from: 10, to: 20 }, { from: 40, to: 50 }], []), [
+    { from: 0, to: 10 }, { from: 20, to: 40 }, { from: 50, to: 60 },
+  ]);
+  // Overlapping and out-of-order stretches are merged; nothing cut out keeps the whole.
+  assert.deepEqual(keptOnOriginal(60, [{ from: 30, to: 35 }, { from: 20, to: 32 }], []), [{ from: 0, to: 20 }, { from: 35, to: 60 }]);
+  assert.deepEqual(keptOnOriginal(60, [], []), [{ from: 0, to: 60 }]);
+  // After a cut that kept 100–160 and 200–260 of the original (the video now is 120 s): cutting 50–70 of the video now
+  // keeps 100–150 of the original, and from video 70 on (original 200 + 10) to the end.
+  const last = [{ from: 100, to: 160 }, { from: 200, to: 260 }];
+  assert.deepEqual(keptOnOriginal(120, [{ from: 50, to: 70 }], last), [
+    { from: 100, to: 150 }, { from: 200 + 10, to: 260 },
+  ]);
+  // A stretch cut out of the video now that reaches over the join keeps both sides, mapped apart.
+  assert.deepEqual(keptOnOriginal(120, [{ from: 55, to: 65 }], last), [
+    { from: 100, to: 155 }, { from: 200 + 5, to: 260 },
+  ]);
 });

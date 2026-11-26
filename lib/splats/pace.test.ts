@@ -4,7 +4,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { CAMERA_HEIGHT, RATE_MIN, SPEED_DEFAULT, SPEED_MAX, SPEED_MIN, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, driveRate, frameShift, groundMove, paceOf, placeOf, speedAt, speedForFps } from "./pace.ts";
+import { CAMERA_HEIGHT, RATE_MIN, SPEED_DEFAULT, SPEED_MAX, SPEED_MIN, VIEW_FOV, VIEW_H, VIEW_PITCH, VIEW_W, VIEW_YAWS, defaultSpeedOf, driveRate, frameShift, groundMove, paceOf, placeOf, speedAt, speedForFps } from "./pace.ts";
 
 /** A floor with texture: smooth-ish noise, the same at every point every time. */
 function floorAt(x: number, y: number): number {
@@ -99,4 +99,15 @@ test("the default is 7 fps on any walk", () => {
   for (const pace of [0.4, 1, 1.3, null]) {
     assert.equal(Math.round(25 * driveRate(speedForFps(7, pace), false, pace)), 7);
   }
+});
+
+test("each store's own default speed starts its free walk; the standard 7 fps otherwise", () => {
+  // No store default: 7 fps on this walk, whatever it was filmed at.
+  for (const pace of [0.4, 1, null]) assert.equal(defaultSpeedOf(null, pace), speedForFps(7, pace));
+  // A store's default is the speed it was set to, on the bar (3 decimals).
+  assert.ok(Math.abs(defaultSpeedOf(0.5, 1) - 0.5) < 0.002);
+  assert.ok(Math.abs(defaultSpeedOf(SPEED_MIN, 1) - SPEED_MIN) < 0.002);
+  // Out of the bar's range is not a default.
+  assert.equal(defaultSpeedOf(5, 1), speedForFps(7, 1));
+  assert.equal(defaultSpeedOf(Number.NaN, 1), speedForFps(7, 1));
 });

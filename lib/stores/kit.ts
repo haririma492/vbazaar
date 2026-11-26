@@ -323,6 +323,9 @@ export async function kitForPage(s: StoreRecord) {
   // The walk's video for marking when the tray takes each shelf (its phone copy, lighter; a signed link, as players get).
   let walkVideo: string | null = null;
   const walkFlat = Boolean(s.out.walk && walks?.walks[s.out.walk]?.projection === "flat");
+  // The walk's key (cut and speed act on it), its pace and the store's own free-walk speed (the bar's m/s, or null: 7 fps).
+  const walkW = s.out.walk ? walks?.walks[s.out.walk] : undefined;
+  const walkKey = s.out.walk ?? null, walkPace = walkW?.pace ?? null, walkSpeed = walkW?.speed ?? null;
   if (s.out.walk) {
     const { phoneKeyOf } = await import("@/lib/splats/walks");
     const { webObjectExists } = await import("@/lib/splats/r2");
@@ -331,7 +334,7 @@ export async function kitForPage(s: StoreRecord) {
     walkVideo = mediaPath((await webObjectExists(phone).catch(() => false)) ? phone : s.out.walk);
   }
   return {
-    working: kitWorking(s.slug), note: kitNote(s.slug), site, sitePhotos, siteNote, walkVideo, walkFlat,
+    working: kitWorking(s.slug), note: kitNote(s.slug), site, sitePhotos, siteNote, walkVideo, walkFlat, walkKey, walkPace, walkSpeed,
     shelves: ids.map((id) => {
       const z = zooms.find((x) => x.id === id);
       const sh = k.shelves.find((x) => x.id === id);

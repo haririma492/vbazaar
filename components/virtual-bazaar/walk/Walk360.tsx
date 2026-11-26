@@ -90,7 +90,7 @@ import { isPrivateVideoKey, mediaPath, toMediaUrl } from "@/lib/splats/media";
 import { directMediaUrl, forgetDirectMedia } from "@/lib/splats/directMedia";
 import { STORE_RE, checkCatalogue, productOf, storeOfScene, unitPriceSay, type Aisle, type Catalogue, type Product } from "@/lib/splats/catalogue";
 import { TURN_COLS, bandProfile, ringShift, turnRate } from "@/lib/splats/walkTurn";
-import { DEFAULT_FPS, SPEED_DEFAULT, driveRate, placeOf, speedAt, speedForFps } from "@/lib/splats/pace";
+import { FILM_FPS, SPEED_DEFAULT, defaultSpeedOf, driveRate, placeOf, speedAt } from "@/lib/splats/pace";
 import { deviceQuaternion, hasDeviceOrientation, requestDeviceOrientation, screenAngle } from "../scene/deviceOrientation";
 import { armAdminMode, readAdminToken } from "@/lib/admin/useAdminMode";
 import { followZoneThroughWalk } from "./followZone";
@@ -133,8 +133,6 @@ const START_FOV = 2 * THREE.MathUtils.radToDeg(Math.atan(Math.tan(THREE.MathUtil
 /** How fast holding the wheel's middle zooms (the field of view changes by e^rate a second). */
 const ZOOM_RATE = 0.8;
 const SPEED_KEY = "vb.walk.speed.v4"; // v4: the default is 7 fps on every walk (owner, 2026-11-06), so everyone starts there
-/** The walks are filmed at this many frames a second (Insta360 Studio export, 25 fps): the bar's fps is this × the playback rate. */
-const FILM_FPS = 25;
 /**
  * The walk's reversed copy and who is in charge of the picture. «idle»: the
  * walk's own video; «entering»: the reversed copy is seeking to the same spot
@@ -2848,10 +2846,12 @@ export default function Walk360({ walkKey }: { walkKey?: string } = {}) {
   /** Frames a second the walk plays at, at speed `v` (m/s) on this walk. */
   const fpsOf = (v: number) => Math.round(FILM_FPS * Math.abs(driveRate(v, false, walkOf(walks, view.key)?.pace)));
   const walkPace = walkOf(walks, view.key)?.pace;
-  // The default is 7 fps on this walk (owner, 2026-11-06), until the shopper moves the bar.
+  // The starting speed: this store's own default when the operator set one (owner, 2026-11-26), else 7 fps on this walk
+  // (owner, 2026-11-06), until the shopper moves the bar.
+  const walkDefault = walkOf(walks, view.key)?.speed;
   useEffect(() => {
-    if (!speedChosen.current) setSpeed(speedForFps(DEFAULT_FPS, walkPace, FILM_FPS));
-  }, [walkPace]);
+    if (!speedChosen.current) setSpeed(defaultSpeedOf(walkDefault, walkPace, FILM_FPS));
+  }, [walkPace, walkDefault]);
   return (
     <div className="fixed inset-0 bg-black">
       {/* THE PASTRY REDESIGN (owner, 2026-11-15: "77% of the top will be assigned to the 360 recording walk … the 23%

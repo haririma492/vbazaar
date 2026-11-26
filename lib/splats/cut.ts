@@ -235,6 +235,40 @@ export function remapWalk(walk: Walk, parts: Part[]): { walk: Walk; dropped: str
   return { walk: { ...walkRest, doors, ...(hide ? { hide } : {}), ...(faceAt !== undefined ? { faceAt } : {}), ...(tagsFrom !== undefined ? { tagsFrom } : {}), ...(items ? { items } : {}), ...(covers ? { covers } : {}), ...(zooms?.length ? { zooms } : {}) }, dropped };
 }
 
+/**
+ * THE PARTS TO KEEP, ON THE ORIGINAL'S TIMES, from stretches cut out of the walk AS IT IS NOW (owner, 2026-11-26: the
+ * timeline on the store's page marks what to cut out). `shown` is the video now (its seconds), `removed` the stretches
+ * to cut out of it, and `last` the parts the last cut kept (on the original's times; empty when never cut: then the
+ * video is the original). Each kept stretch is split where the last cut joined two parts, and every end is mapped
+ * back to the original, so a cut stitches from the original, as every cut does.
+ */
+export function keptOnOriginal(shown: number, removed: Array<{ from: number; to: number }>, last: Part[]): Part[] {
+  const cuts = removed
+    .map((r) => ({ from: Math.max(0, r.from), to: Math.min(shown, r.to) }))
+    .filter((r) => r.to > r.from)
+    .sort((a, b) => a.from - b.from);
+  const kept: Array<{ from: number; to: number }> = [];
+  let at = 0;
+  for (const c of cuts) {
+    if (c.from > at) kept.push({ from: at, to: c.from });
+    at = Math.max(at, c.to);
+  }
+  if (at < shown) kept.push({ from: at, to: shown });
+  const segs: Part[] = last.length ? last : [{ from: 0, to: shown }];
+  const round = (x: number) => Math.round(x * 100) / 100;
+  const out: Part[] = [];
+  for (const k of kept) {
+    let off = 0;
+    for (const p of segs) {
+      const len = p.to - p.from;
+      const a = Math.max(k.from, off), b = Math.min(k.to, off + len);
+      if (b - a > 0.005) out.push({ from: round(p.from + (a - off)), to: round(p.from + (b - off)) });
+      off += len;
+    }
+  }
+  return out;
+}
+
 /** Where the original is kept by the first cut. */
 export const originalKeyOf = (key: string) => `${key}.original`;
 
